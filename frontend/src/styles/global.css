@@ -318,8 +318,11 @@ table tbody tr:hover { background: color-mix(in oklab, var(--color-primary) 5%, 
 .modal-overlay {
   position: fixed; inset: 0; z-index: 500;
   background: oklch(0 0 0 / 0.5); backdrop-filter: blur(4px);
-  display: flex; align-items: center; justify-content: center;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
   padding: var(--space-4);
+  overflow-y: auto;
   animation: fadeIn 0.15s ease;
 }
 .modal {
@@ -333,6 +336,7 @@ table tbody tr:hover { background: color-mix(in oklab, var(--color-primary) 5%, 
   flex-direction: column;
   overflow: hidden;
   animation: slideUp 0.2s ease;
+  margin: auto;
 }
 
 .modal-header {
