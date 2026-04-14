@@ -14,6 +14,7 @@ const ICONS = {
   dashboard: { d: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z' },
   caixa:     { d: 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z' },
   ordens:    { d: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2', d2: 'M9 3h6a1 1 0 011 1v1H8V4a1 1 0 011-1zM9 12h6M9 16h4' },
+  orcamento: { d: 'M12 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z', d2: 'M14 2v6h6M9 13h6M9 17h4M9 9h1' },
   oficina:   { d: 'M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z' },
   relat:     { d: 'M18 20V10M12 20V4M6 20v-6' },
   usuarios:  { d: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2', d2: 'M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75M9 11a4 4 0 100-8 4 4 0 000 8z' },
@@ -54,13 +55,7 @@ export default function Sidebar({ collapsed, onToggle }) {
       <Icon {...ICONS[iconKey]} />
       {!collapsed && <span className="nav-label">{label}</span>}
       {badge > 0 && (
-        <span style={{
-          position: 'absolute', top: 6, right: collapsed ? 4 : 8,
-          minWidth: 18, height: 18, borderRadius: 9,
-          background: 'var(--color-notification)', color: '#fff',
-          fontSize: 10, fontWeight: 700, display: 'flex',
-          alignItems: 'center', justifyContent: 'center', padding: '0 4px'
-        }}>
+        <span style={{ position: 'absolute', top: 6, right: collapsed ? 4 : 8, minWidth: 18, height: 18, borderRadius: 9, background: 'var(--color-notification)', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>
           {badge > 99 ? '99+' : badge}
         </span>
       )}
@@ -102,14 +97,12 @@ export default function Sidebar({ collapsed, onToggle }) {
       </div>
 
       <nav className="sidebar-nav">
-        {/* OFICINA — só fila */}
         {isOficina && navItem('/oficina', 'Fila da Oficina', 'oficina')}
-
-        {/* ADMIN e CAIXA — menu completo */}
         {(isAdmin || isCaixa) && (
           <>
             {navItem('/dashboard', 'Dashboard', 'dashboard')}
             {navItemBadge('/ordens', 'Ordens de Serviço', 'ordens', vencidas)}
+            {navItem('/orcamento', 'Orçamento', 'orcamento')}
             {navItem('/oficina', 'Fila da Oficina', 'oficina')}
             {navItem('/caixa', 'Caixa', 'caixa')}
             {navItem('/clientes', 'Clientes', 'clientes')}
@@ -120,19 +113,8 @@ export default function Sidebar({ collapsed, onToggle }) {
       </nav>
 
       <div className="sidebar-footer">
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
-          padding: 'var(--space-2) var(--space-3)',
-          background: 'var(--color-surface-offset)',
-          borderRadius: 'var(--radius-lg)',
-          marginBottom: 'var(--space-2)'
-        }}>
-          <div style={{
-            width: 28, height: 28, borderRadius: '50%',
-            background: ROLE_COLOR[user?.role] || 'var(--color-primary)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: '#fff', fontWeight: 800, fontSize: 12, flexShrink: 0
-          }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', padding: 'var(--space-2) var(--space-3)', background: 'var(--color-surface-offset)', borderRadius: 'var(--radius-lg)', marginBottom: 'var(--space-2)' }}>
+          <div style={{ width: 28, height: 28, borderRadius: '50%', background: ROLE_COLOR[user?.role] || 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: 12, flexShrink: 0 }}>
             {user?.name?.[0]?.toUpperCase() || '?'}
           </div>
           {!collapsed && (
@@ -143,18 +125,12 @@ export default function Sidebar({ collapsed, onToggle }) {
           )}
         </div>
         <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
-          <button className="btn btn-ghost btn-sm" onClick={handleSwitch} title="Trocar usuário"
-            style={{ flex: 1, justifyContent: 'center', fontSize: 'var(--text-xs)' }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6"/>
-            </svg>
+          <button className="btn btn-ghost btn-sm" onClick={handleSwitch} title="Trocar usuário" style={{ flex: 1, justifyContent: 'center', fontSize: 'var(--text-xs)' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6"/></svg>
             {!collapsed && <span>Trocar</span>}
           </button>
-          <button className="btn btn-ghost btn-sm" onClick={handleLogout} title="Sair"
-            style={{ flex: 1, justifyContent: 'center', fontSize: 'var(--text-xs)', color: 'var(--color-error)' }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>
-            </svg>
+          <button className="btn btn-ghost btn-sm" onClick={handleLogout} title="Sair" style={{ flex: 1, justifyContent: 'center', fontSize: 'var(--text-xs)', color: 'var(--color-error)' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
             {!collapsed && <span>Sair</span>}
           </button>
         </div>

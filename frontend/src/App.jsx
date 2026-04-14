@@ -12,6 +12,7 @@ const Oficina      = React.lazy(() => import('./pages/Oficina'))
 const Relatorios   = React.lazy(() => import('./pages/Relatorios'))
 const Usuarios     = React.lazy(() => import('./pages/Usuarios'))
 const Clientes     = React.lazy(() => import('./pages/Clientes'))
+const Orcamento    = React.lazy(() => import('./pages/Orcamento'))
 
 function PrivateRoute({ children, roles }) {
   const { user, loading } = useAuth()
@@ -26,7 +27,6 @@ function AppRoutes() {
   if (loading) return <div className="loading-center"><div className="spinner"/></div>
   if (!user)   return <Routes><Route path="*" element={<LoginPage />} /></Routes>
 
-  // Rota padrão por role
   const defaultRoute = user.role === 'oficina' ? '/oficina' : '/dashboard'
 
   return (
@@ -34,40 +34,16 @@ function AppRoutes() {
       <Routes>
         <Route path="/login" element={<Navigate to={defaultRoute} replace />} />
         <Route element={<Layout />}>
-
-          {/* Rota raiz redireciona para o default do role */}
           <Route index element={<Navigate to={defaultRoute} replace />} />
-
-          {/* Fila da Oficina — todos os roles acessam */}
-          <Route path="/oficina" element={
-            <PrivateRoute><Oficina /></PrivateRoute>
-          }/>
-
-          {/* Admin e Caixa */}
-          <Route path="/dashboard" element={
-            <PrivateRoute roles={['admin','caixa']}><Dashboard /></PrivateRoute>
-          }/>
-          <Route path="/ordens" element={
-            <PrivateRoute roles={['admin','caixa']}><Ordens /></PrivateRoute>
-          }/>
-          <Route path="/ordens/:id" element={
-            <PrivateRoute roles={['admin','caixa']}><OrdemDetalhe /></PrivateRoute>
-          }/>
-          <Route path="/caixa" element={
-            <PrivateRoute roles={['admin','caixa']}><Caixa /></PrivateRoute>
-          }/>
-          <Route path="/clientes" element={
-            <PrivateRoute roles={['admin','caixa']}><Clientes /></PrivateRoute>
-          }/>
-          <Route path="/relatorios" element={
-            <PrivateRoute roles={['admin','caixa']}><Relatorios /></PrivateRoute>
-          }/>
-
-          {/* Só admin */}
-          <Route path="/usuarios" element={
-            <PrivateRoute roles={['admin']}><Usuarios /></PrivateRoute>
-          }/>
-
+          <Route path="/oficina" element={<PrivateRoute><Oficina /></PrivateRoute>}/>
+          <Route path="/dashboard" element={<PrivateRoute roles={['admin','caixa']}><Dashboard /></PrivateRoute>}/>
+          <Route path="/ordens" element={<PrivateRoute roles={['admin','caixa']}><Ordens /></PrivateRoute>}/>
+          <Route path="/ordens/:id" element={<PrivateRoute roles={['admin','caixa']}><OrdemDetalhe /></PrivateRoute>}/>
+          <Route path="/caixa" element={<PrivateRoute roles={['admin','caixa']}><Caixa /></PrivateRoute>}/>
+          <Route path="/clientes" element={<PrivateRoute roles={['admin','caixa']}><Clientes /></PrivateRoute>}/>
+          <Route path="/relatorios" element={<PrivateRoute roles={['admin','caixa']}><Relatorios /></PrivateRoute>}/>
+          <Route path="/orcamento" element={<PrivateRoute roles={['admin','caixa']}><Orcamento /></PrivateRoute>}/>
+          <Route path="/usuarios" element={<PrivateRoute roles={['admin']}><Usuarios /></PrivateRoute>}/>
           <Route path="*" element={<Navigate to={defaultRoute} replace />} />
         </Route>
       </Routes>
