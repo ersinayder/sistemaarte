@@ -105,33 +105,35 @@ export default function LoginPage() {
           </form>
         </div>
 
-        {/* Quick login hints */}
-        <div style={{ marginBottom: 'var(--space-4)' }}>
-          <p style={{
-            fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)',
-            textAlign: 'center', marginBottom: 'var(--space-3)'
-          }}>
-            Clique para preencher rapidamente:
-          </p>
-          <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'center' }}>
-            {hints.map(h => (
-              <button key={h.username}
-                onClick={() => setForm({ username: h.username, password: `${h.username}123` })}
-                style={{
-                  padding: 'var(--space-2) var(--space-3)',
-                  background: 'var(--color-surface)', border: '1px solid var(--color-border)',
-                  borderRadius: 'var(--radius-lg)', fontSize: 'var(--text-xs)',
-                  cursor: 'pointer', color: 'var(--color-text-muted)',
-                  transition: 'all var(--ease)'
-                }}
-                onMouseOver={e => e.currentTarget.style.color = 'var(--color-text)'}
-                onMouseOut={e => e.currentTarget.style.color = 'var(--color-text-muted)'}
-              >
-                {roleLabels[h.role]}
-              </button>
-            ))}
+        {/* Quick login hints — só aparece em desenvolvimento */}
+        {import.meta.env.DEV && (
+          <div style={{ marginBottom: 'var(--space-4)' }}>
+            <p style={{
+              fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)',
+              textAlign: 'center', marginBottom: 'var(--space-3)'
+            }}>
+              Acesso rápido (somente dev):
+            </p>
+            <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'center' }}>
+              {hints.map(h => (
+                <button key={h.username}
+                  onClick={() => setForm({ username: h.username, password: `${h.username}123` })}
+                  style={{
+                    padding: 'var(--space-2) var(--space-3)',
+                    background: 'var(--color-surface)',
+                    border: '1px solid var(--color-border)',
+                    borderRadius: 'var(--radius-lg)',
+                    fontSize: 'var(--text-xs)',
+                    cursor: 'pointer',
+                    color: 'var(--color-text-muted)',
+                  }}
+                >
+                  {roleLabels[h.role]}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         <p style={{ textAlign: 'center', fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)' }}>
           Servidor local · rede interna

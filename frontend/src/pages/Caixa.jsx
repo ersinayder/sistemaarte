@@ -135,7 +135,7 @@ function ModalLancamento({ open, onClose, onSaved, editData, currentDate, ordens
             <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
         </div>
-        <div style={{padding:'var(--space-5)',display:'flex',flexDirection:'column',gap:'var(--space-4)'}}>
+        <div className="modal-body" style={{display:'flex',flexDirection:'column',gap:'var(--space-5)',paddingTop:'var(--space-3)',paddingBottom:'var(--space-4)'}}>
           {!editData&&(
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'var(--space-2)'}}>
               <button className={`btn ${form.modo==='saldoos'?'btn-primary':'btn-ghost'}`} onClick={()=>trocarModo('saldoos')}>Receber saldo OS</button>

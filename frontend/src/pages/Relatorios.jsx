@@ -83,8 +83,8 @@ export default function Relatorios() {
 
   const dias = dados?.dias || []
   const lancs = dados?.lancamentos || []
-  const porPag = dados?.por_pagamento || {}
-  const porTipo = dados?.por_tipo || {}
+  const porPag  = dados?.porpagamento || {}
+  const porTipo = dados?.portipo || {}
   const total          = dados?.total          || 0
   const ordensAbertas  = dados?.ordens_abertas  || 0
   const ordensVencidas = dados?.ordens_vencidas || 0
@@ -149,7 +149,7 @@ export default function Relatorios() {
         {[
           { label:'Total do Mês', value:fmt(total), color:'var(--color-primary)' },
           { label:'Lançamentos',  value:dados?.count||0, color:'var(--color-blue)' },
-          { label:'Ticket Médio', value:fmt(dados?.ticket_medio||0), color:'var(--color-gold)' },
+          { label:'Ticket Médio', value:fmt(dados?.ticketmedio||0), color:'var(--color-gold)' },
           { label:'Total Cartão', value:fmt(totalCartao), color:'var(--color-orange)' },
           { label:'Dias com Venda', value:dias.filter(d=>d.total>0).length, color:'var(--color-success)' },
         ].map(k => (
