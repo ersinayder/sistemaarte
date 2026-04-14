@@ -34,6 +34,10 @@
   --color-red: #a13544;
   --color-red-hl: #dececb;
 
+  /* Notification — usado em badges de alerta (ex: ordens vencidas na sidebar) */
+  --color-notification: #a13544;
+  --color-notification-hl: #dececb;
+
   --shadow-sm: 0 1px 2px oklch(0.2 0.01 80 / 0.06);
   --shadow-md: 0 4px 12px oklch(0.2 0.01 80 / 0.08);
   --shadow-lg: 0 12px 32px oklch(0.2 0.01 80 / 0.12);
@@ -90,9 +94,52 @@
   --color-purple-hl: #4e4652;
   --color-red: #dd6974;
   --color-red-hl: #574848;
+  --color-notification: #dd6974;
+  --color-notification-hl: #574848;
   --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.25);
   --shadow-md: 0 4px 12px oklch(0 0 0 / 0.35);
   --shadow-lg: 0 12px 32px oklch(0 0 0 / 0.45);
+}
+
+/* Dark mode automático pelo sistema operacional (sem toggle manual) */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --color-bg: #171614;
+    --color-surface: #1c1b19;
+    --color-surface-2: #201f1d;
+    --color-surface-offset: #1d1c1a;
+    --color-surface-dynamic: #2d2c2a;
+    --color-divider: #262523;
+    --color-border: #393836;
+    --color-text: #cdccca;
+    --color-text-muted: #797876;
+    --color-text-faint: #5a5957;
+    --color-text-inverse: #2b2a28;
+    --color-primary: #4f98a3;
+    --color-primary-hover: #227f8b;
+    --color-primary-hl: #313b3b;
+    --color-success: #6daa45;
+    --color-success-hl: #3a4435;
+    --color-warning: #bb653b;
+    --color-warning-hl: #564942;
+    --color-error: #d163a7;
+    --color-error-hl: #4c3d46;
+    --color-orange: #fdab43;
+    --color-orange-hl: #564b3e;
+    --color-gold: #e8af34;
+    --color-gold-hl: #4d4332;
+    --color-blue: #5591c7;
+    --color-blue-hl: #3a4550;
+    --color-purple: #a86fdf;
+    --color-purple-hl: #4e4652;
+    --color-red: #dd6974;
+    --color-red-hl: #574848;
+    --color-notification: #dd6974;
+    --color-notification-hl: #574848;
+    --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.25);
+    --shadow-md: 0 4px 12px oklch(0 0 0 / 0.35);
+    --shadow-lg: 0 12px 32px oklch(0 0 0 / 0.45);
+  }
 }
 
 /* ── Reset ─────────────────────────────────────────────── */
@@ -417,7 +464,9 @@ table tbody tr:hover { background: color-mix(in oklab, var(--color-primary) 5%, 
 }
 .sidebar.collapsed { width: 56px; min-width: 56px; }
 
-.sidebar-header {
+/* sidebar-header é o nome correto usado no Sidebar.jsx */
+.sidebar-header,
+.sidebar-logo {
   display: flex; align-items: center; gap: var(--space-3);
   padding: var(--space-4);
   border-bottom: 1px solid var(--color-divider);
