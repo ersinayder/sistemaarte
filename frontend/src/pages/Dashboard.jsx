@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Chart as ChartJS,
@@ -14,6 +14,7 @@ ChartJS.register(
   PointElement, ArcElement, Tooltip, Legend, Filler
 )
 
+// Helpers
 const fmt = v => 'R$ ' + Number(v || 0).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.')
 const fmtShort = v => {
   const n = Number(v || 0)
@@ -22,12 +23,15 @@ const fmtShort = v => {
 }
 const fmtD = iso => iso ? new Date(`${iso}T12:00:00`).toLocaleDateString('pt-BR') : '—'
 
+// Calculado uma única vez fora do componente — não recalcula a cada render
+const HOJE = new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10)
+const MES_PADRAO = HOJE.slice(0, 7)
+
 const STATUS_BADGE = {
   'Recebido': 'recebido', 'Em Produção': 'emproducao',
   'Pronto': 'pronto', 'Entregue': 'entregue', 'Cancelado': 'cancelado'
 }
 
-// KPI com borda superior colorida, número grande, sem ícone em círculo
 function KPI({ label, value, sub, accent }) {
   return (
     <div style={{
@@ -54,7 +58,6 @@ function KPI({ label, value, sub, accent }) {
   )
 }
 
-// Card de gráfico com header refinado
 function ChartCard({ title, subtitle, children, style }) {
   return (
     <div style={{
@@ -86,31 +89,33 @@ function ChartCard({ title, subtitle, children, style }) {
 
 export default function Dashboard() {
   const navigate = useNavigate()
+
+  // Estado do mês selecionado — permite navegação entre meses
+  const [mesSel, setMesSel] = useState(MES_PADRAO)
   const [dados, setDados] = useState(null)
   const [ordens, setOrdens] = useState([])
   const [loading, setLoading] = useState(true)
 
-  const mesAtual = new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 7)
-  const mesNome = new Date(`${mesAtual}-01T12:00:00`).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+  const mesNome = new Date(`${mesSel}-01T12:00:00`)
+    .toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
 
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true)
-      try {
-        const [rRes, rOrdens] = await Promise.all([
-          api.get(`/relatorios/resumo?mes=${mesAtual}`),
-          api.get('/ordens')
-        ])
-        setDados(rRes.data)
-        setOrdens(rOrdens.data?.ordens || rOrdens.data || [])
-      } catch {
-        toast.error('Erro ao carregar dados')
-      } finally {
-        setLoading(false)
-      }
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [rRes, rOrdens] = await Promise.all([
+        api.get(`/relatorios/resumo?mes=${mesSel}`),
+        api.get('/ordens')
+      ])
+      setDados(rRes.data)
+      setOrdens(rOrdens.data?.ordens || rOrdens.data || [])
+    } catch {
+      toast.error('Erro ao carregar dados')
+    } finally {
+      setLoading(false)
     }
-    load()
-  }, [mesAtual])
+  }, [mesSel])
+
+  useEffect(() => { load() }, [load])
 
   if (loading) return (
     <div className="loading-center">
@@ -118,9 +123,7 @@ export default function Dashboard() {
     </div>
   )
 
-  // Dados para gráficos
-  const cssVar = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim()
-
+  // Gráfico de linha — faturamento diário
   const lineData = {
     labels: dados?.dias?.map(d => {
       const [, , day] = d.data.split('-')
@@ -159,6 +162,7 @@ export default function Dashboard() {
     }
   }
 
+  // Gráfico de rosca — por forma de pagamento
   const pagLabels = Object.keys(dados?.porpagamento || {}).filter(k => dados.porpagamento[k] > 0)
   const pagValues = pagLabels.map(k => dados.porpagamento[k])
   const PAG_COLORS = {
@@ -203,14 +207,17 @@ export default function Dashboard() {
     }
   }
 
-  // Ordens recentes (últimas 5)
+  // Ordens recentes (5 mais recentes)
   const ordensRecentes = [...ordens]
     .sort((a, b) => (b.id || 0) - (a.id || 0))
     .slice(0, 5)
 
   // OS por tipo
   const tipoCount = {}
-  ordens.forEach(o => { tipoCount[o.tipo || o.servico || 'Outros'] = (tipoCount[o.tipo || o.servico || 'Outros'] || 0) + 1 })
+  ordens.forEach(o => {
+    const t = o.tipo || o.servico || 'Outros'
+    tipoCount[t] = (tipoCount[t] || 0) + 1
+  })
   const TIPO_COLORS = {
     'Corte a Laser': 'var(--color-primary)',
     'Quadro': 'var(--color-orange)',
@@ -219,17 +226,16 @@ export default function Dashboard() {
     'Diversos': 'var(--color-text-faint)',
   }
 
-  const hoje = new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10)
   const ordensVencidas = ordens.filter(o =>
     !['Entregue', 'Cancelado'].includes(o.status) &&
     (o.prazoentrega || o.prazo) &&
-    (o.prazoentrega || o.prazo) < hoje
+    (o.prazoentrega || o.prazo) < HOJE
   ).length
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
 
-      {/* ── Cabeçalho ── */}
+      {/* ── Cabeçalho com seletor de mês funcional ── */}
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
         <div>
           <h1 style={{ fontSize: 'var(--text-lg)', fontWeight: 800, marginBottom: 2 }}>Dashboard</h1>
@@ -239,7 +245,9 @@ export default function Dashboard() {
         </div>
         <input
           type="month"
-          defaultValue={mesAtual}
+          value={mesSel}
+          max={MES_PADRAO}
+          onChange={e => e.target.value && setMesSel(e.target.value)}
           style={{
             background: 'var(--color-surface)',
             border: '1px solid var(--color-border)',
@@ -249,7 +257,6 @@ export default function Dashboard() {
             color: 'var(--color-text-muted)',
             cursor: 'pointer'
           }}
-          readOnly
         />
       </div>
 
@@ -285,8 +292,12 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* ── Gráficos ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 'var(--space-4)' }}>
+      {/* ── Gráficos — responsivo: quebra em coluna única em telas médias ── */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+        gap: 'var(--space-4)'
+      }}>
         <ChartCard
           title="Faturamento Diário"
           subtitle={`Evolução de receitas em ${mesNome}`}
@@ -315,8 +326,13 @@ export default function Dashboard() {
         </ChartCard>
       </div>
 
-      {/* ── Tabela + OS por tipo ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 'var(--space-4)', alignItems: 'start' }}>
+      {/* ── Tabela + OS por tipo — responsivo ── */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+        gap: 'var(--space-4)',
+        alignItems: 'start'
+      }}>
 
         {/* Últimas OS */}
         <div style={{
@@ -368,7 +384,12 @@ export default function Dashboard() {
                       {o.cliente_nome || o.clientenome || o.cliente?.nome || '—'}
                     </td>
                     <td>
-                      <span className={`badge badge-${o.tipo === 'Corte a Laser' ? 'laser' : o.tipo === 'Quadro' ? 'quadro' : o.tipo === '3D' ? '3d' : o.tipo === 'Caixas' ? 'caixas' : 'diversos'}`}>
+                      <span className={`badge badge-${
+                        o.tipo === 'Corte a Laser' ? 'laser' :
+                        o.tipo === 'Quadro' ? 'quadro' :
+                        o.tipo === '3D' ? '3d' :
+                        o.tipo === 'Caixas' ? 'caixas' : 'diversos'
+                      }`}>
                         {o.tipo || o.servico || 'Outros'}
                       </span>
                     </td>
