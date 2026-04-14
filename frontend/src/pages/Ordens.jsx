@@ -7,7 +7,6 @@ import { useAuth } from "../context/AuthContext";
 const fmt   = v => `R$ ${Number(v||0).toFixed(2).replace(".",",").replace(/(\d)(?=(\d{3})+,)/g,"$1.")}`;
 const fmtD  = iso => iso ? new Date(iso+"T12:00:00").toLocaleDateString("pt-BR") : "—";
 
-// Constante de módulo: calculada uma vez no carregamento, não recria a cada render
 const HOJE = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
 const STATUS_OPTS = ["Recebido","Em Produção","Pronto","Entregue","Cancelado"];
@@ -17,7 +16,6 @@ const TIPO_OPTS   = ["Corte a Laser","Quadro","Caixas","3D","Diversos"];
 const PAG_LABEL   = { Credito:"Crédito", Debito:"Débito", Link:"Link Pag.", Pix:"Pix", Dinheiro:"Dinheiro" };
 const STATUS_BADGE= { Recebido:"recebido","Em Produção":"emproducao",Pronto:"pronto",Entregue:"entregue",Cancelado:"cancelado" };
 
-// Calcula saldo da OS de forma consistente (lida com ambos os formatos do backend)
 const saldoOS = o => Math.max(0,
   Number(o?.saldoaberto ?? o?.valorrestante ?? (Number(o?.valor||o?.valortotal||0) - Number(o?.entrada||o?.valorentrada||0)))
 );
@@ -61,7 +59,6 @@ function ModalOS({ open, onClose, onSaved, editData }) {
     }
   }, [open, editData]);
 
-  // Busca clientes
   useEffect(()=>{
     if (busca.length < 2) { setClientes([]); return; }
     api.get(`/clientes?q=${encodeURIComponent(busca)}`).then(r=>setClientes(r.data)).catch(()=>{});
@@ -95,7 +92,7 @@ function ModalOS({ open, onClose, onSaved, editData }) {
       servico:         form.servico,
       descricao:       form.descricao       || null,
       valortotal:      total,
-      valorentrada:    entrada,              // 0 é válido (sem entrada)
+      valorentrada:    entrada,
       prazoentrega:    form.prazoentrega    || null,
       prioridade:      form.prioridade,
       pagamento:       form.pagamento,
@@ -119,23 +116,26 @@ function ModalOS({ open, onClose, onSaved, editData }) {
     } finally { setSaving(false); }
   };
 
-  // Saldo previsto em tempo real no modal
-  const total   = Number(form.valortotal)  || 0;
-  const entrada = Number(form.valorentrada) || 0;
-  const saldoPrev = Math.max(0, total - entrada);
+  const total      = Number(form.valortotal)  || 0;
+  const entrada    = Number(form.valorentrada) || 0;
+  const saldoPrev  = Math.max(0, total - entrada);
 
   if (!open) return null;
 
   return (
     <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div className="modal modal-lg">
+
+        {/* ── Header sticky ── */}
         <div className="modal-header">
           <span className="modal-title">{editData ? "Editar OS" : "Nova Ordem de Serviço"}</span>
           <button className="btn btn-icon btn-ghost" onClick={onClose}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
         </div>
-        <div className="modal-body" style={{display:"flex",flexDirection:"column",gap:"var(--space-5)",paddingTop:"var(--space-3)",paddingBottom:"var(--space-4)"}}>
+
+        {/* ── Body — usa a classe CSS sem sobrescrever padding ── */}
+        <div className="modal-body">
 
           {/* Cliente com autocomplete */}
           <div style={{position:"relative"}}>
@@ -192,7 +192,6 @@ function ModalOS({ open, onClose, onSaved, editData }) {
             <textarea className="form-input" rows={2} style={{resize:"vertical"}} value={form.descricao} onChange={e=>set("descricao",e.target.value)} placeholder="Detalhe o serviço solicitado..."/>
           </div>
 
-          {/* Valores com preview de saldo em tempo real */}
           <div className="form-grid-2">
             <div className="form-group">
               <label className="form-label">Valor Total (R$) <span style={{color:"var(--color-error)"}}>*</span></label>
@@ -213,13 +212,11 @@ function ModalOS({ open, onClose, onSaved, editData }) {
             <div style={{
               display:"flex", justifyContent:"space-between", alignItems:"center",
               padding:"var(--space-3) var(--space-4)",
-              background: saldoPrev > 0 ? "var(--color-warning-highlight)" : "var(--color-success-highlight)",
+              background: saldoPrev > 0 ? "var(--color-warning-hl)" : "var(--color-success-hl)",
               borderRadius:"var(--radius-md)",
               fontSize:"var(--text-xs)",
             }}>
-              <span style={{color:"var(--color-text-muted)"}}>
-                Saldo a receber após entrada:
-              </span>
+              <span style={{color:"var(--color-text-muted)"}}>Saldo a receber após entrada:</span>
               <span style={{
                 fontFamily:"monospace", fontWeight:800,
                 color: saldoPrev > 0 ? "var(--color-warning)" : "var(--color-success)",
@@ -255,13 +252,17 @@ function ModalOS({ open, onClose, onSaved, editData }) {
             <label className="form-label">Observações Internas</label>
             <textarea className="form-input" rows={2} style={{resize:"vertical"}} value={form.observacoes} onChange={e=>set("observacoes",e.target.value)} placeholder="Visível apenas internamente..."/>
           </div>
+
         </div>
+
+        {/* ── Footer sticky ── */}
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
           <button className="btn btn-primary" onClick={save} disabled={saving}>
             {saving ? <><div className="spinner" style={{width:14,height:14}}/>Salvando...</> : "Salvar OS"}
           </button>
         </div>
+
       </div>
     </div>
   );
@@ -302,7 +303,6 @@ export default function Ordens() {
     [ordens, q]
   );
 
-  // Usa a constante HOJE — não recalcula a cada render
   const vencidas = useMemo(()=>
     filtered.filter(o=> {
       const prazo = o.prazoentrega || o.prazo;
@@ -431,11 +431,11 @@ export default function Ordens() {
             <div className="modal-header">
               <span className="modal-title" style={{color:"var(--color-error)"}}>Excluir OS</span>
             </div>
-            <div style={{padding:"var(--space-4) var(--space-5)"}}>
-              <p style={{fontSize:"var(--text-sm)",marginBottom:"var(--space-3)"}}>
+            <div className="modal-body">
+              <p style={{fontSize:"var(--text-sm)"}}>
                 Tem certeza que deseja excluir a <strong>{deleteNum}</strong>?
               </p>
-              <div style={{padding:"var(--space-3)",background:"var(--color-error-highlight)",borderRadius:"var(--radius-md)",fontSize:"var(--text-xs)",color:"var(--color-error)",fontWeight:600}}>
+              <div style={{padding:"var(--space-3)",background:"var(--color-error-hl)",borderRadius:"var(--radius-md)",fontSize:"var(--text-xs)",color:"var(--color-error)",fontWeight:600}}>
                 Todos os lançamentos e histórico de status desta OS serão permanentemente excluídos.
               </div>
             </div>
