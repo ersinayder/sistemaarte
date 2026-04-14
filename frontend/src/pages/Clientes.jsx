@@ -101,104 +101,108 @@ function ModalCliente({ open, onClose, onSaved, editData }) {
   const isJuridica = form.cpf.replace(/\D/g,'').length > 11;
 
   return (
-    <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div className="modal modal-lg" style={{maxWidth:660}}>
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      {/* 1. O modal agora é Flexbox */}
+      <div className="modal modal-lg" style={{ maxWidth: 660 }}>
+        
+        {/* 2. HEADER: Fica fixo no topo */}
         <div className="modal-header">
-          <span className="modal-title">{editData?'Editar Cliente':'Novo Cliente'}</span>
+          <span className="modal-title">{editData ? 'Editar Cliente' : 'Novo Cliente'}</span>
           <button className="btn btn-icon btn-ghost" onClick={onClose}>
-            <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M18 6L6 18M6 6l12 12"/></svg>
+            <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
           </button>
         </div>
-        <div className="modal-body" style={{display:'flex',flexDirection:'column',gap:'var(--space-5)',paddingTop:'var(--space-3)',paddingBottom:'var(--space-4)'}}>
-          {/* Identificação */}
-          <div>
-            <div style={{fontSize:'var(--text-xs)',fontWeight:700,color:'var(--color-text-muted)',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:'var(--space-3)',display:'flex',alignItems:'center',gap:'var(--space-2)'}}>
-              <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx={12} cy={7} r={4}/></svg>
-              Identificação
-            </div>
-            <div className="form-grid-2">
-              <div className="form-group col-span-2">
-                <label className="form-label">Nome / Empresa</label>
-                <input className="form-input" placeholder="Nome completo ou razão social" value={form.nome} onChange={e=>set('nome',e.target.value)} autoFocus/>
+
+        {/* 3. BODY: Onde a mágica do Scroll acontece */}
+        <div className="modal-body">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
+            
+            {/* Seção: Identificação */}
+            <div>
+              <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 'var(--space-3)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx={12} cy={7} r={4}/></svg>
+                Identificação
               </div>
-              <div className="form-group">
-                <label className="form-label" style={{display:'flex',alignItems:'center',gap:'var(--space-2)'}}>
-                  CPF / CNPJ {docLoading&&<div className="spinner" style={{width:10,height:10}}/>}
-                </label>
-                <input className="form-input" placeholder="000.000.000-00 ou 00.000.000/0001-00" value={form.cpf} maxLength={18} onChange={e=>onCpfChange(e.target.value)}/>
-              </div>
-              {isJuridica && (
-                <div className="form-group">
-                  <label className="form-label">Inscrição Estadual</label>
-                  <input className="form-input" value={form.ie} onChange={e=>set('ie',e.target.value)}/>
+              <div className="form-grid-2">
+                <div className="form-group col-span-2">
+                  <label className="form-label">Nome / Empresa</label>
+                  <input className="form-input" placeholder="Nome completo ou razão social" value={form.nome} onChange={e => set('nome', e.target.value)} autoFocus />
                 </div>
-              )}
-            </div>
-            {docInfo && (
-              <div style={{marginTop:'var(--space-2)',padding:'var(--space-3)',borderRadius:'var(--radius-md)',fontSize:'var(--text-xs)',lineHeight:1.6,background:docInfo.erro?'var(--color-error-highlight)':docInfo.aviso?'var(--color-warning-highlight)':'var(--color-primary-highlight)',color:docInfo.erro?'var(--color-error)':docInfo.aviso?'var(--color-warning)':'var(--color-primary)',border:'1px solid currentColor',opacity:0.9}}>
-                {docInfo.erro&&<span>{docInfo.erro}</span>}
-                {docInfo.aviso&&<span>{docInfo.aviso}</span>}
-                {docInfo.ok&&<div><strong>{docInfo.nome}</strong>{docInfo.fantasia&&docInfo.fantasia!==docInfo.nome&&<span> · Fantasia <strong>{docInfo.fantasia}</strong></span>}{docInfo.situacao&&<span> · Situação <strong>{docInfo.situacao}</strong></span>}</div>}
+                <div className="form-group">
+                  <label className="form-label">CPF / CNPJ {docLoading && <div className="spinner" style={{ width: 10, height: 10 }} />}</label>
+                  <input className="form-input" placeholder="000.000.000-00 ou 00.000.000/0001-00" value={form.cpf} maxLength={18} onChange={e => onCpfChange(e.target.value)} />
+                </div>
+                {isJuridica && (
+                  <div className="form-group">
+                    <label className="form-label">Inscrição Estadual</label>
+                    <input className="form-input" value={form.ie} onChange={e => set('ie', e.target.value)} />
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </div>
 
-          {/* Contato */}
-          <div>
-            <div style={{fontSize:'var(--text-xs)',fontWeight:700,color:'var(--color-text-muted)',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:'var(--space-3)'}}>Contato</div>
-            <div className="form-grid-2">
-              <div className="form-group">
-                <label className="form-label">WhatsApp / Telefone</label>
-                <input className="form-input" placeholder="(31) 9 0000-0000" value={form.contato} onChange={e=>set('contato',e.target.value)}/>
-              </div>
-              <div className="form-group">
-                <label className="form-label">E-mail</label>
-                <input className="form-input" type="email" value={form.email} onChange={e=>set('email',e.target.value)}/>
+            {/* Seção: Contato */}
+            <div>
+              <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 'var(--space-3)' }}>Contato</div>
+              <div className="form-grid-2">
+                <div className="form-group">
+                  <label className="form-label">WhatsApp / Telefone</label>
+                  <input className="form-input" placeholder="(31) 9 0000-0000" value={form.contato} onChange={e => set('contato', e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">E-mail</label>
+                  <input className="form-input" type="email" value={form.email} onChange={e => set('email', e.target.value)} />
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Endereço */}
-          <div>
-            <div style={{fontSize:'var(--text-xs)',fontWeight:700,color:'var(--color-text-muted)',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:'var(--space-3)',display:'flex',alignItems:'center',gap:'var(--space-2)'}}>
-              Endereço {cepLoading&&<div className="spinner" style={{width:10,height:10}}/>}
+            {/* Seção: Endereço */}
+            <div>
+              <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 'var(--space-3)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                Endereço {cepLoading && <div className="spinner" style={{ width: 10, height: 10 }} />}
+              </div>
+              <div className="form-grid-2">
+                <div className="form-group">
+                  <label className="form-label">CEP</label>
+                  <input className="form-input" placeholder="00000-000" value={form.cep} maxLength={9} onChange={e => onCepChange(e.target.value)} />
+                </div>
+                <div className="form-group col-span-2">
+                  <label className="form-label">Logradouro</label>
+                  <input className="form-input" placeholder="Rua, número, complemento" value={form.endereco} onChange={e => set('endereco', e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Cidade</label>
+                  <input className="form-input" placeholder="Ipatinga" value={form.cidade} onChange={e => set('cidade', e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">UF</label>
+                  <select className="form-input" value={form.uf} onChange={e => set('uf', e.target.value)}>
+                    <option value="" />
+                    {UFS.map(u => <option key={u}>{u}</option>)}
+                  </select>
+                </div>
+              </div>
             </div>
-            <div className="form-grid-2">
-              <div className="form-group">
-                <label className="form-label">CEP</label>
-                <input className="form-input" placeholder="00000-000" value={form.cep} maxLength={9} onChange={e=>onCepChange(e.target.value)}/>
-              </div>
-              <div className="form-group col-span-2">
-                <label className="form-label">Logradouro</label>
-                <input className="form-input" placeholder="Rua, número, complemento" value={form.endereco} onChange={e=>set('endereco',e.target.value)}/>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Cidade</label>
-                <input className="form-input" placeholder="Ipatinga" value={form.cidade} onChange={e=>set('cidade',e.target.value)}/>
-              </div>
-              <div className="form-group">
-                <label className="form-label">UF</label>
-                <select className="form-input" value={form.uf} onChange={e=>set('uf',e.target.value)}>
-                  <option value=""/>
-                  {UFS.map(u=><option key={u}>{u}</option>)}
-                </select>
-              </div>
-            </div>
-          </div>
 
-          {/* Obs */}
-          <div className="form-group">
-            <label className="form-label">Observações</label>
-            <textarea className="form-input" rows={2} value={form.obs} onChange={e=>set('obs',e.target.value)} style={{resize:'vertical'}} placeholder="Preferências, referências, informações extras..."/>
+            {/* Seção: Obs */}
+            <div className="form-group">
+              <label className="form-label">Observações</label>
+              <textarea className="form-input" rows={2} value={form.obs} onChange={e => set('obs', e.target.value)} style={{ resize: 'vertical' }} placeholder="Preferências, referências, informações extras..." />
+            </div>
+
           </div>
         </div>
 
+        {/* 4. FOOTER: Fica fixo na base */}
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
           <button className="btn btn-primary" onClick={save} disabled={saving}>
-            {saving?<><div className="spinner" style={{width:14,height:14}}/>Salvando...</>:'Salvar'}
+            {saving ? <><div className="spinner" style={{ width: 14, height: 14 }} />Salvando...</> : 'Salvar'}
           </button>
         </div>
+
       </div>
     </div>
   );
