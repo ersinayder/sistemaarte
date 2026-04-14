@@ -77,7 +77,8 @@ export default function Sidebar({ collapsed, onToggle }) {
 
   return (
     <aside className={`sidebar${collapsed ? ' collapsed' : ''}`}>
-      <div className="sidebar-logo" onClick={onToggle} style={{ cursor: 'pointer' }}>
+      {/* Cabeçalho da sidebar com logo e botão de colapsar */}
+      <div className="sidebar-header" onClick={onToggle} style={{ cursor: 'pointer' }}>
         {!collapsed && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
             <img src="/logo.png" alt="Arte & Molduras"
@@ -89,7 +90,7 @@ export default function Sidebar({ collapsed, onToggle }) {
             </div>
           </div>
         )}
-        <button className="btn btn-icon btn-ghost" style={{ marginLeft: collapsed ? 0 : 'auto', flexShrink: 0 }}>
+        <button className="btn btn-icon btn-ghost" style={{ marginLeft: collapsed ? 0 : 'auto', flexShrink: 0 }} aria-label={collapsed ? 'Expandir menu' : 'Recolher menu'}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             {collapsed ? <path d="M9 18l6-6-6-6"/> : <path d="M15 18l-6-6 6-6"/>}
           </svg>
