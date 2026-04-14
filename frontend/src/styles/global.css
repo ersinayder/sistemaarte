@@ -328,7 +328,7 @@ table tbody tr:hover { background: color-mix(in oklab, var(--color-primary) 5%, 
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-lg);
   width: 100%; max-width: 560px;
-  max-height: 90vh;
+  max-height: calc(100dvh - var(--space-8));
   display: flex;
   flex-direction: column;
   overflow: hidden;
