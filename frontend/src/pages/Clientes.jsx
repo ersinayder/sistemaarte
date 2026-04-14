@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import ReactDOM from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 
 const fmt  = v => `R$ ${Number(v||0).toFixed(2).replace('.',',').replace(/(\d)(?=(\d{3})+(?!\d))/g,'$1.')}`;
-const fmtD = iso => iso ? new Date(iso+'T12:00:00').toLocaleDateString('pt-BR') : '—';
 
 function maskDoc(v) {
   const n = v.replace(/\D/g,'').slice(0,14);
@@ -26,6 +26,13 @@ function maskDoc(v) {
 function maskCep(v){const n=v.replace(/\D/g,'').slice(0,8);return n.length>5?`${n.slice(0,5)}-${n.slice(5)}`:n;}
 const UFS=['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
+// ── Portal wrapper: monta filhos diretamente no document.body ─────────────────
+// Isso garante que position:fixed funcione em 100% dos cenários,
+// independente de qualquer overflow/transform nos ancestrais.
+function Portal({ children }) {
+  return ReactDOM.createPortal(children, document.body);
+}
+
 // ── Modal Cliente ─────────────────────────────────────────────────────────────
 function ModalCliente({ open, onClose, onSaved, editData }) {
   const blank = { nome:'', cpf:'', ie:'', contato:'', email:'', cep:'', endereco:'', cidade:'', uf:'', obs:'' };
@@ -35,6 +42,16 @@ function ModalCliente({ open, onClose, onSaved, editData }) {
   const [docInfo, setDocInfo] = useState(null);
   const [cepLoading, setCepLoading] = useState(false);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  // Bloqueia scroll do body enquanto o modal estiver aberto
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [open]);
 
   useEffect(()=>{
     if(!open) return;
@@ -101,110 +118,119 @@ function ModalCliente({ open, onClose, onSaved, editData }) {
   const isJuridica = form.cpf.replace(/\D/g,'').length > 11;
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      {/* 1. O modal agora é Flexbox */}
-      <div className="modal modal-lg" style={{ maxWidth: 660 }}>
-        
-        {/* 2. HEADER: Fica fixo no topo */}
-        <div className="modal-header">
-          <span className="modal-title">{editData ? 'Editar Cliente' : 'Novo Cliente'}</span>
-          <button className="btn btn-icon btn-ghost" onClick={onClose}>
-            <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+    <Portal>
+      <div
+        className="modal-overlay"
+        onClick={e => e.target === e.currentTarget && onClose()}
+      >
+        <div className="modal modal-lg" style={{ maxWidth: 660 }}>
 
-        {/* 3. BODY: Onde a mágica do Scroll acontece */}
-        <div className="modal-body">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
-            
-            {/* Seção: Identificação */}
-            <div>
-              <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 'var(--space-3)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx={12} cy={7} r={4}/></svg>
-                Identificação
-              </div>
-              <div className="form-grid-2">
-                <div className="form-group col-span-2">
-                  <label className="form-label">Nome / Empresa</label>
-                  <input className="form-input" placeholder="Nome completo ou razão social" value={form.nome} onChange={e => set('nome', e.target.value)} autoFocus />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">CPF / CNPJ {docLoading && <div className="spinner" style={{ width: 10, height: 10 }} />}</label>
-                  <input className="form-input" placeholder="000.000.000-00 ou 00.000.000/0001-00" value={form.cpf} maxLength={18} onChange={e => onCpfChange(e.target.value)} />
-                </div>
-                {isJuridica && (
-                  <div className="form-group">
-                    <label className="form-label">Inscrição Estadual</label>
-                    <input className="form-input" value={form.ie} onChange={e => set('ie', e.target.value)} />
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Seção: Contato */}
-            <div>
-              <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 'var(--space-3)' }}>Contato</div>
-              <div className="form-grid-2">
-                <div className="form-group">
-                  <label className="form-label">WhatsApp / Telefone</label>
-                  <input className="form-input" placeholder="(31) 9 0000-0000" value={form.contato} onChange={e => set('contato', e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">E-mail</label>
-                  <input className="form-input" type="email" value={form.email} onChange={e => set('email', e.target.value)} />
-                </div>
-              </div>
-            </div>
-
-            {/* Seção: Endereço */}
-            <div>
-              <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 'var(--space-3)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                Endereço {cepLoading && <div className="spinner" style={{ width: 10, height: 10 }} />}
-              </div>
-              <div className="form-grid-2">
-                <div className="form-group">
-                  <label className="form-label">CEP</label>
-                  <input className="form-input" placeholder="00000-000" value={form.cep} maxLength={9} onChange={e => onCepChange(e.target.value)} />
-                </div>
-                <div className="form-group col-span-2">
-                  <label className="form-label">Logradouro</label>
-                  <input className="form-input" placeholder="Rua, número, complemento" value={form.endereco} onChange={e => set('endereco', e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Cidade</label>
-                  <input className="form-input" placeholder="Ipatinga" value={form.cidade} onChange={e => set('cidade', e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">UF</label>
-                  <select className="form-input" value={form.uf} onChange={e => set('uf', e.target.value)}>
-                    <option value="" />
-                    {UFS.map(u => <option key={u}>{u}</option>)}
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Seção: Obs */}
-            <div className="form-group">
-              <label className="form-label">Observações</label>
-              <textarea className="form-input" rows={2} value={form.obs} onChange={e => set('obs', e.target.value)} style={{ resize: 'vertical' }} placeholder="Preferências, referências, informações extras..." />
-            </div>
-
+          <div className="modal-header">
+            <span className="modal-title">{editData ? 'Editar Cliente' : 'Novo Cliente'}</span>
+            <button className="btn btn-icon btn-ghost" onClick={onClose}>
+              <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
           </div>
-        </div>
 
-        {/* 4. FOOTER: Fica fixo na base */}
-        <div className="modal-footer">
-          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary" onClick={save} disabled={saving}>
-            {saving ? <><div className="spinner" style={{ width: 14, height: 14 }} />Salvando...</> : 'Salvar'}
-          </button>
-        </div>
+          <div className="modal-body">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
 
+              {/* Identificação */}
+              <div>
+                <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 'var(--space-3)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                  <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx={12} cy={7} r={4}/></svg>
+                  Identificação
+                </div>
+                <div className="form-grid-2">
+                  <div className="form-group col-span-2">
+                    <label className="form-label">Nome / Empresa</label>
+                    <input className="form-input" placeholder="Nome completo ou razão social" value={form.nome} onChange={e => set('nome', e.target.value)} autoFocus />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">CPF / CNPJ {docLoading && <div className="spinner" style={{ width: 10, height: 10, display:'inline-block' }} />}</label>
+                    <input className="form-input" placeholder="000.000.000-00 ou 00.000.000/0001-00" value={form.cpf} maxLength={18} onChange={e => onCpfChange(e.target.value)} />
+                    {docInfo?.ok && (
+                      <div style={{ fontSize:'var(--text-xs)', color:'var(--color-success)', marginTop:'var(--space-1)', display:'flex', gap:4, alignItems:'center' }}>
+                        <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}><path d="M20 6L9 17l-5-5"/></svg>
+                        {docInfo.fantasia||docInfo.nome} · {docInfo.situacao}
+                      </div>
+                    )}
+                    {docInfo?.erro && <div className="form-error">{docInfo.erro}</div>}
+                    {docInfo?.aviso && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginTop:'var(--space-1)' }}>{docInfo.aviso}</div>}
+                  </div>
+                  {isJuridica && (
+                    <div className="form-group">
+                      <label className="form-label">Inscrição Estadual</label>
+                      <input className="form-input" value={form.ie} onChange={e => set('ie', e.target.value)} />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Contato */}
+              <div>
+                <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 'var(--space-3)' }}>Contato</div>
+                <div className="form-grid-2">
+                  <div className="form-group">
+                    <label className="form-label">WhatsApp / Telefone</label>
+                    <input className="form-input" placeholder="(31) 9 0000-0000" value={form.contato} onChange={e => set('contato', e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">E-mail</label>
+                    <input className="form-input" type="email" value={form.email} onChange={e => set('email', e.target.value)} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Endereço */}
+              <div>
+                <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 'var(--space-3)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                  Endereço {cepLoading && <div className="spinner" style={{ width: 10, height: 10, display:'inline-block' }} />}
+                </div>
+                <div className="form-grid-2">
+                  <div className="form-group">
+                    <label className="form-label">CEP</label>
+                    <input className="form-input" placeholder="00000-000" value={form.cep} maxLength={9} onChange={e => onCepChange(e.target.value)} />
+                  </div>
+                  <div className="form-group col-span-2">
+                    <label className="form-label">Logradouro</label>
+                    <input className="form-input" placeholder="Rua, número, complemento" value={form.endereco} onChange={e => set('endereco', e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Cidade</label>
+                    <input className="form-input" placeholder="Ipatinga" value={form.cidade} onChange={e => set('cidade', e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">UF</label>
+                    <select className="form-input" value={form.uf} onChange={e => set('uf', e.target.value)}>
+                      <option value="" />
+                      {UFS.map(u => <option key={u}>{u}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Observações */}
+              <div className="form-group">
+                <label className="form-label">Observações</label>
+                <textarea className="form-input" rows={2} value={form.obs} onChange={e => set('obs', e.target.value)} style={{ resize: 'vertical' }} placeholder="Preferências, referências, informações extras..." />
+              </div>
+
+            </div>
+          </div>
+
+          <div className="modal-footer">
+            <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+            <button className="btn btn-primary" onClick={save} disabled={saving}>
+              {saving ? <><div className="spinner" style={{ width: 14, height: 14 }} />Salvando...</> : 'Salvar'}
+            </button>
+          </div>
+
+        </div>
       </div>
-    </div>
+    </Portal>
   );
 }
 
@@ -219,7 +245,7 @@ export default function Clientes() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [modal, setModal] = useState({ open:false, edit:null });
-  const [deleteId, setDeleteId] = useState(null);   // ← NOVO: confirmar exclusão
+  const [deleteId, setDeleteId] = useState(null);
   const [deleteName, setDeleteName] = useState('');
 
   const load = useCallback(async()=>{
@@ -237,7 +263,6 @@ export default function Clientes() {
     finally{ setDrawerLoad(false); }
   };
 
-  // ── NOVO: excluir cliente ─────────────────────────────────────────────────
   const pedirExclusao = (e, c) => {
     e.stopPropagation();
     setDeleteId(c.id);
@@ -259,8 +284,6 @@ export default function Clientes() {
     const q=search.toLowerCase();
     return [c.name,c.phone,c.email,c.cpf,c.cidade,c.ie].join(' ').toLowerCase().includes(q);
   });
-
-  const STATUSBADGE={Recebido:'recebido','Em Produção':'emproducao',Pronto:'pronto',Entregue:'entregue',Cancelado:'cancelado'};
 
   return (
     <div>
@@ -338,7 +361,6 @@ export default function Clientes() {
                               <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                             </button>
                           )}
-                          {/* ── NOVO: botão excluir ── */}
                           {isAdmin&&(
                             <button className="btn btn-icon btn-ghost btn-sm" title="Excluir cliente" onClick={e=>pedirExclusao(e,c)} style={{color:'var(--color-error)'}}>
                               <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
@@ -355,20 +377,32 @@ export default function Clientes() {
         )}
       </div>
 
-      <ModalCliente open={modal.open} onClose={()=>setModal({open:false,edit:null})} onSaved={load} editData={modal.edit}/>
+      {/* Modal cadastro/edição */}
+      <ModalCliente
+        open={modal.open}
+        onClose={()=>setModal({open:false,edit:null})}
+        onSaved={load}
+        editData={modal.edit}
+      />
 
-      {/* ── NOVO: Modal confirmar exclusão ── */}
-      {deleteId&&(
-        <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&setDeleteId(null)}>
+      {/* Modal confirmar exclusão — também via Portal */}
+      {deleteId && ReactDOM.createPortal(
+        <div
+          className="modal-overlay"
+          onClick={e=>e.target===e.currentTarget&&setDeleteId(null)}
+        >
           <div className="modal modal-sm">
             <div className="modal-header">
               <span className="modal-title" style={{color:'var(--color-error)'}}>Excluir Cliente</span>
+              <button className="btn btn-icon btn-ghost" onClick={()=>setDeleteId(null)}>
+                <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
             </div>
             <div style={{padding:'var(--space-4) var(--space-5)'}}>
               <p style={{fontSize:'var(--text-sm)',color:'var(--color-text-muted)',marginBottom:'var(--space-3)'}}>
                 Tem certeza que deseja excluir <strong style={{color:'var(--color-text)'}}>{deleteName}</strong>?
               </p>
-              <div style={{padding:'var(--space-3)',background:'var(--color-error-highlight)',borderRadius:'var(--radius-md)',fontSize:'var(--text-xs)',color:'var(--color-error)',fontWeight:600}}>
+              <div style={{padding:'var(--space-3)',background:'var(--color-error-hl)',borderRadius:'var(--radius-md)',fontSize:'var(--text-xs)',color:'var(--color-error)',fontWeight:600}}>
                 ⚠️ As ordens de serviço vinculadas a este cliente <strong>não serão excluídas</strong>, apenas a referência ao cliente será removida.
               </div>
             </div>
@@ -377,12 +411,16 @@ export default function Clientes() {
               <button className="btn btn-danger" onClick={confirmarExclusao}>Excluir</button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* Drawer histórico do cliente */}
-      {drawer&&(
-        <div style={{position:'fixed',inset:0,zIndex:400,display:'flex',justifyContent:'flex-end',background:'oklch(0 0 0 / 0.35)',backdropFilter:'blur(2px)'}} onClick={e=>e.target===e.currentTarget&&setDrawer(null)}>
+      {/* Drawer histórico do cliente — também via Portal */}
+      {drawer && ReactDOM.createPortal(
+        <div
+          style={{position:'fixed',inset:0,zIndex:400,display:'flex',justifyContent:'flex-end',background:'oklch(0 0 0 / 0.35)',backdropFilter:'blur(2px)'}}
+          onClick={e=>e.target===e.currentTarget&&setDrawer(null)}
+        >
           <div style={{width:'min(480px,100vw)',height:'100%',overflowY:'auto',background:'var(--color-surface)',boxShadow:'var(--shadow-lg)',display:'flex',flexDirection:'column'}}>
             <div style={{padding:'var(--space-5) var(--space-6)',borderBottom:'1px solid var(--color-border)',display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
               <div>
@@ -409,12 +447,12 @@ export default function Clientes() {
               {drawerLoad&&[1,2,3].map(i=><div key={i} className="skeleton" style={{height:64,borderRadius:'var(--radius-md)',marginBottom:'var(--space-2)'}}/>)}
               {!drawerLoad&&drawerOS.length===0&&<div style={{textAlign:'center',padding:'var(--space-8)',color:'var(--color-text-faint)',fontSize:'var(--text-sm)'}}>Nenhuma OS vinculada</div>}
               {!drawerLoad&&drawerOS.map(o=>{
-                const bmap={Recebido:'info','Em Produção':'warning',Pronto:'success',Entregue:'success',Cancelado:'error'};
+                const bmap={Recebido:'recebido','Em Produção':'emproducao',Pronto:'pronto',Entregue:'entregue',Cancelado:'cancelado'};
                 return (
                   <div key={o.id} onClick={()=>navigate(`/ordens/${o.id}`)} style={{cursor:'pointer',padding:'var(--space-3)',borderRadius:'var(--radius-md)',border:'1px solid var(--color-border)',marginBottom:'var(--space-2)',background:'var(--color-surface-2)'}}>
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
                       <span style={{fontWeight:700,color:'var(--color-primary)',fontSize:'var(--text-sm)'}}>{o.numero}</span>
-                      <span className={`badge badge-${bmap[o.status]||'info'}`}>{o.status}</span>
+                      <span className={`badge badge-${bmap[o.status]||'recebido'}`}>{o.status}</span>
                     </div>
                     <div style={{fontSize:'var(--text-xs)',color:'var(--color-text-muted)'}}>{o.servico}{o.descricao?` · ${o.descricao}`:''}</div>
                     <div style={{display:'flex',justifyContent:'space-between',marginTop:4,fontSize:'var(--text-xs)'}}>
@@ -426,7 +464,8 @@ export default function Clientes() {
               })}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
