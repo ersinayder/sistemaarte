@@ -366,23 +366,29 @@ table tbody tr:hover { background: color-mix(in oklab, var(--color-primary) 5%, 
   position: fixed; inset: 0; z-index: 500;
   background: oklch(0 0 0 / 0.5); backdrop-filter: blur(4px);
   display: flex;
+  /* FIX: flex-start + padding permite scroll do overlay em telas muito pequenas */
   align-items: flex-start;
   justify-content: center;
   padding: var(--space-4);
   overflow-y: auto;
   animation: fadeIn 0.15s ease;
 }
+
 .modal {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-lg);
   width: 100%; max-width: 560px;
-  max-height: calc(100dvh - var(--space-8));
+  /* FIX: 90dvh garante respiro visual em qualquer viewport */
+  max-height: 90dvh;
   display: flex;
   flex-direction: column;
+  /* FIX: overflow: hidden no container pai é necessário para os border-radius funcionarem,
+     mas o scroll real acontece apenas no .modal-body abaixo */
   overflow: hidden;
   animation: slideUp 0.2s ease;
+  /* FIX: margin: auto centraliza verticalmente quando o conteúdo é menor que a tela */
   margin: auto;
 }
 
@@ -391,13 +397,23 @@ table tbody tr:hover { background: color-mix(in oklab, var(--color-primary) 5%, 
   align-items: center;
   justify-content: space-between;
   padding: var(--space-5) var(--space-6) var(--space-4);
+  /* FIX: flex-shrink: 0 impede o header de ser comprimido */
   flex-shrink: 0;
+  border-bottom: 1px solid var(--color-divider);
 }
 
 .modal-body {
+  /* FIX: flex: 1 faz o body ocupar todo o espaço disponível entre header e footer */
   flex: 1;
+  /* FIX: overflow-y: auto adiciona scroll apenas quando o conteúdo ultrapassa o espaço */
   overflow-y: auto;
-  padding: 0 var(--space-6);
+  /* FIX: overscroll-behavior evita que o scroll do modal propague para o overlay */
+  overscroll-behavior: contain;
+  padding: var(--space-5) var(--space-6);
+  /* FIX: padding-bottom generoso garante que o último campo não fique colado na borda */
+  padding-bottom: var(--space-8);
+  display: flex;
+  flex-direction: column;
 }
 
 .modal-footer {
@@ -406,9 +422,11 @@ table tbody tr:hover { background: color-mix(in oklab, var(--color-primary) 5%, 
   justify-content: flex-end;
   padding: var(--space-4) var(--space-6) var(--space-5);
   border-top: 1px solid var(--color-divider);
+  /* FIX: flex-shrink: 0 impede o footer de ser comprimido ou desaparecer */
   flex-shrink: 0;
   background: var(--color-surface);
 }
+
 .modal-sm  { max-width: 420px; }
 .modal-lg  { max-width: 720px; }
 .modal-title  { font-size: var(--text-base); font-weight: 700; }
