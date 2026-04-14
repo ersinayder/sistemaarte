@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../services/api";
@@ -7,7 +6,9 @@ import { useAuth } from "../context/AuthContext";
 
 const fmt   = v => `R$ ${Number(v||0).toFixed(2).replace(".",",").replace(/(\d)(?=(\d{3})+,)/g,"$1.")}`;
 const fmtD  = iso => iso ? new Date(iso+"T12:00:00").toLocaleDateString("pt-BR") : "—";
-const hoje  = () => new Date(Date.now()-3*60*60*1000).toISOString().slice(0,10);
+
+// Constante de módulo: calculada uma vez no carregamento, não recria a cada render
+const HOJE = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
 const STATUS_OPTS = ["Recebido","Em Produção","Pronto","Entregue","Cancelado"];
 const PRIO_OPTS   = ["Normal","Alta","Urgente"];
@@ -29,32 +30,34 @@ const BLANK = {
 
 // ── Modal OS ──────────────────────────────────────────────────────────────────
 function ModalOS({ open, onClose, onSaved, editData }) {
-  const [form, setForm]   = useState(BLANK);
+  const [form, setForm]     = useState(BLANK);
   const [saving, setSaving] = useState(false);
   const [clientes, setClientes] = useState([]);
-  const [busca, setBusca] = useState("");
+  const [busca, setBusca]   = useState("");
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
 
   useEffect(()=>{
     if (!open) return;
     if (editData) {
       setForm({
-        clientenome:     editData.clientenome   || editData.clientenome  || "",
+        clientenome:     editData.clientenome     || "",
         clientetelefone: editData.clientetelefone || editData.clientecontato || "",
-        clientecpf:      editData.clientecpf    || "",
-        clienteid:       editData.clienteid     || null,
-        servico:         editData.servico       || TIPO_OPTS[0],
-        descricao:       editData.descricao     || editData.obs || "",
-        valortotal:      String(editData.valortotal ?? editData.valor ?? ""),
+        clientecpf:      editData.clientecpf      || "",
+        clienteid:       editData.clienteid       || null,
+        servico:         editData.servico         || TIPO_OPTS[0],
+        descricao:       editData.descricao       || editData.obs || "",
+        valortotal:      String(editData.valortotal  ?? editData.valor   ?? ""),
         valorentrada:    String(editData.valorentrada ?? editData.entrada ?? ""),
-        prazoentrega:    editData.prazoentrega  || editData.prazo || "",
-        prioridade:      editData.prioridade    || "Normal",
-        pagamento:       editData.pagamento     || "Pix",
-        observacoes:     editData.observacoes   || editData.obs || "",
-        status:          editData.status        || "Recebido",
+        prazoentrega:    editData.prazoentrega    || editData.prazo || "",
+        prioridade:      editData.prioridade      || "Normal",
+        pagamento:       editData.pagamento       || "Pix",
+        observacoes:     editData.observacoes     || editData.obs || "",
+        status:          editData.status          || "Recebido",
       });
+      setBusca("");
     } else {
       setForm(BLANK);
+      setBusca("");
     }
   }, [open, editData]);
 
@@ -74,27 +77,29 @@ function ModalOS({ open, onClose, onSaved, editData }) {
   };
 
   const save = async () => {
-    if (!form.clientenome.trim())   return toast.error("Nome do cliente obrigatório");
-    if (!form.servico)              return toast.error("Tipo de serviço obrigatório");
+    if (!form.clientenome.trim()) return toast.error("Nome do cliente obrigatório");
+    if (!form.servico)            return toast.error("Tipo de serviço obrigatório");
+
     const total   = Number(form.valortotal);
-    const entrada = Number(form.valorentrada);
-    if (isNaN(total)   || total   <= 0) return toast.error("Valor total deve ser maior que zero");
-    if (isNaN(entrada) || entrada <= 0) return toast.error("Entrada deve ser maior que zero");
+    const entrada = form.valorentrada === "" ? 0 : Number(form.valorentrada);
+
+    if (isNaN(total) || total <= 0)     return toast.error("Valor total deve ser maior que zero");
+    if (isNaN(entrada) || entrada < 0)  return toast.error("Entrada não pode ser negativa");
     if (entrada > total)                return toast.error("Entrada não pode ser maior que o total");
 
     const payload = {
-      clienteid:       form.clienteid   || null,
+      clienteid:       form.clienteid       || null,
       clientenome:     form.clientenome.trim(),
       clientetelefone: form.clientetelefone || null,
-      clientecpf:      form.clientecpf   || null,
+      clientecpf:      form.clientecpf      || null,
       servico:         form.servico,
-      descricao:       form.descricao   || null,
+      descricao:       form.descricao       || null,
       valortotal:      total,
-      valorentrada:    entrada,
-      prazoentrega:    form.prazoentrega || null,
+      valorentrada:    entrada,              // 0 é válido (sem entrada)
+      prazoentrega:    form.prazoentrega    || null,
       prioridade:      form.prioridade,
       pagamento:       form.pagamento,
-      observacoes:     form.observacoes || null,
+      observacoes:     form.observacoes     || null,
       status:          form.status,
     };
 
@@ -114,6 +119,11 @@ function ModalOS({ open, onClose, onSaved, editData }) {
     } finally { setSaving(false); }
   };
 
+  // Saldo previsto em tempo real no modal
+  const total   = Number(form.valortotal)  || 0;
+  const entrada = Number(form.valorentrada) || 0;
+  const saldoPrev = Math.max(0, total - entrada);
+
   if (!open) return null;
 
   return (
@@ -127,10 +137,10 @@ function ModalOS({ open, onClose, onSaved, editData }) {
         </div>
         <div className="modal-body" style={{display:"flex",flexDirection:"column",gap:"var(--space-5)",paddingTop:"var(--space-3)",paddingBottom:"var(--space-4)"}}>
 
-          {/* Cliente */}
+          {/* Cliente com autocomplete */}
           <div style={{position:"relative"}}>
             <div className="form-group">
-              <label className="form-label">Cliente</label>
+              <label className="form-label">Cliente <span style={{color:"var(--color-error)"}}>*</span></label>
               <input className="form-input" placeholder="Nome do cliente ou buscar cadastrado..."
                 value={busca || form.clientenome}
                 onChange={e=>{ setBusca(e.target.value); set("clientenome",e.target.value); set("clienteid",null); }}
@@ -143,7 +153,8 @@ function ModalOS({ open, onClose, onSaved, editData }) {
                     style={{padding:"var(--space-2) var(--space-3)",cursor:"pointer",fontSize:"var(--text-sm)"}}
                     onMouseEnter={e=>e.currentTarget.style.background="var(--color-surface-offset)"}
                     onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                    <strong>{c.name}</strong>{c.cpf && <span style={{color:"var(--color-text-muted)",marginLeft:8,fontSize:"var(--text-xs)"}}>{c.cpf}</span>}
+                    <strong>{c.name}</strong>
+                    {c.cpf && <span style={{color:"var(--color-text-muted)",marginLeft:8,fontSize:"var(--text-xs)"}}>{c.cpf}</span>}
                   </div>
                 ))}
               </div>
@@ -163,7 +174,7 @@ function ModalOS({ open, onClose, onSaved, editData }) {
 
           <div className="form-grid-2">
             <div className="form-group">
-              <label className="form-label">Tipo de Serviço</label>
+              <label className="form-label">Tipo de Serviço <span style={{color:"var(--color-error)"}}>*</span></label>
               <select className="form-input" value={form.servico} onChange={e=>set("servico",e.target.value)}>
                 {TIPO_OPTS.map(t=><option key={t}>{t}</option>)}
               </select>
@@ -181,16 +192,42 @@ function ModalOS({ open, onClose, onSaved, editData }) {
             <textarea className="form-input" rows={2} style={{resize:"vertical"}} value={form.descricao} onChange={e=>set("descricao",e.target.value)} placeholder="Detalhe o serviço solicitado..."/>
           </div>
 
+          {/* Valores com preview de saldo em tempo real */}
           <div className="form-grid-2">
             <div className="form-group">
-              <label className="form-label">Valor Total (R$)</label>
+              <label className="form-label">Valor Total (R$) <span style={{color:"var(--color-error)"}}>*</span></label>
               <input className="form-input" type="number" step="0.01" min="0" value={form.valortotal} onChange={e=>set("valortotal",e.target.value)}/>
             </div>
             <div className="form-group">
-              <label className="form-label">Entrada (R$)</label>
-              <input className="form-input" type="number" step="0.01" min="0" value={form.valorentrada} onChange={e=>set("valorentrada",e.target.value)}/>
+              <label className="form-label">
+                Entrada (R$)
+                <span style={{marginLeft:6,fontSize:"var(--text-xs)",color:"var(--color-text-muted)",fontWeight:400}}>opcional</span>
+              </label>
+              <input className="form-input" type="number" step="0.01" min="0" placeholder="0,00 (sem entrada)"
+                value={form.valorentrada} onChange={e=>set("valorentrada",e.target.value)}/>
             </div>
           </div>
+
+          {/* Preview saldo a receber */}
+          {total > 0 && (
+            <div style={{
+              display:"flex", justifyContent:"space-between", alignItems:"center",
+              padding:"var(--space-3) var(--space-4)",
+              background: saldoPrev > 0 ? "var(--color-warning-highlight)" : "var(--color-success-highlight)",
+              borderRadius:"var(--radius-md)",
+              fontSize:"var(--text-xs)",
+            }}>
+              <span style={{color:"var(--color-text-muted)"}}>
+                Saldo a receber após entrada:
+              </span>
+              <span style={{
+                fontFamily:"monospace", fontWeight:800,
+                color: saldoPrev > 0 ? "var(--color-warning)" : "var(--color-success)",
+              }}>
+                {saldoPrev > 0 ? fmt(saldoPrev) : "✓ Quitado na entrada"}
+              </span>
+            </div>
+          )}
 
           <div className="form-grid-2">
             <div className="form-group">
@@ -234,13 +271,13 @@ function ModalOS({ open, onClose, onSaved, editData }) {
 export default function Ordens() {
   const { isAdmin, isCaixa } = useAuth();
   const navigate = useNavigate();
-  const [ordens,  setOrdens]  = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [search,  setSearch]  = useState("");
-  const [statusF, setStatusF] = useState("todos");
-  const [modal,   setModal]   = useState({ open:false, edit:null });
-  const [deleteId,setDeleteId]= useState(null);
-  const [deleteNum,setDeleteNum]=useState("");
+  const [ordens,   setOrdens]   = useState([]);
+  const [loading,  setLoading]  = useState(true);
+  const [search,   setSearch]   = useState("");
+  const [statusF,  setStatusF]  = useState("todos");
+  const [modal,    setModal]    = useState({ open:false, edit:null });
+  const [deleteId, setDeleteId] = useState(null);
+  const [deleteNum,setDeleteNum]= useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -262,17 +299,24 @@ export default function Ordens() {
   const q = search.toLowerCase();
   const filtered = useMemo(()=>
     ordens.filter(o=>!q || [o.clientenome,o.clientecontato,o.numero,o.servico,o.descricao].join(" ").toLowerCase().includes(q)),
-    [ordens,q]
+    [ordens, q]
   );
 
-  const vencidas = filtered.filter(o=> o.prazoentrega||o.prazo ? (o.prazoentrega||o.prazo)<hoje() && !["Entregue","Cancelado"].includes(o.status) : false);
+  // Usa a constante HOJE — não recalcula a cada render
+  const vencidas = useMemo(()=>
+    filtered.filter(o=> {
+      const prazo = o.prazoentrega || o.prazo;
+      return prazo && prazo < HOJE && !["Entregue","Cancelado"].includes(o.status);
+    }),
+    [filtered]
+  );
 
   return (
     <div>
       <div className="page-header">
         <div>
           <h1 className="page-title">Ordens de Serviço</h1>
-          {vencidas.length>0 && (
+          {vencidas.length > 0 && (
             <span style={{fontSize:"var(--text-xs)",color:"var(--color-error)",fontWeight:600}}>
               {vencidas.length} OS vencida{vencidas.length!==1?"s":""}
             </span>
@@ -325,14 +369,17 @@ export default function Ordens() {
               </thead>
               <tbody>
                 {filtered.map(o=>{
-                  const vencida = (o.prazoentrega||o.prazo) && (o.prazoentrega||o.prazo)<hoje() && !["Entregue","Cancelado"].includes(o.status);
+                  const prazo   = o.prazoentrega || o.prazo;
+                  const vencida = prazo && prazo < HOJE && !["Entregue","Cancelado"].includes(o.status);
                   const saldo   = saldoOS(o);
                   return (
                     <tr key={o.id} onClick={()=>navigate(`/ordens/${o.id}`)} style={{cursor:"pointer"}}>
                       <td style={{fontWeight:700,color:"var(--color-primary)",fontFamily:"monospace"}}>{o.numero}</td>
                       <td style={{fontWeight:600}}>
                         {o.clientenome}
-                        {(o.clientetelefone||o.clientecontato) && <div style={{fontSize:"var(--text-xs)",color:"var(--color-text-muted)"}}>{o.clientetelefone||o.clientecontato}</div>}
+                        {(o.clientetelefone||o.clientecontato) && (
+                          <div style={{fontSize:"var(--text-xs)",color:"var(--color-text-muted)"}}>{o.clientetelefone||o.clientecontato}</div>
+                        )}
                       </td>
                       <td>{o.servico}</td>
                       <td className="tabnum">{fmt(o.valortotal||o.valor)}</td>
@@ -340,7 +387,7 @@ export default function Ordens() {
                         {saldo>0 ? fmt(saldo) : "✓ Quitado"}
                       </td>
                       <td style={{fontSize:"var(--text-xs)",color:vencida?"var(--color-error)":"inherit",fontWeight:vencida?700:400}}>
-                        {fmtD(o.prazoentrega||o.prazo)}
+                        {fmtD(prazo)}
                         {vencida && <span style={{marginLeft:4}}>⚠</span>}
                       </td>
                       <td><span className={`badge badge-${STATUS_BADGE[o.status]||"recebido"}`}>{o.status}</span></td>
