@@ -27,12 +27,11 @@ const BLANK = {
   prazoentrega:"", prioridade:"Normal", pagamento:"Pix", observacoes:"", status:"Recebido"
 };
 
-// ── Portal ────────────────────────────────────────────────────────────────────
 function Portal({ children }) {
   return ReactDOM.createPortal(children, document.body);
 }
 
-// ── Modal OS ──────────────────────────────────────────────────────────────────
+// ── Modal OS ──────────────────────────────────────────────────────────────────────────────
 function ModalOS({ open, onClose, onSaved, editData }) {
   const [form, setForm]     = useState(BLANK);
   const [saving, setSaving] = useState(false);
@@ -40,7 +39,6 @@ function ModalOS({ open, onClose, onSaved, editData }) {
   const [busca, setBusca]   = useState("");
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
 
-  // Bloqueia scroll do body enquanto modal aberto
   useEffect(() => {
     if (open) {
       document.body.style.overflow = "hidden";
@@ -89,6 +87,31 @@ function ModalOS({ open, onClose, onSaved, editData }) {
     setClientes([]);
   };
 
+  // Garante que cliente novo seja cadastrado automaticamente
+  const ensureCliente = async (nome, telefone, cpf) => {
+    if (!nome.trim()) return null;
+    // Tenta buscar existente pelo nome exato
+    try {
+      const r = await api.get(`/clientes?q=${encodeURIComponent(nome.trim())}`);
+      const exact = (r.data || []).find(
+        c => c.name?.toLowerCase() === nome.trim().toLowerCase()
+      );
+      if (exact) return exact.id;
+    } catch {}
+    // Não encontrou: cadastra novo
+    try {
+      const r = await api.post('/clientes', {
+        name: nome.trim(),
+        phone: telefone || null,
+        cpf: cpf || null,
+      });
+      toast(`✨ Cliente "${nome.trim()}" cadastrado automaticamente`);
+      return r.data?.id || null;
+    } catch {
+      return null;
+    }
+  };
+
   const save = async () => {
     if (!form.clientenome.trim()) return toast.error("Nome do cliente obrigatório");
     if (!form.servico)            return toast.error("Tipo de serviço obrigatório");
@@ -100,24 +123,30 @@ function ModalOS({ open, onClose, onSaved, editData }) {
     if (isNaN(entrada) || entrada < 0)  return toast.error("Entrada não pode ser negativa");
     if (entrada > total)                return toast.error("Entrada não pode ser maior que o total");
 
-    const payload = {
-      clienteid:       form.clienteid       || null,
-      clientenome:     form.clientenome.trim(),
-      clientetelefone: form.clientetelefone || null,
-      clientecpf:      form.clientecpf      || null,
-      servico:         form.servico,
-      descricao:       form.descricao       || null,
-      valortotal:      total,
-      valorentrada:    entrada,
-      prazoentrega:    form.prazoentrega    || null,
-      prioridade:      form.prioridade,
-      pagamento:       form.pagamento,
-      observacoes:     form.observacoes     || null,
-      status:          form.status,
-    };
-
     setSaving(true);
     try {
+      // Auto-cadastra cliente se não tiver id vinculado
+      let clienteid = form.clienteid;
+      if (!clienteid) {
+        clienteid = await ensureCliente(form.clientenome, form.clientetelefone, form.clientecpf);
+      }
+
+      const payload = {
+        clienteid:       clienteid || null,
+        clientenome:     form.clientenome.trim(),
+        clientetelefone: form.clientetelefone || null,
+        clientecpf:      form.clientecpf      || null,
+        servico:         form.servico,
+        descricao:       form.descricao       || null,
+        valortotal:      total,
+        valorentrada:    entrada,
+        prazoentrega:    form.prazoentrega    || null,
+        prioridade:      form.prioridade,
+        pagamento:       form.pagamento,
+        observacoes:     form.observacoes     || null,
+        status:          form.status,
+      };
+
       if (editData) {
         await api.put(`/ordens/${editData.id}`, payload);
         toast.success("OS atualizada!");
@@ -155,7 +184,12 @@ function ModalOS({ open, onClose, onSaved, editData }) {
             {/* Cliente com autocomplete */}
             <div style={{position:"relative"}}>
               <div className="form-group">
-                <label className="form-label">Cliente <span style={{color:"var(--color-error)"}}>*</span></label>
+                <label className="form-label">
+                  Cliente <span style={{color:"var(--color-error)"}}>*</span>
+                  <span style={{marginLeft:8,fontSize:'var(--text-xs)',color:'var(--color-text-muted)',fontWeight:400}}>
+                    — se não cadastrado, será registrado automaticamente
+                  </span>
+                </label>
                 <input className="form-input" placeholder="Nome do cliente ou buscar cadastrado..."
                   value={busca || form.clientenome}
                   onChange={e=>{ setBusca(e.target.value); set("clientenome",e.target.value); set("clienteid",null); }}
@@ -222,7 +256,6 @@ function ModalOS({ open, onClose, onSaved, editData }) {
               </div>
             </div>
 
-            {/* Preview saldo a receber */}
             {total > 0 && (
               <div style={{
                 display:"flex", justifyContent:"space-between", alignItems:"center",
@@ -283,7 +316,7 @@ function ModalOS({ open, onClose, onSaved, editData }) {
   );
 }
 
-// ── Página principal ──────────────────────────────────────────────────────────
+// ── Página principal ───────────────────────────────────────────────────────────────────────────
 export default function Ordens() {
   const { isAdmin, isCaixa } = useAuth();
   const navigate = useNavigate();
@@ -345,7 +378,6 @@ export default function Ordens() {
         )}
       </div>
 
-      {/* Filtros */}
       <div style={{display:"flex",gap:"var(--space-3)",marginBottom:"var(--space-4)",flexWrap:"wrap"}}>
         <div style={{display:"flex",alignItems:"center",gap:"var(--space-2)",flex:1,minWidth:200,background:"var(--color-surface)",border:"1px solid var(--color-border)",borderRadius:"var(--radius-lg)",padding:"var(--space-2) var(--space-3)"}}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
@@ -437,10 +469,8 @@ export default function Ordens() {
         )}
       </div>
 
-      {/* Modal OS via Portal */}
       <ModalOS open={modal.open} onClose={()=>setModal({open:false,edit:null})} onSaved={load} editData={modal.edit}/>
 
-      {/* Modal confirmar exclusão via Portal */}
       {deleteId && ReactDOM.createPortal(
         <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&setDeleteId(null)}>
           <div className="modal modal-sm">
