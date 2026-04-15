@@ -31,7 +31,7 @@ function Portal({ children }) {
 }
 
 // ── Componente: seletor de produtos com autocomplete ──────────────────────────
-function ProdutoSelector({ itens, onChange }) {
+function ProdutoSelector({ itens, onChange, onTotalChange }) {
   const [busca, setBusca]         = useState("");
   const [sugestoes, setSugestoes] = useState([]);
   const [loading, setLoading]     = useState(false);
@@ -62,16 +62,23 @@ function ProdutoSelector({ itens, onChange }) {
     return () => clearTimeout(debounceRef.current);
   }, [busca]);
 
+  // Notifica o pai sempre que a lista muda → recalcula total
+  const notificar = (novos) => {
+    onChange(novos);
+    const total = novos.reduce((acc, i) => acc + (Number(i.preco) || 0) * (Number(i.qtd) || 1), 0);
+    if (onTotalChange) onTotalChange(total);
+  };
+
   const adicionarProduto = (p) => {
-    // Evita duplicata: se já existe, aumenta quantidade
     const idx = itens.findIndex(i => i.produtoid === p.id && !i.avulso);
+    let novos;
     if (idx >= 0) {
-      const novos = [...itens];
+      novos = [...itens];
       novos[idx] = { ...novos[idx], qtd: novos[idx].qtd + 1 };
-      onChange(novos);
     } else {
-      onChange([...itens, { produtoid: p.id, nome: p.nome, preco: p.preco, unidade: p.unidade, qtd: 1, avulso: false }]);
+      novos = [...itens, { produtoid: p.id, nome: p.nome, preco: p.preco, unidade: p.unidade, qtd: 1, avulso: false }];
     }
+    notificar(novos);
     setBusca("");
     setSugestoes([]);
   };
@@ -79,20 +86,29 @@ function ProdutoSelector({ itens, onChange }) {
   const adicionarAvulso = () => {
     const texto = busca.trim();
     if (!texto) return;
-    onChange([...itens, { produtoid: null, nome: texto, preco: 0, unidade: "un", qtd: 1, avulso: true }]);
+    notificar([...itens, { produtoid: null, nome: texto, preco: 0, unidade: "un", qtd: 1, avulso: true }]);
     setBusca("");
     setSugestoes([]);
   };
 
-  const remover = (idx) => onChange(itens.filter((_,i) => i !== idx));
+  const remover = (idx) => notificar(itens.filter((_,i) => i !== idx));
 
   const setQtd = (idx, val) => {
     const novos = [...itens];
     novos[idx] = { ...novos[idx], qtd: Math.max(1, Number(val)||1) };
-    onChange(novos);
+    notificar(novos);
+  };
+
+  const setPreco = (idx, val) => {
+    const novos = [...itens];
+    novos[idx] = { ...novos[idx], preco: val };
+    notificar(novos);
   };
 
   const temExato = sugestoes.some(s => s.nome.toLowerCase() === busca.trim().toLowerCase());
+
+  // Subtotal dos itens com preço
+  const subtotal = itens.reduce((acc, i) => acc + (Number(i.preco) || 0) * (Number(i.qtd) || 1), 0);
 
   return (
     <div>
@@ -186,26 +202,51 @@ function ProdutoSelector({ itens, onChange }) {
                 )}
               </div>
               {/* Quantidade */}
-              <input
-                type="number" min="1"
-                value={item.qtd}
-                onChange={e => setQtd(idx, e.target.value)}
-                style={{
-                  width:52, textAlign:"center",
-                  border:"1px solid var(--color-border)",
-                  borderRadius:"var(--radius-sm)",
-                  padding:"2px 4px",
-                  fontSize:"var(--text-sm)",
-                  background:"var(--color-surface)",
-                  color:"var(--color-text)"
-                }}
-              />
-              {/* Preço unitário */}
-              {!item.avulso && (
-                <span style={{ fontFamily:"monospace", fontSize:"var(--text-xs)", color:"var(--color-text-muted)", whiteSpace:"nowrap" }}>
-                  {fmt(item.preco)}
-                </span>
-              )}
+              <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+                <span style={{ fontSize:"var(--text-xs)", color:"var(--color-text-muted)" }}>Qtd</span>
+                <input
+                  type="number" min="1"
+                  value={item.qtd}
+                  onChange={e => setQtd(idx, e.target.value)}
+                  style={{
+                    width:52, textAlign:"center",
+                    border:"1px solid var(--color-border)",
+                    borderRadius:"var(--radius-sm)",
+                    padding:"2px 4px",
+                    fontSize:"var(--text-sm)",
+                    background:"var(--color-surface)",
+                    color:"var(--color-text)"
+                  }}
+                />
+              </div>
+              {/* Preço unitário — editável para avulsos, somente leitura para cadastrados */}
+              <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+                <span style={{ fontSize:"var(--text-xs)", color:"var(--color-text-muted)" }}>R$</span>
+                <input
+                  type="number" min="0" step="0.01"
+                  value={item.preco}
+                  readOnly={!item.avulso}
+                  onChange={e => item.avulso && setPreco(idx, e.target.value)}
+                  style={{
+                    width:72, textAlign:"right",
+                    border:"1px solid var(--color-border)",
+                    borderRadius:"var(--radius-sm)",
+                    padding:"2px 6px",
+                    fontSize:"var(--text-sm)",
+                    fontFamily:"monospace",
+                    background: item.avulso ? "var(--color-surface)" : "var(--color-surface-offset)",
+                    color: item.avulso ? "var(--color-text)" : "var(--color-text-muted)",
+                    cursor: item.avulso ? "text" : "default"
+                  }}
+                />
+              </div>
+              {/* Subtotal do item */}
+              <span style={{
+                fontFamily:"monospace", fontSize:"var(--text-xs)", fontWeight:700,
+                color:"var(--color-primary)", whiteSpace:"nowrap", minWidth:70, textAlign:"right"
+              }}>
+                {fmt((Number(item.preco)||0) * (Number(item.qtd)||1))}
+              </span>
               {/* Remover */}
               <button
                 className="btn btn-icon btn-ghost btn-sm"
@@ -218,8 +259,21 @@ function ProdutoSelector({ itens, onChange }) {
               </button>
             </div>
           ))}
-          <div style={{ fontSize:"var(--text-xs)", color:"var(--color-text-muted)", paddingLeft:4 }}>
-            {itens.length} item{itens.length!==1?"s":""} adicionado{itens.length!==1?"s":""}
+
+          {/* Rodapé com subtotal */}
+          <div style={{
+            display:"flex", justifyContent:"space-between", alignItems:"center",
+            padding:"var(--space-2) var(--space-3)",
+            background:"var(--color-primary-highlight)",
+            borderRadius:"var(--radius-md)",
+            border:"1px solid var(--color-border)"
+          }}>
+            <span style={{ fontSize:"var(--text-xs)", color:"var(--color-text-muted)" }}>
+              {itens.length} item{itens.length!==1?"s":""} · subtotal dos produtos:
+            </span>
+            <span style={{ fontFamily:"monospace", fontSize:"var(--text-sm)", fontWeight:800, color:"var(--color-primary)" }}>
+              {fmt(subtotal)}
+            </span>
           </div>
         </div>
       )}
@@ -245,7 +299,7 @@ function ModalOS({ open, onClose, onSaved, editData }) {
   const [saving, setSaving] = useState(false);
   const [clientes, setClientes] = useState([]);
   const [busca, setBusca]   = useState("");
-  const [itensProdutos, setItensProdutos] = useState([]); // lista de produtos da OS
+  const [itensProdutos, setItensProdutos] = useState([]);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
 
   useEffect(() => {
@@ -270,7 +324,6 @@ function ModalOS({ open, onClose, onSaved, editData }) {
         observacoes:     editData.observacoes     || editData.obs || "",
         status:          editData.status          || "Recebido",
       });
-      // Ao editar, mostra descrição atual como item avulso único (preserva histórico)
       const descAtual = editData.descricao || editData.obs || "";
       if (descAtual.trim()) {
         setItensProdutos([{ produtoid:null, nome:descAtual.trim(), preco:0, unidade:"un", qtd:1, avulso:true }]);
@@ -289,6 +342,13 @@ function ModalOS({ open, onClose, onSaved, editData }) {
     if (busca.length < 2) { setClientes([]); return; }
     api.get(`/clientes?q=${encodeURIComponent(busca)}`).then(r=>setClientes(r.data)).catch(()=>{});
   }, [busca]);
+
+  // Atualiza valortotal quando produtos são adicionados/removidos/editados
+  const handleTotalChange = (novoTotal) => {
+    if (novoTotal > 0) {
+      setForm(f => ({ ...f, valortotal: novoTotal.toFixed(2) }));
+    }
+  };
 
   const selecionarCliente = c => {
     set("clienteid", c.id);
@@ -440,16 +500,31 @@ function ModalOS({ open, onClose, onSaved, editData }) {
               <label className="form-label">
                 Produtos / Materiais
                 <span style={{marginLeft:8,fontSize:"var(--text-xs)",color:"var(--color-text-muted)",fontWeight:400}}>
-                  — busque no cadastro ou adicione avulso
+                  — busque no cadastro ou adicione avulso · preços atualizam o total automaticamente
                 </span>
               </label>
-              <ProdutoSelector itens={itensProdutos} onChange={setItensProdutos} />
+              <ProdutoSelector
+                itens={itensProdutos}
+                onChange={setItensProdutos}
+                onTotalChange={handleTotalChange}
+              />
             </div>
 
             <div className="form-grid-2">
               <div className="form-group">
-                <label className="form-label">Valor Total (R$) <span style={{color:"var(--color-error)"}}>*</span></label>
-                <input className="form-input" type="number" step="0.01" min="0" value={form.valortotal} onChange={e=>set("valortotal",e.target.value)}/>
+                <label className="form-label">
+                  Valor Total (R$) <span style={{color:"var(--color-error)"}}>*</span>
+                  <span style={{marginLeft:6,fontSize:"var(--text-xs)",color:"var(--color-text-muted)",fontWeight:400}}>
+                    — calculado pelos produtos, editável
+                  </span>
+                </label>
+                <input
+                  className="form-input"
+                  type="number" step="0.01" min="0"
+                  value={form.valortotal}
+                  onChange={e=>set("valortotal",e.target.value)}
+                  style={{ fontFamily:"monospace", fontWeight:700 }}
+                />
               </div>
               <div className="form-group">
                 <label className="form-label">
