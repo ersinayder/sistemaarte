@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import ReactDOM from "react-dom";
 import { useNavigate } from "react-router-dom";
 import api from "../services/api";
@@ -7,8 +7,7 @@ import { useAuth } from "../context/AuthContext";
 
 const fmt   = v => `R$ ${Number(v||0).toFixed(2).replace(".",",").replace(/(\d)(?=(\d{3})+,)/g,"$1.")}`;
 const fmtD  = iso => iso ? new Date(iso+"T12:00:00").toLocaleDateString("pt-BR") : "—";
-
-const HOJE = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+const HOJE  = new Date(Date.now() - 3*60*60*1000).toISOString().slice(0,10);
 
 const STATUS_OPTS = ["Recebido","Em Produção","Pronto","Entregue","Cancelado"];
 const PRIO_OPTS   = ["Normal","Alta","Urgente"];
@@ -23,7 +22,7 @@ const saldoOS = o => Math.max(0,
 
 const BLANK = {
   clientenome:"", clientetelefone:"", clientecpf:"", clienteid:null,
-  servico:TIPO_OPTS[0], descricao:"", valortotal:"", valorentrada:"",
+  servico:TIPO_OPTS[0], valortotal:"", valorentrada:"",
   prazoentrega:"", prioridade:"Normal", pagamento:"Pix", observacoes:"", status:"Recebido"
 };
 
@@ -31,20 +30,226 @@ function Portal({ children }) {
   return ReactDOM.createPortal(children, document.body);
 }
 
-// ── Modal OS ──────────────────────────────────────────────────────────────────────────────
+// ── Componente: seletor de produtos com autocomplete ──────────────────────────
+function ProdutoSelector({ itens, onChange }) {
+  const [busca, setBusca]         = useState("");
+  const [sugestoes, setSugestoes] = useState([]);
+  const [loading, setLoading]     = useState(false);
+  const debounceRef               = useRef(null);
+  const wrapRef                   = useRef(null);
+
+  // Fechar dropdown ao clicar fora
+  useEffect(() => {
+    const handler = e => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setSugestoes([]);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  // Busca com debounce
+  useEffect(() => {
+    clearTimeout(debounceRef.current);
+    if (busca.trim().length < 2) { setSugestoes([]); return; }
+    debounceRef.current = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const r = await api.get(`/produtos?q=${encodeURIComponent(busca.trim())}`);
+        setSugestoes(r.data || []);
+      } catch { setSugestoes([]); }
+      finally { setLoading(false); }
+    }, 300);
+    return () => clearTimeout(debounceRef.current);
+  }, [busca]);
+
+  const adicionarProduto = (p) => {
+    // Evita duplicata: se já existe, aumenta quantidade
+    const idx = itens.findIndex(i => i.produtoid === p.id && !i.avulso);
+    if (idx >= 0) {
+      const novos = [...itens];
+      novos[idx] = { ...novos[idx], qtd: novos[idx].qtd + 1 };
+      onChange(novos);
+    } else {
+      onChange([...itens, { produtoid: p.id, nome: p.nome, preco: p.preco, unidade: p.unidade, qtd: 1, avulso: false }]);
+    }
+    setBusca("");
+    setSugestoes([]);
+  };
+
+  const adicionarAvulso = () => {
+    const texto = busca.trim();
+    if (!texto) return;
+    onChange([...itens, { produtoid: null, nome: texto, preco: 0, unidade: "un", qtd: 1, avulso: true }]);
+    setBusca("");
+    setSugestoes([]);
+  };
+
+  const remover = (idx) => onChange(itens.filter((_,i) => i !== idx));
+
+  const setQtd = (idx, val) => {
+    const novos = [...itens];
+    novos[idx] = { ...novos[idx], qtd: Math.max(1, Number(val)||1) };
+    onChange(novos);
+  };
+
+  const temExato = sugestoes.some(s => s.nome.toLowerCase() === busca.trim().toLowerCase());
+
+  return (
+    <div>
+      {/* Campo de busca */}
+      <div ref={wrapRef} style={{ position:"relative" }}>
+        <div style={{ position:"relative" }}>
+          <input
+            className="form-input"
+            placeholder="🔍 Buscar produto cadastrado ou digitar avulso..."
+            value={busca}
+            onChange={e => setBusca(e.target.value)}
+            onKeyDown={e => { if (e.key==="Enter"){ e.preventDefault(); if(sugestoes.length===0 && busca.trim()) adicionarAvulso(); } }}
+            autoComplete="off"
+          />
+          {loading && (
+            <div style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)" }}>
+              <div className="spinner" style={{ width:14, height:14 }}/>
+            </div>
+          )}
+        </div>
+
+        {/* Dropdown */}
+        {(sugestoes.length > 0 || (busca.trim().length >= 2 && !loading)) && (
+          <div style={{
+            position:"absolute", top:"calc(100% + 4px)", left:0, right:0, zIndex:100,
+            background:"var(--color-surface)", border:"1px solid var(--color-border)",
+            borderRadius:"var(--radius-md)", boxShadow:"var(--shadow-md)",
+            maxHeight:220, overflowY:"auto"
+          }}>
+            {sugestoes.length === 0 && busca.trim().length >= 2 && (
+              <div style={{ padding:"var(--space-3)", fontSize:"var(--text-xs)", color:"var(--color-text-muted)", textAlign:"center" }}>
+                Nenhum produto encontrado
+              </div>
+            )}
+            {sugestoes.map(p => (
+              <div key={p.id}
+                onClick={() => adicionarProduto(p)}
+                onMouseEnter={e => e.currentTarget.style.background="var(--color-surface-offset)"}
+                onMouseLeave={e => e.currentTarget.style.background="transparent"}
+                style={{ padding:"var(--space-2) var(--space-3)", cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center", gap:8 }}
+              >
+                <div>
+                  <span style={{ fontWeight:600, fontSize:"var(--text-sm)" }}>{p.nome}</span>
+                  <span style={{ marginLeft:8, fontSize:"var(--text-xs)", color:"var(--color-text-muted)" }}>{p.categoria} · {p.unidade}</span>
+                </div>
+                <span style={{ fontFamily:"monospace", fontSize:"var(--text-xs)", color:"var(--color-primary)", fontWeight:700, whiteSpace:"nowrap" }}>{fmt(p.preco)}</span>
+              </div>
+            ))}
+            {/* Opção avulso */}
+            {busca.trim().length >= 2 && !temExato && (
+              <div
+                onClick={adicionarAvulso}
+                onMouseEnter={e => e.currentTarget.style.background="var(--color-surface-offset)"}
+                onMouseLeave={e => e.currentTarget.style.background="transparent"}
+                style={{
+                  padding:"var(--space-2) var(--space-3)", cursor:"pointer",
+                  borderTop: sugestoes.length > 0 ? "1px solid var(--color-border)" : "none",
+                  display:"flex", alignItems:"center", gap:6,
+                  fontSize:"var(--text-sm)", color:"var(--color-text-muted)"
+                }}
+              >
+                <span style={{ fontWeight:700, color:"var(--color-primary)", fontSize:16 }}>+</span>
+                Adicionar <strong style={{ color:"var(--color-text)" }}>"{busca.trim()}"</strong> como avulso
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Lista de itens adicionados */}
+      {itens.length > 0 && (
+        <div style={{ marginTop:"var(--space-3)", display:"flex", flexDirection:"column", gap:"var(--space-2)" }}>
+          {itens.map((item, idx) => (
+            <div key={idx} style={{
+              display:"flex", alignItems:"center", gap:"var(--space-2)",
+              background:"var(--color-surface-offset)", borderRadius:"var(--radius-md)",
+              padding:"var(--space-2) var(--space-3)",
+              border:"1px solid var(--color-border)"
+            }}>
+              <div style={{ flex:1, minWidth:0 }}>
+                <span style={{ fontWeight:600, fontSize:"var(--text-sm)" }}>{item.nome}</span>
+                {item.avulso && (
+                  <span style={{
+                    marginLeft:6, fontSize:"var(--text-xs)", fontWeight:600,
+                    color:"var(--color-orange)", background:"var(--color-orange-highlight)",
+                    borderRadius:"var(--radius-full)", padding:"1px 6px"
+                  }}>avulso</span>
+                )}
+                {!item.avulso && (
+                  <span style={{ marginLeft:6, fontSize:"var(--text-xs)", color:"var(--color-text-muted)" }}>{item.unidade}</span>
+                )}
+              </div>
+              {/* Quantidade */}
+              <input
+                type="number" min="1"
+                value={item.qtd}
+                onChange={e => setQtd(idx, e.target.value)}
+                style={{
+                  width:52, textAlign:"center",
+                  border:"1px solid var(--color-border)",
+                  borderRadius:"var(--radius-sm)",
+                  padding:"2px 4px",
+                  fontSize:"var(--text-sm)",
+                  background:"var(--color-surface)",
+                  color:"var(--color-text)"
+                }}
+              />
+              {/* Preço unitário */}
+              {!item.avulso && (
+                <span style={{ fontFamily:"monospace", fontSize:"var(--text-xs)", color:"var(--color-text-muted)", whiteSpace:"nowrap" }}>
+                  {fmt(item.preco)}
+                </span>
+              )}
+              {/* Remover */}
+              <button
+                className="btn btn-icon btn-ghost btn-sm"
+                style={{ color:"var(--color-error)", flexShrink:0 }}
+                onClick={() => remover(idx)}
+                type="button"
+                title="Remover"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+          ))}
+          <div style={{ fontSize:"var(--text-xs)", color:"var(--color-text-muted)", paddingLeft:4 }}>
+            {itens.length} item{itens.length!==1?"s":""} adicionado{itens.length!==1?"s":""}
+          </div>
+        </div>
+      )}
+
+      {itens.length === 0 && (
+        <div style={{ marginTop:"var(--space-2)", fontSize:"var(--text-xs)", color:"var(--color-text-faint)", paddingLeft:2 }}>
+          Nenhum produto adicionado — a OS será salva sem produtos (ou use o campo acima)
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Converte lista de itens em string descrição
+function itensToDescricao(itens) {
+  if (!itens || itens.length === 0) return "";
+  return itens.map(i => `${i.nome}${i.avulso ? " (avulso)" : ""} x${i.qtd}`).join(", ");
+}
+
+// ── Modal OS ────────────────────────────────────────────────────────────────
 function ModalOS({ open, onClose, onSaved, editData }) {
   const [form, setForm]     = useState(BLANK);
   const [saving, setSaving] = useState(false);
   const [clientes, setClientes] = useState([]);
   const [busca, setBusca]   = useState("");
+  const [itensProdutos, setItensProdutos] = useState([]); // lista de produtos da OS
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
 
   useEffect(() => {
-    if (open) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
+    document.body.style.overflow = open ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
   }, [open]);
 
@@ -57,7 +262,6 @@ function ModalOS({ open, onClose, onSaved, editData }) {
         clientecpf:      editData.clientecpf      || "",
         clienteid:       editData.clienteid       || null,
         servico:         editData.servico         || TIPO_OPTS[0],
-        descricao:       editData.descricao       || editData.obs || "",
         valortotal:      String(editData.valortotal  ?? editData.valor   ?? ""),
         valorentrada:    String(editData.valorentrada ?? editData.entrada ?? ""),
         prazoentrega:    editData.prazoentrega    || editData.prazo || "",
@@ -66,9 +270,17 @@ function ModalOS({ open, onClose, onSaved, editData }) {
         observacoes:     editData.observacoes     || editData.obs || "",
         status:          editData.status          || "Recebido",
       });
+      // Ao editar, mostra descrição atual como item avulso único (preserva histórico)
+      const descAtual = editData.descricao || editData.obs || "";
+      if (descAtual.trim()) {
+        setItensProdutos([{ produtoid:null, nome:descAtual.trim(), preco:0, unidade:"un", qtd:1, avulso:true }]);
+      } else {
+        setItensProdutos([]);
+      }
       setBusca("");
     } else {
       setForm(BLANK);
+      setItensProdutos([]);
       setBusca("");
     }
   }, [open, editData]);
@@ -87,49 +299,35 @@ function ModalOS({ open, onClose, onSaved, editData }) {
     setClientes([]);
   };
 
-  // Garante que cliente novo seja cadastrado automaticamente
   const ensureCliente = async (nome, telefone, cpf) => {
     if (!nome.trim()) return null;
-    // Tenta buscar existente pelo nome exato
     try {
       const r = await api.get(`/clientes?q=${encodeURIComponent(nome.trim())}`);
-      const exact = (r.data || []).find(
-        c => c.name?.toLowerCase() === nome.trim().toLowerCase()
-      );
+      const exact = (r.data||[]).find(c => c.name?.toLowerCase()===nome.trim().toLowerCase());
       if (exact) return exact.id;
     } catch {}
-    // Não encontrou: cadastra novo
     try {
-      const r = await api.post('/clientes', {
-        name: nome.trim(),
-        phone: telefone || null,
-        cpf: cpf || null,
-      });
+      const r = await api.post('/clientes', { name:nome.trim(), phone:telefone||null, cpf:cpf||null });
       toast(`✨ Cliente "${nome.trim()}" cadastrado automaticamente`);
       return r.data?.id || null;
-    } catch {
-      return null;
-    }
+    } catch { return null; }
   };
 
   const save = async () => {
     if (!form.clientenome.trim()) return toast.error("Nome do cliente obrigatório");
     if (!form.servico)            return toast.error("Tipo de serviço obrigatório");
-
     const total   = Number(form.valortotal);
     const entrada = form.valorentrada === "" ? 0 : Number(form.valorentrada);
-
-    if (isNaN(total) || total <= 0)     return toast.error("Valor total deve ser maior que zero");
+    if (isNaN(total)   || total  <= 0)  return toast.error("Valor total deve ser maior que zero");
     if (isNaN(entrada) || entrada < 0)  return toast.error("Entrada não pode ser negativa");
     if (entrada > total)                return toast.error("Entrada não pode ser maior que o total");
 
     setSaving(true);
     try {
-      // Auto-cadastra cliente se não tiver id vinculado
       let clienteid = form.clienteid;
-      if (!clienteid) {
-        clienteid = await ensureCliente(form.clientenome, form.clientetelefone, form.clientecpf);
-      }
+      if (!clienteid) clienteid = await ensureCliente(form.clientenome, form.clientetelefone, form.clientecpf);
+
+      const descricao = itensToDescricao(itensProdutos) || null;
 
       const payload = {
         clienteid:       clienteid || null,
@@ -137,7 +335,7 @@ function ModalOS({ open, onClose, onSaved, editData }) {
         clientetelefone: form.clientetelefone || null,
         clientecpf:      form.clientecpf      || null,
         servico:         form.servico,
-        descricao:       form.descricao       || null,
+        descricao,
         valortotal:      total,
         valorentrada:    entrada,
         prazoentrega:    form.prazoentrega    || null,
@@ -161,9 +359,9 @@ function ModalOS({ open, onClose, onSaved, editData }) {
     } finally { setSaving(false); }
   };
 
-  const total      = Number(form.valortotal)  || 0;
-  const entrada    = Number(form.valorentrada) || 0;
-  const saldoPrev  = Math.max(0, total - entrada);
+  const total     = Number(form.valortotal)  || 0;
+  const entrada   = Number(form.valorentrada) || 0;
+  const saldoPrev = Math.max(0, total - entrada);
 
   if (!open) return null;
 
@@ -186,11 +384,12 @@ function ModalOS({ open, onClose, onSaved, editData }) {
               <div className="form-group">
                 <label className="form-label">
                   Cliente <span style={{color:"var(--color-error)"}}>*</span>
-                  <span style={{marginLeft:8,fontSize:'var(--text-xs)',color:'var(--color-text-muted)',fontWeight:400}}>
+                  <span style={{marginLeft:8,fontSize:"var(--text-xs)",color:"var(--color-text-muted)",fontWeight:400}}>
                     — se não cadastrado, será registrado automaticamente
                   </span>
                 </label>
-                <input className="form-input" placeholder="Nome do cliente ou buscar cadastrado..."
+                <input className="form-input"
+                  placeholder="Nome do cliente ou buscar cadastrado..."
                   value={busca || form.clientenome}
                   onChange={e=>{ setBusca(e.target.value); set("clientenome",e.target.value); set("clienteid",null); }}
                 />
@@ -236,9 +435,15 @@ function ModalOS({ open, onClose, onSaved, editData }) {
               </div>
             </div>
 
+            {/* Seletor de produtos */}
             <div className="form-group">
-              <label className="form-label">Descrição do Serviço</label>
-              <textarea className="form-input" rows={2} style={{resize:"vertical"}} value={form.descricao} onChange={e=>set("descricao",e.target.value)} placeholder="Detalhe o serviço solicitado..."/>
+              <label className="form-label">
+                Produtos / Materiais
+                <span style={{marginLeft:8,fontSize:"var(--text-xs)",color:"var(--color-text-muted)",fontWeight:400}}>
+                  — busque no cadastro ou adicione avulso
+                </span>
+              </label>
+              <ProdutoSelector itens={itensProdutos} onChange={setItensProdutos} />
             </div>
 
             <div className="form-grid-2">
@@ -260,15 +465,11 @@ function ModalOS({ open, onClose, onSaved, editData }) {
               <div style={{
                 display:"flex", justifyContent:"space-between", alignItems:"center",
                 padding:"var(--space-3) var(--space-4)",
-                background: saldoPrev > 0 ? "var(--color-warning-hl)" : "var(--color-success-hl)",
-                borderRadius:"var(--radius-md)",
-                fontSize:"var(--text-xs)",
+                background: saldoPrev > 0 ? "var(--color-warning-hl)" : "var(--color-success-hl, var(--color-primary-highlight))",
+                borderRadius:"var(--radius-md)", fontSize:"var(--text-xs)"
               }}>
                 <span style={{color:"var(--color-text-muted)"}}>Saldo a receber após entrada:</span>
-                <span style={{
-                  fontFamily:"monospace", fontWeight:800,
-                  color: saldoPrev > 0 ? "var(--color-warning)" : "var(--color-success)",
-                }}>
+                <span style={{ fontFamily:"monospace", fontWeight:800, color: saldoPrev > 0 ? "var(--color-warning)" : "var(--color-success)" }}>
                   {saldoPrev > 0 ? fmt(saldoPrev) : "✓ Quitado na entrada"}
                 </span>
               </div>
@@ -316,7 +517,7 @@ function ModalOS({ open, onClose, onSaved, editData }) {
   );
 }
 
-// ── Página principal ───────────────────────────────────────────────────────────────────────────
+// ── Página principal ─────────────────────────────────────────────────────────
 export default function Ordens() {
   const { isAdmin, isCaixa } = useAuth();
   const navigate = useNavigate();
@@ -352,10 +553,7 @@ export default function Ordens() {
   );
 
   const vencidas = useMemo(()=>
-    filtered.filter(o=> {
-      const prazo = o.prazoentrega || o.prazo;
-      return prazo && prazo < HOJE && !["Entregue","Cancelado"].includes(o.status);
-    }),
+    filtered.filter(o=>{ const p=o.prazoentrega||o.prazo; return p && p<HOJE && !["Entregue","Cancelado"].includes(o.status); }),
     [filtered]
   );
 
@@ -395,7 +593,6 @@ export default function Ordens() {
             {filtered.length} resultado{filtered.length!==1?"s":""}
           </span>
         </div>
-
         {loading ? (
           <div className="loading-center"><div className="spinner"/></div>
         ) : filtered.length===0 ? (
@@ -408,16 +605,12 @@ export default function Ordens() {
           <div className="table-wrap">
             <table>
               <thead>
-                <tr>
-                  <th>Número</th><th>Cliente</th><th>Serviço</th>
-                  <th>Total</th><th>Saldo</th><th>Prazo</th>
-                  <th>Status</th><th>Prioridade</th><th/>
-                </tr>
+                <tr><th>Número</th><th>Cliente</th><th>Serviço</th><th>Total</th><th>Saldo</th><th>Prazo</th><th>Status</th><th>Prioridade</th><th/></tr>
               </thead>
               <tbody>
                 {filtered.map(o=>{
-                  const prazo   = o.prazoentrega || o.prazo;
-                  const vencida = prazo && prazo < HOJE && !["Entregue","Cancelado"].includes(o.status);
+                  const prazo   = o.prazoentrega||o.prazo;
+                  const vencida = prazo && prazo<HOJE && !["Entregue","Cancelado"].includes(o.status);
                   const saldo   = saldoOS(o);
                   return (
                     <tr key={o.id} onClick={()=>navigate(`/ordens/${o.id}`)} style={{cursor:"pointer"}}>
@@ -431,11 +624,10 @@ export default function Ordens() {
                       <td>{o.servico}</td>
                       <td className="tabnum">{fmt(o.valortotal||o.valor)}</td>
                       <td className="tabnum" style={{color:saldo>0?"var(--color-warning)":"var(--color-success)",fontWeight:700}}>
-                        {saldo>0 ? fmt(saldo) : "✓ Quitado"}
+                        {saldo>0?fmt(saldo):"✓ Quitado"}
                       </td>
                       <td style={{fontSize:"var(--text-xs)",color:vencida?"var(--color-error)":"inherit",fontWeight:vencida?700:400}}>
-                        {fmtD(prazo)}
-                        {vencida && <span style={{marginLeft:4}}>⚠</span>}
+                        {fmtD(prazo)}{vencida&&<span style={{marginLeft:4}}>⚠</span>}
                       </td>
                       <td><span className={`badge badge-${STATUS_BADGE[o.status]||"recebido"}`}>{o.status}</span></td>
                       <td>
@@ -453,8 +645,7 @@ export default function Ordens() {
                           )}
                           {isAdmin && (
                             <button className="btn btn-icon btn-ghost btn-sm" title="Excluir"
-                              style={{color:"var(--color-error)"}}
-                              onClick={e=>pedirExclusao(e,o)}>
+                              style={{color:"var(--color-error)"}} onClick={e=>pedirExclusao(e,o)}>
                               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
                             </button>
                           )}
@@ -481,10 +672,8 @@ export default function Ordens() {
               </button>
             </div>
             <div className="modal-body">
-              <p style={{fontSize:"var(--text-sm)"}}>
-                Tem certeza que deseja excluir a OS <strong>{deleteNum}</strong>?
-              </p>
-              <div style={{marginTop:"var(--space-3)",padding:"var(--space-3)",background:"var(--color-error-hl)",borderRadius:"var(--radius-md)",fontSize:"var(--text-xs)",color:"var(--color-error)",fontWeight:600}}>
+              <p style={{fontSize:"var(--text-sm)"}}>Tem certeza que deseja excluir a OS <strong>{deleteNum}</strong>?</p>
+              <div style={{marginTop:"var(--space-3)",padding:"var(--space-3)",background:"var(--color-error-highlight, var(--color-error-hl))",borderRadius:"var(--radius-md)",fontSize:"var(--text-xs)",color:"var(--color-error)",fontWeight:600}}>
                 Todos os lançamentos e histórico de status desta OS serão permanentemente excluídos.
               </div>
             </div>

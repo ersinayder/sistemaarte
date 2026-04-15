@@ -3,11 +3,19 @@ const router  = express.Router();
 const { getDB } = require('../database');
 const { auth }  = require('../middlewares/auth');
 
-// GET /api/produtos — qualquer autenticado
+// GET /api/produtos?q=termo — qualquer autenticado
 router.get('/', auth(), (req, res) => {
   try {
-    const db   = getDB();
-    const rows = db.prepare('SELECT * FROM produtos ORDER BY nome COLLATE NOCASE').all();
+    const db  = getDB();
+    const { q } = req.query;
+    let rows;
+    if (q && q.trim().length > 0) {
+      rows = db.prepare(
+        "SELECT * FROM produtos WHERE nome LIKE ? OR categoria LIKE ? OR descricao LIKE ? ORDER BY nome COLLATE NOCASE LIMIT 20"
+      ).all(`%${q.trim()}%`, `%${q.trim()}%`, `%${q.trim()}%`);
+    } else {
+      rows = db.prepare('SELECT * FROM produtos ORDER BY nome COLLATE NOCASE').all();
+    }
     res.json(rows);
   } catch (e) {
     res.status(500).json({ error: e.message });
