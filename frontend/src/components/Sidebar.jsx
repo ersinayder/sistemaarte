@@ -19,6 +19,7 @@ const ICONS = {
   relat:     { d: 'M18 20V10M12 20V4M6 20v-6' },
   usuarios:  { d: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2', d2: 'M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75M9 11a4 4 0 100-8 4 4 0 000 8z' },
   clientes:  { d: 'M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2', d2: 'M12 11a4 4 0 100-8 4 4 0 000 8z' },
+  produtos:  { d: 'M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z', d2: 'M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12' },
 }
 
 const ROLE_LABEL = { admin: 'Administrador', caixa: 'Caixa', oficina: 'Oficina' }
@@ -77,48 +78,87 @@ export default function Sidebar({ collapsed, onToggle }) {
 
   return (
     <aside className={`sidebar${collapsed ? ' collapsed' : ''}`}>
-      {/* Cabeçalho */}
-      <div className="sidebar-header" onClick={onToggle} style={{ cursor: 'pointer' }}>
-        {!collapsed && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-            <img src="/logo.png" alt="Arte & Molduras"
-              style={{ height: 32, objectFit: 'contain' }}
-              onError={e => { e.target.style.display = 'none' }} />
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 'var(--text-sm)', lineHeight: 1.1 }}>Arte & Molduras</div>
-              <div style={{ fontSize: 10, color: 'var(--color-text-muted)', letterSpacing: '0.05em' }}>Gestão</div>
-            </div>
-          </div>
+
+      {/* ── Cabeçalho: logo grande centralizada ── */}
+      <div
+        className="sidebar-header"
+        onClick={onToggle}
+        style={{
+          cursor: 'pointer',
+          display: 'flex',
+          flexDirection: collapsed ? 'column' : 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: collapsed ? 'var(--space-3) 0' : 'var(--space-6) var(--space-3) var(--space-4)',
+          gap: 'var(--space-2)',
+          borderBottom: '1px solid var(--color-divider)',
+          position: 'relative',
+        }}
+      >
+        {/* Logo */}
+        {!collapsed ? (
+          <img
+            src="/logo.png"
+            alt="Arte & Molduras"
+            style={{
+              width: '100%',
+              maxWidth: 148,
+              height: 'auto',
+              objectFit: 'contain',
+              display: 'block',
+            }}
+            onError={e => {
+              e.target.style.display = 'none'
+            }}
+          />
+        ) : (
+          /* collapsed: apenas ícone pequeno */
+          <img
+            src="/logo.png"
+            alt="Arte & Molduras"
+            style={{ width: 32, height: 32, objectFit: 'contain', borderRadius: 'var(--radius-sm)' }}
+            onError={e => { e.target.style.display = 'none' }}
+          />
         )}
+
+        {/* Botão recolher — canto inferior direito quando expandido */}
         <button
           className="btn btn-icon btn-ghost"
-          style={{ marginLeft: collapsed ? 0 : 'auto', flexShrink: 0 }}
-          aria-label={collapsed ? 'Expandir menu' : 'Recolher menu'}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          style={{
+            position: collapsed ? 'static' : 'absolute',
+            bottom: collapsed ? undefined : 'var(--space-2)',
+            right: collapsed ? undefined : 'var(--space-2)',
+            width: 24, height: 24,
+            opacity: 0.5,
+          }}
+          aria-label={collapsed ? 'Expandir menu' : 'Recolher menu'}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             {collapsed ? <path d="M9 18l6-6-6-6"/> : <path d="M15 18l-6-6 6-6"/>}
           </svg>
         </button>
       </div>
 
-      <nav className="sidebar-nav">
-        {/* Oficina: vê apenas a fila */}
+      {/* ── Nav com mais espaço vertical ── */}
+      <nav className="sidebar-nav" style={{ paddingTop: 'var(--space-4)' }}>
         {isOficina && navItem('/oficina', 'Fila da Oficina', 'oficina')}
 
-        {/* Admin e Caixa: ordem definida pelo usuário */}
         {(isAdmin || isCaixa) && (
           <>
-            {navItem('/dashboard',  'Resumo',             'resumo')}
-            {navItem('/caixa',      'Caixa',              'caixa')}
-            {navItemBadge('/ordens','Ordens de Serviço',  'ordens',    vencidas)}
-            {navItem('/orcamento',  'Orçamento',          'orcamento')}
-            {navItem('/oficina',    'Fila da Oficina',    'oficina')}
-            {navItem('/relatorios', 'Relatórios',         'relat')}
-            {navItem('/clientes',   'Clientes',           'clientes')}
+            {navItem('/dashboard',  'Resumo',            'resumo')}
+            {navItem('/caixa',      'Caixa',             'caixa')}
+            {navItemBadge('/ordens','Ordens de Serviço', 'ordens', vencidas)}
+            {navItem('/orcamento',  'Orçamento',         'orcamento')}
+            {navItem('/produtos',   'Produtos',          'produtos')}
+            {navItem('/oficina',    'Fila da Oficina',   'oficina')}
+            {navItem('/relatorios', 'Relatórios',        'relat')}
+            {navItem('/clientes',   'Clientes',          'clientes')}
             {isAdmin && navItem('/usuarios', 'Usuários', 'usuarios')}
           </>
         )}
       </nav>
 
+      {/* ── Footer de usuário ── */}
       <div className="sidebar-footer">
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', padding: 'var(--space-2) var(--space-3)', background: 'var(--color-surface-offset)', borderRadius: 'var(--radius-lg)', marginBottom: 'var(--space-2)' }}>
           <div style={{ width: 28, height: 28, borderRadius: '50%', background: ROLE_COLOR[user?.role] || 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: 12, flexShrink: 0 }}>
