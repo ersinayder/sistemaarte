@@ -48,6 +48,15 @@ export default function Sidebar({ collapsed, onToggle }) {
   const handleSwitch = () => { switchUser(); navigate('/login'); toast('Faça login com outro usuário') }
   const handleLogout = () => { logout(); navigate('/login'); toast('Sessão encerrada') }
 
+  const navItem = (to, label, iconKey) => (
+    <NavLink to={to}
+      className={({ isActive }) => `sidebar-nav-item${isActive ? ' active' : ''}`}
+      title={collapsed ? label : undefined}>
+      <Icon {...ICONS[iconKey]} />
+      {!collapsed && <span className="nav-label">{label}</span>}
+    </NavLink>
+  )
+
   const navItemBadge = (to, label, iconKey, badge) => (
     <NavLink to={to}
       className={({ isActive }) => `sidebar-nav-item${isActive ? ' active' : ''}`}
@@ -63,14 +72,9 @@ export default function Sidebar({ collapsed, onToggle }) {
     </NavLink>
   )
 
-  const navItem = (to, label, iconKey) => (
-    <NavLink to={to}
-      className={({ isActive }) => `sidebar-nav-item${isActive ? ' active' : ''}`}
-      title={collapsed ? label : undefined}>
-      <Icon {...ICONS[iconKey]} />
-      {!collapsed && <span className="nav-label">{label}</span>}
-    </NavLink>
-  )
+  const section = (label) => !collapsed
+    ? <span className="nav-section">{label}</span>
+    : <span className="nav-section-divider" />
 
   const isAdmin   = user?.role === 'admin'
   const isCaixa   = user?.role === 'caixa'
@@ -79,14 +83,14 @@ export default function Sidebar({ collapsed, onToggle }) {
   return (
     <aside className={`sidebar${collapsed ? ' collapsed' : ''}`}>
 
-      {/* ── Cabeçalho: logo grande centralizada ── */}
+      {/* ── Cabeçalho ── */}
       <div
         className="sidebar-header"
         onClick={onToggle}
         style={{
           cursor: 'pointer',
           display: 'flex',
-          flexDirection: collapsed ? 'column' : 'column',
+          flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
           padding: collapsed ? 'var(--space-3) 0' : 'var(--space-6) var(--space-3) var(--space-4)',
@@ -95,42 +99,20 @@ export default function Sidebar({ collapsed, onToggle }) {
           position: 'relative',
         }}
       >
-        {/* Logo */}
         {!collapsed ? (
-          <img
-            src="/logo.png"
-            alt="Arte & Molduras"
-            style={{
-              width: '100%',
-              maxWidth: 148,
-              height: 'auto',
-              objectFit: 'contain',
-              display: 'block',
-            }}
-            onError={e => {
-              e.target.style.display = 'none'
-            }}
+          <img src="/logo.png" alt="Arte & Molduras"
+            style={{ width: '100%', maxWidth: 148, height: 'auto', objectFit: 'contain', display: 'block' }}
+            onError={e => { e.target.style.display = 'none' }}
           />
         ) : (
-          /* collapsed: apenas ícone pequeno */
-          <img
-            src="/logo.png"
-            alt="Arte & Molduras"
+          <img src="/logo.png" alt="Arte & Molduras"
             style={{ width: 32, height: 32, objectFit: 'contain', borderRadius: 'var(--radius-sm)' }}
             onError={e => { e.target.style.display = 'none' }}
           />
         )}
-
-        {/* Botão recolher — canto inferior direito quando expandido */}
         <button
           className="btn btn-icon btn-ghost"
-          style={{
-            position: collapsed ? 'static' : 'absolute',
-            bottom: collapsed ? undefined : 'var(--space-2)',
-            right: collapsed ? undefined : 'var(--space-2)',
-            width: 24, height: 24,
-            opacity: 0.5,
-          }}
+          style={{ position: collapsed ? 'static' : 'absolute', bottom: collapsed ? undefined : 'var(--space-2)', right: collapsed ? undefined : 'var(--space-2)', width: 24, height: 24, opacity: 0.5 }}
           aria-label={collapsed ? 'Expandir menu' : 'Recolher menu'}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -139,20 +121,33 @@ export default function Sidebar({ collapsed, onToggle }) {
         </button>
       </div>
 
-      {/* ── Nav com mais espaço vertical ── */}
-      <nav className="sidebar-nav" style={{ paddingTop: 'var(--space-4)' }}>
+      {/* ── Navegação ── */}
+      <nav className="sidebar-nav" style={{ paddingTop: 'var(--space-3)' }}>
+
+        {/* Perfil Oficina: acesso direto à fila */}
         {isOficina && navItem('/oficina', 'Fila da Oficina', 'oficina')}
 
         {(isAdmin || isCaixa) && (
           <>
-            {navItem('/dashboard',  'Resumo',            'resumo')}
-            {navItem('/caixa',      'Caixa',             'caixa')}
-            {navItemBadge('/ordens','Ordens de Serviço', 'ordens', vencidas)}
-            {navItem('/orcamento',  'Orçamento',         'orcamento')}
-            {navItem('/produtos',   'Produtos',          'produtos')}
-            {navItem('/oficina',    'Fila da Oficina',   'oficina')}
-            {navItem('/relatorios', 'Relatórios',        'relat')}
-            {navItem('/clientes',   'Clientes',          'clientes')}
+            {/* ── Operação ── */}
+            {section('Operação')}
+            {navItem('/dashboard', 'Resumo', 'resumo')}
+            {navItem('/caixa', 'Caixa', 'caixa')}
+            {navItemBadge('/ordens', 'Ordens de Serviço', 'ordens', vencidas)}
+            {navItem('/orcamento', 'Orçamento', 'orcamento')}
+
+            {/* ── Produção ── */}
+            {section('Produção')}
+            {navItem('/oficina', 'Fila da Oficina', 'oficina')}
+
+            {/* ── Análise ── */}
+            {section('Análise')}
+            {navItem('/relatorios', 'Relatórios', 'relat')}
+
+            {/* ── Cadastros ── */}
+            {section('Cadastros')}
+            {navItem('/clientes', 'Clientes', 'clientes')}
+            {navItem('/produtos', 'Produtos', 'produtos')}
             {isAdmin && navItem('/usuarios', 'Usuários', 'usuarios')}
           </>
         )}
