@@ -3,11 +3,13 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 
 # Build outputs
 dist/
 build/
 .vite/
+.output/
 
 # Banco de dados e backups
 backend/data/*.db
@@ -16,17 +18,22 @@ backend/data/*.db-wal
 *.bak_*
 *.bak
 
-# Env secrets
+# Env secrets — NUNCA versionar
 .env
 .env.local
 .env.*.local
+backend/.env
+frontend/.env
 
-# Arquivos gerados
+# Arquivos gerados / dump arquitetura
 projeto_completo.txt
+*.dump.txt
+*.export.txt
 
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # Editor
 .vscode/
