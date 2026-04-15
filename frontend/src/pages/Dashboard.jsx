@@ -23,7 +23,6 @@ const fmtShort = v => {
 }
 const fmtD = iso => iso ? new Date(`${iso}T12:00:00`).toLocaleDateString('pt-BR') : '—'
 
-// Calculado uma única vez fora do componente — não recalcula a cada render
 const HOJE = new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10)
 const MES_PADRAO = HOJE.slice(0, 7)
 
@@ -90,7 +89,6 @@ function ChartCard({ title, subtitle, children, style }) {
 export default function Dashboard() {
   const navigate = useNavigate()
 
-  // Estado do mês selecionado — permite navegação entre meses
   const [mesSel, setMesSel] = useState(MES_PADRAO)
   const [dados, setDados] = useState(null)
   const [ordens, setOrdens] = useState([])
@@ -123,7 +121,6 @@ export default function Dashboard() {
     </div>
   )
 
-  // Gráfico de linha — faturamento diário
   const lineData = {
     labels: dados?.dias?.map(d => {
       const [, , day] = d.data.split('-')
@@ -162,7 +159,6 @@ export default function Dashboard() {
     }
   }
 
-  // Gráfico de rosca — por forma de pagamento
   const pagLabels = Object.keys(dados?.porpagamento || {}).filter(k => dados.porpagamento[k] > 0)
   const pagValues = pagLabels.map(k => dados.porpagamento[k])
   const PAG_COLORS = {
@@ -207,12 +203,10 @@ export default function Dashboard() {
     }
   }
 
-  // Ordens recentes (5 mais recentes)
   const ordensRecentes = [...ordens]
     .sort((a, b) => (b.id || 0) - (a.id || 0))
     .slice(0, 5)
 
-  // OS por tipo
   const tipoCount = {}
   ordens.forEach(o => {
     const t = o.tipo || o.servico || 'Outros'
@@ -235,10 +229,10 @@ export default function Dashboard() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
 
-      {/* ── Cabeçalho com seletor de mês funcional ── */}
+      {/* Cabeçalho */}
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
         <div>
-          <h1 style={{ fontSize: 'var(--text-lg)', fontWeight: 800, marginBottom: 2 }}>Dashboard</h1>
+          <h1 style={{ fontSize: 'var(--text-lg)', fontWeight: 800, marginBottom: 2 }}>Resumo</h1>
           <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', textTransform: 'capitalize' }}>
             {mesNome}
           </span>
@@ -260,52 +254,33 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* ── KPIs ── */}
+      {/* KPIs */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
         gap: 'var(--space-4)'
       }}>
-        <KPI
-          label="Total do Mês"
-          value={fmtShort(dados?.total)}
+        <KPI label="Total do Mês" value={fmtShort(dados?.total)}
           sub={`${dados?.count || 0} lançamento${dados?.count !== 1 ? 's' : ''}`}
-          accent="var(--color-primary)"
-        />
-        <KPI
-          label="Faturamento Hoje"
-          value={fmtShort(dados?.hoje)}
-          sub="dia atual"
-          accent="var(--color-blue)"
-        />
-        <KPI
-          label="Ticket Médio"
-          value={fmtShort(dados?.ticketmedio)}
-          sub="por lançamento"
-          accent="var(--color-gold)"
-        />
-        <KPI
-          label="OS em Aberto"
-          value={dados?.ordensabertas ?? 0}
+          accent="var(--color-primary)" />
+        <KPI label="Faturamento Hoje" value={fmtShort(dados?.hoje)}
+          sub="dia atual" accent="var(--color-blue)" />
+        <KPI label="Ticket Médio" value={fmtShort(dados?.ticketmedio)}
+          sub="por lançamento" accent="var(--color-gold)" />
+        <KPI label="OS em Aberto" value={dados?.ordensabertas ?? 0}
           sub={ordensVencidas > 0 ? `${ordensVencidas} vencida${ordensVencidas > 1 ? 's' : ''}` : 'no prazo'}
-          accent={ordensVencidas > 0 ? 'var(--color-error)' : 'var(--color-success)'}
-        />
+          accent={ordensVencidas > 0 ? 'var(--color-error)' : 'var(--color-success)'} />
       </div>
 
-      {/* ── Gráficos — responsivo: quebra em coluna única em telas médias ── */}
+      {/* Gráficos */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
         gap: 'var(--space-4)'
       }}>
-        <ChartCard
-          title="Faturamento Diário"
-          subtitle={`Evolução de receitas em ${mesNome}`}
-        >
+        <ChartCard title="Faturamento Diário" subtitle={`Evolução de receitas em ${mesNome}`}>
           {dados?.dias?.length ? (
-            <div style={{ height: 220 }}>
-              <Line data={lineData} options={lineOptions} />
-            </div>
+            <div style={{ height: 220 }}><Line data={lineData} options={lineOptions} /></div>
           ) : (
             <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)' }}>Sem dados no período</span>
@@ -315,9 +290,7 @@ export default function Dashboard() {
 
         <ChartCard title="Por Pagamento" subtitle="Distribuição do mês">
           {pagValues.length ? (
-            <div style={{ height: 220 }}>
-              <Doughnut data={doughnutData} options={doughnutOptions} />
-            </div>
+            <div style={{ height: 220 }}><Doughnut data={doughnutData} options={doughnutOptions} /></div>
           ) : (
             <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)' }}>Sem dados</span>
@@ -326,15 +299,13 @@ export default function Dashboard() {
         </ChartCard>
       </div>
 
-      {/* ── Tabela + OS por tipo — responsivo ── */}
+      {/* Tabela + OS por tipo */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
         gap: 'var(--space-4)',
         alignItems: 'start'
       }}>
-
-        {/* Últimas OS */}
         <div style={{
           background: 'var(--color-surface)',
           border: '1px solid var(--color-border)',
@@ -351,10 +322,7 @@ export default function Dashboard() {
               <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>Últimas Ordens</div>
               <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)', marginTop: 2 }}>5 mais recentes</div>
             </div>
-            <button
-              className="btn btn-ghost btn-sm"
-              onClick={() => navigate('/ordens')}
-            >
+            <button className="btn btn-ghost btn-sm" onClick={() => navigate('/ordens')}>
               Ver todas
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M5 12h14M12 5l7 7-7 7"/>
@@ -365,21 +333,14 @@ export default function Dashboard() {
             <table>
               <thead>
                 <tr>
-                  <th>OS</th>
-                  <th>Cliente</th>
-                  <th>Tipo</th>
-                  <th>Status</th>
-                  <th>Valor</th>
-                  <th>Prazo</th>
+                  <th>OS</th><th>Cliente</th><th>Tipo</th>
+                  <th>Status</th><th>Valor</th><th>Prazo</th>
                 </tr>
               </thead>
               <tbody>
                 {ordensRecentes.length ? ordensRecentes.map(o => (
-                  <tr key={o.id} style={{ cursor: 'pointer' }}
-                    onClick={() => navigate(`/ordens/${o.id}`)}>
-                    <td style={{ fontWeight: 700, color: 'var(--color-primary)', whiteSpace: 'nowrap' }}>
-                      {o.numero}
-                    </td>
+                  <tr key={o.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/ordens/${o.id}`)}>
+                    <td style={{ fontWeight: 700, color: 'var(--color-primary)', whiteSpace: 'nowrap' }}>{o.numero}</td>
                     <td style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {o.cliente_nome || o.clientenome || o.cliente?.nome || '—'}
                     </td>
@@ -389,14 +350,10 @@ export default function Dashboard() {
                         o.tipo === 'Quadro' ? 'quadro' :
                         o.tipo === '3D' ? '3d' :
                         o.tipo === 'Caixas' ? 'caixas' : 'diversos'
-                      }`}>
-                        {o.tipo || o.servico || 'Outros'}
-                      </span>
+                      }`}>{o.tipo || o.servico || 'Outros'}</span>
                     </td>
                     <td>
-                      <span className={`badge badge-${STATUS_BADGE[o.status] || 'diversos'}`}>
-                        {o.status}
-                      </span>
+                      <span className={`badge badge-${STATUS_BADGE[o.status] || 'diversos'}`}>{o.status}</span>
                     </td>
                     <td className="tabnum" style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
                       {fmt(o.valor || o.valortotal)}
@@ -415,7 +372,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* OS por Tipo */}
         <ChartCard title="OS por Tipo" subtitle="Contagem geral">
           {Object.keys(tipoCount).length ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
@@ -446,7 +402,6 @@ export default function Dashboard() {
             </div>
           )}
         </ChartCard>
-
       </div>
     </div>
   )
