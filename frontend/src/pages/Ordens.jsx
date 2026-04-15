@@ -38,7 +38,6 @@ function ProdutoSelector({ itens, onChange, onTotalChange }) {
   const debounceRef               = useRef(null);
   const wrapRef                   = useRef(null);
 
-  // Fechar dropdown ao clicar fora
   useEffect(() => {
     const handler = e => {
       if (wrapRef.current && !wrapRef.current.contains(e.target)) setSugestoes([]);
@@ -47,7 +46,6 @@ function ProdutoSelector({ itens, onChange, onTotalChange }) {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // Busca com debounce
   useEffect(() => {
     clearTimeout(debounceRef.current);
     if (busca.trim().length < 2) { setSugestoes([]); return; }
@@ -62,7 +60,6 @@ function ProdutoSelector({ itens, onChange, onTotalChange }) {
     return () => clearTimeout(debounceRef.current);
   }, [busca]);
 
-  // Notifica o pai sempre que a lista muda → recalcula total
   const notificar = (novos) => {
     onChange(novos);
     const total = novos.reduce((acc, i) => acc + (Number(i.preco) || 0) * (Number(i.qtd) || 1), 0);
@@ -106,13 +103,10 @@ function ProdutoSelector({ itens, onChange, onTotalChange }) {
   };
 
   const temExato = sugestoes.some(s => s.nome.toLowerCase() === busca.trim().toLowerCase());
-
-  // Subtotal dos itens com preço
   const subtotal = itens.reduce((acc, i) => acc + (Number(i.preco) || 0) * (Number(i.qtd) || 1), 0);
 
   return (
     <div>
-      {/* Campo de busca */}
       <div ref={wrapRef} style={{ position:"relative" }}>
         <div style={{ position:"relative" }}>
           <input
@@ -130,7 +124,6 @@ function ProdutoSelector({ itens, onChange, onTotalChange }) {
           )}
         </div>
 
-        {/* Dropdown */}
         {(sugestoes.length > 0 || (busca.trim().length >= 2 && !loading)) && (
           <div style={{
             position:"absolute", top:"calc(100% + 4px)", left:0, right:0, zIndex:100,
@@ -157,7 +150,6 @@ function ProdutoSelector({ itens, onChange, onTotalChange }) {
                 <span style={{ fontFamily:"monospace", fontSize:"var(--text-xs)", color:"var(--color-primary)", fontWeight:700, whiteSpace:"nowrap" }}>{fmt(p.preco)}</span>
               </div>
             ))}
-            {/* Opção avulso */}
             {busca.trim().length >= 2 && !temExato && (
               <div
                 onClick={adicionarAvulso}
@@ -178,7 +170,6 @@ function ProdutoSelector({ itens, onChange, onTotalChange }) {
         )}
       </div>
 
-      {/* Lista de itens adicionados */}
       {itens.length > 0 && (
         <div style={{ marginTop:"var(--space-3)", display:"flex", flexDirection:"column", gap:"var(--space-2)" }}>
           {itens.map((item, idx) => (
@@ -201,7 +192,6 @@ function ProdutoSelector({ itens, onChange, onTotalChange }) {
                   <span style={{ marginLeft:6, fontSize:"var(--text-xs)", color:"var(--color-text-muted)" }}>{item.unidade}</span>
                 )}
               </div>
-              {/* Quantidade */}
               <div style={{ display:"flex", alignItems:"center", gap:4 }}>
                 <span style={{ fontSize:"var(--text-xs)", color:"var(--color-text-muted)" }}>Qtd</span>
                 <input
@@ -219,7 +209,6 @@ function ProdutoSelector({ itens, onChange, onTotalChange }) {
                   }}
                 />
               </div>
-              {/* Preço unitário — editável para avulsos, somente leitura para cadastrados */}
               <div style={{ display:"flex", alignItems:"center", gap:4 }}>
                 <span style={{ fontSize:"var(--text-xs)", color:"var(--color-text-muted)" }}>R$</span>
                 <input
@@ -240,14 +229,12 @@ function ProdutoSelector({ itens, onChange, onTotalChange }) {
                   }}
                 />
               </div>
-              {/* Subtotal do item */}
               <span style={{
                 fontFamily:"monospace", fontSize:"var(--text-xs)", fontWeight:700,
                 color:"var(--color-primary)", whiteSpace:"nowrap", minWidth:70, textAlign:"right"
               }}>
                 {fmt((Number(item.preco)||0) * (Number(item.qtd)||1))}
               </span>
-              {/* Remover */}
               <button
                 className="btn btn-icon btn-ghost btn-sm"
                 style={{ color:"var(--color-error)", flexShrink:0 }}
@@ -260,7 +247,6 @@ function ProdutoSelector({ itens, onChange, onTotalChange }) {
             </div>
           ))}
 
-          {/* Rodapé com subtotal */}
           <div style={{
             display:"flex", justifyContent:"space-between", alignItems:"center",
             padding:"var(--space-2) var(--space-3)",
@@ -287,7 +273,6 @@ function ProdutoSelector({ itens, onChange, onTotalChange }) {
   );
 }
 
-// Converte lista de itens em string descrição
 function itensToDescricao(itens) {
   if (!itens || itens.length === 0) return "";
   return itens.map(i => `${i.nome}${i.avulso ? " (avulso)" : ""} x${i.qtd}`).join(", ");
@@ -343,7 +328,6 @@ function ModalOS({ open, onClose, onSaved, editData }) {
     api.get(`/clientes?q=${encodeURIComponent(busca)}`).then(r=>setClientes(r.data)).catch(()=>{});
   }, [busca]);
 
-  // Atualiza valortotal quando produtos são adicionados/removidos/editados
   const handleTotalChange = (novoTotal) => {
     if (novoTotal > 0) {
       setForm(f => ({ ...f, valortotal: novoTotal.toFixed(2) }));
@@ -421,7 +405,7 @@ function ModalOS({ open, onClose, onSaved, editData }) {
 
   const total     = Number(form.valortotal)  || 0;
   const entrada   = Number(form.valorentrada) || 0;
-  const saldoPrev = Math.max(0, total - entrada);
+  const restantePrev = Math.max(0, total - entrada);
 
   if (!open) return null;
 
@@ -439,7 +423,6 @@ function ModalOS({ open, onClose, onSaved, editData }) {
 
           <div className="modal-body">
 
-            {/* Cliente com autocomplete */}
             <div style={{position:"relative"}}>
               <div className="form-group">
                 <label className="form-label">
@@ -495,7 +478,6 @@ function ModalOS({ open, onClose, onSaved, editData }) {
               </div>
             </div>
 
-            {/* Seletor de produtos */}
             <div className="form-group">
               <label className="form-label">
                 Produtos / Materiais
@@ -540,12 +522,12 @@ function ModalOS({ open, onClose, onSaved, editData }) {
               <div style={{
                 display:"flex", justifyContent:"space-between", alignItems:"center",
                 padding:"var(--space-3) var(--space-4)",
-                background: saldoPrev > 0 ? "var(--color-warning-hl)" : "var(--color-success-hl, var(--color-primary-highlight))",
+                background: restantePrev > 0 ? "var(--color-warning-hl)" : "var(--color-success-hl, var(--color-primary-highlight))",
                 borderRadius:"var(--radius-md)", fontSize:"var(--text-xs)"
               }}>
-                <span style={{color:"var(--color-text-muted)"}}>Saldo a receber após entrada:</span>
-                <span style={{ fontFamily:"monospace", fontWeight:800, color: saldoPrev > 0 ? "var(--color-warning)" : "var(--color-success)" }}>
-                  {saldoPrev > 0 ? fmt(saldoPrev) : "✓ Quitado na entrada"}
+                <span style={{color:"var(--color-text-muted)"}}>Restante a receber após entrada:</span>
+                <span style={{ fontFamily:"monospace", fontWeight:800, color: restantePrev > 0 ? "var(--color-warning)" : "var(--color-success)" }}>
+                  {restantePrev > 0 ? fmt(restantePrev) : "✓ Quitado na entrada"}
                 </span>
               </div>
             )}
@@ -680,13 +662,13 @@ export default function Ordens() {
           <div className="table-wrap">
             <table>
               <thead>
-                <tr><th>Número</th><th>Cliente</th><th>Serviço</th><th>Total</th><th>Saldo</th><th>Prazo</th><th>Status</th><th>Prioridade</th><th/></tr>
+                <tr><th>Número</th><th>Cliente</th><th>Serviço</th><th>Total</th><th>Restante</th><th>Prazo</th><th>Status</th><th>Prioridade</th><th/></tr>
               </thead>
               <tbody>
                 {filtered.map(o=>{
                   const prazo   = o.prazoentrega||o.prazo;
                   const vencida = prazo && prazo<HOJE && !["Entregue","Cancelado"].includes(o.status);
-                  const saldo   = saldoOS(o);
+                  const restante = saldoOS(o);
                   return (
                     <tr key={o.id} onClick={()=>navigate(`/ordens/${o.id}`)} style={{cursor:"pointer"}}>
                       <td style={{fontWeight:700,color:"var(--color-primary)",fontFamily:"monospace"}}>{o.numero}</td>
@@ -698,8 +680,8 @@ export default function Ordens() {
                       </td>
                       <td>{o.servico}</td>
                       <td className="tabnum">{fmt(o.valortotal||o.valor)}</td>
-                      <td className="tabnum" style={{color:saldo>0?"var(--color-warning)":"var(--color-success)",fontWeight:700}}>
-                        {saldo>0?fmt(saldo):"✓ Quitado"}
+                      <td className="tabnum" style={{color:restante>0?"var(--color-warning)":"var(--color-success)",fontWeight:700}}>
+                        {restante>0?fmt(restante):"✓ Quitado"}
                       </td>
                       <td style={{fontSize:"var(--text-xs)",color:vencida?"var(--color-error)":"inherit",fontWeight:vencida?700:400}}>
                         {fmtD(prazo)}{vencida&&<span style={{marginLeft:4}}>⚠</span>}
