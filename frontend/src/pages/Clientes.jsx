@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
@@ -26,9 +26,6 @@ function maskDoc(v) {
 function maskCep(v){const n=v.replace(/\D/g,'').slice(0,8);return n.length>5?`${n.slice(0,5)}-${n.slice(5)}`:n;}
 const UFS=['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
-// ── Portal wrapper: monta filhos diretamente no document.body ─────────────────
-// Isso garante que position:fixed funcione em 100% dos cenários,
-// independente de qualquer overflow/transform nos ancestrais.
 function Portal({ children }) {
   return ReactDOM.createPortal(children, document.body);
 }
@@ -43,13 +40,12 @@ function ModalCliente({ open, onClose, onSaved, editData }) {
   const [cepLoading, setCepLoading] = useState(false);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
 
-  // Bloqueia scroll do body enquanto o modal estiver aberto
+  // Debounce refs
+  const cnpjTimer = useRef(null);
+  const cepTimer  = useRef(null);
+
   useEffect(() => {
-    if (open) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
+    document.body.style.overflow = open ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
   }, [open]);
 
@@ -62,48 +58,83 @@ function ModalCliente({ open, onClose, onSaved, editData }) {
       cep: editData.cep||'', endereco: editData.address||'',
       cidade: editData.cidade||'', uf: editData.uf||'', obs: editData.notes||''
     } : blank);
+    return () => {
+      clearTimeout(cnpjTimer.current);
+      clearTimeout(cepTimer.current);
+    };
   },[open, editData]);
 
-  const onCpfChange = async v => {
-    const masked = maskDoc(v); set('cpf', masked);
+  const onCpfChange = v => {
+    const masked = maskDoc(v);
+    set('cpf', masked);
     const digits = masked.replace(/\D/g,'');
-    if(digits.length===14){ setDocLoading(true); setDocInfo(null);
-      try{
-        const r = await api.get(`/consulta/cnpj/${digits}`); const d=r.data;
-        if(d.nome){ setDocInfo({ok:true,nome:d.nome,fantasia:d.fantasia,situacao:d.situacao,fonte:d.fonte});
-          setForm(f=>({...f,cpf:masked,
-            nome:f.nome.trim()?f.nome:(d.fantasia||d.nome),
-            contato:f.contato.trim()?f.contato:(d.telefone||''),
-            email:f.email.trim()?f.email:(d.email||''),
-            endereco:f.endereco.trim()?f.endereco:[d.logradouro,d.numero,d.complemento].filter(Boolean).join(', '),
-            cidade:f.cidade.trim()?f.cidade:(d.municipio||''),
-            uf:f.uf.trim()?f.uf:(d.uf||''),
-            cep:f.cep.trim()?f.cep:(d.cep?maskCep(d.cep):''),
-          })); toast.success('CNPJ encontrado!');
-        } else setDocInfo({erro:d.error||'CNPJ não encontrado'});
-      }catch(e){ setDocInfo({erro:e.response?.data?.error||'Erro'}); } finally{ setDocLoading(false); }
-    } else if(digits.length===11) setDocInfo({aviso:'CPF preenchido. Dados manuais.'});
-    else setDocInfo(null);
+
+    clearTimeout(cnpjTimer.current);
+
+    if (digits.length === 14) {
+      setDocLoading(true);
+      setDocInfo(null);
+      cnpjTimer.current = setTimeout(async () => {
+        try {
+          const r = await api.get(`/consulta/cnpj/${digits}`);
+          const d = r.data;
+          if (d.nome) {
+            setDocInfo({ ok:true, nome:d.nome, fantasia:d.fantasia, situacao:d.situacao });
+            setForm(f => ({
+              ...f,
+              cpf: masked,
+              nome:     f.nome.trim()    ? f.nome    : (d.fantasia||d.nome),
+              contato:  f.contato.trim() ? f.contato : (d.telefone||''),
+              email:    f.email.trim()   ? f.email   : (d.email||''),
+              endereco: f.endereco.trim()? f.endereco: [d.logradouro,d.numero,d.complemento].filter(Boolean).join(', '),
+              cidade:   f.cidade.trim()  ? f.cidade  : (d.municipio||''),
+              uf:       f.uf.trim()      ? f.uf      : (d.uf||''),
+              cep:      f.cep.trim()     ? f.cep     : (d.cep?maskCep(d.cep):''),
+            }));
+            toast.success('CNPJ encontrado!');
+          } else {
+            setDocInfo({ erro: d.error||'CNPJ n\u00e3o encontrado' });
+          }
+        } catch(e) {
+          setDocInfo({ erro: e.response?.data?.error||'Erro' });
+        } finally {
+          setDocLoading(false);
+        }
+      }, 600);
+    } else if (digits.length === 11) {
+      setDocInfo({ aviso: 'CPF preenchido. Dados manuais.' });
+    } else {
+      setDocInfo(null);
+    }
   };
 
-  const onCepChange = async v => {
-    const masked = maskCep(v); set('cep',masked);
-    if(masked.replace(/\D/g,'').length===8){ setCepLoading(true);
-      try{
-        const r=await fetch(`https://brasilapi.com.br/api/cep/v1/${masked.replace(/\D/g,'')}`);
-        const d=await r.json();
-        if(d.street||d.city) setForm(f=>({...f,cep:masked,
-          endereco:f.endereco.trim()?f.endereco:[d.street,d.neighborhood].filter(Boolean).join(', '),
-          cidade:f.cidade.trim()?f.cidade:(d.city||''),
-          uf:f.uf.trim()?f.uf:(d.state||''),
-        }));
-        toast.success('CEP encontrado!');
-      }catch{} finally{ setCepLoading(false); }
+  const onCepChange = v => {
+    const masked = maskCep(v);
+    set('cep', masked);
+    clearTimeout(cepTimer.current);
+    if (masked.replace(/\D/g,'').length === 8) {
+      setCepLoading(true);
+      cepTimer.current = setTimeout(async () => {
+        try {
+          const r = await fetch(`https://brasilapi.com.br/api/cep/v1/${masked.replace(/\D/g,'')}`);
+          const d = await r.json();
+          if (d.street || d.city) {
+            setForm(f => ({
+              ...f,
+              cep: masked,
+              endereco: f.endereco.trim() ? f.endereco : [d.street,d.neighborhood].filter(Boolean).join(', '),
+              cidade:   f.cidade.trim()   ? f.cidade   : (d.city||''),
+              uf:       f.uf.trim()       ? f.uf       : (d.state||''),
+            }));
+            toast.success('CEP encontrado!');
+          }
+        } catch {} finally { setCepLoading(false); }
+      }, 600);
     }
   };
 
   const save = async () => {
-    if(!form.nome.trim()){ toast.error('Nome obrigatório'); return; }
+    if(!form.nome.trim()){ toast.error('Nome obrigat\u00f3rio'); return; }
     setSaving(true);
     try{
       const payload={name:form.nome,phone:form.contato,email:form.email,cpf:form.cpf,ie:form.ie,address:form.endereco,cidade:form.cidade,uf:form.uf,cep:form.cep,notes:form.obs};
@@ -119,12 +150,8 @@ function ModalCliente({ open, onClose, onSaved, editData }) {
 
   return (
     <Portal>
-      <div
-        className="modal-overlay"
-        onClick={e => e.target === e.currentTarget && onClose()}
-      >
+      <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
         <div className="modal modal-lg" style={{ maxWidth: 660 }}>
-
           <div className="modal-header">
             <span className="modal-title">{editData ? 'Editar Cliente' : 'Novo Cliente'}</span>
             <button className="btn btn-icon btn-ghost" onClick={onClose}>
@@ -135,26 +162,26 @@ function ModalCliente({ open, onClose, onSaved, editData }) {
           </div>
 
           <div className="modal-body">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
+            <div style={{ display:'flex', flexDirection:'column', gap:'var(--space-5)' }}>
 
-              {/* Identificação */}
+              {/* Identifica\u00e7\u00e3o */}
               <div>
-                <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 'var(--space-3)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <div style={{ fontSize:'var(--text-xs)', fontWeight:700, color:'var(--color-text-muted)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:'var(--space-3)', display:'flex', alignItems:'center', gap:'var(--space-2)' }}>
                   <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx={12} cy={7} r={4}/></svg>
-                  Identificação
+                  Identifica\u00e7\u00e3o
                 </div>
                 <div className="form-grid-2">
                   <div className="form-group col-span-2">
                     <label className="form-label">Nome / Empresa</label>
-                    <input className="form-input" placeholder="Nome completo ou razão social" value={form.nome} onChange={e => set('nome', e.target.value)} autoFocus />
+                    <input className="form-input" placeholder="Nome completo ou raz\u00e3o social" value={form.nome} onChange={e => set('nome', e.target.value)} autoFocus />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">CPF / CNPJ {docLoading && <div className="spinner" style={{ width: 10, height: 10, display:'inline-block' }} />}</label>
+                    <label className="form-label">CPF / CNPJ {docLoading && <div className="spinner" style={{ width:10, height:10, display:'inline-block' }} />}</label>
                     <input className="form-input" placeholder="000.000.000-00 ou 00.000.000/0001-00" value={form.cpf} maxLength={18} onChange={e => onCpfChange(e.target.value)} />
                     {docInfo?.ok && (
                       <div style={{ fontSize:'var(--text-xs)', color:'var(--color-success)', marginTop:'var(--space-1)', display:'flex', gap:4, alignItems:'center' }}>
                         <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}><path d="M20 6L9 17l-5-5"/></svg>
-                        {docInfo.fantasia||docInfo.nome} · {docInfo.situacao}
+                        {docInfo.fantasia||docInfo.nome} \u00b7 {docInfo.situacao}
                       </div>
                     )}
                     {docInfo?.erro && <div className="form-error">{docInfo.erro}</div>}
@@ -162,7 +189,7 @@ function ModalCliente({ open, onClose, onSaved, editData }) {
                   </div>
                   {isJuridica && (
                     <div className="form-group">
-                      <label className="form-label">Inscrição Estadual</label>
+                      <label className="form-label">Inscri\u00e7\u00e3o Estadual</label>
                       <input className="form-input" value={form.ie} onChange={e => set('ie', e.target.value)} />
                     </div>
                   )}
@@ -171,7 +198,7 @@ function ModalCliente({ open, onClose, onSaved, editData }) {
 
               {/* Contato */}
               <div>
-                <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 'var(--space-3)' }}>Contato</div>
+                <div style={{ fontSize:'var(--text-xs)', fontWeight:700, color:'var(--color-text-muted)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:'var(--space-3)' }}>Contato</div>
                 <div className="form-grid-2">
                   <div className="form-group">
                     <label className="form-label">WhatsApp / Telefone</label>
@@ -184,10 +211,10 @@ function ModalCliente({ open, onClose, onSaved, editData }) {
                 </div>
               </div>
 
-              {/* Endereço */}
+              {/* Endere\u00e7o */}
               <div>
-                <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 'var(--space-3)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                  Endereço {cepLoading && <div className="spinner" style={{ width: 10, height: 10, display:'inline-block' }} />}
+                <div style={{ fontSize:'var(--text-xs)', fontWeight:700, color:'var(--color-text-muted)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:'var(--space-3)', display:'flex', alignItems:'center', gap:'var(--space-2)' }}>
+                  Endere\u00e7o {cepLoading && <div className="spinner" style={{ width:10, height:10, display:'inline-block' }} />}
                 </div>
                 <div className="form-grid-2">
                   <div className="form-group">
@@ -196,7 +223,7 @@ function ModalCliente({ open, onClose, onSaved, editData }) {
                   </div>
                   <div className="form-group col-span-2">
                     <label className="form-label">Logradouro</label>
-                    <input className="form-input" placeholder="Rua, número, complemento" value={form.endereco} onChange={e => set('endereco', e.target.value)} />
+                    <input className="form-input" placeholder="Rua, n\u00famero, complemento" value={form.endereco} onChange={e => set('endereco', e.target.value)} />
                   </div>
                   <div className="form-group">
                     <label className="form-label">Cidade</label>
@@ -212,10 +239,10 @@ function ModalCliente({ open, onClose, onSaved, editData }) {
                 </div>
               </div>
 
-              {/* Observações */}
+              {/* Observa\u00e7\u00f5es */}
               <div className="form-group">
-                <label className="form-label">Observações</label>
-                <textarea className="form-input" rows={2} value={form.obs} onChange={e => set('obs', e.target.value)} style={{ resize: 'vertical' }} placeholder="Preferências, referências, informações extras..." />
+                <label className="form-label">Observa\u00e7\u00f5es</label>
+                <textarea className="form-input" rows={2} value={form.obs} onChange={e => set('obs', e.target.value)} style={{ resize:'vertical' }} placeholder="Prefer\u00eancias, refer\u00eancias, informa\u00e7\u00f5es extras..." />
               </div>
 
             </div>
@@ -224,17 +251,16 @@ function ModalCliente({ open, onClose, onSaved, editData }) {
           <div className="modal-footer">
             <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
             <button className="btn btn-primary" onClick={save} disabled={saving}>
-              {saving ? <><div className="spinner" style={{ width: 14, height: 14 }} />Salvando...</> : 'Salvar'}
+              {saving ? <><div className="spinner" style={{ width:14, height:14 }} />Salvando...</> : 'Salvar'}
             </button>
           </div>
-
         </div>
       </div>
     </Portal>
   );
 }
 
-// ── Página principal ──────────────────────────────────────────────────────────
+// ── P\u00e1gina principal ──────────────────────────────────────────────────────────
 export default function Clientes() {
   const { isCaixa, isAdmin } = useAuth();
   const navigate = useNavigate();
@@ -248,6 +274,8 @@ export default function Clientes() {
   const [deleteId, setDeleteId] = useState(null);
   const [deleteName, setDeleteName] = useState('');
 
+  useEffect(() => { document.title = 'Clientes \u2014 Arte & Molduras'; }, []);
+
   const load = useCallback(async()=>{
     setLoading(true);
     try{ const r=await api.get('/clientes'); setClientes(r.data); }
@@ -259,7 +287,7 @@ export default function Clientes() {
   const abrirDrawer = async c => {
     setDrawer(c); setDrawerOS([]); setDrawerLoad(true);
     try{ const r=await api.get(`/clientes/${c.id}/ordens`); setDrawerOS(r.data); }
-    catch{ toast.error('Erro ao carregar histórico'); }
+    catch{ toast.error('Erro ao carregar hist\u00f3rico'); }
     finally{ setDrawerLoad(false); }
   };
 
@@ -272,7 +300,7 @@ export default function Clientes() {
   const confirmarExclusao = async () => {
     try{
       await api.delete(`/clientes/${deleteId}`);
-      toast.success('Cliente excluído');
+      toast.success('Cliente exclu\u00eddo');
       setDeleteId(null);
       if(drawer?.id === deleteId) setDrawer(null);
       load();
@@ -344,14 +372,14 @@ export default function Clientes() {
                           <div style={{fontFamily:'monospace',fontSize:'var(--text-xs)'}}>{c.cpf}</div>
                         </div>}
                       </td>
-                      <td style={{fontSize:'var(--text-xs)',color:'var(--color-text-muted)'}}>{c.ie||'—'}</td>
+                      <td style={{fontSize:'var(--text-xs)',color:'var(--color-text-muted)'}}>{c.ie||'\u2014'}</td>
                       <td>
                         {c.phone?<a href={`https://wa.me/55${c.phone.replace(/\D/g,'')}`} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} style={{color:'var(--color-primary)',fontWeight:600,fontSize:'var(--text-xs)',display:'flex',alignItems:'center',gap:4}}>
                           <svg width={11} height={11} viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M11.896 2C6.394 2 2 6.394 2 11.896c0 1.89.497 3.659 1.363 5.193L2 22l5.086-1.334A9.845 9.845 0 0011.896 22c5.502 0 9.896-4.394 9.896-9.896C21.792 6.394 17.398 2 11.896 2z"/></svg>
                           {c.phone}
-                        </a>:<span style={{color:'var(--color-text-faint)'}}>—</span>}
+                        </a>:<span style={{color:'var(--color-text-faint)'}}>\u2014</span>}
                       </td>
-                      <td style={{fontSize:'var(--text-xs)'}}>{c.cidade?<span>{c.cidade}{c.uf?` / ${c.uf}`:''}</span>:'—'}</td>
+                      <td style={{fontSize:'var(--text-xs)'}}>{c.cidade?<span>{c.cidade}{c.uf?` / ${c.uf}`:''}</span>:'\u2014'}</td>
                       <td><span style={{fontWeight:700,color:'var(--color-primary)'}}>{c.totalordens||0}</span></td>
                       <td className="tabnum" style={{fontWeight:600}}>{fmt(c.gastototal||0)}</td>
                       <td>
@@ -377,20 +405,10 @@ export default function Clientes() {
         )}
       </div>
 
-      {/* Modal cadastro/edição */}
-      <ModalCliente
-        open={modal.open}
-        onClose={()=>setModal({open:false,edit:null})}
-        onSaved={load}
-        editData={modal.edit}
-      />
+      <ModalCliente open={modal.open} onClose={()=>setModal({open:false,edit:null})} onSaved={load} editData={modal.edit} />
 
-      {/* Modal confirmar exclusão — também via Portal */}
       {deleteId && ReactDOM.createPortal(
-        <div
-          className="modal-overlay"
-          onClick={e=>e.target===e.currentTarget&&setDeleteId(null)}
-        >
+        <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&setDeleteId(null)}>
           <div className="modal modal-sm">
             <div className="modal-header">
               <span className="modal-title" style={{color:'var(--color-error)'}}>Excluir Cliente</span>
@@ -403,7 +421,7 @@ export default function Clientes() {
                 Tem certeza que deseja excluir <strong style={{color:'var(--color-text)'}}>{deleteName}</strong>?
               </p>
               <div style={{padding:'var(--space-3)',background:'var(--color-error-hl)',borderRadius:'var(--radius-md)',fontSize:'var(--text-xs)',color:'var(--color-error)',fontWeight:600}}>
-                ⚠️ As ordens de serviço vinculadas a este cliente <strong>não serão excluídas</strong>, apenas a referência ao cliente será removida.
+                \u26a0\ufe0f As ordens de servi\u00e7o vinculadas a este cliente <strong>n\u00e3o ser\u00e3o exclu\u00eddas</strong>, apenas a refer\u00eancia ao cliente ser\u00e1 removida.
               </div>
             </div>
             <div className="modal-footer">
@@ -415,7 +433,6 @@ export default function Clientes() {
         document.body
       )}
 
-      {/* Drawer histórico do cliente — também via Portal */}
       {drawer && ReactDOM.createPortal(
         <div
           style={{position:'fixed',inset:0,zIndex:400,display:'flex',justifyContent:'flex-end',background:'oklch(0 0 0 / 0.35)',backdropFilter:'blur(2px)'}}
@@ -430,7 +447,7 @@ export default function Clientes() {
                   {drawer.phone&&<span>{drawer.phone}</span>}
                 </div>
               </div>
-              <button className="btn btn-ghost btn-sm" onClick={()=>setDrawer(null)} style={{fontSize:20,lineHeight:1}}>×</button>
+              <button className="btn btn-ghost btn-sm" onClick={()=>setDrawer(null)} style={{fontSize:20,lineHeight:1}}>\u00d7</button>
             </div>
 
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'var(--space-3)',padding:'var(--space-4) var(--space-6)'}}>
@@ -443,18 +460,18 @@ export default function Clientes() {
             </div>
 
             <div style={{padding:'0 var(--space-6) var(--space-6)',flex:1}}>
-              <div style={{fontWeight:600,fontSize:'var(--text-xs)',marginBottom:'var(--space-3)',color:'var(--color-text-muted)',textTransform:'uppercase',letterSpacing:'0.05em'}}>Histórico de Ordens</div>
+              <div style={{fontWeight:600,fontSize:'var(--text-xs)',marginBottom:'var(--space-3)',color:'var(--color-text-muted)',textTransform:'uppercase',letterSpacing:'0.05em'}}>Hist\u00f3rico de Ordens</div>
               {drawerLoad&&[1,2,3].map(i=><div key={i} className="skeleton" style={{height:64,borderRadius:'var(--radius-md)',marginBottom:'var(--space-2)'}}/>)}
               {!drawerLoad&&drawerOS.length===0&&<div style={{textAlign:'center',padding:'var(--space-8)',color:'var(--color-text-faint)',fontSize:'var(--text-sm)'}}>Nenhuma OS vinculada</div>}
               {!drawerLoad&&drawerOS.map(o=>{
-                const bmap={Recebido:'recebido','Em Produção':'emproducao',Pronto:'pronto',Entregue:'entregue',Cancelado:'cancelado'};
+                const bmap={Recebido:'recebido','Em Produ\u00e7\u00e3o':'emproducao',Pronto:'pronto',Entregue:'entregue',Cancelado:'cancelado'};
                 return (
                   <div key={o.id} onClick={()=>navigate(`/ordens/${o.id}`)} style={{cursor:'pointer',padding:'var(--space-3)',borderRadius:'var(--radius-md)',border:'1px solid var(--color-border)',marginBottom:'var(--space-2)',background:'var(--color-surface-2)'}}>
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
                       <span style={{fontWeight:700,color:'var(--color-primary)',fontSize:'var(--text-sm)'}}>{o.numero}</span>
                       <span className={`badge badge-${bmap[o.status]||'recebido'}`}>{o.status}</span>
                     </div>
-                    <div style={{fontSize:'var(--text-xs)',color:'var(--color-text-muted)'}}>{o.servico}{o.descricao?` · ${o.descricao}`:''}</div>
+                    <div style={{fontSize:'var(--text-xs)',color:'var(--color-text-muted)'}}>{o.servico}{o.descricao?` \u00b7 ${o.descricao}`:''}</div>
                     <div style={{display:'flex',justifyContent:'space-between',marginTop:4,fontSize:'var(--text-xs)'}}>
                       <span style={{color:'var(--color-text-faint)'}}>{o.createdat?new Date(o.createdat).toLocaleDateString('pt-BR'):''}</span>
                       <span style={{fontWeight:600}}>R$ {Number(o.valortotal||0).toFixed(2).replace('.',',')}</span>
