@@ -1,4 +1,3 @@
-
 require("dotenv").config();
 const express = require("express");
 const cors    = require("cors");
@@ -13,7 +12,7 @@ const PORT = process.env.PORT || 3001;
 
 // CORS — libera same-origin e origens localhost em dev
 app.use(cors({ origin: true, credentials: true }));
-app.use(express.json());  
+app.use(express.json());
 
 // ── Rotas ──────────────────────────────────────────────────────────────────
 app.use("/api/auth",      require("./routes/auth"));
@@ -24,6 +23,7 @@ app.use("/api/caixa",     require("./routes/caixa"));
 app.use("/api/relatorios",require("./routes/relatorios"));
 app.use("/api/consulta",  require("./routes/consulta"));
 app.use("/api/backup",    require("./routes/backup"));
+app.use("/api/produtos",  require("./routes/produtos"));
 
 // Health
 app.get("/api/health", (_req, res) => res.json({ ok: true, ts: Date.now() }));
