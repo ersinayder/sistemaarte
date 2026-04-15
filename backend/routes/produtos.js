@@ -1,10 +1,10 @@
 const express = require('express');
 const router  = express.Router();
 const { getDB } = require('../database');
-const { auth, requireRole } = require('../middlewares/auth');
+const { auth }  = require('../middlewares/auth');
 
-// GET /api/produtos
-router.get('/', auth, (req, res) => {
+// GET /api/produtos — qualquer autenticado
+router.get('/', auth(), (req, res) => {
   try {
     const db   = getDB();
     const rows = db.prepare('SELECT * FROM produtos ORDER BY nome COLLATE NOCASE').all();
@@ -15,7 +15,7 @@ router.get('/', auth, (req, res) => {
 });
 
 // GET /api/produtos/:id
-router.get('/:id', auth, (req, res) => {
+router.get('/:id', auth(), (req, res) => {
   try {
     const db  = getDB();
     const row = db.prepare('SELECT * FROM produtos WHERE id = ?').get(req.params.id);
@@ -26,8 +26,8 @@ router.get('/:id', auth, (req, res) => {
   }
 });
 
-// POST /api/produtos
-router.post('/', auth, requireRole('admin', 'caixa'), (req, res) => {
+// POST /api/produtos — admin ou caixa
+router.post('/', auth(['admin','caixa']), (req, res) => {
   try {
     const db = getDB();
     const { nome, categoria, unidade, preco, estoque, estoquemin, descricao } = req.body;
@@ -37,8 +37,8 @@ router.post('/', auth, requireRole('admin', 'caixa'), (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(
       nome.trim(),
-      categoria || 'Outros',
-      unidade   || 'un',
+      categoria  || 'Outros',
+      unidade    || 'un',
       Number(preco)      || 0,
       Number(estoque)    || 0,
       Number(estoquemin) || 0,
@@ -51,35 +51,35 @@ router.post('/', auth, requireRole('admin', 'caixa'), (req, res) => {
   }
 });
 
-// PUT /api/produtos/:id
-router.put('/:id', auth, requireRole('admin', 'caixa'), (req, res) => {
+// PUT /api/produtos/:id — admin ou caixa
+router.put('/:id', auth(['admin','caixa']), (req, res) => {
   try {
     const db = getDB();
     const { nome, categoria, unidade, preco, estoque, estoquemin, descricao } = req.body;
     if (!nome?.trim()) return res.status(400).json({ error: 'Nome obrigatório' });
-    db.prepare(`
-      UPDATE produtos SET nome=?, categoria=?, unidade=?, preco=?, estoque=?, estoquemin=?, descricao=?, updatedat=datetime('now')
+    const r = db.prepare(`
+      UPDATE produtos SET nome=?, categoria=?, unidade=?, preco=?, estoque=?, estoquemin=?, descricao=?, updatedat=datetime('now','localtime')
       WHERE id=?
     `).run(
       nome.trim(),
-      categoria || 'Outros',
-      unidade   || 'un',
+      categoria  || 'Outros',
+      unidade    || 'un',
       Number(preco)      || 0,
       Number(estoque)    || 0,
       Number(estoquemin) || 0,
       descricao?.trim()  || '',
       req.params.id
     );
+    if (r.changes === 0) return res.status(404).json({ error: 'Não encontrado' });
     const updated = db.prepare('SELECT * FROM produtos WHERE id = ?').get(req.params.id);
-    if (!updated) return res.status(404).json({ error: 'Não encontrado' });
     res.json(updated);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-// DELETE /api/produtos/:id
-router.delete('/:id', auth, requireRole('admin'), (req, res) => {
+// DELETE /api/produtos/:id — somente admin
+router.delete('/:id', auth(['admin']), (req, res) => {
   try {
     const db = getDB();
     const r  = db.prepare('DELETE FROM produtos WHERE id = ?').run(req.params.id);
