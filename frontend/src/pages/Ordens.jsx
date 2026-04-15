@@ -7,7 +7,8 @@ import { useAuth } from "../context/AuthContext";
 
 const fmt   = v => `R$ ${Number(v||0).toFixed(2).replace(".",",").replace(/(\d)(?=(\d{3})+,)/g,"$1.")}`;
 const fmtD  = iso => iso ? new Date(iso+"T12:00:00").toLocaleDateString("pt-BR") : "—";
-const HOJE  = new Date(Date.now() - 3*60*60*1000).toISOString().slice(0,10);
+
+const getHoje = () => new Date(Date.now() - 3*60*60*1000).toISOString().slice(0,10);
 
 const STATUS_OPTS = ["Recebido","Em Produção","Pronto","Entregue","Cancelado"];
 const PRIO_OPTS   = ["Normal","Alta","Urgente"];
@@ -16,8 +17,9 @@ const TIPO_OPTS   = ["Corte a Laser","Quadro","Caixas","3D","Diversos"];
 const PAG_LABEL   = { Credito:"Crédito", Debito:"Débito", Link:"Link Pag.", Pix:"Pix", Dinheiro:"Dinheiro" };
 const STATUS_BADGE= { Recebido:"recebido","Em Produção":"emproducao",Pronto:"pronto",Entregue:"entregue",Cancelado:"cancelado" };
 
+/* BUG-04: NaN-safe com || 0 ao final */
 const saldoOS = o => Math.max(0,
-  Number(o?.saldoaberto ?? o?.valorrestante ?? (Number(o?.valor||o?.valortotal||0) - Number(o?.entrada||o?.valorentrada||0)))
+  Number(o?.saldoaberto ?? o?.valorrestante ?? (Number(o?.valor||o?.valortotal||0) - Number(o?.entrada||o?.valorentrada||0))) || 0
 );
 
 const BLANK = {
@@ -163,7 +165,7 @@ function ProdutoSelector({ itens, onChange, onTotalChange }) {
                 }}
               >
                 <span style={{ fontWeight:700, color:"var(--color-primary)", fontSize:16 }}>+</span>
-                Adicionar <strong style={{ color:"var(--color-text)" }}>"{busca.trim()}"</strong> como avulso
+                Adicionar <strong style={{ color:"var(--color-text)" }}>"{ busca.trim()}"</strong> como avulso
               </div>
             )}
           </div>
@@ -586,6 +588,12 @@ export default function Ordens() {
   const [deleteId, setDeleteId] = useState(null);
   const [deleteNum,setDeleteNum]= useState("");
 
+  /* INC-07: HOJE reativo — recalculado a cada render, nunca frozen no load */
+  const HOJE = useMemo(() => getHoje(), []);
+  useEffect(() => {
+    document.title = 'Ordens de Serviço — Arte & Molduras';
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -610,8 +618,8 @@ export default function Ordens() {
   );
 
   const vencidas = useMemo(()=>
-    filtered.filter(o=>{ const p=o.prazoentrega||o.prazo; return p && p<HOJE && !["Entregue","Cancelado"].includes(o.status); }),
-    [filtered]
+    filtered.filter(o=>{ const p=o.prazoentrega; return p && p<HOJE && !["Entregue","Cancelado"].includes(o.status); }),
+    [filtered, HOJE]
   );
 
   return (
@@ -666,7 +674,7 @@ export default function Ordens() {
               </thead>
               <tbody>
                 {filtered.map(o=>{
-                  const prazo   = o.prazoentrega||o.prazo;
+                  const prazo   = o.prazoentrega;
                   const vencida = prazo && prazo<HOJE && !["Entregue","Cancelado"].includes(o.status);
                   const restante = saldoOS(o);
                   return (
