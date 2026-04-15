@@ -9,7 +9,7 @@ const fmt = v =>
 const fmtN = (v, d = 2) => Number(v || 0).toFixed(d).replace('.', ',')
 const uid = (() => { let n = 0; return () => ++n })()
 
-/* ── Highlights via color-mix (sem depender de vars que podem não existir) ── */
+/* ── Highlights via color-mix ─────────────────────────────── */
 const HL = {
   orange: 'color-mix(in oklab, var(--color-orange) 12%, var(--color-surface-offset))',
   blue:   'color-mix(in oklab, var(--color-blue)   12%, var(--color-surface-offset))',
@@ -86,7 +86,7 @@ function PrecoInput({ label, id, value, onChange }) {
   )
 }
 
-function AddButton({ onClick, label = 'Adicionar à OS' }) {
+function AddButton({ onClick, label = 'Adicionar \u00e0 OS' }) {
   return (
     <button onClick={onClick} className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -130,28 +130,28 @@ function ModuloQuadros({ onAdd, precos, setPrecos }) {
   const handleAdd = () => {
     if (!hasData) return
     onAdd({
-      type: 'quadros', emoji: '🖼',
-      name: desc || `Quadro ${l}×${a}cm`,
-      sub: `${l}×${a} cm · ×${q}`,
+      type: 'quadros', emoji: '\uD83D\uDDBC',
+      name: desc || `Quadro ${l}\u00d7${a}cm`,
+      sub: `${l}\u00d7${a} cm \u00b7 \u00d7${q}`,
       price: subtotal,
     })
   }
 
   return (
     <div className="card card-pad">
-      <ModuleHeader emoji="🖼" title="Quadros — Molduras & Vidros" desc="Cálculo por perímetro (m) e área (m²)" />
+      <ModuleHeader emoji="\uD83D\uDDBC" title="Quadros \u2014 Molduras & Vidros" desc="C\u00e1lculo por per\u00edmetro (m) e \u00e1rea (m\u00b2)" />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px,1fr))', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
-        <PrecoInput label="Preço Moldura / m"      id="q_pm" value={precos.moldura} onChange={v => setPrecos(p => ({ ...p, moldura: v }))} />
-        <PrecoInput label="Preço Fundo/Vidro / m²" id="q_pv" value={precos.vidro}   onChange={v => setPrecos(p => ({ ...p, vidro: v }))} />
+        <PrecoInput label="Pre\u00e7o Moldura / m"      id="q_pm" value={precos.moldura} onChange={v => setPrecos(p => ({ ...p, moldura: v }))} />
+        <PrecoInput label="Pre\u00e7o Fundo/Vidro / m\u00b2" id="q_pv" value={precos.vidro}   onChange={v => setPrecos(p => ({ ...p, vidro: v }))} />
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px,1fr))', gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
         <div className="form-group">
-          <label className="form-label">Largura — L (cm)</label>
+          <label className="form-label">Largura \u2014 L (cm)</label>
           <input type="number" className="form-input" placeholder="60" min="0" step="0.1"
             value={L} onChange={e => setL(e.target.value)} />
         </div>
         <div className="form-group">
-          <label className="form-label">Altura — A (cm)</label>
+          <label className="form-label">Altura \u2014 A (cm)</label>
           <input type="number" className="form-input" placeholder="80" min="0" step="0.1"
             value={A} onChange={e => setA(e.target.value)} />
         </div>
@@ -162,8 +162,8 @@ function ModuloQuadros({ onAdd, precos, setPrecos }) {
         </div>
       </div>
       <div className="form-group" style={{ marginBottom: 'var(--space-4)' }}>
-        <label className="form-label">Descrição</label>
-        <input type="text" className="form-input" placeholder="Ex: Quadro sala 60×80"
+        <label className="form-label">Descri\u00e7\u00e3o</label>
+        <input type="text" className="form-input" placeholder="Ex: Quadro sala 60\u00d780"
           value={desc} onChange={e => setDesc(e.target.value)} />
       </div>
       <div style={{ display: 'flex', gap: 'var(--space-3)', marginBottom: 'var(--space-3)', alignItems: 'flex-end', flexWrap: 'wrap' }}>
@@ -196,19 +196,19 @@ function ModuloQuadros({ onAdd, precos, setPrecos }) {
               {e.nome} <strong style={{ color: 'var(--color-text)' }}>+{fmt(e.val)}</strong>
               <span onClick={() => removeExtra(e.id)}
                 style={{ cursor: 'pointer', color: 'var(--color-text-faint)', marginLeft: 2, lineHeight: 1 }}
-                role="button" aria-label="Remover extra">×</span>
+                role="button" aria-label="Remover extra">\u00d7</span>
             </span>
           ))}
         </div>
       )}
       <div style={{ background: 'var(--color-surface-offset)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4)', marginBottom: 'var(--space-5)' }}>
-        <CalcRow label="Perímetro (m)"     value={hasData ? fmtN(perimetro, 3) + ' m'  : '—'} />
-        <CalcRow label="Custo Moldura"     value={hasData ? fmt(cMoldura)           : '—'} />
-        <CalcRow label="Área (m²)"         value={hasData ? fmtN(area, 4) + ' m²'   : '—'} />
-        <CalcRow label="Custo Fundo/Vidro" value={hasData ? fmt(cVidro)             : '—'} />
+        <CalcRow label="Per\u00edmetro (m)"     value={hasData ? fmtN(perimetro, 3) + ' m'  : '\u2014'} />
+        <CalcRow label="Custo Moldura"     value={hasData ? fmt(cMoldura)           : '\u2014'} />
+        <CalcRow label="\u00c1rea (m\u00b2)"         value={hasData ? fmtN(area, 4) + ' m\u00b2'   : '\u2014'} />
+        <CalcRow label="Custo Fundo/Vidro" value={hasData ? fmt(cVidro)             : '\u2014'} />
         <CalcRow label="Extras"            value={fmt(extrasTotal)} />
         <div style={{ height: 1, background: 'var(--color-border)', margin: '6px 0' }} />
-        <CalcRow label={`Subtotal × ${q}`} value={hasData ? fmt(subtotal) : '—'} total />
+        <CalcRow label={`Subtotal \u00d7 ${q}`} value={hasData ? fmt(subtotal) : '\u2014'} total />
       </div>
       <AddButton onClick={handleAdd} />
     </div>
@@ -232,22 +232,22 @@ function ModuloNomes({ onAdd, precos, setPrecos }) {
   const handleAdd = () => {
     if (!hasData) return
     onAdd({
-      type: 'nomes', emoji: '✂️',
+      type: 'nomes', emoji: '\u2702\uFE0F',
       name: desc || `Nome ${c}cm`,
-      sub: `${c} cm · ×${q}`,
+      sub: `${c} cm \u00b7 \u00d7${q}`,
       price: subtotal,
     })
   }
 
   return (
     <div className="card card-pad">
-      <ModuleHeader emoji="✂️" title="Nomes — Corte Linear" desc="Cálculo por comprimento total (m)" />
+      <ModuleHeader emoji="\u2702\uFE0F" title="Nomes \u2014 Corte Linear" desc="C\u00e1lculo por comprimento total (m)" />
       <div style={{ marginBottom: 'var(--space-4)' }}>
-        <PrecoInput label="Preço Material / m" id="n_pm" value={precos.nomes} onChange={v => setPrecos(p => ({ ...p, nomes: v }))} />
+        <PrecoInput label="Pre\u00e7o Material / m" id="n_pm" value={precos.nomes} onChange={v => setPrecos(p => ({ ...p, nomes: v }))} />
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px', gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
         <div className="form-group">
-          <label className="form-label">Comprimento total — C (cm)</label>
+          <label className="form-label">Comprimento total \u2014 C (cm)</label>
           <input type="number" className="form-input" placeholder="85" min="0" step="0.1"
             value={C} onChange={e => setC(e.target.value)} />
           <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)', marginTop: 4, display: 'block' }}>Soma linear das letras</span>
@@ -259,15 +259,15 @@ function ModuloNomes({ onAdd, precos, setPrecos }) {
         </div>
       </div>
       <div className="form-group" style={{ marginBottom: 'var(--space-4)' }}>
-        <label className="form-label">Descrição / Nome</label>
-        <input type="text" className="form-input" placeholder="Ex: FAMÍLIA SILVA"
+        <label className="form-label">Descri\u00e7\u00e3o / Nome</label>
+        <input type="text" className="form-input" placeholder="Ex: FAM\u00cdLIA SILVA"
           value={desc} onChange={e => setDesc(e.target.value)} />
       </div>
       <div style={{ background: 'var(--color-surface-offset)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4)', marginBottom: 'var(--space-5)' }}>
-        <CalcRow label="Comprimento (m)"   value={hasData ? fmtN(compM, 3) + ' m' : '—'} />
-        <CalcRow label="Custo linear"      value={hasData ? fmt(custo)          : '—'} />
+        <CalcRow label="Comprimento (m)"   value={hasData ? fmtN(compM, 3) + ' m' : '\u2014'} />
+        <CalcRow label="Custo linear"      value={hasData ? fmt(custo)          : '\u2014'} />
         <div style={{ height: 1, background: 'var(--color-border)', margin: '6px 0' }} />
-        <CalcRow label={`Subtotal × ${q}`} value={hasData ? fmt(subtotal) : '—'} total />
+        <CalcRow label={`Subtotal \u00d7 ${q}`} value={hasData ? fmt(subtotal) : '\u2014'} total />
       </div>
       <AddButton onClick={handleAdd} />
     </div>
@@ -295,27 +295,27 @@ function Modulo3D({ onAdd, precos, setPrecos }) {
   const handleAdd = () => {
     if (!hasData) return
     onAdd({
-      type: '3d', emoji: '🖨',
-      name: desc || `Peça 3D ${l}×${a}cm`,
-      sub: `Ref=${ref}cm (${refWinner}) · ×${q}`,
+      type: '3d', emoji: '\uD83D\uDDA8',
+      name: desc || `Pe\u00e7a 3D ${l}\u00d7${a}cm`,
+      sub: `Ref=${ref}cm (${refWinner}) \u00b7 \u00d7${q}`,
       price: subtotal,
     })
   }
 
   return (
     <div className="card card-pad">
-      <ModuleHeader emoji="🖨" title="Peças 3D — Maior Dimensão" desc="Custo pelo maior eixo: Ref = max(L, A)" />
+      <ModuleHeader emoji="\uD83D\uDDA8" title="Pe\u00e7as 3D \u2014 Maior Dimens\u00e3o" desc="Custo pelo maior eixo: Ref = max(L, A)" />
       <div style={{ marginBottom: 'var(--space-4)' }}>
-        <PrecoInput label="Preço 3D / m" id="t_pm" value={precos.trid} onChange={v => setPrecos(p => ({ ...p, trid: v }))} />
+        <PrecoInput label="Pre\u00e7o 3D / m" id="t_pm" value={precos.trid} onChange={v => setPrecos(p => ({ ...p, trid: v }))} />
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px,1fr))', gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
         <div className="form-group">
-          <label className="form-label">Largura — L (cm)</label>
+          <label className="form-label">Largura \u2014 L (cm)</label>
           <input type="number" className="form-input" placeholder="40" min="0" step="0.1"
             value={L} onChange={e => setL(e.target.value)} />
         </div>
         <div className="form-group">
-          <label className="form-label">Altura — A (cm)</label>
+          <label className="form-label">Altura \u2014 A (cm)</label>
           <input type="number" className="form-input" placeholder="60" min="0" step="0.1"
             value={A} onChange={e => setA(e.target.value)} />
         </div>
@@ -326,7 +326,7 @@ function Modulo3D({ onAdd, precos, setPrecos }) {
         </div>
       </div>
       <div className="form-group" style={{ marginBottom: 'var(--space-4)' }}>
-        <label className="form-label">Descrição da Peça</label>
+        <label className="form-label">Descri\u00e7\u00e3o da Pe\u00e7a</label>
         <input type="text" className="form-input" placeholder="Ex: Totem decorativo"
           value={desc} onChange={e => setDesc(e.target.value)} />
       </div>
@@ -341,15 +341,15 @@ function Modulo3D({ onAdd, precos, setPrecos }) {
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M9 19V6l12-3v13M9 19c0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2 2 .9 2 2zm12-3c0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2 2 .9 2 2z"/>
           </svg>
-          Ref = {fmtN(ref, 1)} cm — {refWinner} é o maior lado
+          Ref = {fmtN(ref, 1)} cm \u2014 {refWinner} \u00e9 o maior lado
         </div>
       )}
       <div style={{ background: 'var(--color-surface-offset)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4)', marginBottom: 'var(--space-5)' }}>
-        <CalcRow label="Referência (maior lado)" value={hasData ? fmtN(ref, 1) + ' cm'  : '—'} />
-        <CalcRow label="Ref (m)"                 value={hasData ? fmtN(refM, 3) + ' m'  : '—'} />
-        <CalcRow label="Custo 3D"                value={hasData ? fmt(custo)             : '—'} />
+        <CalcRow label="Refer\u00eancia (maior lado)" value={hasData ? fmtN(ref, 1) + ' cm'  : '\u2014'} />
+        <CalcRow label="Ref (m)"                 value={hasData ? fmtN(refM, 3) + ' m'  : '\u2014'} />
+        <CalcRow label="Custo 3D"                value={hasData ? fmt(custo)             : '\u2014'} />
         <div style={{ height: 1, background: 'var(--color-border)', margin: '6px 0' }} />
-        <CalcRow label={`Subtotal × ${q}`}       value={hasData ? fmt(subtotal) : '—'} total />
+        <CalcRow label={`Subtotal \u00d7 ${q}`}       value={hasData ? fmt(subtotal) : '\u2014'} total />
       </div>
       <AddButton onClick={handleAdd} />
     </div>
@@ -375,7 +375,7 @@ function ConfirmDialog({ message, onConfirm, onCancel }) {
         maxWidth: 360, width: '100%',
         textAlign: 'center',
       }}>
-        <div style={{ fontSize: 28, marginBottom: 'var(--space-3)' }}>🗑️</div>
+        <div style={{ fontSize: 28, marginBottom: 'var(--space-3)' }}>\uD83D\uDDD1\uFE0F</div>
         <div style={{ fontWeight: 700, marginBottom: 'var(--space-2)' }}>Limpar OS?</div>
         <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-5)' }}>
           {message}
@@ -392,7 +392,7 @@ function ConfirmDialog({ message, onConfirm, onCancel }) {
 /* ── Modal Converter em OS ───────────────────────────────── */
 const TIPO_OPTS = ['Corte a Laser', 'Quadro', 'Caixas', '3D', 'Diversos']
 const PAG_OPTS  = ['Pix', 'Dinheiro', 'Credito', 'Debito', 'Link']
-const PAG_LABEL = { Credito: 'Crédito', Debito: 'Débito', Link: 'Link Pag.', Pix: 'Pix', Dinheiro: 'Dinheiro' }
+const PAG_LABEL = { Credito: 'Cr\u00e9dito', Debito: 'D\u00e9bito', Link: 'Link Pag.', Pix: 'Pix', Dinheiro: 'Dinheiro' }
 const PRIO_OPTS = ['Normal', 'Alta', 'Urgente']
 
 function ModalConverterOS({ open, onClose, osItems, total, pagamento, observacoes, servico }) {
@@ -415,7 +415,6 @@ function ModalConverterOS({ open, onClose, osItems, total, pagamento, observacoe
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
-  // Sincroniza total/pagamento/obs/servico quando o modal abre
   React.useEffect(() => {
     if (!open) return
     setForm({
@@ -456,7 +455,7 @@ function ModalConverterOS({ open, onClose, osItems, total, pagamento, observacoe
     } catch {}
     try {
       const r = await api.post('/clientes', { name: nome.trim(), phone: telefone || null, cpf: cpf || null })
-      toast(`✨ Cliente "${nome.trim()}" cadastrado automaticamente`)
+      toast(`\u2728 Cliente "${nome.trim()}" cadastrado automaticamente`)
       return r.data?.id || null
     } catch { return null }
   }
@@ -464,12 +463,12 @@ function ModalConverterOS({ open, onClose, osItems, total, pagamento, observacoe
   const descricaoItens = osItems.map(i => `${i.emoji} ${i.name} (${i.sub})`).join('; ')
 
   const salvar = async () => {
-    if (!form.clientenome.trim()) return toast.error('Nome do cliente obrigatório')
+    if (!form.clientenome.trim()) return toast.error('Nome do cliente obrigat\u00f3rio')
     const totalN   = Number(form.valortotal)
     const entradaN = form.valorentrada === '' ? 0 : Number(form.valorentrada)
     if (isNaN(totalN) || totalN <= 0)  return toast.error('Valor total deve ser maior que zero')
-    if (isNaN(entradaN) || entradaN < 0) return toast.error('Entrada não pode ser negativa')
-    if (entradaN > totalN)              return toast.error('Entrada não pode ser maior que o total')
+    if (isNaN(entradaN) || entradaN < 0) return toast.error('Entrada n\u00e3o pode ser negativa')
+    if (entradaN > totalN)              return toast.error('Entrada n\u00e3o pode ser maior que o total')
 
     setSaving(true)
     try {
@@ -492,7 +491,7 @@ function ModalConverterOS({ open, onClose, osItems, total, pagamento, observacoe
         status:          form.status,
       }
 
-      const r = await api.post('/ordens', payload)
+      await api.post('/ordens', payload)
       toast.success('OS criada com sucesso!')
       onClose()
       navigate('/ordens')
@@ -511,30 +510,30 @@ function ModalConverterOS({ open, onClose, osItems, total, pagamento, observacoe
     <div className="modal-overlay" style={{ zIndex: 200 }} onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal modal-lg">
         <div className="modal-header">
-          <span className="modal-title">Converter Orçamento em OS</span>
+          <span className="modal-title">Converter Or\u00e7amento em OS</span>
           <button className="btn btn-icon btn-ghost" onClick={onClose}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
         </div>
 
         <div className="modal-body">
-          {/* Resumo dos itens do orçamento */}
+          {/* Resumo dos itens do or\u00e7amento */}
           <div style={{
             background: 'var(--color-surface-offset)', borderRadius: 'var(--radius-lg)',
             padding: 'var(--space-3) var(--space-4)', marginBottom: 'var(--space-4)',
             border: '1px solid var(--color-border)',
           }}>
             <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-2)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              Itens do Orçamento ({osItems.length})
+              Itens do Or\u00e7amento ({osItems.length})
             </div>
             {osItems.map(i => (
               <div key={i.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-xs)', padding: '2px 0', color: 'var(--color-text-muted)' }}>
-                <span>{i.emoji} {i.name} <span style={{ color: 'var(--color-text-faint)' }}>· {i.sub}</span></span>
+                <span>{i.emoji} {i.name} <span style={{ color: 'var(--color-text-faint)' }}>\u00b7 {i.sub}</span></span>
                 <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--color-text)' }}>{fmt(i.price)}</span>
               </div>
             ))}
             <div style={{ borderTop: '1px solid var(--color-border)', marginTop: 'var(--space-2)', paddingTop: 'var(--space-2)', display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>Total do Orçamento</span>
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>Total do Or\u00e7amento</span>
               <span style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--color-primary)', fontSize: 'var(--text-sm)' }}>{fmt(total)}</span>
             </div>
           </div>
@@ -545,7 +544,7 @@ function ModalConverterOS({ open, onClose, osItems, total, pagamento, observacoe
               <label className="form-label">
                 Cliente <span style={{ color: 'var(--color-error)' }}>*</span>
                 <span style={{ marginLeft: 8, fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 400 }}>
-                  — se não cadastrado, será registrado automaticamente
+                  \u2014 se n\u00e3o cadastrado, ser\u00e1 registrado automaticamente
                 </span>
               </label>
               <input className="form-input"
@@ -582,7 +581,7 @@ function ModalConverterOS({ open, onClose, osItems, total, pagamento, observacoe
 
           <div className="form-grid-2">
             <div className="form-group">
-              <label className="form-label">Tipo de Serviço</label>
+              <label className="form-label">Tipo de Servi\u00e7o</label>
               <select className="form-input" value={form.servico} onChange={e => set('servico', e.target.value)}>
                 {TIPO_OPTS.map(t => <option key={t}>{t}</option>)}
               </select>
@@ -623,9 +622,9 @@ function ModalConverterOS({ open, onClose, osItems, total, pagamento, observacoe
               background: restante > 0 ? 'var(--color-warning-hl, var(--color-warning-highlight))' : 'var(--color-success-highlight)',
               borderRadius: 'var(--radius-md)', fontSize: 'var(--text-xs)',
             }}>
-              <span style={{ color: 'var(--color-text-muted)' }}>Restante a receber após entrada:</span>
+              <span style={{ color: 'var(--color-text-muted)' }}>Restante a receber ap\u00f3s entrada:</span>
               <span style={{ fontFamily: 'monospace', fontWeight: 800, color: restante > 0 ? 'var(--color-warning)' : 'var(--color-success)' }}>
-                {restante > 0 ? fmt(restante) : '✓ Quitado na entrada'}
+                {restante > 0 ? fmt(restante) : '\u2713 Quitado na entrada'}
               </span>
             </div>
           )}
@@ -644,10 +643,10 @@ function ModalConverterOS({ open, onClose, osItems, total, pagamento, observacoe
           </div>
 
           <div className="form-group">
-            <label className="form-label">Observações Internas</label>
+            <label className="form-label">Observa\u00e7\u00f5es Internas</label>
             <textarea className="form-input" rows={2} style={{ resize: 'vertical' }}
               value={form.observacoes} onChange={e => set('observacoes', e.target.value)}
-              placeholder="Visível apenas internamente..."/>
+              placeholder="Vis\u00edvel apenas internamente..."/>
           </div>
         </div>
 
@@ -677,7 +676,7 @@ function OSCart({ items, onRemove, onClear, onPrint, onConverterOS }) {
   const dotColor = { quadros: 'var(--color-orange)', nomes: 'var(--color-blue)', '3d': 'var(--color-purple)' }
   const tagBg    = { quadros: HL.orange, nomes: HL.blue, '3d': HL.purple }
   const tagColor = { quadros: 'var(--color-orange)', nomes: 'var(--color-blue)', '3d': 'var(--color-purple)' }
-  const tagLabel = { quadros: '🖼 Quadros', nomes: '✂️ Nomes', '3d': '🖨 3D' }
+  const tagLabel = { quadros: '\uD83D\uDDBC Quadros', nomes: '\u2702\uFE0F Nomes', '3d': '\uD83D\uDDA8 3D' }
 
   return (
     <div className="card" style={{
@@ -695,7 +694,7 @@ function OSCart({ items, onRemove, onClear, onPrint, onConverterOS }) {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/>
           </svg>
-          Ordem de Serviço
+          Ordem de Servi\u00e7o
         </div>
         <span style={{
           background: 'var(--color-surface-dynamic)', color: 'var(--color-text-muted)',
@@ -719,7 +718,7 @@ function OSCart({ items, onRemove, onClear, onPrint, onConverterOS }) {
               <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/>
             </svg>
             <div style={{ fontWeight: 600, color: 'var(--color-text)', marginBottom: 4 }}>OS vazia</div>
-            <div style={{ fontSize: 'var(--text-xs)' }}>Adicione itens dos módulos ao lado</div>
+            <div style={{ fontSize: 'var(--text-xs)' }}>Adicione itens dos m\u00f3dulos ao lado</div>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
@@ -781,7 +780,7 @@ function OSCart({ items, onRemove, onClear, onPrint, onConverterOS }) {
         </div>
       )}
 
-      {/* Total final + ações */}
+      {/* Total final + a\u00e7\u00f5es */}
       <div style={{ padding: 'var(--space-4) var(--space-5)', borderTop: '1px solid var(--color-border)', flexShrink: 0 }}>
         <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
           Valor Final da OS
@@ -795,14 +794,14 @@ function OSCart({ items, onRemove, onClear, onPrint, onConverterOS }) {
           {fmt(final)}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-          {/* Imprimir Orçamento */}
+          {/* Imprimir Or\u00e7amento */}
           <button className="btn btn-ghost" style={{ justifyContent: 'center' }} onClick={onPrint}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polyline points="6 9 6 2 18 2 18 9"/>
               <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
               <rect x="6" y="14" width="12" height="8"/>
             </svg>
-            Imprimir Orçamento
+            Imprimir Or\u00e7amento
           </button>
           {/* Converter em OS */}
           <button
@@ -839,7 +838,7 @@ function buildPrintHtml(osItems, fmtFn) {
     `<tr><td>${i.emoji} ${i.name}</td><td>${i.sub}</td><td class="val">${fmtFn(i.price)}</td></tr>`
   ).join('')
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
-<title>Orçamento OS</title>
+<title>Or\u00e7amento OS</title>
 <style>
   body { font-family: Arial, sans-serif; padding: 32px; color: #111; max-width: 700px; margin: 0 auto; }
   h1 { font-size: 22px; margin-bottom: 4px; }
@@ -853,25 +852,24 @@ function buildPrintHtml(osItems, fmtFn) {
   @media print { body { padding: 0; } }
 </style></head>
 <body>
-  <h1>Orçamento — Ordem de Serviço</h1>
+  <h1>Or\u00e7amento \u2014 Ordem de Servi\u00e7o</h1>
   <div class="sub">Emitido em ${now}</div>
   <table>
     <thead><tr><th>Item</th><th>Detalhes</th><th style="text-align:right">Valor</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>
   <div class="total">Total: ${fmtFn(final)}</div>
-  <div class="meta">Arte & Molduras — Sistema de Orçamento</div>
+  <div class="meta">Arte & Molduras \u2014 Sistema de Or\u00e7amento</div>
   <script>window.onload = () => { window.print() }<\/script>
 </body></html>`
 }
 
 /* ── Main Page ───────────────────────────────────────────── */
 export default function Orcamento() {
-  const [osItems, setOsItems]         = useState([])
+  const [osItems, setOsItems]           = useState([])
   const [confirmClear, setConfirmClear] = useState(false)
-  const [modalOS, setModalOS]         = useState(false)
+  const [modalOS, setModalOS]           = useState(false)
 
-  // Preços compartilhados entre módulos — persistidos em memória durante a sessão
   const [precos, setPrecos] = useState({ moldura: 45, vidro: 120, nomes: 35, trid: 80 })
 
   const addItem = useCallback(item => {
@@ -901,14 +899,13 @@ export default function Orcamento() {
     }
   }
 
-  // Total calculado dos itens
   const totalItens = osItems.reduce((s, i) => s + i.price, 0)
 
   return (
     <div>
       {confirmClear && (
         <ConfirmDialog
-          message="Todos os itens da OS serão removidos. Esta ação não pode ser desfeita."
+          message="Todos os itens da OS ser\u00e3o removidos. Esta a\u00e7\u00e3o n\u00e3o pode ser desfeita."
           onConfirm={confirmClearOS}
           onCancel={() => setConfirmClear(false)}
         />
@@ -926,28 +923,25 @@ export default function Orcamento() {
 
       <div className="page-header">
         <div>
-          <h1 className="page-title">Orçamento</h1>
+          <h1 className="page-title">Or\u00e7amento</h1>
           <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: 4 }}>
-            Monte o orçamento por módulo e gere o valor final da OS
+            Monte o or\u00e7amento por m\u00f3dulo e gere o valor final da OS
           </p>
         </div>
       </div>
 
-      {/* Grid principal — responsivo: empilha em telas < ~700px */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))',
         gap: 'var(--space-6)',
         alignItems: 'start',
       }}>
-        {/* Módulos de cálculo */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)', minWidth: 0 }}>
           <ModuloQuadros onAdd={addItem} precos={precos} setPrecos={setPrecos} />
           <ModuloNomes   onAdd={addItem} precos={precos} setPrecos={setPrecos} />
           <Modulo3D      onAdd={addItem} precos={precos} setPrecos={setPrecos} />
         </div>
 
-        {/* Carrinho OS */}
         <div style={{ minWidth: 0 }}>
           <OSCart
             items={osItems}
@@ -955,7 +949,7 @@ export default function Orcamento() {
             onClear={clearOS}
             onPrint={printOS}
             onConverterOS={() => {
-              if (osItems.length === 0) return toast.error('Adicione ao menos um item ao orçamento')
+              if (osItems.length === 0) return toast.error('Adicione ao menos um item ao or\u00e7amento')
               setModalOS(true)
             }}
           />
