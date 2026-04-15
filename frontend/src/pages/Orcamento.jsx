@@ -1,4 +1,7 @@
 import React, { useState, useCallback, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
+import api from '../services/api'
+import toast from 'react-hot-toast'
 
 /* ── helpers ─────────────────────────────────────────────── */
 const fmt = v =>
@@ -353,7 +356,7 @@ function Modulo3D({ onAdd, precos, setPrecos }) {
   )
 }
 
-/* ── Confirm Dialog (substitui window.confirm — seguro em iframe) ── */
+/* ── Confirm Dialog ──────────────────────────────────────── */
 function ConfirmDialog({ message, onConfirm, onCancel }) {
   return (
     <div style={{
@@ -386,8 +389,287 @@ function ConfirmDialog({ message, onConfirm, onCancel }) {
   )
 }
 
+/* ── Modal Converter em OS ───────────────────────────────── */
+const TIPO_OPTS = ['Corte a Laser', 'Quadro', 'Caixas', '3D', 'Diversos']
+const PAG_OPTS  = ['Pix', 'Dinheiro', 'Credito', 'Debito', 'Link']
+const PAG_LABEL = { Credito: 'Crédito', Debito: 'Débito', Link: 'Link Pag.', Pix: 'Pix', Dinheiro: 'Dinheiro' }
+const PRIO_OPTS = ['Normal', 'Alta', 'Urgente']
+
+function ModalConverterOS({ open, onClose, osItems, total, pagamento, observacoes, servico }) {
+  const navigate = useNavigate()
+  const [saving, setSaving] = useState(false)
+  const [clientes, setClientes] = useState([])
+  const [buscaCliente, setBuscaCliente] = useState('')
+
+  const [form, setForm] = useState({
+    clientenome: '', clientetelefone: '', clientecpf: '', clienteid: null,
+    servico: servico || TIPO_OPTS[0],
+    valortotal: total ? total.toFixed(2) : '',
+    valorentrada: '',
+    prazoentrega: '',
+    prioridade: 'Normal',
+    pagamento: pagamento || 'Pix',
+    observacoes: observacoes || '',
+    status: 'Recebido',
+  })
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  // Sincroniza total/pagamento/obs/servico quando o modal abre
+  React.useEffect(() => {
+    if (!open) return
+    setForm({
+      clientenome: '', clientetelefone: '', clientecpf: '', clienteid: null,
+      servico: servico || TIPO_OPTS[0],
+      valortotal: total ? total.toFixed(2) : '',
+      valorentrada: '',
+      prazoentrega: '',
+      prioridade: 'Normal',
+      pagamento: pagamento || 'Pix',
+      observacoes: observacoes || '',
+      status: 'Recebido',
+    })
+    setBuscaCliente('')
+    setClientes([])
+  }, [open, total, pagamento, observacoes, servico])
+
+  React.useEffect(() => {
+    if (buscaCliente.length < 2) { setClientes([]); return }
+    api.get(`/clientes?q=${encodeURIComponent(buscaCliente)}`).then(r => setClientes(r.data || [])).catch(() => {})
+  }, [buscaCliente])
+
+  const selecionarCliente = c => {
+    set('clienteid', c.id)
+    set('clientenome', c.name)
+    set('clientetelefone', c.phone || '')
+    set('clientecpf', c.cpf || '')
+    setBuscaCliente(c.name)
+    setClientes([])
+  }
+
+  const ensureCliente = async (nome, telefone, cpf) => {
+    if (!nome.trim()) return null
+    try {
+      const r = await api.get(`/clientes?q=${encodeURIComponent(nome.trim())}`)
+      const exact = (r.data || []).find(c => c.name?.toLowerCase() === nome.trim().toLowerCase())
+      if (exact) return exact.id
+    } catch {}
+    try {
+      const r = await api.post('/clientes', { name: nome.trim(), phone: telefone || null, cpf: cpf || null })
+      toast(`✨ Cliente "${nome.trim()}" cadastrado automaticamente`)
+      return r.data?.id || null
+    } catch { return null }
+  }
+
+  const descricaoItens = osItems.map(i => `${i.emoji} ${i.name} (${i.sub})`).join('; ')
+
+  const salvar = async () => {
+    if (!form.clientenome.trim()) return toast.error('Nome do cliente obrigatório')
+    const totalN   = Number(form.valortotal)
+    const entradaN = form.valorentrada === '' ? 0 : Number(form.valorentrada)
+    if (isNaN(totalN) || totalN <= 0)  return toast.error('Valor total deve ser maior que zero')
+    if (isNaN(entradaN) || entradaN < 0) return toast.error('Entrada não pode ser negativa')
+    if (entradaN > totalN)              return toast.error('Entrada não pode ser maior que o total')
+
+    setSaving(true)
+    try {
+      let clienteid = form.clienteid
+      if (!clienteid) clienteid = await ensureCliente(form.clientenome, form.clientetelefone, form.clientecpf)
+
+      const payload = {
+        clienteid:       clienteid || null,
+        clientenome:     form.clientenome.trim(),
+        clientetelefone: form.clientetelefone || null,
+        clientecpf:      form.clientecpf || null,
+        servico:         form.servico,
+        descricao:       descricaoItens || null,
+        valortotal:      totalN,
+        valorentrada:    entradaN,
+        prazoentrega:    form.prazoentrega || null,
+        prioridade:      form.prioridade,
+        pagamento:       form.pagamento,
+        observacoes:     form.observacoes || null,
+        status:          form.status,
+      }
+
+      const r = await api.post('/ordens', payload)
+      toast.success('OS criada com sucesso!')
+      onClose()
+      navigate('/ordens')
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Erro ao criar OS')
+    } finally { setSaving(false) }
+  }
+
+  const totalN    = Number(form.valortotal) || 0
+  const entradaN  = Number(form.valorentrada) || 0
+  const restante  = Math.max(0, totalN - entradaN)
+
+  if (!open) return null
+
+  return (
+    <div className="modal-overlay" style={{ zIndex: 200 }} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal modal-lg">
+        <div className="modal-header">
+          <span className="modal-title">Converter Orçamento em OS</span>
+          <button className="btn btn-icon btn-ghost" onClick={onClose}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+
+        <div className="modal-body">
+          {/* Resumo dos itens do orçamento */}
+          <div style={{
+            background: 'var(--color-surface-offset)', borderRadius: 'var(--radius-lg)',
+            padding: 'var(--space-3) var(--space-4)', marginBottom: 'var(--space-4)',
+            border: '1px solid var(--color-border)',
+          }}>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-2)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              Itens do Orçamento ({osItems.length})
+            </div>
+            {osItems.map(i => (
+              <div key={i.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-xs)', padding: '2px 0', color: 'var(--color-text-muted)' }}>
+                <span>{i.emoji} {i.name} <span style={{ color: 'var(--color-text-faint)' }}>· {i.sub}</span></span>
+                <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--color-text)' }}>{fmt(i.price)}</span>
+              </div>
+            ))}
+            <div style={{ borderTop: '1px solid var(--color-border)', marginTop: 'var(--space-2)', paddingTop: 'var(--space-2)', display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>Total do Orçamento</span>
+              <span style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--color-primary)', fontSize: 'var(--text-sm)' }}>{fmt(total)}</span>
+            </div>
+          </div>
+
+          {/* Cliente */}
+          <div style={{ position: 'relative' }}>
+            <div className="form-group">
+              <label className="form-label">
+                Cliente <span style={{ color: 'var(--color-error)' }}>*</span>
+                <span style={{ marginLeft: 8, fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 400 }}>
+                  — se não cadastrado, será registrado automaticamente
+                </span>
+              </label>
+              <input className="form-input"
+                placeholder="Nome do cliente"
+                value={buscaCliente || form.clientenome}
+                onChange={e => { setBuscaCliente(e.target.value); set('clientenome', e.target.value); set('clienteid', null) }}
+              />
+            </div>
+            {clientes.length > 0 && (
+              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-md)', maxHeight: 200, overflowY: 'auto' }}>
+                {clientes.map(c => (
+                  <div key={c.id} onClick={() => selecionarCliente(c)}
+                    style={{ padding: 'var(--space-2) var(--space-3)', cursor: 'pointer', fontSize: 'var(--text-sm)' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--color-surface-offset)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                    <strong>{c.name}</strong>
+                    {c.cpf && <span style={{ color: 'var(--color-text-muted)', marginLeft: 8, fontSize: 'var(--text-xs)' }}>{c.cpf}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="form-grid-2">
+            <div className="form-group">
+              <label className="form-label">Telefone / WhatsApp</label>
+              <input className="form-input" value={form.clientetelefone} onChange={e => set('clientetelefone', e.target.value)} placeholder="31 9 0000-0000"/>
+            </div>
+            <div className="form-group">
+              <label className="form-label">CPF / CNPJ</label>
+              <input className="form-input" value={form.clientecpf} onChange={e => set('clientecpf', e.target.value)}/>
+            </div>
+          </div>
+
+          <div className="form-grid-2">
+            <div className="form-group">
+              <label className="form-label">Tipo de Serviço</label>
+              <select className="form-input" value={form.servico} onChange={e => set('servico', e.target.value)}>
+                {TIPO_OPTS.map(t => <option key={t}>{t}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Forma de Pagamento</label>
+              <select className="form-input" value={form.pagamento} onChange={e => set('pagamento', e.target.value)}>
+                {PAG_OPTS.map(p => <option key={p} value={p}>{PAG_LABEL[p] || p}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="form-grid-2">
+            <div className="form-group">
+              <label className="form-label">
+                Valor Total (R$) <span style={{ color: 'var(--color-error)' }}>*</span>
+              </label>
+              <input className="form-input" type="number" step="0.01" min="0"
+                value={form.valortotal}
+                onChange={e => set('valortotal', e.target.value)}
+                style={{ fontFamily: 'monospace', fontWeight: 700 }}
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">
+                Entrada (R$)
+                <span style={{ marginLeft: 6, fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 400 }}>opcional</span>
+              </label>
+              <input className="form-input" type="number" step="0.01" min="0" placeholder="0,00 (sem entrada)"
+                value={form.valorentrada} onChange={e => set('valorentrada', e.target.value)}/>
+            </div>
+          </div>
+
+          {totalN > 0 && (
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: 'var(--space-3) var(--space-4)',
+              background: restante > 0 ? 'var(--color-warning-hl, var(--color-warning-highlight))' : 'var(--color-success-highlight)',
+              borderRadius: 'var(--radius-md)', fontSize: 'var(--text-xs)',
+            }}>
+              <span style={{ color: 'var(--color-text-muted)' }}>Restante a receber após entrada:</span>
+              <span style={{ fontFamily: 'monospace', fontWeight: 800, color: restante > 0 ? 'var(--color-warning)' : 'var(--color-success)' }}>
+                {restante > 0 ? fmt(restante) : '✓ Quitado na entrada'}
+              </span>
+            </div>
+          )}
+
+          <div className="form-grid-2">
+            <div className="form-group">
+              <label className="form-label">Prazo de Entrega</label>
+              <input className="form-input" type="date" value={form.prazoentrega} onChange={e => set('prazoentrega', e.target.value)}/>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Prioridade</label>
+              <select className="form-input" value={form.prioridade} onChange={e => set('prioridade', e.target.value)}>
+                {PRIO_OPTS.map(p => <option key={p}>{p}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Observações Internas</label>
+            <textarea className="form-input" rows={2} style={{ resize: 'vertical' }}
+              value={form.observacoes} onChange={e => set('observacoes', e.target.value)}
+              placeholder="Visível apenas internamente..."/>
+          </div>
+        </div>
+
+        <div className="modal-footer">
+          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" onClick={salvar} disabled={saving}>
+            {saving
+              ? <><div className="spinner" style={{ width: 14, height: 14 }}/>Criando OS...</>
+              : <>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg>
+                  Criar OS
+                </>
+            }
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /* ── OS Cart Sidebar ─────────────────────────────────────── */
-function OSCart({ items, onRemove, onClear, onPrint }) {
+function OSCart({ items, onRemove, onClear, onPrint, onConverterOS }) {
   const totals = { quadros: 0, nomes: 0, '3d': 0 }
   items.forEach(i => { totals[i.type] = (totals[i.type] || 0) + i.price })
   const final = Object.values(totals).reduce((s, v) => s + v, 0)
@@ -513,13 +795,26 @@ function OSCart({ items, onRemove, onClear, onPrint }) {
           {fmt(final)}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-          <button className="btn btn-primary" style={{ justifyContent: 'center' }} onClick={onPrint}>
+          {/* Imprimir Orçamento */}
+          <button className="btn btn-ghost" style={{ justifyContent: 'center' }} onClick={onPrint}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polyline points="6 9 6 2 18 2 18 9"/>
               <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
               <rect x="6" y="14" width="12" height="8"/>
             </svg>
-            Imprimir / Exportar OS
+            Imprimir Orçamento
+          </button>
+          {/* Converter em OS */}
+          <button
+            className="btn btn-primary"
+            style={{ justifyContent: 'center' }}
+            onClick={onConverterOS}
+            disabled={items.length === 0}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/>
+            </svg>
+            Converter em OS
           </button>
           <button className="btn btn-ghost btn-sm" style={{ justifyContent: 'center' }} onClick={onClear}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -534,14 +829,14 @@ function OSCart({ items, onRemove, onClear, onPrint }) {
   )
 }
 
-/* ── Print helper (fallback para data: URI caso popup seja bloqueado) ── */
-function buildPrintHtml(osItems, fmt) {
+/* ── Print helper ────────────────────────────────────────── */
+function buildPrintHtml(osItems, fmtFn) {
   const totals = { quadros: 0, nomes: 0, '3d': 0 }
   osItems.forEach(i => { totals[i.type] = (totals[i.type] || 0) + i.price })
   const final = Object.values(totals).reduce((s, v) => s + v, 0)
   const now   = new Date().toLocaleString('pt-BR')
   const rows  = osItems.map(i =>
-    `<tr><td>${i.emoji} ${i.name}</td><td>${i.sub}</td><td class="val">${fmt(i.price)}</td></tr>`
+    `<tr><td>${i.emoji} ${i.name}</td><td>${i.sub}</td><td class="val">${fmtFn(i.price)}</td></tr>`
   ).join('')
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
 <title>Orçamento OS</title>
@@ -564,7 +859,7 @@ function buildPrintHtml(osItems, fmt) {
     <thead><tr><th>Item</th><th>Detalhes</th><th style="text-align:right">Valor</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>
-  <div class="total">Total: ${fmt(final)}</div>
+  <div class="total">Total: ${fmtFn(final)}</div>
   <div class="meta">Arte & Molduras — Sistema de Orçamento</div>
   <script>window.onload = () => { window.print() }<\/script>
 </body></html>`
@@ -572,8 +867,9 @@ function buildPrintHtml(osItems, fmt) {
 
 /* ── Main Page ───────────────────────────────────────────── */
 export default function Orcamento() {
-  const [osItems, setOsItems] = useState([])
+  const [osItems, setOsItems]         = useState([])
   const [confirmClear, setConfirmClear] = useState(false)
+  const [modalOS, setModalOS]         = useState(false)
 
   // Preços compartilhados entre módulos — persistidos em memória durante a sessão
   const [precos, setPrecos] = useState({ moldura: 45, vidro: 120, nomes: 35, trid: 80 })
@@ -590,15 +886,10 @@ export default function Orcamento() {
   const printOS = () => {
     if (osItems.length === 0) return
     const html = buildPrintHtml(osItems, fmt)
-    // Tenta abrir popup; faz fallback para data: URI se bloqueado
     try {
       const w = window.open('', '_blank', 'width=750,height=900')
-      if (w) {
-        w.document.write(html)
-        w.document.close()
-      } else {
-        throw new Error('popup bloqueado')
-      }
+      if (w) { w.document.write(html); w.document.close() }
+      else throw new Error('popup bloqueado')
     } catch {
       const blob = new Blob([html], { type: 'text/html' })
       const url  = URL.createObjectURL(blob)
@@ -610,6 +901,9 @@ export default function Orcamento() {
     }
   }
 
+  // Total calculado dos itens
+  const totalItens = osItems.reduce((s, i) => s + i.price, 0)
+
   return (
     <div>
       {confirmClear && (
@@ -619,6 +913,16 @@ export default function Orcamento() {
           onCancel={() => setConfirmClear(false)}
         />
       )}
+
+      <ModalConverterOS
+        open={modalOS}
+        onClose={() => setModalOS(false)}
+        osItems={osItems}
+        total={totalItens}
+        pagamento="Pix"
+        observacoes=""
+        servico="Diversos"
+      />
 
       <div className="page-header">
         <div>
@@ -650,6 +954,10 @@ export default function Orcamento() {
             onRemove={removeItem}
             onClear={clearOS}
             onPrint={printOS}
+            onConverterOS={() => {
+              if (osItems.length === 0) return toast.error('Adicione ao menos um item ao orçamento')
+              setModalOS(true)
+            }}
           />
         </div>
       </div>
