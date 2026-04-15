@@ -13,6 +13,7 @@ const Relatorios   = React.lazy(() => import('./pages/Relatorios'))
 const Usuarios     = React.lazy(() => import('./pages/Usuarios'))
 const Clientes     = React.lazy(() => import('./pages/Clientes'))
 const Orcamento    = React.lazy(() => import('./pages/Orcamento'))
+const Produtos     = React.lazy(() => import('./pages/Produtos'))
 
 function PrivateRoute({ children, roles }) {
   const { user, loading } = useAuth()
@@ -43,6 +44,7 @@ function AppRoutes() {
           <Route path="/clientes" element={<PrivateRoute roles={['admin','caixa']}><Clientes /></PrivateRoute>}/>
           <Route path="/relatorios" element={<PrivateRoute roles={['admin','caixa']}><Relatorios /></PrivateRoute>}/>
           <Route path="/orcamento" element={<PrivateRoute roles={['admin','caixa']}><Orcamento /></PrivateRoute>}/>
+          <Route path="/produtos" element={<PrivateRoute roles={['admin','caixa']}><Produtos /></PrivateRoute>}/>
           <Route path="/usuarios" element={<PrivateRoute roles={['admin']}><Usuarios /></PrivateRoute>}/>
           <Route path="*" element={<Navigate to={defaultRoute} replace />} />
         </Route>
