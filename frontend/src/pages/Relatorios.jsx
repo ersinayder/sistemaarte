@@ -16,6 +16,7 @@ function imprimirRelatorio(dados, mes) {
   const [y,m] = mes.split('-')
   const nomeMes = new Date(parseInt(y),parseInt(m)-1,1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'})
   const win = window.open('','_blank','width=600,height=800')
+  if (!win) return toast && toast.error('Popup bloqueado! Permita popups para este site.')
   const PAG_LABEL2 = { Credito:'Crédito', Debito:'Débito', Link:'Link Pag.' }
   win.document.write(`<!DOCTYPE html><html lang="pt-BR"><head>
     <meta charset="UTF-8"><title>Relatório ${nomeMes}</title>
@@ -43,7 +44,6 @@ function imprimirRelatorio(dados, mes) {
   setTimeout(()=>{win.focus();win.print()},400)
 }
 
-
 function exportarCSV(dados, mes) {
   if (!dados?.lancamentos?.length) return
   const header = ['Data','Tipo','Descrição','Pagamento','Valor (R$)']
@@ -66,6 +66,7 @@ function exportarCSV(dados, mes) {
 }
 
 export default function Relatorios() {
+  useEffect(() => { document.title = 'Relatórios — Arte & Molduras' }, [])
   const hoje = new Date()
   const [mes, setMes] = useState(`${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`)
   const [dados, setDados] = useState(null)
@@ -90,7 +91,9 @@ export default function Relatorios() {
   const ordensVencidas = dados?.ordens_vencidas || 0
   const totalCartao = (porPag.Credito||0) + (porPag.Debito||0)
 
-  // Gráfico de barras diário
+  // BUG-07 FIXED: API retorna ticket_medio (com underscore), não ticketmedio
+  const ticketMedio = dados?.ticket_medio || dados?.ticketmedio || 0
+
   const chartData = {
     labels: dias.map(d => { const [,, dd] = d.data.split('-'); return `${dd}/${d.data.split('-')[1]}` }),
     datasets: [{
@@ -118,7 +121,6 @@ export default function Relatorios() {
 
   return (
     <div>
-      {/* Header */}
       <div className="page-header">
         <div>
           <h1 className="page-title">Relatórios</h1>
@@ -149,7 +151,7 @@ export default function Relatorios() {
         {[
           { label:'Total do Mês', value:fmt(total), color:'var(--color-primary)' },
           { label:'Lançamentos',  value:dados?.count||0, color:'var(--color-blue)' },
-          { label:'Ticket Médio', value:fmt(dados?.ticketmedio||0), color:'var(--color-gold)' },
+          { label:'Ticket Médio', value:fmt(ticketMedio), color:'var(--color-gold)' },
           { label:'Total Cartão', value:fmt(totalCartao), color:'var(--color-orange)' },
           { label:'Dias com Venda', value:dias.filter(d=>d.total>0).length, color:'var(--color-success)' },
         ].map(k => (
@@ -170,7 +172,6 @@ export default function Relatorios() {
 
       {/* Totais por pagamento + por tipo */}
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'var(--space-4)', marginBottom:'var(--space-4)' }}>
-        {/* Por pagamento */}
         <div className="card card-pad">
           <div style={{ fontWeight:700, fontSize:'var(--text-sm)', marginBottom:'var(--space-4)' }}>Por Forma de Pagamento</div>
           {Object.entries(porPag).filter(([,v])=>v>0).map(([p,v]) => {
@@ -181,9 +182,7 @@ export default function Relatorios() {
                   <span className={`badge badge-${PAG_BADGE[p]||'pix'}`}>{PAG_LABEL[p]||p}</span>
                   <span className="tabnum" style={{ fontWeight:700, fontSize:'var(--text-sm)' }}>{fmt(v)}</span>
                 </div>
-                <div className="progress-bar">
-                  <div className="progress-fill" style={{ width:`${pct}%` }}/>
-                </div>
+                <div className="progress-bar"><div className="progress-fill" style={{ width:`${pct}%` }}/></div>
                 <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-faint)', textAlign:'right', marginTop:2 }}>{pct.toFixed(1)}%</div>
               </div>
             )
@@ -191,7 +190,6 @@ export default function Relatorios() {
           {Object.values(porPag).every(v=>!v) && <p style={{ fontSize:'var(--text-xs)', color:'var(--color-text-faint)' }}>Sem dados</p>}
         </div>
 
-        {/* Por tipo */}
         <div className="card card-pad">
           <div style={{ fontWeight:700, fontSize:'var(--text-sm)', marginBottom:'var(--space-4)' }}>Por Tipo de Serviço</div>
           {Object.entries(porTipo).filter(([,v])=>v>0).map(([t,v]) => {
@@ -202,9 +200,7 @@ export default function Relatorios() {
                   <span className={`badge badge-${TIPO_BADGE[t]||'diversos'}`}>{t}</span>
                   <span className="tabnum" style={{ fontWeight:700, fontSize:'var(--text-sm)' }}>{fmt(v)}</span>
                 </div>
-                <div className="progress-bar">
-                  <div className="progress-fill" style={{ width:`${pct}%` }}/>
-                </div>
+                <div className="progress-bar"><div className="progress-fill" style={{ width:`${pct}%` }}/></div>
                 <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-faint)', textAlign:'right', marginTop:2 }}>{pct.toFixed(1)}%</div>
               </div>
             )
