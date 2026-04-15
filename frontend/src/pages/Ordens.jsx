@@ -280,7 +280,7 @@ function ProdutoSelector({ itens, onChange, onTotalChange }) {
 
       {itens.length === 0 && (
         <div style={{ marginTop:"var(--space-2)", fontSize:"var(--text-xs)", color:"var(--color-text-faint)", paddingLeft:2 }}>
-          Nenhum produto adicionado — a OS será salva sem produtos (ou use o campo acima)
+          Nenhum produto adicionado
         </div>
       )}
     </div>
@@ -449,7 +449,7 @@ function ModalOS({ open, onClose, onSaved, editData }) {
                   </span>
                 </label>
                 <input className="form-input"
-                  placeholder="Nome do cliente ou buscar cadastrado..."
+                  placeholder="Nome do cliente"
                   value={busca || form.clientenome}
                   onChange={e=>{ setBusca(e.target.value); set("clientenome",e.target.value); set("clienteid",null); }}
                 />
@@ -500,7 +500,7 @@ function ModalOS({ open, onClose, onSaved, editData }) {
               <label className="form-label">
                 Produtos / Materiais
                 <span style={{marginLeft:8,fontSize:"var(--text-xs)",color:"var(--color-text-muted)",fontWeight:400}}>
-                  — busque no cadastro ou adicione avulso · preços atualizam o total automaticamente
+                  — busque no cadastro ou adicione avulso
                 </span>
               </label>
               <ProdutoSelector
