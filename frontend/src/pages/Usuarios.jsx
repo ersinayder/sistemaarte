@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
+import ReactDOM from 'react-dom'
 import api from '../services/api'
 import toast from 'react-hot-toast'
 
@@ -7,10 +8,24 @@ const ROLE_LABEL = { admin:'Administrador', caixa:'Caixa', oficina:'Oficina' }
 const ROLE_COLOR = { admin:'var(--color-purple)', caixa:'var(--color-primary)', oficina:'var(--color-orange)' }
 const ROLE_HL    = { admin:'var(--color-purple-hl)', caixa:'var(--color-primary-hl)', oficina:'var(--color-orange-hl)' }
 
+function Portal({ children }) {
+  return ReactDOM.createPortal(children, document.body)
+}
+
 function ModalUsuario({ open, onClose, onSaved, editData }) {
   const [form, setForm] = useState({ name:'', username:'', password:'', role:'caixa', ativo:true })
   const [saving, setSaving] = useState(false)
   const set = (k,v) => setForm(f=>({...f,[k]:v}))
+
+  // Bloqueia scroll do body enquanto modal aberto
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => { document.body.style.overflow = '' }
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -35,77 +50,79 @@ function ModalUsuario({ open, onClose, onSaved, editData }) {
 
   if (!open) return null
   return (
-    <div className="modal-overlay" onClick={e => e.target===e.currentTarget && onClose()}>
-      <div className="modal">
-        <div className="modal-header">
-          <span className="modal-title">{editData ? 'Editar Usuário' : 'Novo Usuário'}</span>
-          <button className="btn btn-icon btn-ghost" onClick={onClose}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-          </button>
-        </div>
-        <div style={{ display:'flex', flexDirection:'column', gap:'var(--space-4)' }}>
-          <div className="form-grid-2">
-            <div className="form-group col-span-2">
-              <label className="form-label">Nome completo *</label>
-              <input className="form-input" placeholder="Ex: Ana Paula" value={form.name} onChange={e=>set('name',e.target.value)} autoFocus />
+    <Portal>
+      <div className="modal-overlay" onClick={e => e.target===e.currentTarget && onClose()}>
+        <div className="modal">
+          <div className="modal-header">
+            <span className="modal-title">{editData ? 'Editar Usuário' : 'Novo Usuário'}</span>
+            <button className="btn btn-icon btn-ghost" onClick={onClose}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <div style={{ display:'flex', flexDirection:'column', gap:'var(--space-4)', padding:'var(--space-4) var(--space-5)' }}>
+            <div className="form-grid-2">
+              <div className="form-group col-span-2">
+                <label className="form-label">Nome completo *</label>
+                <input className="form-input" placeholder="Ex: Ana Paula" value={form.name} onChange={e=>set('name',e.target.value)} autoFocus />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Login (usuário) *</label>
+                <input className="form-input" placeholder="Ex: ana.paula" value={form.username} onChange={e=>set('username',e.target.value.toLowerCase().replace(/\s/g,''))} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">{editData ? 'Nova Senha (deixe em branco para manter)' : 'Senha *'}</label>
+                <input className="form-input" type="password" placeholder="••••••••" value={form.password} onChange={e=>set('password',e.target.value)} />
+              </div>
             </div>
+
+            {/* Seleção de perfil */}
             <div className="form-group">
-              <label className="form-label">Login (usuário) *</label>
-              <input className="form-input" placeholder="Ex: ana.paula" value={form.username} onChange={e=>set('username',e.target.value.toLowerCase().replace(/\s/g,''))} />
+              <label className="form-label">Perfil de Acesso</label>
+              <div style={{ display:'flex', gap:'var(--space-3)', marginTop:'var(--space-2)' }}>
+                {ROLES.map(r => (
+                  <button key={r} type="button"
+                    onClick={() => set('role', r)}
+                    style={{
+                      flex:1, padding:'var(--space-3)', borderRadius:'var(--radius-lg)',
+                      border:`2px solid ${form.role===r ? ROLE_COLOR[r] : 'var(--color-border)'}`,
+                      background: form.role===r ? ROLE_HL[r] : 'var(--color-surface-dynamic)',
+                      color: form.role===r ? ROLE_COLOR[r] : 'var(--color-text-muted)',
+                      fontWeight: form.role===r ? 700 : 500,
+                      fontSize:'var(--text-xs)', cursor:'pointer', textAlign:'center',
+                      transition:'all var(--ease)',
+                    }}>
+                    {ROLE_LABEL[r]}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="form-group">
-              <label className="form-label">{editData ? 'Nova Senha (deixe em branco para manter)' : 'Senha *'}</label>
-              <input className="form-input" type="password" placeholder="••••••••" value={form.password} onChange={e=>set('password',e.target.value)} />
+
+            {/* Descrição do perfil */}
+            <div style={{ padding:'var(--space-3)', background:'var(--color-surface-dynamic)', borderRadius:'var(--radius-md)', fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>
+              {{
+                admin:   '✅ Acesso total — caixa, ordens, relatórios, fila oficina e gestão de usuários.',
+                caixa:   '✅ Caixa, ordens, clientes, relatórios e fila. ❌ Não gerencia usuários.',
+                oficina: '✅ Apenas a fila da oficina — visualiza e avança status das OS.',
+              }[form.role]}
             </div>
-          </div>
 
-          {/* Seleção de perfil */}
-          <div className="form-group">
-            <label className="form-label">Perfil de Acesso</label>
-            <div style={{ display:'flex', gap:'var(--space-3)', marginTop:'var(--space-2)' }}>
-              {ROLES.map(r => (
-                <button key={r} type="button"
-                  onClick={() => set('role', r)}
-                  style={{
-                    flex:1, padding:'var(--space-3)', borderRadius:'var(--radius-lg)',
-                    border:`2px solid ${form.role===r ? ROLE_COLOR[r] : 'var(--color-border)'}`,
-                    background: form.role===r ? ROLE_HL[r] : 'var(--color-surface-dynamic)',
-                    color: form.role===r ? ROLE_COLOR[r] : 'var(--color-text-muted)',
-                    fontWeight: form.role===r ? 700 : 500,
-                    fontSize:'var(--text-xs)', cursor:'pointer', textAlign:'center',
-                    transition:'all var(--ease)',
-                  }}>
-                  {ROLE_LABEL[r]}
-                </button>
-              ))}
-            </div>
+            {editData && (
+              <label style={{ display:'flex', alignItems:'center', gap:'var(--space-2)', cursor:'pointer', fontSize:'var(--text-sm)' }}>
+                <input type="checkbox" checked={form.ativo} onChange={e=>set('ativo',e.target.checked)}
+                  style={{ width:16, height:16, accentColor:'var(--color-primary)' }} />
+                Usuário ativo
+              </label>
+            )}
           </div>
-
-          {/* Descrição do perfil */}
-          <div style={{ padding:'var(--space-3)', background:'var(--color-surface-dynamic)', borderRadius:'var(--radius-md)', fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>
-            {{
-              admin:   '✅ Acesso total — caixa, ordens, relatórios, fila oficina e gestão de usuários.',
-              caixa:   '✅ Caixa, ordens, clientes, relatórios e fila. ❌ Não gerencia usuários.',
-              oficina: '✅ Apenas a fila da oficina — visualiza e avança status das OS.',
-            }[form.role]}
+          <div className="modal-footer">
+            <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+            <button className="btn btn-primary" onClick={save} disabled={saving}>
+              {saving ? <><div className="spinner" style={{width:14,height:14}}/>Salvando...</> : editData ? 'Salvar Alterações' : 'Criar Usuário'}
+            </button>
           </div>
-
-          {editData && (
-            <label style={{ display:'flex', alignItems:'center', gap:'var(--space-2)', cursor:'pointer', fontSize:'var(--text-sm)' }}>
-              <input type="checkbox" checked={form.ativo} onChange={e=>set('ativo',e.target.checked)}
-                style={{ width:16, height:16, accentColor:'var(--color-primary)' }} />
-              Usuário ativo
-            </label>
-          )}
-        </div>
-        <div className="modal-footer">
-          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary" onClick={save} disabled={saving}>
-            {saving ? <><div className="spinner" style={{width:14,height:14}}/>Salvando...</> : editData ? 'Salvar Alterações' : 'Criar Usuário'}
-          </button>
         </div>
       </div>
-    </div>
+    </Portal>
   )
 }
 
