@@ -97,6 +97,8 @@ export default function Dashboard() {
   const mesNome = new Date(`${mesSel}-01T12:00:00`)
     .toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
 
+  useEffect(() => { document.title = 'Dashboard — Arte & Molduras' }, [])
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
@@ -207,9 +209,10 @@ export default function Dashboard() {
     .sort((a, b) => (b.id || 0) - (a.id || 0))
     .slice(0, 5)
 
+  // BUG-06: usa servico (campo real do schema)
   const tipoCount = {}
   ordens.forEach(o => {
-    const t = o.tipo || o.servico || 'Outros'
+    const t = o.servico || 'Outros'
     tipoCount[t] = (tipoCount[t] || 0) + 1
   })
   const TIPO_COLORS = {
@@ -220,10 +223,11 @@ export default function Dashboard() {
     'Diversos': 'var(--color-text-faint)',
   }
 
+  // BUG-05: removido o.prazo (campo inexistente), usa somente prazoentrega
   const ordensVencidas = ordens.filter(o =>
     !['Entregue', 'Cancelado'].includes(o.status) &&
-    (o.prazoentrega || o.prazo) &&
-    (o.prazoentrega || o.prazo) < HOJE
+    o.prazoentrega &&
+    o.prazoentrega < HOJE
   ).length
 
   return (
@@ -232,7 +236,7 @@ export default function Dashboard() {
       {/* Cabeçalho */}
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
         <div>
-          <h1 style={{ fontSize: 'var(--text-lg)', fontWeight: 800, marginBottom: 2 }}>Resumo</h1>
+          <h1 style={{ fontSize: 'var(--text-lg)', fontWeight: 800, marginBottom: 2 }}>Dashboard</h1>
           <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', textTransform: 'capitalize' }}>
             {mesNome}
           </span>
@@ -265,7 +269,7 @@ export default function Dashboard() {
           accent="var(--color-primary)" />
         <KPI label="Faturamento Hoje" value={fmtShort(dados?.hoje)}
           sub="dia atual" accent="var(--color-blue)" />
-        <KPI label="Ticket Médio" value={fmtShort(dados?.ticketmedio)}
+        <KPI label="Ticket Médio" value={fmtShort(dados?.ticket_medio || dados?.ticketmedio)}
           sub="por lançamento" accent="var(--color-gold)" />
         <KPI label="OS em Aberto" value={dados?.ordensabertas ?? 0}
           sub={ordensVencidas > 0 ? `${ordensVencidas} vencida${ordensVencidas > 1 ? 's' : ''}` : 'no prazo'}
@@ -346,11 +350,11 @@ export default function Dashboard() {
                     </td>
                     <td>
                       <span className={`badge badge-${
-                        o.tipo === 'Corte a Laser' ? 'laser' :
-                        o.tipo === 'Quadro' ? 'quadro' :
-                        o.tipo === '3D' ? '3d' :
-                        o.tipo === 'Caixas' ? 'caixas' : 'diversos'
-                      }`}>{o.tipo || o.servico || 'Outros'}</span>
+                        o.servico === 'Corte a Laser' ? 'laser' :
+                        o.servico === 'Quadro' ? 'quadro' :
+                        o.servico === '3D' ? '3d' :
+                        o.servico === 'Caixas' ? 'caixas' : 'diversos'
+                      }`}>{o.servico || 'Outros'}</span>
                     </td>
                     <td>
                       <span className={`badge badge-${STATUS_BADGE[o.status] || 'diversos'}`}>{o.status}</span>
@@ -359,7 +363,7 @@ export default function Dashboard() {
                       {fmt(o.valor || o.valortotal)}
                     </td>
                     <td style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>
-                      {fmtD(o.prazoentrega || o.prazo)}
+                      {fmtD(o.prazoentrega)}
                     </td>
                   </tr>
                 )) : (
