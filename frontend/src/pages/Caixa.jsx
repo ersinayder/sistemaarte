@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import ReactDOM from 'react-dom';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
@@ -66,12 +67,27 @@ function imprimirRecibo(lanc, empresa='Oficina') {
   setTimeout(()=>{ win.focus(); win.print(); }, 400);
 }
 
+// ── Portal wrapper ────────────────────────────────────────────────────────────
+function Portal({ children }) {
+  return ReactDOM.createPortal(children, document.body);
+}
+
 // ── Modal Lançamento ──────────────────────────────────────────────────────────
 function ModalLancamento({ open, onClose, onSaved, editData, currentDate, ordens, presetOrder }) {
   const ordemInicial = presetOrder ? String(presetOrder.id) : '';
   const [form, setForm] = useState({ modo:'saldoos', tipo:'Diversos', descricao:'', pagamento:'Pix', valor:'', pago:true, ordemid:ordemInicial });
   const [saving, setSaving] = useState(false);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  // Bloqueia scroll do body enquanto o modal estiver aberto
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [open]);
 
   useEffect(()=>{
     if(!open) return;
@@ -127,100 +143,102 @@ function ModalLancamento({ open, onClose, onSaved, editData, currentDate, ordens
   if(!open) return null;
 
   return (
-    <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div className="modal" style={{maxWidth:720}}>
-        <div className="modal-header">
-          <span className="modal-title">{editData?'Editar Lançamento':'Novo Lançamento'}</span>
-          <button className="btn btn-icon btn-ghost" onClick={onClose}>
-            <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M18 6L6 18M6 6l12 12"/></svg>
-          </button>
-        </div>
-        <div className="modal-body" style={{display:'flex',flexDirection:'column',gap:'var(--space-5)',paddingTop:'var(--space-3)',paddingBottom:'var(--space-4)'}}>
-          {!editData&&(
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'var(--space-2)'}}>
-              <button className={`btn ${form.modo==='saldoos'?'btn-primary':'btn-ghost'}`} onClick={()=>trocarModo('saldoos')}>Receber saldo OS</button>
-              <button className={`btn ${form.modo==='avulso'?'btn-primary':'btn-ghost'}`} onClick={()=>trocarModo('avulso')}>Despesa / Outro</button>
-            </div>
-          )}
-          {isEntradaAutomatica&&(
-            <div style={{padding:'var(--space-3)',borderRadius:'var(--radius-md)',background:'var(--color-primary-highlight)',color:'var(--color-primary)',fontSize:'var(--text-xs)',fontWeight:700}}>
-              Este lançamento foi criado automaticamente pela OS e deve ser alterado pelo cadastro da ordem.
-            </div>
-          )}
-          <div style={{display:'flex',flexDirection:'column',gap:'var(--space-4)'}}>
-            {form.modo==='saldoos' ? (
-              <>
-                <div className="form-group">
-                  <label className="form-label">OS com saldo pendente</label>
-                  <select className="form-input" value={form.ordemid} disabled={isEntradaAutomatica} onChange={e=>{
-                    const o=ordens.find(x=>String(x.id)===e.target.value);
-                    setForm(f=>({...f, ordemid:e.target.value,
-                      tipo: o?.tipo||o?.servico||'Diversos',
-                      descricao: o?`Saldo ${o.numero} – ${o.clientenome||o.clientecontato}`:'',
-                      pagamento: o?.pagamento||'Pix' }));
-                  }}>
-                    <option value="">Selecione a OS...</option>
-                    {ordensComSaldo.map(o=><option key={o.id} value={o.id}>{o.numero} – {o.clientenome||o.clientecontato} – saldo {fmt(saldoOS(o))}</option>)}
-                  </select>
-                  {ordemSelecionada&&(
-                    <div style={{marginTop:6,fontSize:'var(--text-xs)',color:'var(--color-text-muted)'}}>
-                      Total {fmt(ordemSelecionada.valor||ordemSelecionada.valortotal)} · Já recebido {fmt(ordemSelecionada.valorrecebido||0)} · Saldo <span style={{color:'var(--color-warning)',fontWeight:700}}>{fmt(saldoSelecionado)}</span>
-                    </div>
-                  )}
-                </div>
-                <div className="form-grid-2">
-                  <div className="form-group">
-                    <label className="form-label">Forma de pagamento</label>
-                    <select className="form-input" value={form.pagamento} disabled={isEntradaAutomatica} onChange={e=>set('pagamento',e.target.value)}>
-                      {PAGOPTS.map(p=><option key={p} value={p}>{PAGLABEL[p]||p}</option>)}
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Valor recebido (R$)</label>
-                    <input className="form-input" type="number" step="0.01" value={form.valor} disabled={isEntradaAutomatica} onChange={e=>set('valor',e.target.value)}/>
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Descrição</label>
-                  <input className="form-input" value={form.descricao} disabled={isEntradaAutomatica} onChange={e=>set('descricao',e.target.value)} placeholder="Ex: Saldo OS-0042 – Cliente"/>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="form-grid-2">
-                  <div className="form-group">
-                    <label className="form-label">Tipo</label>
-                    <select className="form-input" value={form.tipo} onChange={e=>set('tipo',e.target.value)}>
-                      {TIPOOPTS.map(t=><option key={t}>{t}</option>)}
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Forma de pagamento</label>
-                    <select className="form-input" value={form.pagamento} onChange={e=>set('pagamento',e.target.value)}>
-                      {PAGOPTS.map(p=><option key={p} value={p}>{PAGLABEL[p]||p}</option>)}
-                    </select>
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Descrição</label>
-                  <input className="form-input" value={form.descricao} onChange={e=>set('descricao',e.target.value)} placeholder="Ex: Compra de material, ajuste, outro"/>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Valor (use negativo para despesa)</label>
-                  <input className="form-input" type="number" step="0.01" value={form.valor} onChange={e=>set('valor',e.target.value)}/>
-                </div>
-              </>
+    <Portal>
+      <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
+        <div className="modal" style={{maxWidth:720}}>
+          <div className="modal-header">
+            <span className="modal-title">{editData?'Editar Lançamento':'Novo Lançamento'}</span>
+            <button className="btn btn-icon btn-ghost" onClick={onClose}>
+              <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <div className="modal-body" style={{display:'flex',flexDirection:'column',gap:'var(--space-5)',paddingTop:'var(--space-3)',paddingBottom:'var(--space-4)'}}>
+            {!editData&&(
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'var(--space-2)'}}>
+                <button className={`btn ${form.modo==='saldoos'?'btn-primary':'btn-ghost'}`} onClick={()=>trocarModo('saldoos')}>Receber saldo OS</button>
+                <button className={`btn ${form.modo==='avulso'?'btn-primary':'btn-ghost'}`} onClick={()=>trocarModo('avulso')}>Despesa / Outro</button>
+              </div>
             )}
+            {isEntradaAutomatica&&(
+              <div style={{padding:'var(--space-3)',borderRadius:'var(--radius-md)',background:'var(--color-primary-hl)',color:'var(--color-primary)',fontSize:'var(--text-xs)',fontWeight:700}}>
+                Este lançamento foi criado automaticamente pela OS e deve ser alterado pelo cadastro da ordem.
+              </div>
+            )}
+            <div style={{display:'flex',flexDirection:'column',gap:'var(--space-4)'}}>
+              {form.modo==='saldoos' ? (
+                <>
+                  <div className="form-group">
+                    <label className="form-label">OS com saldo pendente</label>
+                    <select className="form-input" value={form.ordemid} disabled={isEntradaAutomatica} onChange={e=>{
+                      const o=ordens.find(x=>String(x.id)===e.target.value);
+                      setForm(f=>({...f, ordemid:e.target.value,
+                        tipo: o?.tipo||o?.servico||'Diversos',
+                        descricao: o?`Saldo ${o.numero} – ${o.clientenome||o.clientecontato}`:'',
+                        pagamento: o?.pagamento||'Pix' }));
+                    }}>
+                      <option value="">Selecione a OS...</option>
+                      {ordensComSaldo.map(o=><option key={o.id} value={o.id}>{o.numero} – {o.clientenome||o.clientecontato} – saldo {fmt(saldoOS(o))}</option>)}
+                    </select>
+                    {ordemSelecionada&&(
+                      <div style={{marginTop:6,fontSize:'var(--text-xs)',color:'var(--color-text-muted)'}}>
+                        Total {fmt(ordemSelecionada.valor||ordemSelecionada.valortotal)} · Já recebido {fmt(ordemSelecionada.valorrecebido||0)} · Saldo <span style={{color:'var(--color-warning)',fontWeight:700}}>{fmt(saldoSelecionado)}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="form-grid-2">
+                    <div className="form-group">
+                      <label className="form-label">Forma de pagamento</label>
+                      <select className="form-input" value={form.pagamento} disabled={isEntradaAutomatica} onChange={e=>set('pagamento',e.target.value)}>
+                        {PAGOPTS.map(p=><option key={p} value={p}>{PAGLABEL[p]||p}</option>)}
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Valor recebido (R$)</label>
+                      <input className="form-input" type="number" step="0.01" value={form.valor} disabled={isEntradaAutomatica} onChange={e=>set('valor',e.target.value)}/>
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Descrição</label>
+                    <input className="form-input" value={form.descricao} disabled={isEntradaAutomatica} onChange={e=>set('descricao',e.target.value)} placeholder="Ex: Saldo OS-0042 – Cliente"/>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="form-grid-2">
+                    <div className="form-group">
+                      <label className="form-label">Tipo</label>
+                      <select className="form-input" value={form.tipo} onChange={e=>set('tipo',e.target.value)}>
+                        {TIPOOPTS.map(t=><option key={t}>{t}</option>)}
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Forma de pagamento</label>
+                      <select className="form-input" value={form.pagamento} onChange={e=>set('pagamento',e.target.value)}>
+                        {PAGOPTS.map(p=><option key={p} value={p}>{PAGLABEL[p]||p}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Descrição</label>
+                    <input className="form-input" value={form.descricao} onChange={e=>set('descricao',e.target.value)} placeholder="Ex: Compra de material, ajuste, outro"/>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Valor (use negativo para despesa)</label>
+                    <input className="form-input" type="number" step="0.01" value={form.valor} onChange={e=>set('valor',e.target.value)}/>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+            <button className="btn btn-primary" onClick={save} disabled={saving||isEntradaAutomatica}>
+              {saving?<><div className="spinner" style={{width:14,height:14}}/>Salvando...</>:'Salvar'}
+            </button>
           </div>
         </div>
-        <div className="modal-footer">
-          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary" onClick={save} disabled={saving||isEntradaAutomatica}>
-            {saving?<><div className="spinner" style={{width:14,height:14}}/>Salvando...</>:'Salvar'}
-          </button>
-        </div>
       </div>
-    </div>
+    </Portal>
   );
 }
 
@@ -323,8 +341,8 @@ export default function Caixa() {
                           {fmtS(l.valor)}
                         </td>
                         <td>
-                          {l.origem==='entradaos'&&<span className="badge" style={{background:'var(--color-primary-highlight)',color:'var(--color-primary)'}}>Entrada OS</span>}
-                          {l.origem==='saldoos'&&<span className="badge" style={{background:'var(--color-success-highlight)',color:'var(--color-success)'}}>Saldo OS</span>}
+                          {l.origem==='entradaos'&&<span className="badge" style={{background:'var(--color-primary-hl)',color:'var(--color-primary)'}}>Entrada OS</span>}
+                          {l.origem==='saldoos'&&<span className="badge" style={{background:'var(--color-success-hl)',color:'var(--color-success)'}}>Saldo OS</span>}
                           {(!l.origem||l.origem==='manual')&&<span className="badge">Manual</span>}
                         </td>
                         <td>
@@ -407,18 +425,21 @@ export default function Caixa() {
       <ModalLancamento open={modal.open} onClose={()=>setModal({open:false,edit:null,presetOrder:null})}
         onSaved={load} editData={modal.edit} currentDate={date} ordens={ordensPendentes} presetOrder={modal.presetOrder}/>
 
-      {/* Modal confirmar exclusão */}
-      {deleteId&&(
+      {/* Modal confirmar exclusão — via Portal */}
+      {deleteId && ReactDOM.createPortal(
         <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&setDeleteId(null)}>
           <div className="modal modal-sm">
             <div className="modal-header">
               <span className="modal-title" style={{color:'var(--color-error)'}}>Excluir Lançamento</span>
+              <button className="btn btn-icon btn-ghost" onClick={()=>setDeleteId(null)}>
+                <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
             </div>
             <div style={{padding:'var(--space-4) var(--space-5)'}}>
               <p style={{fontSize:'var(--text-sm)',color:'var(--color-text-muted)',marginBottom:'var(--space-3)'}}>
                 Tem certeza que deseja excluir o lançamento <strong style={{color:'var(--color-text)'}}>{deleteDesc}</strong>?
               </p>
-              <div style={{padding:'var(--space-3)',background:'var(--color-error-highlight)',borderRadius:'var(--radius-md)',fontSize:'var(--text-xs)',color:'var(--color-error)',fontWeight:600}}>
+              <div style={{padding:'var(--space-3)',background:'var(--color-error-hl)',borderRadius:'var(--radius-md)',fontSize:'var(--text-xs)',color:'var(--color-error)',fontWeight:600}}>
                 ⚠️ Lançamentos de Entrada OS não podem ser excluídos por aqui — altere pela OS.
               </div>
             </div>
@@ -427,7 +448,8 @@ export default function Caixa() {
               <button className="btn btn-danger" onClick={confirmDelete}>Excluir</button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
