@@ -67,173 +67,208 @@ function imprimirRecibo(lanc, empresa='Oficina') {
   setTimeout(()=>{ win.focus(); win.print(); }, 400);
 }
 
-// ── Portal wrapper ────────────────────────────────────────────────────────────
 function Portal({ children }) {
   return ReactDOM.createPortal(children, document.body);
 }
 
-// ── Modal Lançamento ──────────────────────────────────────────────────────────
+// ── Modal Lançamento Unificado ─────────────────────────────────────────────────────────
 function ModalLancamento({ open, onClose, onSaved, editData, currentDate, ordens, presetOrder }) {
-  const ordemInicial = presetOrder ? String(presetOrder.id) : '';
-  const [form, setForm] = useState({ modo:'saldoos', tipo:'Diversos', descricao:'', pagamento:'Pix', valor:'', pago:true, ordemid:ordemInicial });
+  const BLANK = {
+    descricao: '',
+    tipo: 'Diversos',
+    pagamento: 'Pix',
+    valor: '',
+    ordemid: '',
+  };
+
+  const [form, setForm] = useState(BLANK);
   const [saving, setSaving] = useState(false);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
 
-  // Bloqueia scroll do body enquanto o modal estiver aberto
   useEffect(() => {
-    if (open) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
+    if (open) document.body.style.overflow = 'hidden';
+    else document.body.style.overflow = '';
     return () => { document.body.style.overflow = ''; };
   }, [open]);
 
   useEffect(()=>{
-    if(!open) return;
-    if(editData){
-      setForm({ modo: editData.ordemid?'saldoos':'avulso', tipo: editData.tipo||'Diversos',
-        descricao: editData.descricao||'', pagamento: editData.pagamento||'Pix',
-        valor: String(editData.valor??''), pago: !!editData.pago,
-        ordemid: editData.ordemid ? String(editData.ordemid) : '' });
+    if (!open) return;
+    if (editData) {
+      setForm({
+        descricao: editData.descricao || '',
+        tipo: editData.tipo || 'Diversos',
+        pagamento: editData.pagamento || 'Pix',
+        valor: String(editData.valor ?? ''),
+        ordemid: editData.ordemid ? String(editData.ordemid) : '',
+      });
+    } else if (presetOrder) {
+      setForm({
+        descricao: `Saldo ${presetOrder.numero} – ${presetOrder.clientenome || presetOrder.clientecontato}`,
+        tipo: presetOrder.tipo || presetOrder.servico || 'Diversos',
+        pagamento: presetOrder.pagamento || 'Pix',
+        valor: '',
+        ordemid: String(presetOrder.id),
+      });
     } else {
-      setForm({ modo: presetOrder?'saldoos':'saldoos', tipo: presetOrder?.tipo||presetOrder?.servico||'Diversos',
-        descricao: presetOrder ? `Saldo ${presetOrder.numero} – ${presetOrder.clientenome||presetOrder.clientecontato}` : '',
-        pagamento: presetOrder?.pagamento||'Pix', valor:'', pago:true, ordemid: ordemInicial });
+      setForm(BLANK);
     }
-  },[open, editData, presetOrder, ordemInicial]);
+  }, [open, editData, presetOrder]);
 
-  const ordemSelecionada = useMemo(()=> ordens.find(o=>String(o.id)===String(form.ordemid)), [ordens,form.ordemid]);
-  const saldoSelecionado = ordemSelecionada ? saldoOS(ordemSelecionada) : 0;
+  const ordemSelecionada = useMemo(() => ordens.find(o => String(o.id) === String(form.ordemid)), [ordens, form.ordemid]);
+  const saldoSelecionado = ordemSelecionada ? saldoOS(ordemSelecionada) : null;
   const isEntradaAutomatica = editData?.origem === 'entradaos';
-  const ordensComSaldo = ordens.filter(o=>saldoOS(o)>0.009 && o.status!=='Cancelado');
-
-  const trocarModo = modo => {
-    if(editData) return;
-    if(modo==='saldoos'){
-      const o = ordens.find(x=>String(x.id)===String(form.ordemid)) || presetOrder;
-      setForm(f=>({...f, modo, ordemid: o?String(o.id):'', tipo: o?.tipo||o?.servico||'Diversos',
-        descricao: o?`Saldo ${o.numero} – ${o.clientenome||o.clientecontato}`:'', pagamento: o?.pagamento||'Pix', pago:true }));
-    } else {
-      setForm(f=>({...f, modo, ordemid:'', tipo:'Diversos', descricao:'', pagamento:'Pix', pago:true }));
-    }
-  };
+  const ordensComSaldo = ordens.filter(o => saldoOS(o) > 0.009 && o.status !== 'Cancelado');
 
   const save = async () => {
-    if(isEntradaAutomatica){ toast.error('A entrada automática da OS deve ser alterada pela própria OS.'); return; }
+    if (isEntradaAutomatica) { toast.error('A entrada automática da OS deve ser alterada pela própria OS.'); return; }
     const valor = Number(form.valor);
-    if(!form.descricao.trim() || !Number.isFinite(valor)){ toast.error('Preencha descrição e valor'); return; }
-    if(form.modo==='saldoos'){
-      if(!form.ordemid){ toast.error('Selecione a OS'); return; }
-      if(!(valor>0)){ toast.error('Saldo deve ser maior que zero'); return; }
-      if(ordemSelecionada && valor > saldoSelecionado+0.0001){ toast.error(`Saldo disponível: ${fmt(saldoSelecionado)}`); return; }
+    if (!form.descricao.trim()) return toast.error('Descrição obrigatória');
+    if (!Number.isFinite(valor) || valor === 0) return toast.error('Informe um valor (use negativo para despesas)');
+    if (form.ordemid && saldoSelecionado !== null && valor > saldoSelecionado + 0.0001) {
+      return toast.error(`Saldo disponível: ${fmt(saldoSelecionado)}`);
     }
     setSaving(true);
-    try{
-      const payload = { data:currentDate, tipo: form.modo==='saldoos'?(ordemSelecionada?.tipo||ordemSelecionada?.servico||form.tipo):form.tipo,
-        descricao: form.descricao.trim(), pagamento: form.pagamento, valor, pago:true,
-        ordemid: form.modo==='saldoos' ? Number(form.ordemid) : null };
-      if(editData) await api.put(`/caixa/${editData.id}`, payload), toast.success('Lançamento atualizado!');
-      else await api.post('/caixa', payload), toast.success(form.modo==='saldoos'?'Saldo recebido!':'Lançamento registrado!');
-      onSaved(); onClose();
-    }catch(e){ toast.error(e.response?.data?.error||'Erro ao salvar'); }
-    finally{ setSaving(false); }
+    try {
+      const payload = {
+        data: currentDate,
+        tipo: form.tipo,
+        descricao: form.descricao.trim(),
+        pagamento: form.pagamento,
+        valor,
+        pago: true,
+        ordemid: form.ordemid ? Number(form.ordemid) : null,
+      };
+      if (editData) {
+        await api.put(`/caixa/${editData.id}`, payload);
+        toast.success('Lançamento atualizado!');
+      } else {
+        await api.post('/caixa', payload);
+        toast.success('Lançamento registrado!');
+      }
+      onSaved();
+      onClose();
+    } catch(e) {
+      toast.error(e.response?.data?.error || 'Erro ao salvar');
+    } finally { setSaving(false); }
   };
 
-  if(!open) return null;
+  if (!open) return null;
 
   return (
     <Portal>
-      <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
-        <div className="modal" style={{maxWidth:720}}>
+      <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+        <div className="modal" style={{ maxWidth: 520 }}>
           <div className="modal-header">
-            <span className="modal-title">{editData?'Editar Lançamento':'Novo Lançamento'}</span>
+            <span className="modal-title">{editData ? 'Editar Lançamento' : 'Novo Lançamento'}</span>
             <button className="btn btn-icon btn-ghost" onClick={onClose}>
               <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M18 6L6 18M6 6l12 12"/></svg>
             </button>
           </div>
-          <div className="modal-body" style={{display:'flex',flexDirection:'column',gap:'var(--space-5)',paddingTop:'var(--space-3)',paddingBottom:'var(--space-4)'}}>
-            {!editData&&(
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'var(--space-2)'}}>
-                <button className={`btn ${form.modo==='saldoos'?'btn-primary':'btn-ghost'}`} onClick={()=>trocarModo('saldoos')}>Receber saldo OS</button>
-                <button className={`btn ${form.modo==='avulso'?'btn-primary':'btn-ghost'}`} onClick={()=>trocarModo('avulso')}>Despesa / Outro</button>
-              </div>
-            )}
-            {isEntradaAutomatica&&(
-              <div style={{padding:'var(--space-3)',borderRadius:'var(--radius-md)',background:'var(--color-primary-hl)',color:'var(--color-primary)',fontSize:'var(--text-xs)',fontWeight:700}}>
+
+          <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+
+            {isEntradaAutomatica && (
+              <div style={{ padding: 'var(--space-3)', borderRadius: 'var(--radius-md)', background: 'var(--color-primary-hl)', color: 'var(--color-primary)', fontSize: 'var(--text-xs)', fontWeight: 700 }}>
                 Este lançamento foi criado automaticamente pela OS e deve ser alterado pelo cadastro da ordem.
               </div>
             )}
-            <div style={{display:'flex',flexDirection:'column',gap:'var(--space-4)'}}>
-              {form.modo==='saldoos' ? (
-                <>
-                  <div className="form-group">
-                    <label className="form-label">OS com saldo pendente</label>
-                    <select className="form-input" value={form.ordemid} disabled={isEntradaAutomatica} onChange={e=>{
-                      const o=ordens.find(x=>String(x.id)===e.target.value);
-                      setForm(f=>({...f, ordemid:e.target.value,
-                        tipo: o?.tipo||o?.servico||'Diversos',
-                        descricao: o?`Saldo ${o.numero} – ${o.clientenome||o.clientecontato}`:'',
-                        pagamento: o?.pagamento||'Pix' }));
-                    }}>
-                      <option value="">Selecione a OS...</option>
-                      {ordensComSaldo.map(o=><option key={o.id} value={o.id}>{o.numero} – {o.clientenome||o.clientecontato} – saldo {fmt(saldoOS(o))}</option>)}
-                    </select>
-                    {ordemSelecionada&&(
-                      <div style={{marginTop:6,fontSize:'var(--text-xs)',color:'var(--color-text-muted)'}}>
-                        Total {fmt(ordemSelecionada.valor||ordemSelecionada.valortotal)} · Já recebido {fmt(ordemSelecionada.valorrecebido||0)} · Saldo <span style={{color:'var(--color-warning)',fontWeight:700}}>{fmt(saldoSelecionado)}</span>
-                      </div>
-                    )}
-                  </div>
-                  <div className="form-grid-2">
-                    <div className="form-group">
-                      <label className="form-label">Forma de pagamento</label>
-                      <select className="form-input" value={form.pagamento} disabled={isEntradaAutomatica} onChange={e=>set('pagamento',e.target.value)}>
-                        {PAGOPTS.map(p=><option key={p} value={p}>{PAGLABEL[p]||p}</option>)}
-                      </select>
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Valor recebido (R$)</label>
-                      <input className="form-input" type="number" step="0.01" value={form.valor} disabled={isEntradaAutomatica} onChange={e=>set('valor',e.target.value)}/>
-                    </div>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Descrição</label>
-                    <input className="form-input" value={form.descricao} disabled={isEntradaAutomatica} onChange={e=>set('descricao',e.target.value)} placeholder="Ex: Saldo OS-0042 – Cliente"/>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="form-grid-2">
-                    <div className="form-group">
-                      <label className="form-label">Tipo</label>
-                      <select className="form-input" value={form.tipo} onChange={e=>set('tipo',e.target.value)}>
-                        {TIPOOPTS.map(t=><option key={t}>{t}</option>)}
-                      </select>
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Forma de pagamento</label>
-                      <select className="form-input" value={form.pagamento} onChange={e=>set('pagamento',e.target.value)}>
-                        {PAGOPTS.map(p=><option key={p} value={p}>{PAGLABEL[p]||p}</option>)}
-                      </select>
-                    </div>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Descrição</label>
-                    <input className="form-input" value={form.descricao} onChange={e=>set('descricao',e.target.value)} placeholder="Ex: Compra de material, ajuste, outro"/>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Valor (use negativo para despesa)</label>
-                    <input className="form-input" type="number" step="0.01" value={form.valor} onChange={e=>set('valor',e.target.value)}/>
-                  </div>
-                </>
+
+            {/* Descrição */}
+            <div className="form-group">
+              <label className="form-label">Descrição <span style={{ color: 'var(--color-error)' }}>*</span></label>
+              <input
+                className="form-input"
+                value={form.descricao}
+                disabled={isEntradaAutomatica}
+                onChange={e => set('descricao', e.target.value)}
+                placeholder="Ex: Venda quadro pronto, material, conserto..."
+                autoFocus
+              />
+            </div>
+
+            <div className="form-grid-2">
+              {/* Tipo */}
+              <div className="form-group">
+                <label className="form-label">Tipo</label>
+                <select className="form-input" value={form.tipo} disabled={isEntradaAutomatica} onChange={e => set('tipo', e.target.value)}>
+                  {TIPOOPTS.map(t => <option key={t}>{t}</option>)}
+                </select>
+              </div>
+
+              {/* Pagamento */}
+              <div className="form-group">
+                <label className="form-label">Pagamento</label>
+                <select className="form-input" value={form.pagamento} disabled={isEntradaAutomatica} onChange={e => set('pagamento', e.target.value)}>
+                  {PAGOPTS.map(p => <option key={p} value={p}>{PAGLABEL[p] || p}</option>)}
+                </select>
+              </div>
+            </div>
+
+            {/* Valor */}
+            <div className="form-group">
+              <label className="form-label">
+                Valor (R$)
+                <span style={{ marginLeft: 6, fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 400 }}>
+                  use valor negativo para despesas
+                </span>
+              </label>
+              <input
+                className="form-input"
+                type="number"
+                step="0.01"
+                value={form.valor}
+                disabled={isEntradaAutomatica}
+                onChange={e => set('valor', e.target.value)}
+                placeholder="Ex: 150.00 ou -45.00"
+              />
+            </div>
+
+            {/* Vincular a OS (opcional) */}
+            <div className="form-group">
+              <label className="form-label">
+                Vincular a uma OS
+                <span style={{ marginLeft: 6, fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 400 }}>opcional</span>
+              </label>
+              <select
+                className="form-input"
+                value={form.ordemid}
+                disabled={isEntradaAutomatica}
+                onChange={e => {
+                  const o = ordens.find(x => String(x.id) === e.target.value);
+                  setForm(f => ({
+                    ...f,
+                    ordemid: e.target.value,
+                    tipo: o ? (o.tipo || o.servico || f.tipo) : f.tipo,
+                    descricao: o ? `Saldo ${o.numero} – ${o.clientenome || o.clientecontato}` : f.descricao,
+                    pagamento: o ? (o.pagamento || f.pagamento) : f.pagamento,
+                  }));
+                }}
+              >
+                <option value="">Nenhuma (lançamento avulso)</option>
+                {ordensComSaldo.map(o => (
+                  <option key={o.id} value={o.id}>
+                    {o.numero} – {o.clientenome || o.clientecontato} – saldo {fmt(saldoOS(o))}
+                  </option>
+                ))}
+              </select>
+              {ordemSelecionada && (
+                <div style={{ marginTop: 6, fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                  Total {fmt(ordemSelecionada.valor || ordemSelecionada.valortotal)}
+                  {' · '}
+                  Saldo <span style={{ color: 'var(--color-warning)', fontWeight: 700 }}>{fmt(saldoSelecionado)}</span>
+                </div>
               )}
             </div>
+
           </div>
+
           <div className="modal-footer">
             <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
-            <button className="btn btn-primary" onClick={save} disabled={saving||isEntradaAutomatica}>
-              {saving?<><div className="spinner" style={{width:14,height:14}}/>Salvando...</>:'Salvar'}
+            <button className="btn btn-primary" onClick={save} disabled={saving || isEntradaAutomatica}>
+              {saving
+                ? <><div className="spinner" style={{ width: 14, height: 14 }}/> Salvando...</>
+                : 'Salvar'
+              }
             </button>
           </div>
         </div>
@@ -242,7 +277,7 @@ function ModalLancamento({ open, onClose, onSaved, editData, currentDate, ordens
   );
 }
 
-// ── Página Caixa ──────────────────────────────────────────────────────────────
+// ── Página Caixa ────────────────────────────────────────────────────────────────────
 export default function Caixa() {
   const { isAdmin, isCaixa } = useAuth();
   const [date, setDate] = useState(today);
@@ -250,75 +285,80 @@ export default function Caixa() {
   const [ordens, setOrdens] = useState([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
-  const [modal, setModal] = useState({ open:false, edit:null, presetOrder:null });
+  const [modal, setModal] = useState({ open: false, edit: null, presetOrder: null });
   const [deleteId, setDeleteId] = useState(null);
   const [deleteDesc, setDeleteDesc] = useState('');
 
-  const load = useCallback(async()=>{
+  const load = useCallback(async () => {
     setLoading(true);
-    try{
+    try {
       const [rCaixa, rOrdens] = await Promise.all([
         api.get(`/caixa?data=${date}`),
         api.get('/ordens?status=todos'),
       ]);
       setLancamentos(rCaixa.data);
       setOrdens(rOrdens.data);
-    }catch{ toast.error('Erro ao carregar caixa'); }
-    finally{ setLoading(false); }
-  },[date]);
-  useEffect(()=>{ load(); },[load]);
+    } catch { toast.error('Erro ao carregar caixa'); }
+    finally { setLoading(false); }
+  }, [date]);
+  useEffect(() => { load(); }, [load]);
 
-  const pedirExclusao = (l) => { setDeleteId(l.id); setDeleteDesc(l.descricao||`#${l.id}`); };
+  const pedirExclusao = (l) => { setDeleteId(l.id); setDeleteDesc(l.descricao || `#${l.id}`); };
   const confirmDelete = async () => {
-    try{ await api.delete(`/caixa/${deleteId}`); toast.success('Excluído!'); setDeleteId(null); load(); }
-    catch(e){ toast.error(e.response?.data?.error||'Erro ao excluir'); }
+    try { await api.delete(`/caixa/${deleteId}`); toast.success('Excluído!'); setDeleteId(null); load(); }
+    catch(e) { toast.error(e.response?.data?.error || 'Erro ao excluir'); }
   };
 
-  const filtered = lancamentos.filter(l=>{
-    const q=search.toLowerCase();
-    return !q || l.descricao?.toLowerCase().includes(q) || l.tipo?.toLowerCase().includes(q) || (l.ordemnumero||'').toLowerCase().includes(q);
+  const filtered = lancamentos.filter(l => {
+    const q = search.toLowerCase();
+    return !q || l.descricao?.toLowerCase().includes(q) || l.tipo?.toLowerCase().includes(q) || (l.ordemnumero || '').toLowerCase().includes(q);
   });
 
-  const totalFiltrado = filtered.reduce((s,l)=>s+Number(l.valor||0),0);
-  const summary = PAGOPTS.reduce((acc,p)=>({ ...acc, [p]: lancamentos.filter(l=>l.pagamento===p).reduce((s,l)=>s+Number(l.valor||0),0) }),{});
-  const totalDia = lancamentos.reduce((s,l)=>s+Number(l.valor||0),0);
-  const totalCartao = (summary.Credito||0)+(summary.Debito||0);
-  const ordensPendentes = ordens.filter(o=>saldoOS(o)>0.009 && o.status!=='Cancelado').sort((a,b)=>saldoOS(b)-saldoOS(a));
-  const isToday = date===today;
+  const totalFiltrado = filtered.reduce((s, l) => s + Number(l.valor || 0), 0);
+  const summary = PAGOPTS.reduce((acc, p) => ({ ...acc, [p]: lancamentos.filter(l => l.pagamento === p).reduce((s, l) => s + Number(l.valor || 0), 0) }), {});
+  const totalDia = lancamentos.reduce((s, l) => s + Number(l.valor || 0), 0);
+  const totalCartao = (summary.Credito || 0) + (summary.Debito || 0);
+  const ordensPendentes = ordens.filter(o => saldoOS(o) > 0.009 && o.status !== 'Cancelado').sort((a, b) => saldoOS(b) - saldoOS(a));
+  const isToday = date === today;
 
   return (
     <div>
       <div className="page-header">
         <h1 className="page-title">Caixa do Dia</h1>
-        {isCaixa&&<button className="btn btn-primary" onClick={()=>setModal({open:true,edit:null,presetOrder:null})}>Novo Lançamento</button>}
+        {isCaixa && (
+          <button className="btn btn-primary" onClick={() => setModal({ open: true, edit: null, presetOrder: null })}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
+            Novo Lançamento
+          </button>
+        )}
       </div>
 
       {/* Navegação de data */}
-      <div style={{display:'flex',alignItems:'center',gap:'var(--space-3)',marginBottom:'var(--space-5)',flexWrap:'wrap'}}>
-        <div style={{display:'flex',alignItems:'center',gap:'var(--space-2)'}}>
-          <button className="btn btn-ghost btn-sm" onClick={()=>setDate(d=>addDays(d,-1))}>‹</button>
-          <div style={{padding:'var(--space-2) var(--space-5)',fontWeight:700,background:'var(--color-surface)',border:'1px solid var(--color-border)',borderRadius:'var(--radius-lg)',minWidth:220,textAlign:'center',fontSize:'var(--text-sm)'}}>
-            {fmtDate(date)} {isToday&&<span style={{marginLeft:8,fontSize:'var(--text-xs)',color:'var(--color-primary)',fontWeight:600}}>Hoje</span>}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-5)', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          <button className="btn btn-ghost btn-sm" onClick={() => setDate(d => addDays(d, -1))}>‹</button>
+          <div style={{ padding: 'var(--space-2) var(--space-5)', fontWeight: 700, background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', minWidth: 220, textAlign: 'center', fontSize: 'var(--text-sm)' }}>
+            {fmtDate(date)} {isToday && <span style={{ marginLeft: 8, fontSize: 'var(--text-xs)', color: 'var(--color-primary)', fontWeight: 600 }}>Hoje</span>}
           </div>
-          <button className="btn btn-ghost btn-sm" onClick={()=>setDate(d=>addDays(d,1))} disabled={isToday}>›</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => setDate(d => addDays(d, 1))} disabled={isToday}>›</button>
         </div>
-        {!isToday&&<button className="btn btn-ghost btn-sm" onClick={()=>setDate(today)}>Ir para hoje</button>}
-        <input type="date" className="form-input" value={date} onChange={e=>setDate(e.target.value)} style={{width:'auto',padding:'var(--space-1) var(--space-3)',fontSize:'var(--text-xs)'}}/>
+        {!isToday && <button className="btn btn-ghost btn-sm" onClick={() => setDate(today)}>Ir para hoje</button>}
+        <input type="date" className="form-input" value={date} onChange={e => setDate(e.target.value)} style={{ width: 'auto', padding: 'var(--space-1) var(--space-3)', fontSize: 'var(--text-xs)' }}/>
       </div>
 
-      <div style={{display:'grid',gridTemplateColumns:'1fr 290px',gap:'var(--space-4)',alignItems:'start'}}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 290px', gap: 'var(--space-4)', alignItems: 'start' }}>
         {/* Tabela lançamentos */}
-        <div className="card" style={{overflow:'hidden'}}>
-          <div style={{display:'flex',gap:'var(--space-3)',padding:'var(--space-4)',borderBottom:'1px solid var(--color-border)',flexWrap:'wrap'}}>
-            <input className="form-input" placeholder="Buscar descrição, tipo ou OS..." value={search} onChange={e=>setSearch(e.target.value)} style={{flex:1,minWidth:220}}/>
-            <span style={{fontSize:'var(--text-xs)',color:'var(--color-text-muted)',alignSelf:'center'}}>{filtered.length} lançamento{filtered.length!==1?'s':''}</span>
+        <div className="card" style={{ overflow: 'hidden' }}>
+          <div style={{ display: 'flex', gap: 'var(--space-3)', padding: 'var(--space-4)', borderBottom: '1px solid var(--color-border)', flexWrap: 'wrap' }}>
+            <input className="form-input" placeholder="Buscar descrição, tipo ou OS..." value={search} onChange={e => setSearch(e.target.value)} style={{ flex: 1, minWidth: 220 }}/>
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', alignSelf: 'center' }}>{filtered.length} lançamento{filtered.length !== 1 ? 's' : ''}</span>
           </div>
 
           {loading ? <div className="loading-center"><div className="spinner"/></div>
-          : filtered.length===0 ? (
+          : filtered.length === 0 ? (
             <div className="empty-state">
               <h3>Nenhum lançamento</h3>
-              <p>{search?'Nenhum resultado para a busca.':'Nenhum registro para este dia.'}</p>
+              <p>{search ? 'Nenhum resultado para a busca.' : 'Nenhum registro para este dia.'}</p>
             </div>
           ) : (
             <div className="table-wrap">
@@ -327,36 +367,36 @@ export default function Caixa() {
                   <tr><th>#</th><th>Tipo</th><th>Descrição</th><th>OS</th><th>Pagamento</th><th>Valor</th><th>Origem</th><th></th></tr>
                 </thead>
                 <tbody>
-                  {filtered.map(l=>{
-                    const ordemNumero = l.ordemnumero||null;
-                    const bloqueado = l.origem==='entradaos';
+                  {filtered.map(l => {
+                    const ordemNumero = l.ordemnumero || null;
+                    const bloqueado = l.origem === 'entradaos';
                     return (
                       <tr key={l.id}>
-                        <td style={{color:'var(--color-text-faint)',fontSize:'var(--text-xs)'}}>{l.id}</td>
-                        <td><span className={`badge badge-${TIPOBADGE[l.tipo]||'diversos'}`}>{l.tipo}</span></td>
-                        <td style={{maxWidth:260,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{l.descricao}</td>
-                        <td>{ordemNumero&&<span style={{fontSize:'var(--text-xs)',color:'var(--color-primary)',fontWeight:700}}>{ordemNumero}</span>}</td>
-                        <td><span className={`badge badge-${PAGBADGE[l.pagamento]||'pix'}`}>{PAGLABEL[l.pagamento]||l.pagamento}</span></td>
-                        <td className="tabnum" style={{fontWeight:700,whiteSpace:'nowrap',color:Number(l.valor)<0?'var(--color-error)':'inherit'}}>
+                        <td style={{ color: 'var(--color-text-faint)', fontSize: 'var(--text-xs)' }}>{l.id}</td>
+                        <td><span className={`badge badge-${TIPOBADGE[l.tipo] || 'diversos'}`}>{l.tipo}</span></td>
+                        <td style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.descricao}</td>
+                        <td>{ordemNumero && <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-primary)', fontWeight: 700 }}>{ordemNumero}</span>}</td>
+                        <td><span className={`badge badge-${PAGBADGE[l.pagamento] || 'pix'}`}>{PAGLABEL[l.pagamento] || l.pagamento}</span></td>
+                        <td className="tabnum" style={{ fontWeight: 700, whiteSpace: 'nowrap', color: Number(l.valor) < 0 ? 'var(--color-error)' : 'inherit' }}>
                           {fmtS(l.valor)}
                         </td>
                         <td>
-                          {l.origem==='entradaos'&&<span className="badge" style={{background:'var(--color-primary-hl)',color:'var(--color-primary)'}}>Entrada OS</span>}
-                          {l.origem==='saldoos'&&<span className="badge" style={{background:'var(--color-success-hl)',color:'var(--color-success)'}}>Saldo OS</span>}
-                          {(!l.origem||l.origem==='manual')&&<span className="badge">Manual</span>}
+                          {l.origem === 'entradaos' && <span className="badge" style={{ background: 'var(--color-primary-hl)', color: 'var(--color-primary)' }}>Entrada OS</span>}
+                          {l.origem === 'saldoos' && <span className="badge" style={{ background: 'var(--color-success-hl)', color: 'var(--color-success)' }}>Saldo OS</span>}
+                          {(!l.origem || l.origem === 'manual') && <span className="badge">Manual</span>}
                         </td>
                         <td>
-                          <div style={{display:'flex',gap:'var(--space-1)'}}>
-                            <button className="btn btn-icon btn-ghost btn-sm" title="Imprimir recibo" onClick={()=>imprimirRecibo({...l,ordemnumero:ordemNumero})}>
+                          <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
+                            <button className="btn btn-icon btn-ghost btn-sm" title="Imprimir recibo" onClick={() => imprimirRecibo({ ...l, ordemnumero: ordemNumero })}>
                               <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><path d="M6 14h12v8H6z"/></svg>
                             </button>
-                            {isCaixa&&!bloqueado&&(
-                              <button className="btn btn-icon btn-ghost btn-sm" title="Editar" onClick={()=>setModal({open:true,edit:l,presetOrder:null})}>
+                            {isCaixa && !bloqueado && (
+                              <button className="btn btn-icon btn-ghost btn-sm" title="Editar" onClick={() => setModal({ open: true, edit: l, presetOrder: null })}>
                                 <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                               </button>
                             )}
-                            {isAdmin&&!bloqueado&&(
-                              <button className="btn btn-icon btn-ghost btn-sm" title="Excluir" onClick={()=>pedirExclusao(l)} style={{color:'var(--color-error)'}}>
+                            {isAdmin && !bloqueado && (
+                              <button className="btn btn-icon btn-ghost btn-sm" title="Excluir" onClick={() => pedirExclusao(l)} style={{ color: 'var(--color-error)' }}>
                                 <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
                               </button>
                             )}
@@ -367,9 +407,9 @@ export default function Caixa() {
                   })}
                 </tbody>
                 <tfoot>
-                  <tr style={{background:'var(--color-surface-offset)'}}>
-                    <td colSpan={5} style={{padding:'var(--space-2) var(--space-3)',fontSize:'var(--text-xs)',color:'var(--color-text-muted)'}}>Total filtrado</td>
-                    <td style={{padding:'var(--space-2) var(--space-3)',fontWeight:800,color:'var(--color-primary)'}} className="tabnum">{fmtS(totalFiltrado)}</td>
+                  <tr style={{ background: 'var(--color-surface-offset)' }}>
+                    <td colSpan={5} style={{ padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>Total filtrado</td>
+                    <td style={{ padding: 'var(--space-2) var(--space-3)', fontWeight: 800, color: 'var(--color-primary)' }} className="tabnum">{fmtS(totalFiltrado)}</td>
                     <td colSpan={2}/>
                   </tr>
                 </tfoot>
@@ -379,41 +419,41 @@ export default function Caixa() {
         </div>
 
         {/* Sidebar direita */}
-        <div style={{display:'flex',flexDirection:'column',gap:'var(--space-4)',position:'sticky',top:'var(--space-6)'}}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', position: 'sticky', top: 'var(--space-6)' }}>
           {/* Resumo */}
           <div className="card card-pad">
-            <div style={{fontWeight:700,fontSize:'var(--text-sm)',marginBottom:'var(--space-4)'}}>Resumo do Dia</div>
-            {PAGOPTS.map(p=>(
-              <div key={p} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'var(--space-2) 0',borderBottom:'1px solid var(--color-divider)'}}>
-                <span className={`badge badge-${PAGBADGE[p]||'pix'}`}>{PAGLABEL[p]||p}</span>
-                <span className="tabnum" style={{fontWeight:600,fontSize:'var(--text-sm)'}}>{fmt(summary[p]||0)}</span>
+            <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)', marginBottom: 'var(--space-4)' }}>Resumo do Dia</div>
+            {PAGOPTS.map(p => (
+              <div key={p} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-2) 0', borderBottom: '1px solid var(--color-divider)' }}>
+                <span className={`badge badge-${PAGBADGE[p] || 'pix'}`}>{PAGLABEL[p] || p}</span>
+                <span className="tabnum" style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{fmt(summary[p] || 0)}</span>
               </div>
             ))}
-            <div style={{display:'flex',justifyContent:'space-between',padding:'var(--space-2) 0',borderBottom:'1px solid var(--color-divider)',fontSize:'var(--text-xs)',color:'var(--color-text-muted)'}}>
-              <span>Total cartão</span><span className="tabnum" style={{fontWeight:600}}>{fmt(totalCartao)}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: 'var(--space-2) 0', borderBottom: '1px solid var(--color-divider)', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+              <span>Total cartão</span><span className="tabnum" style={{ fontWeight: 600 }}>{fmt(totalCartao)}</span>
             </div>
-            <div style={{display:'flex',justifyContent:'space-between',paddingTop:'var(--space-3)',marginTop:'var(--space-1)'}}>
-              <span style={{fontWeight:800}}>TOTAL</span>
-              <span className="tabnum" style={{fontWeight:900,fontSize:'var(--text-base)',color:'var(--color-primary)'}}>{fmtS(totalDia)}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 'var(--space-3)', marginTop: 'var(--space-1)' }}>
+              <span style={{ fontWeight: 800 }}>TOTAL</span>
+              <span className="tabnum" style={{ fontWeight: 900, fontSize: 'var(--text-base)', color: 'var(--color-primary)' }}>{fmtS(totalDia)}</span>
             </div>
           </div>
 
           {/* Saldos pendentes */}
           <div className="card card-pad">
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'var(--space-3)'}}>
-              <div style={{fontWeight:700,fontSize:'var(--text-sm)'}}>Saldos pendentes</div>
-              <span style={{fontSize:'var(--text-xs)',color:'var(--color-text-muted)'}}>{ordensPendentes.length} OS</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-3)' }}>
+              <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>Saldos pendentes</div>
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>{ordensPendentes.length} OS</span>
             </div>
-            {ordensPendentes.length===0
-              ? <p style={{fontSize:'var(--text-xs)',color:'var(--color-text-faint)'}}>Nenhuma OS com saldo pendente.</p>
-              : <div style={{display:'flex',flexDirection:'column',gap:'var(--space-2)',maxHeight:420,overflowY:'auto'}}>
-                  {ordensPendentes.slice(0,12).map(o=>(
-                    <button key={o.id} className="btn btn-ghost btn-sm" onClick={()=>setModal({open:true,edit:null,presetOrder:o})} style={{justifyContent:'space-between',textAlign:'left',border:'1px solid var(--color-border)'}}>
+            {ordensPendentes.length === 0
+              ? <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)' }}>Nenhuma OS com saldo pendente.</p>
+              : <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', maxHeight: 420, overflowY: 'auto' }}>
+                  {ordensPendentes.slice(0, 12).map(o => (
+                    <button key={o.id} className="btn btn-ghost btn-sm" onClick={() => setModal({ open: true, edit: null, presetOrder: o })} style={{ justifyContent: 'space-between', textAlign: 'left', border: '1px solid var(--color-border)' }}>
                       <span>
-                        <div style={{fontWeight:700,color:'var(--color-primary)',fontSize:'var(--text-xs)'}}>{o.numero}</div>
-                        <div style={{fontSize:'var(--text-xs)',color:'var(--color-text-muted)',maxWidth:150,overflow:'hidden',textOverflow:'ellipsis'}}>{o.clientenome||o.clientecontato}</div>
+                        <div style={{ fontWeight: 700, color: 'var(--color-primary)', fontSize: 'var(--text-xs)' }}>{o.numero}</div>
+                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis' }}>{o.clientenome || o.clientecontato}</div>
                       </span>
-                      <span className="tabnum" style={{fontWeight:800,color:'var(--color-warning)'}}>{fmt(saldoOS(o))}</span>
+                      <span className="tabnum" style={{ fontWeight: 800, color: 'var(--color-warning)' }}>{fmt(saldoOS(o))}</span>
                     </button>
                   ))}
                 </div>
@@ -422,29 +462,36 @@ export default function Caixa() {
         </div>
       </div>
 
-      <ModalLancamento open={modal.open} onClose={()=>setModal({open:false,edit:null,presetOrder:null})}
-        onSaved={load} editData={modal.edit} currentDate={date} ordens={ordensPendentes} presetOrder={modal.presetOrder}/>
+      <ModalLancamento
+        open={modal.open}
+        onClose={() => setModal({ open: false, edit: null, presetOrder: null })}
+        onSaved={load}
+        editData={modal.edit}
+        currentDate={date}
+        ordens={ordensPendentes}
+        presetOrder={modal.presetOrder}
+      />
 
-      {/* Modal confirmar exclusão — via Portal */}
+      {/* Modal confirmar exclusão */}
       {deleteId && ReactDOM.createPortal(
-        <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&setDeleteId(null)}>
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setDeleteId(null)}>
           <div className="modal modal-sm">
             <div className="modal-header">
-              <span className="modal-title" style={{color:'var(--color-error)'}}>Excluir Lançamento</span>
-              <button className="btn btn-icon btn-ghost" onClick={()=>setDeleteId(null)}>
+              <span className="modal-title" style={{ color: 'var(--color-error)' }}>Excluir Lançamento</span>
+              <button className="btn btn-icon btn-ghost" onClick={() => setDeleteId(null)}>
                 <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M18 6L6 18M6 6l12 12"/></svg>
               </button>
             </div>
-            <div style={{padding:'var(--space-4) var(--space-5)'}}>
-              <p style={{fontSize:'var(--text-sm)',color:'var(--color-text-muted)',marginBottom:'var(--space-3)'}}>
-                Tem certeza que deseja excluir o lançamento <strong style={{color:'var(--color-text)'}}>{deleteDesc}</strong>?
+            <div style={{ padding: 'var(--space-4) var(--space-5)' }}>
+              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-3)' }}>
+                Tem certeza que deseja excluir o lançamento <strong style={{ color: 'var(--color-text)' }}>{deleteDesc}</strong>?
               </p>
-              <div style={{padding:'var(--space-3)',background:'var(--color-error-hl)',borderRadius:'var(--radius-md)',fontSize:'var(--text-xs)',color:'var(--color-error)',fontWeight:600}}>
+              <div style={{ padding: 'var(--space-3)', background: 'var(--color-error-hl)', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-xs)', color: 'var(--color-error)', fontWeight: 600 }}>
                 ⚠️ Lançamentos de Entrada OS não podem ser excluídos por aqui — altere pela OS.
               </div>
             </div>
             <div className="modal-footer">
-              <button className="btn btn-ghost" onClick={()=>setDeleteId(null)}>Cancelar</button>
+              <button className="btn btn-ghost" onClick={() => setDeleteId(null)}>Cancelar</button>
               <button className="btn btn-danger" onClick={confirmDelete}>Excluir</button>
             </div>
           </div>
