@@ -58,7 +58,7 @@
   --space-8: 2rem;     --space-10: 2.5rem;  --space-12: 3rem;
   --space-16: 4rem;
 
-  --ease: 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  --ease: 150ms cubic-bezier(0.16, 1, 0.3, 1);
   --sidebar-w: 236px;
 }
 
@@ -360,24 +360,25 @@ table tbody tr:hover { background: color-mix(in oklab, var(--color-primary) 5%, 
 
 /* ── Modal ──────────────────────────────────────────────── */
 /*
-  ESTRATÉGIA DEFINITIVA:
-  O overlay é o scroll container (overflow-y: auto).
-  O modal cresce com o conteúdo (sem max-height nem overflow no próprio .modal).
-  O header e footer têm position: sticky para ficarem visíveis durante o scroll.
+  ESTRATÉGIA DE PERFORMANCE:
+  - Sem backdrop-filter: blur (caro de renderizar, causa jank)
+  - will-change promove overlay e modal para camada GPU própria
+  - Overlay: fade puro em 100ms
+  - Modal: translateY 4px + scale micro em 120ms com easing snappy
+  - Ambos animam só opacity + transform (propriedades compositor-only)
 */
 .modal-overlay {
   position: fixed;
   inset: 0;
   z-index: 500;
-  background: oklch(0 0 0 / 0.5);
-  backdrop-filter: blur(4px);
+  background: oklch(0 0 0 / 0.45);
   display: flex;
   align-items: flex-start;
   justify-content: center;
   overflow-y: auto;
   padding: var(--space-6) var(--space-4);
-  /* Overlay: só fade, muito rápido — sem delay perceptível */
-  animation: overlayIn 0.12s ease both;
+  animation: overlayIn 0.1s ease both;
+  will-change: opacity;
 }
 
 .modal {
@@ -390,20 +391,18 @@ table tbody tr:hover { background: color-mix(in oklab, var(--color-primary) 5%, 
   display: flex;
   flex-direction: column;
   margin: auto;
-  /* Modal: micro-deslocamento de 6px, duração curta, easing snappy */
-  animation: modalIn 0.14s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: modalIn 0.12s cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: opacity, transform;
   min-width: 0;
 }
 
-/* Overlay: só opacidade, sem deslocamento — imperceptível como "delay" */
 @keyframes overlayIn {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
 
-/* Modal: move apenas 6px (era 12px) e dura 140ms (era 200ms) com easing de mola */
 @keyframes modalIn {
-  from { opacity: 0; transform: translateY(6px) scale(0.99); }
+  from { opacity: 0; transform: translateY(4px) scale(0.985); }
   to   { opacity: 1; transform: none; }
 }
 
@@ -547,7 +546,6 @@ table tbody tr:hover { background: color-mix(in oklab, var(--color-primary) 5%, 
   padding: 0 var(--space-6);
   display: flex; align-items: center; gap: var(--space-4);
   position: sticky; top: 0; z-index: 100;
-  backdrop-filter: blur(8px);
 }
 
 /* ── Busca global ───────────────────────────────────────── */
@@ -570,3 +568,22 @@ table tbody tr:hover { background: color-mix(in oklab, var(--color-primary) 5%, 
   width: 100%;
 }
 .search-box input::placeholder { color: var(--color-text-faint); }
+
+/* ── Skeleton ───────────────────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-offset) 25%,
+    var(--color-surface-dynamic) 50%,
+    var(--color-surface-offset) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+  border-radius: var(--radius-md);
+  border: none !important;
+  box-shadow: none !important;
+}
