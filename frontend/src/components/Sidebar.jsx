@@ -11,7 +11,7 @@ const Icon = ({ d, d2 }) => (
 )
 
 const ICONS = {
-  dashboard: { d: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z' },
+  resumo:    { d: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z' },
   caixa:     { d: 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z' },
   ordens:    { d: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2', d2: 'M9 3h6a1 1 0 011 1v1H8V4a1 1 0 011-1zM9 12h6M9 16h4' },
   orcamento: { d: 'M12 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z', d2: 'M14 2v6h6M9 13h6M9 17h4M9 9h1' },
@@ -77,7 +77,7 @@ export default function Sidebar({ collapsed, onToggle }) {
 
   return (
     <aside className={`sidebar${collapsed ? ' collapsed' : ''}`}>
-      {/* Cabeçalho da sidebar com logo e botão de colapsar */}
+      {/* Cabeçalho */}
       <div className="sidebar-header" onClick={onToggle} style={{ cursor: 'pointer' }}>
         {!collapsed && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
@@ -90,7 +90,10 @@ export default function Sidebar({ collapsed, onToggle }) {
             </div>
           </div>
         )}
-        <button className="btn btn-icon btn-ghost" style={{ marginLeft: collapsed ? 0 : 'auto', flexShrink: 0 }} aria-label={collapsed ? 'Expandir menu' : 'Recolher menu'}>
+        <button
+          className="btn btn-icon btn-ghost"
+          style={{ marginLeft: collapsed ? 0 : 'auto', flexShrink: 0 }}
+          aria-label={collapsed ? 'Expandir menu' : 'Recolher menu'}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             {collapsed ? <path d="M9 18l6-6-6-6"/> : <path d="M15 18l-6-6 6-6"/>}
           </svg>
@@ -98,16 +101,19 @@ export default function Sidebar({ collapsed, onToggle }) {
       </div>
 
       <nav className="sidebar-nav">
+        {/* Oficina: vê apenas a fila */}
         {isOficina && navItem('/oficina', 'Fila da Oficina', 'oficina')}
+
+        {/* Admin e Caixa: ordem definida pelo usuário */}
         {(isAdmin || isCaixa) && (
           <>
-            {navItem('/dashboard', 'Dashboard', 'dashboard')}
-            {navItemBadge('/ordens', 'Ordens de Serviço', 'ordens', vencidas)}
-            {navItem('/orcamento', 'Orçamento', 'orcamento')}
-            {navItem('/oficina', 'Fila da Oficina', 'oficina')}
-            {navItem('/caixa', 'Caixa', 'caixa')}
-            {navItem('/clientes', 'Clientes', 'clientes')}
-            {navItem('/relatorios', 'Relatórios', 'relat')}
+            {navItem('/dashboard',  'Resumo',             'resumo')}
+            {navItem('/caixa',      'Caixa',              'caixa')}
+            {navItemBadge('/ordens','Ordens de Serviço',  'ordens',    vencidas)}
+            {navItem('/orcamento',  'Orçamento',          'orcamento')}
+            {navItem('/oficina',    'Fila da Oficina',    'oficina')}
+            {navItem('/relatorios', 'Relatórios',         'relat')}
+            {navItem('/clientes',   'Clientes',           'clientes')}
             {isAdmin && navItem('/usuarios', 'Usuários', 'usuarios')}
           </>
         )}
