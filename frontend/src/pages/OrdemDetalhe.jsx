@@ -1,5 +1,6 @@
 // frontend/src/pages/OrdemDetalhe.jsx
 import React, { useState, useEffect, useCallback } from 'react'
+import ReactDOM from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import toast from 'react-hot-toast'
@@ -27,6 +28,16 @@ export default function OrdemDetalhe() {
   const [novaObs, setNovaObs]           = useState('')
   const [savingObs, setSavingObs]       = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+
+  // Bloqueia scroll do body quando modal de exclusão estiver aberto
+  useEffect(() => {
+    if (confirmDelete) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => { document.body.style.overflow = '' }
+  }, [confirmDelete])
 
   const load = useCallback(async () => {
     try {
@@ -77,7 +88,6 @@ export default function OrdemDetalhe() {
   if (loading) return <div className="loading-center"><div className="spinner"/></div>
   if (!ordem)  return null
 
-  // ✅ CORRIGIDO: usar campos retornados pelo backend (camelCase sem underscore)
   const saldo     = Number(ordem.saldoaberto ?? 0)
   const vencida   = ordem.prazo && ordem.prazo < today() && !['Entregue','Cancelado'].includes(ordem.status)
   const statusIdx = STATUS_FLOW.indexOf(ordem.status)
@@ -181,7 +191,6 @@ export default function OrdemDetalhe() {
         <div className="card card-pad">
           <div style={{ fontWeight:700, fontSize:'var(--text-sm)', marginBottom:'var(--space-4)' }}>Detalhes da OS</div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'var(--space-3)' }}>
-            {/* ✅ CORRIGIDO: campos reais do backend */}
             {[
               ['Cliente',    ordem.clientenome     || '—'],
               ['Contato',    ordem.clientetelefone || ordem.clientecontato || '—'],
@@ -227,7 +236,6 @@ export default function OrdemDetalhe() {
           ))}
           <div style={{ display:'flex', justifyContent:'space-between', paddingTop:'var(--space-3)', marginTop:'var(--space-1)' }}>
             <span style={{ fontWeight:700 }}>Saldo</span>
-            {/* ✅ CORRIGIDO: usar saldoaberto calculado pelo backend */}
             <span className="tabnum" style={{ fontWeight:800, color: saldo > 0 ? 'var(--color-warning)' : 'var(--color-success)', fontSize:'var(--text-base)' }}>
               {saldo > 0 ? fmt(saldo) : '✓ Quitado'}
             </span>
@@ -249,7 +257,6 @@ export default function OrdemDetalhe() {
           {historico.length === 0 && (
             <p style={{ fontSize:'var(--text-xs)', color:'var(--color-text-faint)' }}>Nenhuma atividade registrada.</p>
           )}
-          {/* ✅ CORRIGIDO: campos reais do statuslog */}
           {historico.map((h, i) => (
             <div key={h.id || i} style={{ position:'relative', marginBottom:'var(--space-4)' }}>
               <div style={{
@@ -291,12 +298,18 @@ export default function OrdemDetalhe() {
         </div>
       </div>
 
-      {/* Modal confirmar exclusão */}
-      {confirmDelete && (
-        <div className="modal-overlay" onClick={e => e.target===e.currentTarget && setConfirmDelete(false)}>
+      {/* Modal confirmar exclusão via Portal */}
+      {confirmDelete && ReactDOM.createPortal(
+        <div
+          className="modal-overlay"
+          onClick={e => e.target===e.currentTarget && setConfirmDelete(false)}
+        >
           <div className="modal modal-sm">
             <div className="modal-header">
               <span className="modal-title" style={{ color:'var(--color-error)' }}>Excluir OS {ordem.numero}?</span>
+              <button className="btn btn-icon btn-ghost" onClick={() => setConfirmDelete(false)}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
             </div>
             <div style={{ padding:'var(--space-4) var(--space-5)', display:'flex', flexDirection:'column', gap:'var(--space-3)' }}>
               <p style={{ color:'var(--color-text-muted)', fontSize:'var(--text-sm)' }}>
@@ -311,7 +324,8 @@ export default function OrdemDetalhe() {
               <button className="btn btn-danger" onClick={excluirOS}>Excluir permanentemente</button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
