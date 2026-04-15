@@ -137,6 +137,8 @@ export default function Produtos() {
   const [deleteId, setDeleteId]   = useState(null)
   const [deleteName, setDeleteName] = useState('')
 
+  useEffect(() => { document.title = 'Produtos — Arte & Molduras' }, [])
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
@@ -185,7 +187,6 @@ export default function Produtos() {
         )}
       </div>
 
-      {/* Filtros */}
       <div style={{ display:'flex', gap:'var(--space-3)', marginBottom:'var(--space-4)', flexWrap:'wrap' }}>
         <input className="form-input" placeholder="Buscar nome, categoria..." value={search} onChange={e=>setSearch(e.target.value)} style={{flex:1,minWidth:200}}/>
         <select className="form-input" value={catFiltro} onChange={e=>setCatFiltro(e.target.value)} style={{width:'auto'}}>
@@ -251,7 +252,6 @@ export default function Produtos() {
 
       <Modal open={modal.open} onClose={()=>setModal({open:false,edit:null})} onSaved={load} editData={modal.edit}/>
 
-      {/* Confirm delete */}
       {deleteId && ReactDOM.createPortal(
         <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&setDeleteId(null)}>
           <div className="modal modal-sm">

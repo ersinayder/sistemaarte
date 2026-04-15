@@ -17,7 +17,6 @@ function ModalUsuario({ open, onClose, onSaved, editData }) {
   const [saving, setSaving] = useState(false)
   const set = (k,v) => setForm(f=>({...f,[k]:v}))
 
-  // Bloqueia scroll do body enquanto modal aberto
   useEffect(() => {
     if (open) {
       document.body.style.overflow = 'hidden'
@@ -75,7 +74,6 @@ function ModalUsuario({ open, onClose, onSaved, editData }) {
               </div>
             </div>
 
-            {/* Seleção de perfil */}
             <div className="form-group">
               <label className="form-label">Perfil de Acesso</label>
               <div style={{ display:'flex', gap:'var(--space-3)', marginTop:'var(--space-2)' }}>
@@ -97,7 +95,6 @@ function ModalUsuario({ open, onClose, onSaved, editData }) {
               </div>
             </div>
 
-            {/* Descrição do perfil */}
             <div style={{ padding:'var(--space-3)', background:'var(--color-surface-dynamic)', borderRadius:'var(--radius-md)', fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>
               {{
                 admin:   '✅ Acesso total — caixa, ordens, relatórios, fila oficina e gestão de usuários.',
@@ -130,6 +127,8 @@ export default function Usuarios() {
   const [users, setUsers]   = useState([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal]   = useState({ open:false, edit:null })
+
+  useEffect(() => { document.title = 'Usuários — Arte & Molduras' }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
