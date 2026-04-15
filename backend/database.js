@@ -1,4 +1,3 @@
-
 const Database = require("better-sqlite3");
 const bcrypt   = require("bcryptjs");
 const path     = require("path");
@@ -74,12 +73,25 @@ CREATE TABLE IF NOT EXISTS statuslog (
   obs            TEXT,
   createdat      TEXT DEFAULT (datetime('now','localtime'))
 );
+CREATE TABLE IF NOT EXISTS produtos (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  nome       TEXT NOT NULL,
+  categoria  TEXT DEFAULT 'Outros',
+  unidade    TEXT DEFAULT 'un',
+  preco      REAL DEFAULT 0,
+  estoque    REAL DEFAULT 0,
+  estoquemin REAL DEFAULT 0,
+  descricao  TEXT DEFAULT '',
+  createdat  TEXT DEFAULT (datetime('now','localtime')),
+  updatedat  TEXT DEFAULT (datetime('now','localtime'))
+);
 CREATE INDEX IF NOT EXISTS idx_ordens_status       ON ordens(status);
 CREATE INDEX IF NOT EXISTS idx_ordens_prazo        ON ordens(prazoentrega);
 CREATE INDEX IF NOT EXISTS idx_ordens_clienteid    ON ordens(clienteid);
 CREATE INDEX IF NOT EXISTS idx_lancamentos_data    ON lancamentos(data);
 CREATE INDEX IF NOT EXISTS idx_lancamentos_ordemid ON lancamentos(ordemid);
 CREATE INDEX IF NOT EXISTS idx_statuslog_ordemid   ON statuslog(ordemid);
+CREATE INDEX IF NOT EXISTS idx_produtos_nome       ON produtos(nome COLLATE NOCASE);
 `;
 
 let db;
@@ -149,4 +161,4 @@ function backup() {
   }).catch(e=>console.error("[Backup] Erro:",e.message));
 }
 
-module.exports = { initDB, run, runInsert, getAll, getOne, transaction, backup };
+module.exports = { initDB, run, runInsert, getAll, getOne, transaction, backup, getDB: () => db };
