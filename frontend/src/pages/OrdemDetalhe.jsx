@@ -29,7 +29,6 @@ export default function OrdemDetalhe() {
   const [savingObs, setSavingObs]       = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
-  // Bloqueia scroll do body quando modal de exclusão estiver aberto
   useEffect(() => {
     if (confirmDelete) {
       document.body.style.overflow = 'hidden'
@@ -88,7 +87,7 @@ export default function OrdemDetalhe() {
   if (loading) return <div className="loading-center"><div className="spinner"/></div>
   if (!ordem)  return null
 
-  const saldo     = Number(ordem.saldoaberto ?? 0)
+  const saldoOS   = Number(ordem.saldoaberto ?? 0)
   const vencida   = ordem.prazo && ordem.prazo < today() && !['Entregue','Cancelado'].includes(ordem.status)
   const statusIdx = STATUS_FLOW.indexOf(ordem.status)
   const canAdvance = (isCaixa || isOficina) && ordem.status !== 'Entregue' && ordem.status !== 'Cancelado'
@@ -235,9 +234,9 @@ export default function OrdemDetalhe() {
             </div>
           ))}
           <div style={{ display:'flex', justifyContent:'space-between', paddingTop:'var(--space-3)', marginTop:'var(--space-1)' }}>
-            <span style={{ fontWeight:700 }}>Saldo</span>
-            <span className="tabnum" style={{ fontWeight:800, color: saldo > 0 ? 'var(--color-warning)' : 'var(--color-success)', fontSize:'var(--text-base)' }}>
-              {saldo > 0 ? fmt(saldo) : '✓ Quitado'}
+            <span style={{ fontWeight:700 }}>Restante</span>
+            <span className="tabnum" style={{ fontWeight:800, color: saldoOS > 0 ? 'var(--color-warning)' : 'var(--color-success)', fontSize:'var(--text-base)' }}>
+              {saldoOS > 0 ? fmt(saldoOS) : '✓ Quitado'}
             </span>
           </div>
           <div style={{ marginTop:'var(--space-4)', padding:'var(--space-2) 0', borderTop:'1px solid var(--color-divider)' }}>
