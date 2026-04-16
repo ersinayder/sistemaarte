@@ -67,6 +67,11 @@
   --ease: 150ms cubic-bezier(0.16, 1, 0.3, 1);
   --sidebar-w: 236px;
   --sidebar-w-collapsed: 60px;
+
+  /* ── Content widths ── */
+  --content-max: 1400px;
+  --content-default: 1200px;
+  --content-narrow: 800px;
 }
 
 [data-theme="dark"] {
@@ -206,10 +211,40 @@ a, button, [role="button"], input, select, textarea {
 main {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: var(--space-6);
+  max-width: var(--content-max);
 }
 @media (max-width: 768px) {
   main { padding: var(--space-4); }
+}
+
+/* page-content: container interno para limitar largura e centralizar o conteúdo */
+.page-content {
+  width: 100%;
+  max-width: var(--content-default);
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.page-content-wide {
+  width: 100%;
+  max-width: var(--content-max);
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.page-content-narrow {
+  width: 100%;
+  max-width: var(--content-narrow);
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
 }
 
 @keyframes fadeSlideIn {
