@@ -13,22 +13,12 @@ export default function Layout() {
   const { user } = useAuth()
 
   return (
-    // FIX: removido overflow:hidden do wrapper raiz.
-    // Esse overflow bloqueava o position:fixed do modal em iOS/Android.
-    // O scroll é controlado pelo <main> interno — não precisa de overflow aqui.
-    <div style={{ display: 'flex', height: '100dvh' }}>
+    <div className="app-layout">
       <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(c => !c)} />
 
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+      <div className="main-wrapper">
         {/* Topbar */}
-        <header style={{
-          display: 'flex', alignItems: 'center', gap: 'var(--space-4)',
-          padding: '0 var(--space-6)', minHeight: 60,
-          background: 'var(--color-surface)',
-          borderBottom: '1px solid var(--color-border)',
-          flexShrink: 0,
-          position: 'sticky', top: 0, zIndex: 100,
-        }}>
+        <header className="topbar">
           {/* Data */}
           <span style={{
             fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)',
@@ -68,7 +58,7 @@ export default function Layout() {
         </header>
 
         {/* Content */}
-        <main style={{ flex: 1, overflowY: 'auto', padding: 'var(--space-6)' }}>
+        <main>
           <Outlet />
         </main>
       </div>
