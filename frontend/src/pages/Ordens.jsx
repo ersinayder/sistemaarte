@@ -311,7 +311,7 @@ export default function Ordens() {
                   <th style={{ cursor:'pointer' }} onClick={() => toggleSort('prazoentrega')}>Prazo <SortIcon f="prazoentrega"/></th>
                   <th>Status</th>
                   <th style={{ cursor:'pointer', textAlign:'right' }} onClick={() => toggleSort('valortotal')}>Valor <SortIcon f="valortotal"/></th>
-                  <th style={{ textAlign:'right' }}>Saldo</th>
+                  <th style={{ textAlign:'right' }}>Restante</th>
                   <th></th>
                 </tr>
               </thead>
@@ -319,6 +319,7 @@ export default function Ordens() {
                 {filtered.map(o => {
                   const vencida = o.prazoentrega && o.prazoentrega < new Date().toISOString().split('T')[0] && !['Entregue','Cancelado'].includes(o.status);
                   const saldo = saldoAberto(o);
+                  const quitado = saldo <= 0;
                   return (
                     <tr key={o.id} style={{ cursor:'pointer' }} onClick={() => navigate(`/ordens/${o.id}`)}>
                       <td style={{ fontWeight:700, color:'var(--color-primary)', fontSize:'var(--text-xs)' }}>{o.numero}</td>
@@ -331,7 +332,9 @@ export default function Ordens() {
                       <td style={{ fontSize:'var(--text-xs)', color: vencida?'var(--color-error)':'var(--color-text-muted)', fontWeight: vencida?700:400 }}>{fmtD(o.prazoentrega)}</td>
                       <td><span className={`badge badge-${statusColor(o.status)}`} style={{ fontSize:10 }}>{o.status}</span></td>
                       <td style={{ textAlign:'right', fontFamily:'monospace', fontSize:'var(--text-xs)' }}>{fmt(o.valortotal||o.valor)}</td>
-                      <td style={{ textAlign:'right', fontFamily:'monospace', fontSize:'var(--text-xs)', color: saldo>0?'var(--color-warning)':'var(--color-text-faint)', fontWeight: saldo>0?700:400 }}>{saldo>0?fmt(saldo):'—'}</td>
+                      <td style={{ textAlign:'right', fontFamily:'monospace', fontSize:'var(--text-xs)', color: quitado ? 'var(--color-success)' : 'var(--color-warning)', fontWeight:700 }}>
+                        {quitado ? <span style={{ fontSize:9, letterSpacing:'0.04em' }}>QUITADO</span> : fmt(saldo)}
+                      </td>
                       <td>
                         <div style={{ display:'flex', gap:'var(--space-1)', justifyContent:'flex-end' }} onClick={e => e.stopPropagation()}>
                           {canEdit && (
