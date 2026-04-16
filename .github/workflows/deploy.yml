@@ -10,6 +10,10 @@ jobs:
     name: Build & Deploy
     runs-on: self-hosted
 
+    env:
+      HOMEPATH: C:\Users\Administrator
+      HOME: C:\Users\Administrator
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -55,7 +59,9 @@ jobs:
       - name: Stop PM2 before rebuild
         shell: powershell
         run: |
-          pm2 stop sistemaarte-backend 2>$null
+          $env:HOMEPATH = "C:\Users\Administrator"
+          $env:HOME     = "C:\Users\Administrator"
+          pm2 stop sistemaarte-backend 2>$null; $true
           Start-Sleep -Seconds 2
 
       - name: Garantir dependências do backend
@@ -69,6 +75,8 @@ jobs:
       - name: Reload PM2
         shell: powershell
         run: |
+          $env:HOMEPATH = "C:\Users\Administrator"
+          $env:HOME     = "C:\Users\Administrator"
           $status = pm2 describe sistemaarte-backend 2>&1
           if ($status -match 'online|stopped|errored') {
             pm2 reload sistemaarte-backend --update-env
