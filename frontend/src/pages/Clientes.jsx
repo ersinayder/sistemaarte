@@ -63,7 +63,6 @@ export default function Clientes() {
   const openNew = () => { setEditId(null); setForm(blank); setShowForm(true); };
   const closeForm = () => { setShowForm(false); setEditId(null); setForm(blank); };
 
-  // Função unificada de busca de CEP — usa d.uf (campo correto da API ViaCEP)
   const buscarCep = async (cep) => {
     const c = cep.replace(/\D/g,'');
     if (c.length !== 8) return;
@@ -115,12 +114,13 @@ export default function Clientes() {
     } finally { setDeleting(null); }
   };
 
+  // FIX: usa rota correta /clientes/:id/ordens
   const loadDetail = useCallback(async (id) => {
     setDetailLoading(true);
     try {
       const [cliRes, ordRes] = await Promise.all([
         api.get(`/clientes/${id}`),
-        api.get(`/ordens?cliente_id=${id}`)
+        api.get(`/clientes/${id}/ordens`)
       ]);
       setDetailData({ cliente: cliRes.data, ordens: ordRes.data });
     } catch { toast.error('Erro ao carregar detalhes'); }
@@ -133,7 +133,14 @@ export default function Clientes() {
   }, [detailId, loadDetail]);
 
   const fmt = v => v != null ? Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}) : '—';
-  const fmtD = d => d ? new Date(d+'T00:00:00').toLocaleDateString('pt-BR') : '—';
+
+  // FIX: aceita ISO completo ou apenas data, sem duplicar T00:00:00
+  const fmtD = d => {
+    if (!d) return '—';
+    const dateStr = d.includes('T') ? d : d + 'T00:00:00';
+    const dt = new Date(dateStr);
+    return isNaN(dt.getTime()) ? '—' : dt.toLocaleDateString('pt-BR');
+  };
 
   const sorted = [...clientes]
     .filter(c => {
@@ -155,8 +162,6 @@ export default function Clientes() {
 
   const SortIcon = ({ f }) => sortField !== f ? <span style={{color:'var(--color-text-faint)',marginLeft:4}}>⇅</span>
     : <span style={{marginLeft:4}}>{sortDir==='asc'?'↑':'↓'}</span>;
-
-  const detailCliente = detailId ? clientes.find(c => c.id === detailId) : null;
 
   return (
     <div style={{ height:'calc(100vh - 60px - var(--space-12))', display:'flex', flexDirection:'column', minHeight:0 }}>
@@ -216,7 +221,10 @@ export default function Clientes() {
                     <th style={{ cursor:'pointer', userSelect:'none' }} onClick={() => toggleSort('nome')}>Nome <SortIcon f="nome"/></th>
                     <th>Contato</th>
                     <th>CPF / IE</th>
-                    <th>Cidade / UF</th><th>OS</th><th>Total gasto</th><th></th>
+                    <th>Cidade / UF</th>
+                    <th>OS</th>
+                    <th>Total gasto</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -236,9 +244,10 @@ export default function Clientes() {
                         {c.ie  && <div>IE: {c.ie}</div>}
                         {!c.cpf && !c.ie && '—'}
                       </td>
-                      <td style={{fontSize:'var(--text-xs)'}}>{c.cidade?<span>{c.cidade}{c.uf?` / ${c.uf}`:''}</span>:'\u2014'}</td>
-                      <td style={{ textAlign:'center' }}><span className="badge badge-primary">{c.total_ordens||0}</span></td>
-                      <td style={{ textAlign:'right', fontFamily:'monospace', fontSize:'var(--text-xs)' }}>{fmt(c.total_gasto)}</td>
+                      <td style={{fontSize:'var(--text-xs)'}}>{c.cidade?<span>{c.cidade}{c.uf?` / ${c.uf}`:''}</span>:'—'}</td>
+                      {/* FIX: campo correto do backend é totalordens e gastototal */}
+                      <td style={{ textAlign:'center' }}><span className="badge badge-primary">{c.totalordens ?? 0}</span></td>
+                      <td style={{ textAlign:'right', fontFamily:'monospace', fontSize:'var(--text-xs)' }}>{fmt(c.gastototal)}</td>
                       <td>
                         <div style={{ display:'flex', gap:'var(--space-1)', justifyContent:'flex-end' }} onClick={e => e.stopPropagation()}>
                           {canEdit && (
@@ -303,7 +312,7 @@ export default function Clientes() {
                   <div>
                     <div style={{ fontWeight:700, fontSize:'var(--text-xs)', color:'var(--color-text-muted)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:'var(--space-2)' }}>Histórico de OS</div>
                     <div style={{ display:'flex', flexDirection:'column', gap:'var(--space-2)' }}>
-                      {detailData.ordens.slice().reverse().map(o => (
+                      {detailData.ordens.map(o => (
                         <div
                           key={o.id}
                           style={{ background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)', padding:'var(--space-2) var(--space-3)', cursor:'pointer', border:'1px solid var(--color-border)' }}
@@ -311,7 +320,8 @@ export default function Clientes() {
                         >
                           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                             <span style={{ fontWeight:700, fontSize:'var(--text-xs)', color:'var(--color-primary)' }}>{o.numero}</span>
-                            <span style={{ fontSize:10, color:'var(--color-text-muted)' }}>{fmtD(o.criadoem?.split('T')[0])}</span>
+                            {/* FIX: fmtD já trata ISO completo corretamente */}
+                            <span style={{ fontSize:10, color:'var(--color-text-muted)' }}>{fmtD(o.createdat || o.criadoem)}</span>
                           </div>
                           <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginTop:2 }}>{o.servico} — {fmt(o.valortotal||o.valor)}</div>
                           <div style={{ marginTop:4 }}>
