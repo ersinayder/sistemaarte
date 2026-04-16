@@ -14,7 +14,6 @@ ChartJS.register(
   PointElement, ArcElement, Tooltip, Legend, Filler
 )
 
-// Helpers
 const fmt = v => 'R$ ' + Number(v || 0).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.')
 const fmtShort = v => {
   const n = Number(v || 0)
@@ -30,6 +29,15 @@ const STATUS_BADGE = {
   'Recebido': 'recebido', 'Em Produção': 'emproducao',
   'Pronto': 'pronto', 'Entregue': 'entregue', 'Cancelado': 'cancelado'
 }
+
+// Cores reais (hex) para Chart.js que não resolve CSS variables
+const C_PRIMARY      = '#01696f'
+const C_PRIMARY_LIGHT= '#4f98a3'
+const C_BG_DARK      = '#1c1b19'
+const C_BORDER_DARK  = '#393836'
+const C_TEXT_MUTED   = '#797876'
+const C_TEXT_FAINT   = '#5a5957'
+const C_DIVIDER      = '#262523'
 
 function KPI({ label, value, sub, accent }) {
   return (
@@ -86,6 +94,22 @@ function ChartCard({ title, subtitle, children, style }) {
   )
 }
 
+// Plugin para gradiente sob a linha
+const gradientPlugin = {
+  id: 'customGradient',
+  beforeDatasetsDraw(chart) {
+    const { ctx, chartArea: { top, bottom }, scales: { x } } = chart
+    if (!x) return
+    const dataset = chart.data.datasets[0]
+    if (!dataset) return
+    const gradient = ctx.createLinearGradient(0, top, 0, bottom)
+    gradient.addColorStop(0,  'rgba(1,105,111,0.35)')
+    gradient.addColorStop(0.6,'rgba(1,105,111,0.08)')
+    gradient.addColorStop(1,  'rgba(1,105,111,0.00)')
+    dataset.backgroundColor = gradient
+  }
+}
+
 export default function Dashboard() {
   const navigate = useNavigate()
 
@@ -130,34 +154,50 @@ export default function Dashboard() {
     }) || [],
     datasets: [{
       data: dados?.dias?.map(d => d.total) || [],
-      borderColor: 'var(--color-primary)',
-      backgroundColor: 'transparent',
+      borderColor: C_PRIMARY_LIGHT,
+      backgroundColor: 'transparent', // sobrescrito pelo plugin
       tension: 0.4,
-      pointRadius: 3,
-      pointBackgroundColor: 'var(--color-primary)',
-      borderWidth: 2,
-      fill: false,
+      pointRadius: 4,
+      pointHoverRadius: 6,
+      pointBackgroundColor: C_PRIMARY_LIGHT,
+      pointBorderColor: C_BG_DARK,
+      pointBorderWidth: 2,
+      borderWidth: 2.5,
+      fill: true,
     }]
   }
 
   const lineOptions = {
     responsive: true,
     maintainAspectRatio: false,
-    plugins: { legend: { display: false }, tooltip: {
-      backgroundColor: '#1c1b19',
-      titleColor: '#cdccca',
-      bodyColor: '#797876',
-      borderColor: '#393836',
-      borderWidth: 1,
-      padding: 10,
-      callbacks: { label: ctx => ' ' + fmt(ctx.raw) }
-    }},
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: '#171614',
+        titleColor: '#cdccca',
+        bodyColor: C_TEXT_MUTED,
+        borderColor: C_BORDER_DARK,
+        borderWidth: 1,
+        padding: 12,
+        cornerRadius: 8,
+        callbacks: { label: ctx => '  ' + fmt(ctx.raw) }
+      }
+    },
     scales: {
-      x: { grid: { display: false }, ticks: { color: 'var(--color-text-faint)', font: { size: 11 } } },
-      y: { grid: { color: 'var(--color-divider)' }, ticks: {
-        color: 'var(--color-text-faint)', font: { size: 11 },
-        callback: v => 'R$' + (v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v)
-      }}
+      x: {
+        grid: { display: false },
+        border: { display: false },
+        ticks: { color: C_TEXT_FAINT, font: { size: 11 } }
+      },
+      y: {
+        grid: { color: C_DIVIDER, drawBorder: false },
+        border: { display: false, dash: [4, 4] },
+        ticks: {
+          color: C_TEXT_FAINT, font: { size: 11 },
+          callback: v => 'R$' + (v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v)
+        }
+      }
     }
   }
 
@@ -184,7 +224,7 @@ export default function Dashboard() {
       legend: {
         position: 'bottom',
         labels: {
-          color: 'var(--color-text-muted)',
+          color: C_TEXT_MUTED,
           font: { size: 12 },
           padding: 14,
           boxWidth: 10,
@@ -194,13 +234,14 @@ export default function Dashboard() {
         }
       },
       tooltip: {
-        backgroundColor: '#1c1b19',
+        backgroundColor: '#171614',
         titleColor: '#cdccca',
-        bodyColor: '#797876',
-        borderColor: '#393836',
+        bodyColor: C_TEXT_MUTED,
+        borderColor: C_BORDER_DARK,
         borderWidth: 1,
         padding: 10,
-        callbacks: { label: ctx => ' ' + fmt(ctx.raw) }
+        cornerRadius: 8,
+        callbacks: { label: ctx => '  ' + fmt(ctx.raw) }
       }
     }
   }
@@ -209,7 +250,6 @@ export default function Dashboard() {
     .sort((a, b) => (b.id || 0) - (a.id || 0))
     .slice(0, 5)
 
-  // BUG-06: usa servico (campo real do schema)
   const tipoCount = {}
   ordens.forEach(o => {
     const t = o.servico || 'Outros'
@@ -223,7 +263,6 @@ export default function Dashboard() {
     'Diversos': 'var(--color-text-faint)',
   }
 
-  // BUG-05: removido o.prazo (campo inexistente), usa somente prazoentrega
   const ordensVencidas = ordens.filter(o =>
     !['Entregue', 'Cancelado'].includes(o.status) &&
     o.prazoentrega &&
@@ -284,7 +323,9 @@ export default function Dashboard() {
       }}>
         <ChartCard title="Faturamento Diário" subtitle={`Evolução de receitas em ${mesNome}`}>
           {dados?.dias?.length ? (
-            <div style={{ height: 220 }}><Line data={lineData} options={lineOptions} /></div>
+            <div style={{ height: 220 }}>
+              <Line data={lineData} options={lineOptions} plugins={[gradientPlugin]} />
+            </div>
           ) : (
             <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)' }}>Sem dados no período</span>
