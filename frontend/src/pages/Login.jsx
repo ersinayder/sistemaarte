@@ -32,12 +32,17 @@ export default function LoginPage() {
 
   return (
     <div style={{
-      minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: '#141312', padding: 'var(--space-4)'
+      position: 'fixed',
+      inset: 0,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: '#141312',
+      padding: 'var(--space-4)',
+      zIndex: 9999,
     }}>
       <div style={{ width: '100%', maxWidth: '400px' }}>
 
-        {/* Logo grande — texto removido, já consta na imagem */}
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 'var(--space-5)' }}>
           <img
             src="/logo.png"
@@ -46,7 +51,6 @@ export default function LoginPage() {
           />
         </div>
 
-        {/* Subtítulo discreto */}
         <p style={{
           textAlign: 'center', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)',
           letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 'var(--space-6)'
@@ -54,7 +58,6 @@ export default function LoginPage() {
           Sistema de Gestão
         </p>
 
-        {/* Card de login */}
         <div className="card card-pad" style={{ marginBottom: 'var(--space-4)' }}>
           <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
             <div className="form-group">
@@ -105,7 +108,6 @@ export default function LoginPage() {
           </form>
         </div>
 
-        {/* Quick login hints — só aparece em desenvolvimento */}
         {import.meta.env.DEV && (
           <div style={{ marginBottom: 'var(--space-4)' }}>
             <p style={{
