@@ -1,4 +1,3 @@
-
 const router = require("express").Router();
 const { getAll, getOne, run, runInsert, transaction } = require("../database");
 const { auth } = require("../middlewares/auth");
@@ -74,21 +73,29 @@ router.post("/", auth(["admin","caixa"]), (req, res) => {
   const erroEntrada = validarEntradaOS(total, entrada);
   if (erroEntrada) return res.status(400).json({ error: erroEntrada });
 
+  // Resolve clienteid: se não veio no body, tenta encontrar pelo nome exato
+  let cidResolvido = clienteid || null;
+  if (!cidResolvido && clientenome) {
+    const cli = getOne("SELECT id FROM clientes WHERE name=? LIMIT 1", [clientenome]);
+    if (cli) cidResolvido = cli.id;
+  }
+
   try {
     const result = transaction(() => {
       const numero = nextNumero();
       const id = runInsert(
         `INSERT INTO ordens
           (numero,clienteid,clientenome,clientetelefone,clientecpf,servico,descricao,
-           valortotal,valorentrada,prazoentrega,prioridade,pagamento,observacoes,criadopor)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [numero, clienteid||null, clientenome, clientetelefone||null, clientecpf||null,
+           valortotal,valorentrada,prazoentrega,prioridade,pagamento,observacoes,status,criadopor)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [numero, cidResolvido, clientenome, clientetelefone||null, clientecpf||null,
          servico, descricao||null, total, entrada,
-         prazoentrega||null, prioridade||"Normal", pagamento||"Pix", observacoes||null, req.user.id]
+         prazoentrega||null, prioridade||"Normal", pagamento||"Pix", observacoes||null,
+         "Aguardando", req.user.id]
       );
       runInsert(
         "INSERT INTO statuslog (ordemid,statusanterior,statusnovo,usuarioid,obs) VALUES (?,?,?,?,?)",
-        [id, null, "Recebido", req.user.id, "Ordem criada"]
+        [id, null, "Aguardando", req.user.id, "Ordem criada"]
       );
       runInsert(
         `INSERT INTO lancamentos (data,tipo,descricao,pagamento,valor,pago,ordemid,criadopor,origem)
@@ -113,7 +120,7 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res) => {
 
     const { status, descricao, valortotal, valorentrada, prazoentrega,
             prioridade, pagamento, observacoes, clientenome, clientetelefone,
-            clientecpf, servico } = req.body ?? {};
+            clientecpf, servico, clienteid } = req.body ?? {};
 
     // Perfil oficina só pode mudar status
     if (req.user.role === "oficina") {
@@ -134,19 +141,26 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res) => {
     const erroEntrada = validarEntradaOS(total, entrada);
     if (erroEntrada) return res.status(400).json({ error: erroEntrada });
 
-    const ns          = status || old.status;
-    const novoCliente = clientenome || old.clientenome;
-    const novoServico = servico || old.servico;
+    const ns            = status || old.status;
+    const novoCliente   = clientenome || old.clientenome;
+    const novoServico   = servico || old.servico;
     const novoPagamento = pagamento || old.pagamento || "Pix";
+
+    // Mantém ou atualiza clienteid
+    let novoCid = clienteid !== undefined ? (clienteid || null) : old.clienteid;
+    if (!novoCid && novoCliente) {
+      const cli = getOne("SELECT id FROM clientes WHERE name=? LIMIT 1", [novoCliente]);
+      if (cli) novoCid = cli.id;
+    }
 
     transaction(() => {
       run(
         `UPDATE ordens SET
-          clientenome=?,clientetelefone=?,clientecpf=?,servico=?,descricao=?,
+          clienteid=?,clientenome=?,clientetelefone=?,clientecpf=?,servico=?,descricao=?,
           valortotal=?,valorentrada=?,prazoentrega=?,prioridade=?,pagamento=?,
           observacoes=?,status=?,updatedat=datetime('now','localtime')
          WHERE id=?`,
-        [novoCliente, clientetelefone||old.clientetelefone, clientecpf||old.clientecpf,
+        [novoCid, novoCliente, clientetelefone||old.clientetelefone, clientecpf||old.clientecpf,
          novoServico, descricao !== undefined ? descricao : old.descricao,
          total, entrada, prazoentrega||old.prazoentrega, prioridade||old.prioridade,
          novoPagamento, observacoes !== undefined ? observacoes : old.observacoes,
@@ -156,7 +170,7 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res) => {
         runInsert("INSERT INTO statuslog (ordemid,statusanterior,statusnovo,usuarioid) VALUES (?,?,?,?)",
           [req.params.id, old.status, ns, req.user.id]);
 
-      const entradaOS  = getEntradaOS(req.params.id);
+      const entradaOS   = getEntradaOS(req.params.id);
       const entradaDesc = descricaoEntradaOS(old.numero, novoCliente, novoServico);
       if (entradaOS) {
         run("UPDATE lancamentos SET tipo=?,descricao=?,pagamento=?,valor=?,pago=1 WHERE id=?",
