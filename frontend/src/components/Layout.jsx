@@ -19,7 +19,7 @@ export default function Layout() {
     <div style={{ display: 'flex', height: '100dvh' }}>
       <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(c => !c)} />
 
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         {/* Topbar */}
         <header style={{
           display: 'flex', alignItems: 'center', gap: 'var(--space-4)',
