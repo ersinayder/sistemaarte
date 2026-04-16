@@ -19,24 +19,30 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install dependencies
+      - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
 
-      - name: Build
+      - name: Build frontend
         working-directory: frontend
         run: npm run build
         env:
           NODE_ENV: production
 
-      - name: Deploy para C:\sistemaarte
+      - name: Deploy frontend para C:\sistemaarte\frontend\dist
         shell: powershell
         run: |
           $source = "${{ github.workspace }}\frontend\dist\"
-          $dest   = "C:\sistemaarte"
-          if (!(Test-Path $dest)) { New-Item -ItemType Directory -Path $dest }
+          $dest   = "C:\sistemaarte\frontend\dist"
+          if (!(Test-Path $dest)) { New-Item -ItemType Directory -Path $dest -Force }
           robocopy $source $dest /MIR /NFL /NDL /NJH /NJS
           if ($LASTEXITCODE -le 7) { exit 0 } else { exit $LASTEXITCODE }
+
+      - name: Restart PM2 backend
+        shell: powershell
+        run: |
+          pm2 restart all --update-env
+          pm2 save
 
       - name: Concluído
         shell: powershell
