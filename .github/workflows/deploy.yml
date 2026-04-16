@@ -17,9 +17,9 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
-      # ── FRONTEND ────────────────────────────────────────────────────────────
+      # ── FRONTEND ─────────────────────────────────────────────────────
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
@@ -39,7 +39,7 @@ jobs:
           robocopy $source $dest /MIR /NFL /NDL /NJH /NJS
           if ($LASTEXITCODE -le 7) { exit 0 } else { exit $LASTEXITCODE }
 
-      # ── BACKEND (apenas package.json é copiado, nunca node_modules/.env) ───
+      # ── BACKEND (apenas source, nunca node_modules/.env) ───────────────
       - name: Sync backend source (nunca node_modules, data, .env)
         shell: powershell
         run: |
@@ -56,12 +56,18 @@ jobs:
         run: |
           Set-Location "C:\sistemaarte\backend"
           npm install --production --prefer-offline
+          npm rebuild better-sqlite3
 
-      # ── PM2 ─────────────────────────────────────────────────────────────────
-      - name: Restart PM2
+      # ── PM2 ───────────────────────────────────────────────────────────────
+      - name: Reload PM2
         shell: powershell
         run: |
-          pm2 restart sistemaarte-backend --update-env
+          $status = pm2 describe sistemaarte-backend 2>&1
+          if ($status -match 'online|stopped|errored') {
+            pm2 reload sistemaarte-backend --update-env
+          } else {
+            pm2 start C:\sistemaarte\backend\server.js --name sistemaarte-backend
+          }
           pm2 save
 
       - name: Concluído
