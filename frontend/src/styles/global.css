@@ -68,7 +68,6 @@
   --sidebar-w: 236px;
   --sidebar-w-collapsed: 60px;
 
-  /* ── Content widths ── */
   --content-max: 1400px;
   --content-default: 1200px;
   --content-narrow: 800px;
@@ -208,19 +207,45 @@ a, button, [role="button"], input, select, textarea {
   overflow: hidden;
 }
 
+.main-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 main {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  /* FIX: padding fluido + largura máxima centralizada */
   padding: clamp(var(--space-4), 3vw, var(--space-8));
-  width: 100%;
 }
+
+/* ── Centralização universal ────────────────────────────── */
+/* Todas as páginas ficam centralizadas e com max-width consistente
+   independente de usarem ou não .page-content no JSX */
+main > * {
+  max-width: var(--content-default);
+  margin-inline: auto;
+  width: 100%;
+  animation: fadeSlideIn 0.18s ease both;
+}
+
+/* Páginas que explicitamente precisam de mais largura (Fila, Ordens) */
+main > .page-wide {
+  max-width: var(--content-max);
+}
+
+/* Páginas estreitas (Caixa, Orçamento, Usuários) */
+main > .page-narrow {
+  max-width: var(--content-narrow);
+}
+
 @media (max-width: 768px) {
   main { padding: var(--space-4); }
 }
 
-/* page-content: container interno para limitar largura e centralizar o conteúdo */
+/* ── Classes de container explícitas (mantidas para compatibilidade) ── */
 .page-content {
   width: 100%;
   max-width: var(--content-default);
@@ -252,7 +277,22 @@ main {
   from { opacity: 0; transform: translateY(5px); }
   to   { opacity: 1; transform: none; }
 }
-main > * { animation: fadeSlideIn 0.18s ease both; }
+
+/* ── Page header ────────────────────────────────────────── */
+.page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
+}
+
+.page-title {
+  font-size: var(--text-lg);
+  font-weight: 800;
+  line-height: 1.2;
+}
 
 /* ── Card ───────────────────────────────────────────────── */
 .card {
@@ -330,7 +370,6 @@ main > * { animation: fadeSlideIn 0.18s ease both; }
   font-size: var(--text-base);
 }
 
-/* btn-icon: botão quadrado somente ícone */
 .btn-icon {
   display: inline-flex;
   align-items: center;
@@ -418,19 +457,53 @@ textarea.form-input { resize: vertical; min-height: 80px; }
 .badge-secondary { background: var(--color-surface-dynamic); color: var(--color-text-muted); }
 .badge-diversos  { background: var(--color-surface-dynamic); color: var(--color-text-muted); }
 
+/* Status badges — OS */
+.badge-recebido    { background: var(--color-blue-hl);    color: var(--color-blue); }
+.badge-emproducao  { background: var(--color-orange-hl);  color: var(--color-orange); }
+.badge-pronto      { background: var(--color-success-hl); color: var(--color-success); }
+.badge-entregue    { background: var(--color-surface-dynamic); color: var(--color-text-muted); }
+.badge-cancelado   { background: var(--color-error-hl);   color: var(--color-error); }
+
+/* Tipo serviço badges */
+.badge-laser   { background: var(--color-primary-hl); color: var(--color-primary); }
+.badge-quadro  { background: var(--color-orange-hl);  color: var(--color-orange); }
+.badge-caixas  { background: var(--color-blue-hl);    color: var(--color-blue); }
+.badge-3d      { background: var(--color-purple-hl);  color: var(--color-purple); }
+
+/* Pagamento badges */
+.badge-pix      { background: var(--color-primary-hl); color: var(--color-primary); }
+.badge-dinheiro { background: var(--color-success-hl); color: var(--color-success); }
+.badge-credito  { background: var(--color-orange-hl);  color: var(--color-orange); }
+.badge-debito   { background: var(--color-blue-hl);    color: var(--color-blue); }
+.badge-link     { background: var(--color-purple-hl);  color: var(--color-purple); }
+
+/* Perfil badges */
+.badge-admin    { background: var(--color-purple-hl); color: var(--color-purple); }
+.badge-caixa-role { background: var(--color-gold-hl); color: var(--color-gold); }
+.badge-oficina-role { background: var(--color-orange-hl); color: var(--color-orange); }
+
 /* ── Table ──────────────────────────────────────────────── */
+/* table-wrap: scroll horizontal em tabelas largas sem quebrar o layout */
+.table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .table {
   width: 100%;
   border-collapse: collapse;
   font-size: var(--text-xs);
 }
-.table thead tr {
+.table thead tr,
+.table-wrap table thead tr {
   background: var(--color-surface-offset);
   position: sticky;
   top: 0;
   z-index: 1;
 }
-.table th {
+.table th,
+.table-wrap table th {
   padding: var(--space-2) var(--space-3);
   text-align: left;
   font-size: var(--text-xs);
@@ -441,14 +514,32 @@ textarea.form-input { resize: vertical; min-height: 80px; }
   white-space: nowrap;
   border-bottom: 1px solid var(--color-divider);
 }
-.table td {
+.table td,
+.table-wrap table td {
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--color-divider);
   color: var(--color-text);
   vertical-align: middle;
 }
-.table tbody tr:last-child td { border-bottom: none; }
-.table tbody tr:hover { background: var(--color-surface-offset); }
+.table tbody tr:last-child td,
+.table-wrap table tbody tr:last-child td { border-bottom: none; }
+.table tbody tr:hover,
+.table-wrap table tbody tr:hover { background: var(--color-surface-offset); }
+
+/* ── Progress bar ───────────────────────────────────────── */
+.progress-bar {
+  width: 100%;
+  height: 6px;
+  background: var(--color-surface-dynamic);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: var(--color-primary);
+  border-radius: var(--radius-full);
+  transition: width 0.4s ease;
+}
 
 /* ── Modal ──────────────────────────────────────────────── */
 .modal-overlay {
@@ -524,7 +615,6 @@ textarea.form-input { resize: vertical; min-height: 80px; }
   animation: spin 0.7s linear infinite;
 }
 
-/* loading-center: estado de carregamento centralizado na página */
 .loading-center {
   display: flex;
   flex-direction: column;
@@ -534,6 +624,19 @@ textarea.form-input { resize: vertical; min-height: 80px; }
   gap: var(--space-3);
   color: var(--color-text-muted);
   min-height: 200px;
+}
+
+/* ── Empty state ────────────────────────────────────────── */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--space-12) var(--space-8);
+  color: var(--color-text-faint);
+  font-size: var(--text-xs);
+  gap: var(--space-2);
 }
 
 /* ── Sidebar ────────────────────────────────────────────── */
@@ -554,14 +657,12 @@ textarea.form-input { resize: vertical; min-height: 80px; }
   width: var(--sidebar-w-collapsed);
 }
 
-/* sidebar-header: área do logo/toggle no topo */
 .sidebar-header {
   flex-shrink: 0;
   border-bottom: 1px solid var(--color-divider);
   transition: padding var(--ease);
 }
 
-/* sidebar-nav: container da lista de links */
 .sidebar-nav {
   display: flex;
   flex-direction: column;
@@ -570,7 +671,6 @@ textarea.form-input { resize: vertical; min-height: 80px; }
   flex: 1;
 }
 
-/* sidebar-nav-item: link de navegação — substitui sidebar-item no Sidebar.jsx */
 .sidebar-nav-item {
   display: flex;
   align-items: center;
@@ -600,7 +700,6 @@ textarea.form-input { resize: vertical; min-height: 80px; }
   background: color-mix(in oklch, var(--color-primary) 18%, var(--color-surface));
 }
 
-/* sidebar-item: alias legado (mantido para compatibilidade) */
 .sidebar-item {
   display: flex;
   align-items: center;
@@ -627,7 +726,6 @@ textarea.form-input { resize: vertical; min-height: 80px; }
   background: color-mix(in oklch, var(--color-primary) 18%, var(--color-surface));
 }
 
-/* nav-label: texto do item de nav (oculto quando collapsed) */
 .nav-label {
   flex: 1;
   overflow: hidden;
@@ -641,7 +739,6 @@ textarea.form-input { resize: vertical; min-height: 80px; }
   pointer-events: none;
 }
 
-/* nav-section: título de grupo de links */
 .nav-section {
   display: block;
   padding: var(--space-3) var(--space-3) var(--space-1);
@@ -654,7 +751,6 @@ textarea.form-input { resize: vertical; min-height: 80px; }
   overflow: hidden;
 }
 
-/* nav-section-divider: substituto visual do título quando collapsed */
 .nav-section-divider {
   display: block;
   height: 1px;
@@ -662,7 +758,6 @@ textarea.form-input { resize: vertical; min-height: 80px; }
   margin: var(--space-2) var(--space-2);
 }
 
-/* sidebar-section: alias legado */
 .sidebar-section {
   padding: var(--space-3) var(--space-3) var(--space-1);
   font-size: 10px;
@@ -672,7 +767,6 @@ textarea.form-input { resize: vertical; min-height: 80px; }
   color: var(--color-text-faint);
 }
 
-/* sidebar-footer: área do usuário no rodapé */
 .sidebar-footer {
   padding: var(--space-3) var(--space-2);
   border-top: 1px solid var(--color-divider);
@@ -721,6 +815,17 @@ textarea.form-input { resize: vertical; min-height: 80px; }
   font-weight: 800;
   line-height: 1;
   font-variant-numeric: tabular-nums;
+}
+
+/* ── Grids responsivos ──────────────────────────────────── */
+/* Grid de 2 colunas que colapsa em mobile — usado em Relatórios */
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+@media (max-width: 640px) {
+  .grid-2 { grid-template-columns: 1fr; }
 }
 
 /* ── Toast override ─────────────────────────────────────── */
