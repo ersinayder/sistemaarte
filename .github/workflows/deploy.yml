@@ -19,6 +19,7 @@ jobs:
         with:
           node-version: '20'
 
+      # ── FRONTEND ────────────────────────────────────────────────────────────
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
@@ -29,7 +30,7 @@ jobs:
         env:
           NODE_ENV: production
 
-      - name: Deploy frontend para C:\sistemaarte\frontend\dist
+      - name: Deploy frontend → C:\sistemaarte\frontend\dist
         shell: powershell
         run: |
           $source = "${{ github.workspace }}\frontend\dist\"
@@ -38,10 +39,29 @@ jobs:
           robocopy $source $dest /MIR /NFL /NDL /NJH /NJS
           if ($LASTEXITCODE -le 7) { exit 0 } else { exit $LASTEXITCODE }
 
-      - name: Restart PM2 backend
+      # ── BACKEND (apenas package.json é copiado, nunca node_modules/.env) ───
+      - name: Sync backend source (nunca node_modules, data, .env)
         shell: powershell
         run: |
-          pm2 restart all --update-env
+          $source = "${{ github.workspace }}\backend\"
+          $dest   = "C:\sistemaarte\backend"
+          if (!(Test-Path $dest)) { New-Item -ItemType Directory -Path $dest -Force }
+          robocopy $source $dest /MIR /NFL /NDL /NJH /NJS `
+            /XD node_modules data `
+            /XF .env *.db
+          if ($LASTEXITCODE -le 7) { exit 0 } else { exit $LASTEXITCODE }
+
+      - name: Garantir dependências do backend
+        shell: powershell
+        run: |
+          Set-Location "C:\sistemaarte\backend"
+          npm install --production --prefer-offline
+
+      # ── PM2 ─────────────────────────────────────────────────────────────────
+      - name: Restart PM2
+        shell: powershell
+        run: |
+          pm2 restart sistemaarte-backend --update-env
           pm2 save
 
       - name: Concluído
