@@ -11,6 +11,24 @@ const COLUNAS = [
   { status:'Entregue',     label:'Entregue',     color:'#2563eb', bg:'rgba(37,99,235,0.08)'   },
 ];
 
+const STATUS_VALIDOS   = new Set(['Aguardando', 'Em Produção', 'Pronto', 'Entregue']);
+const STATUS_EXCLUIDOS = new Set(['Entregue', 'Cancelado']);
+
+// Mapa de normalização: status alternativos → status canônico do board
+const NORMALIZAR_STATUS = {
+  'recebido':     'Aguardando',
+  'Recebido':     'Aguardando',
+  'aguardando':   'Aguardando',
+  'em producao':  'Em Produção',
+  'em produção':  'Em Produção',
+  'Em Producao':  'Em Produção',
+  'producao':     'Em Produção',
+  'pronto':       'Pronto',
+  'concluido':    'Pronto',
+  'Concluido':    'Pronto',
+  'Concluído':    'Pronto',
+};
+
 const STATUSNEXT = {
   'Aguardando':  'Em Produção',
   'Em Produção': 'Pronto',
@@ -18,38 +36,42 @@ const STATUSNEXT = {
 };
 
 const TIPOICONE = {
-  'Moldura':    'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
-  'Tela':       'M2 3h20v14H2zM8 21h8M12 17v4',
-  'Restauro':   'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z',
+  'Moldura':     'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
+  'Tela':        'M2 3h20v14H2zM8 21h8M12 17v4',
+  'Restauro':    'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z',
   'Passepartout':'M3 3h18v18H3z',
-  'Vidro':      'M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18',
-  'Diversos':   'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z',
+  'Vidro':       'M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18',
+  'Diversos':    'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z',
 };
 
 const TIPOBADGE = {
-  'Moldura':'primary','Tela':'secondary','Restauro':'warning','Passepartout':'info','Vidro':'success','Diversos':'diversos'
+  'Moldura':'primary','Tela':'secondary','Restauro':'warning',
+  'Passepartout':'info','Vidro':'success','Diversos':'diversos',
 };
 
-// Status que NUNCA devem aparecer na fila
-const STATUS_EXCLUIDOS = ['Entregue', 'Cancelado'];
+function normalizarStatus(status) {
+  if (!status) return 'Aguardando';
+  if (STATUS_VALIDOS.has(status)) return status;
+  return NORMALIZAR_STATUS[status] ?? 'Aguardando';
+}
 
 export default function Oficina() {
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const canEdit = user?.role !== 'viewer';
+  const { user }  = useAuth();
+  const canEdit   = user?.role !== 'viewer';
 
-  const [ordens,        setOrdens]        = useState([]);
-  const [loading,       setLoading]       = useState(true);
-  const [recovering,    setRecovering]    = useState(false);
-  const [view,          setView]          = useState('kanban');
-  const [draggingId,    setDraggingId]    = useState(null);
-  const [dragOver,      setDragOver]      = useState(null);
-  const [filterServico, setFilterServico] = useState('');
+  const [ordens,           setOrdens]           = useState([]);
+  const [loading,          setLoading]          = useState(true);
+  const [recovering,       setRecovering]       = useState(false);
+  const [view,             setView]             = useState('kanban');
+  const [draggingId,       setDraggingId]       = useState(null);
+  const [dragOver,         setDragOver]         = useState(null);
+  const [filterServico,    setFilterServico]    = useState('');
   const [filterPrioridade, setFilterPrioridade] = useState('');
 
   const today = new Date().toISOString().split('T')[0];
 
-  // Carga normal: busca apenas os 3 status ativos
+  // Carga normal — 3 status ativos
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -67,17 +89,28 @@ export default function Oficina() {
     }
   }, []);
 
-  // Recuperação: busca TODAS as OS e filtra fora Entregue/Cancelado
+  // Recuperação — busca TUDO, normaliza status, exclui Entregue/Cancelado
   const recover = useCallback(async () => {
     setRecovering(true);
     try {
       const { data } = await api.get('/ordens');
-      const ativas = data.filter(o => !STATUS_EXCLUIDOS.includes(o.status));
+
+      const ativas = data
+        .filter(o => !STATUS_EXCLUIDOS.has(o.status))
+        .map(o => ({ ...o, status: normalizarStatus(o.status) }));
+
       ativas.sort((a, b) => new Date(a.criadoem) - new Date(b.criadoem));
       setOrdens(ativas);
+
+      // Conta quantas tiveram status normalizado
+      const normalizadas = data.filter(
+        o => !STATUS_EXCLUIDOS.has(o.status) && !STATUS_VALIDOS.has(o.status)
+      ).length;
+
       toast.success(
-        `Recuperação concluída — ${ativas.length} OS carregada${ativas.length !== 1 ? 's' : ''}`,
-        { icon: '🔄', duration: 3000 }
+        `Recuperação concluída — ${ativas.length} OS carregada${ativas.length !== 1 ? 's' : ''}` +
+        (normalizadas > 0 ? ` (${normalizadas} status corrigido${normalizadas !== 1 ? 's' : ''})` : ''),
+        { icon: '🔄', duration: 4000 }
       );
     } catch {
       toast.error('Erro na recuperação — tente novamente');
@@ -131,42 +164,28 @@ export default function Oficina() {
         </div>
 
         <div style={{ display:'flex', gap:'var(--space-2)', alignItems:'center' }}>
-          {/* Filtros */}
-          <select
-            className="form-input"
+          <select className="form-input"
             style={{ width:'auto', fontSize:'var(--text-xs)', padding:'var(--space-1) var(--space-2)' }}
-            value={filterServico}
-            onChange={e => setFilterServico(e.target.value)}
-          >
+            value={filterServico} onChange={e => setFilterServico(e.target.value)}>
             <option value="">Todos os tipos</option>
             {tiposServico.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
 
-          <select
-            className="form-input"
+          <select className="form-input"
             style={{ width:'auto', fontSize:'var(--text-xs)', padding:'var(--space-1) var(--space-2)' }}
-            value={filterPrioridade}
-            onChange={e => setFilterPrioridade(e.target.value)}
-          >
+            value={filterPrioridade} onChange={e => setFilterPrioridade(e.target.value)}>
             <option value="">Todas prioridades</option>
             <option value="Normal">Normal</option>
             <option value="Urgente">Urgente</option>
           </select>
 
-          {/* View toggle */}
           <div style={{ display:'flex', background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)', padding:2 }}>
-            <button
-              className={`btn btn-xs ${view === 'kanban' ? 'btn-primary' : 'btn-ghost'}`}
-              onClick={() => setView('kanban')}
-            >
+            <button className={`btn btn-xs ${view==='kanban'?'btn-primary':'btn-ghost'}`} onClick={() => setView('kanban')}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <rect x="3" y="3" width="7" height="18"/><rect x="14" y="3" width="7" height="11"/>
               </svg>
             </button>
-            <button
-              className={`btn btn-xs ${view === 'list' ? 'btn-primary' : 'btn-ghost'}`}
-              onClick={() => setView('list')}
-            >
+            <button className={`btn btn-xs ${view==='list'?'btn-primary':'btn-ghost'}`} onClick={() => setView('list')}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
                 <line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/>
@@ -175,50 +194,28 @@ export default function Oficina() {
             </button>
           </div>
 
-          {/* Refresh normal */}
-          <button
-            className="btn btn-ghost btn-xs"
-            onClick={load}
-            disabled={loading || recovering}
-            title="Atualizar"
-          >
-            <svg
-              width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-              style={{ animation: loading ? 'spin 0.8s linear infinite' : 'none' }}
-            >
-              <polyline points="23 4 23 10 17 10"/>
-              <polyline points="1 20 1 14 7 14"/>
+          <button className="btn btn-ghost btn-xs" onClick={load} disabled={loading||recovering} title="Atualizar">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+              style={{ animation: loading ? 'spin 0.8s linear infinite' : 'none' }}>
+              <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
               <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
             </svg>
           </button>
 
-          {/* Botão de recuperação */}
-          <button
-            className="btn btn-secondary btn-xs"
-            onClick={recover}
-            disabled={recovering || loading}
-            title="Recuperar todas as OS ativas (Aguardando, Em Produção, Pronto)"
-            style={{ gap:'var(--space-1)' }}
-          >
-            {recovering ? (
-              <svg
-                className="spin" width="13" height="13" viewBox="0 0 24 24"
-                fill="none" stroke="currentColor" strokeWidth="2"
-              >
-                <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
-              </svg>
-            ) : (
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-                <path d="M3 3v5h5"/>
-              </svg>
-            )}
+          <button className="btn btn-secondary btn-xs" onClick={recover}
+            disabled={recovering||loading}
+            title="Recuperar todas as OS ativas — normaliza status inconsistentes"
+            style={{ gap:'var(--space-1)' }}>
+            {recovering
+              ? <svg className="spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+              : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+            }
             Recuperar OS
           </button>
         </div>
       </div>
 
-      {/* Board */}
+      {/* Board / Lista */}
       {(loading || recovering) ? (
         <div style={{ display:'flex', alignItems:'center', justifyContent:'center', flex:1, color:'var(--color-text-muted)', gap:'var(--space-2)' }}>
           <svg className="spin" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -229,74 +226,82 @@ export default function Oficina() {
       ) : view === 'kanban' ? (
         <div style={{ display:'flex', gap:'var(--space-4)', flex:1, overflowX:'auto', overflowY:'auto', minHeight:0, paddingBottom:'var(--space-2)' }}>
           {COLUNAS.map(col => (
-            <div
-              key={col.status}
+            <div key={col.status}
               onDragOver={e => { e.preventDefault(); setDragOver(col.status); }}
               onDrop={e => { e.preventDefault(); handleDrop(col.status); }}
-              style={{
-                display:'flex', flexDirection:'column', gap:'var(--space-3)',
-                minWidth:260, flex:1,
-                background: dragOver === col.status ? col.bg : 'transparent',
+              style={{ display:'flex', flexDirection:'column', gap:'var(--space-3)', minWidth:260, flex:1,
+                background: dragOver===col.status ? col.bg : 'transparent',
                 borderRadius:'var(--radius-xl)', padding:'var(--space-2)',
-                transition:'background 0.2s ease',
-                overflowY:'auto', maxHeight:'calc(100vh - 160px)'
-              }}
+                transition:'background 0.2s ease', overflowY:'auto', maxHeight:'calc(100vh - 160px)' }}
             >
-              {/* Cabeçalho da coluna */}
-              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'var(--space-2) var(--space-3)', background: col.bg, borderRadius:'var(--radius-lg)', border:`1px solid ${col.color}40` }}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+                padding:'var(--space-2) var(--space-3)', background:col.bg,
+                borderRadius:'var(--radius-lg)', border:`1px solid ${col.color}40` }}>
                 <div style={{ display:'flex', alignItems:'center', gap:'var(--space-2)' }}>
-                  <div style={{ width:8, height:8, borderRadius:'50%', background: col.color }}/>
-                  <span style={{ fontWeight:700, fontSize:'var(--text-xs)', color: col.color }}>{col.label}</span>
+                  <div style={{ width:8, height:8, borderRadius:'50%', background:col.color }}/>
+                  <span style={{ fontWeight:700, fontSize:'var(--text-xs)', color:col.color }}>{col.label}</span>
                 </div>
-                <span style={{ background: col.color, color:'white', width:22, height:22, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:800 }}>
+                <span style={{ background:col.color, color:'white', width:22, height:22, borderRadius:'50%',
+                  display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:800 }}>
                   {byStatus(col.status).length}
                 </span>
               </div>
 
-              {/* Cards */}
               {byStatus(col.status).length === 0
-                ? (
-                  <div style={{ border:'2px dashed var(--color-border)', borderRadius:'var(--radius-lg)', padding:'var(--space-8) var(--space-4)', textAlign:'center', color:'var(--color-text-faint)', fontSize:'var(--text-xs)', minHeight:80, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                ? <div style={{ border:'2px dashed var(--color-border)', borderRadius:'var(--radius-lg)',
+                    padding:'var(--space-8) var(--space-4)', textAlign:'center',
+                    color:'var(--color-text-faint)', fontSize:'var(--text-xs)',
+                    minHeight:80, display:'flex', alignItems:'center', justifyContent:'center' }}>
                     {canEdit ? 'Arraste uma OS aqui' : 'Nenhuma OS'}
                   </div>
-                )
                 : byStatus(col.status).map(o => {
-                    const vencida    = o.prazoentrega && o.prazoentrega < today && !STATUS_EXCLUIDOS.includes(o.status);
+                    const vencida    = o.prazoentrega && o.prazoentrega < today && !STATUS_EXCLUIDOS.has(o.status);
                     const ehHoje     = o.prazoentrega === today;
-                    const saldo      = (o.valortotal || o.valor || 0) - (o.valorentrada || o.entrada || 0);
+                    const saldo      = (o.valortotal||o.valor||0) - (o.valorentrada||o.entrada||0);
                     const diasCriado = Math.floor((Date.now() - new Date(o.criadoem)) / 86400000);
                     const next       = STATUSNEXT[o.status];
                     return (
-                      <div
-                        key={o.id}
+                      <div key={o.id}
                         draggable={canEdit}
                         onDragStart={() => handleDragStart(o.id)}
                         onDragEnd={handleDragEnd}
-                        style={{ background:'var(--color-surface)', border:`1px solid ${vencida ? 'var(--color-error)' : 'var(--color-border)'}`, borderRadius:'var(--radius-lg)', padding:'var(--space-3)', cursor: canEdit ? 'grab' : 'default', opacity: draggingId === o.id ? 0.5 : 1, transition:'all 0.2s ease', boxShadow:'var(--shadow-sm)' }}
+                        style={{ background:'var(--color-surface)',
+                          border:`1px solid ${vencida?'var(--color-error)':'var(--color-border)'}`,
+                          borderRadius:'var(--radius-lg)', padding:'var(--space-3)',
+                          cursor: canEdit?'grab':'default',
+                          opacity: draggingId===o.id ? 0.5 : 1,
+                          transition:'all 0.2s ease', boxShadow:'var(--shadow-sm)' }}
                       >
                         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'var(--space-2)' }}>
                           <div style={{ display:'flex', alignItems:'center', gap:'var(--space-2)' }}>
-                            <div style={{ width:28, height:28, borderRadius:'var(--radius-md)', background:'rgba(1,105,111,0.10)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" strokeWidth="2"><path d={TIPOICONE[o.servico] || TIPOICONE['Diversos']}/></svg>
+                            <div style={{ width:28, height:28, borderRadius:'var(--radius-md)',
+                              background:'rgba(1,105,111,0.10)', display:'flex', alignItems:'center',
+                              justifyContent:'center', flexShrink:0 }}>
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" strokeWidth="2">
+                                <path d={TIPOICONE[o.servico]||TIPOICONE['Diversos']}/>
+                              </svg>
                             </div>
                             <div style={{ fontWeight:800, fontSize:'var(--text-xs)', color:'var(--color-primary)', lineHeight:1.2 }}>{o.numero}</div>
                           </div>
-                          <div style={{ fontSize:10, color:'var(--color-text-faint)' }}>{diasCriado === 0 ? 'hoje' : `${diasCriado}d`}</div>
+                          <div style={{ fontSize:10, color:'var(--color-text-faint)' }}>
+                            {diasCriado===0?'hoje':`${diasCriado}d`}
+                          </div>
                         </div>
 
-                        {o.prioridade === 'Urgente' && (
+                        {o.prioridade==='Urgente' && (
                           <div style={{ marginBottom:'var(--space-1)' }}>
-                            <span style={{ fontSize:10, fontWeight:700, color:'var(--color-error)', background:'rgba(161,44,123,0.10)', borderRadius:'var(--radius-full)', padding:'1px 6px' }}>⚡ Urgente</span>
+                            <span style={{ fontSize:10, fontWeight:700, color:'var(--color-error)',
+                              background:'rgba(161,44,123,0.10)', borderRadius:'var(--radius-full)', padding:'1px 6px' }}>
+                              ⚡ Urgente
+                            </span>
                           </div>
                         )}
 
                         <div style={{ fontWeight:600, fontSize:'var(--text-sm)', marginBottom:2, lineHeight:1.3 }}>{o.clientenome}</div>
 
                         <div style={{ display:'flex', alignItems:'center', gap:'var(--space-1)', marginBottom:'var(--space-2)' }}>
-                          <span className={`badge badge-${TIPOBADGE[o.servico] || 'diversos'}`} style={{ fontSize:10 }}>{o.servico}</span>
-                          {o.descricao && (
-                            <span style={{ fontSize:10, color:'var(--color-text-muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:110 }}>{o.descricao}</span>
-                          )}
+                          <span className={`badge badge-${TIPOBADGE[o.servico]||'diversos'}`} style={{ fontSize:10 }}>{o.servico}</span>
+                          {o.descricao && <span style={{ fontSize:10, color:'var(--color-text-muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:110 }}>{o.descricao}</span>}
                         </div>
 
                         {o.observacoes && (
@@ -306,9 +311,13 @@ export default function Oficina() {
                         )}
 
                         {o.prazoentrega && (
-                          <div style={{ display:'flex', alignItems:'center', gap:4, marginBottom:'var(--space-2)', fontSize:10, color: vencida ? 'var(--color-error)' : ehHoje ? '#d19900' : 'var(--color-text-muted)', fontWeight: vencida || ehHoje ? 700 : 400 }}>
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-                            {vencida ? '⚠ Vencido' : ehHoje ? 'Hoje' : fmtD(o.prazoentrega)}
+                          <div style={{ display:'flex', alignItems:'center', gap:4, marginBottom:'var(--space-2)', fontSize:10,
+                            color: vencida?'var(--color-error)':ehHoje?'#d19900':'var(--color-text-muted)',
+                            fontWeight: vencida||ehHoje?700:400 }}>
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                              <rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>
+                            </svg>
+                            {vencida?'⚠ Vencido':ehHoje?'Hoje':fmtD(o.prazoentrega)}
                           </div>
                         )}
 
@@ -319,20 +328,12 @@ export default function Oficina() {
                         )}
 
                         <div style={{ display:'flex', gap:'var(--space-1)', marginTop:'var(--space-2)', borderTop:'1px solid var(--color-divider)', paddingTop:'var(--space-2)' }}>
-                          <button
-                            className="btn btn-ghost btn-xs"
-                            style={{ flex:1, justifyContent:'center', fontSize:10 }}
-                            onClick={() => navigate(`/ordens/${o.id}`)}
-                          >
-                            Detalhes
-                          </button>
+                          <button className="btn btn-ghost btn-xs" style={{ flex:1, justifyContent:'center', fontSize:10 }}
+                            onClick={() => navigate(`/ordens/${o.id}`)}>Detalhes</button>
                           {canEdit && next && (
-                            <button
-                              className="btn btn-primary btn-xs"
-                              style={{ flex:1, justifyContent:'center', fontSize:10 }}
-                              onClick={() => mudarStatus(o.id, next)}
-                            >
-                              {next === 'Em Produção' ? 'Produzir' : next === 'Pronto' ? 'Concluir' : 'Entregar'}
+                            <button className="btn btn-primary btn-xs" style={{ flex:1, justifyContent:'center', fontSize:10 }}
+                              onClick={() => mudarStatus(o.id, next)}>
+                              {next==='Em Produção'?'Produzir':next==='Pronto'?'Concluir':'Entregar'}
                             </button>
                           )}
                         </div>
@@ -344,44 +345,38 @@ export default function Oficina() {
           ))}
         </div>
       ) : (
-        /* Visão lista */
         <div className="card" style={{ overflow:'hidden', flex:1 }}>
           <div style={{ overflowY:'auto', height:'100%' }}>
             <table className="table">
               <thead>
-                <tr>
-                  <th>Nº</th><th>Cliente</th><th>Serviço</th><th>Descrição</th><th>Prazo</th><th>Status</th><th>Valor</th>
-                </tr>
+                <tr><th>Nº</th><th>Cliente</th><th>Serviço</th><th>Descrição</th><th>Prazo</th><th>Status</th><th>Valor</th></tr>
               </thead>
               <tbody>
-                {ordens.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} style={{ textAlign:'center', padding:'var(--space-8)', color:'var(--color-text-muted)' }}>
-                      Nenhuma ordem na fila
-                    </td>
-                  </tr>
-                ) : ordens.map(o => {
-                  const vencida = o.prazoentrega && o.prazoentrega < today;
-                  return (
-                    <tr key={o.id} style={{ cursor:'pointer' }} onClick={() => navigate(`/ordens/${o.id}`)}>
-                      <td style={{ fontWeight:700, color:'var(--color-primary)', fontSize:'var(--text-xs)' }}>{o.numero}</td>
-                      <td style={{ fontWeight:600 }}>{o.clientenome}</td>
-                      <td><span className={`badge badge-${TIPOBADGE[o.servico] || 'diversos'}`} style={{ fontSize:10 }}>{o.servico}</span></td>
-                      <td style={{ maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:'var(--text-xs)' }}>{o.descricao}</td>
-                      <td style={{ fontSize:'var(--text-xs)', color: vencida ? 'var(--color-error)' : 'var(--color-text-muted)', fontWeight: vencida ? 700 : 400 }}>
-                        {o.prazoentrega ? fmtD(o.prazoentrega) : '—'}
-                      </td>
-                      <td>
-                        <span className={`badge badge-${o.status === 'Em Produção' ? 'warning' : o.status === 'Pronto' ? 'success' : 'primary'}`} style={{ fontSize:10 }}>
-                          {o.status}
-                        </span>
-                      </td>
-                      <td style={{ textAlign:'right', fontFamily:'monospace', fontSize:'var(--text-xs)' }}>
-                        {fmt(o.valortotal || o.valor)}
-                      </td>
-                    </tr>
-                  );
-                })}
+                {ordens.length===0
+                  ? <tr><td colSpan={7} style={{ textAlign:'center', padding:'var(--space-8)', color:'var(--color-text-muted)' }}>Nenhuma ordem na fila</td></tr>
+                  : ordens.map(o => {
+                    const vencida = o.prazoentrega && o.prazoentrega < today;
+                    return (
+                      <tr key={o.id} style={{ cursor:'pointer' }} onClick={() => navigate(`/ordens/${o.id}`)}>
+                        <td style={{ fontWeight:700, color:'var(--color-primary)', fontSize:'var(--text-xs)' }}>{o.numero}</td>
+                        <td style={{ fontWeight:600 }}>{o.clientenome}</td>
+                        <td><span className={`badge badge-${TIPOBADGE[o.servico]||'diversos'}`} style={{ fontSize:10 }}>{o.servico}</span></td>
+                        <td style={{ maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:'var(--text-xs)' }}>{o.descricao}</td>
+                        <td style={{ fontSize:'var(--text-xs)', color:vencida?'var(--color-error)':'var(--color-text-muted)', fontWeight:vencida?700:400 }}>
+                          {o.prazoentrega?fmtD(o.prazoentrega):'—'}
+                        </td>
+                        <td>
+                          <span className={`badge badge-${o.status==='Em Produção'?'warning':o.status==='Pronto'?'success':'primary'}`} style={{ fontSize:10 }}>
+                            {o.status}
+                          </span>
+                        </td>
+                        <td style={{ textAlign:'right', fontFamily:'monospace', fontSize:'var(--text-xs)' }}>
+                          {fmt(o.valortotal||o.valor)}
+                        </td>
+                      </tr>
+                    );
+                  })
+                }
               </tbody>
             </table>
           </div>
