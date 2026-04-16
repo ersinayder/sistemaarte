@@ -96,7 +96,6 @@ export default function Ordens() {
 
   const closeForm = () => { setShowForm(false); setEditData(null); setForm(blankForm); setClienteSearch(''); };
 
-  // Recalculate total from products
   const recalcTotal = useCallback((prods) => {
     if (!prods || prods.length === 0) return;
     const novoTotal = prods.reduce((acc, p) => acc + (Number(p.quantidade||1) * Number(p.preco_unitario||p.preco||0)), 0);
@@ -457,81 +456,81 @@ export default function Ordens() {
                 {/* Valores */}
                 <div className="form-group">
                   <label className="form-label">
-                  Valor Total (R$) <span style={{color:"var(--color-error)"}}>*</span>
-                  <span style={{marginLeft:6,fontSize:"var(--text-xs)",color:"var(--color-text-muted)",fontWeight:400}}>
-                    — calculado pelos produtos, editável
-                  </span>
-                </label>
-                <input
-                  className="form-input"
-                  type="number" step="0.01" min="0"
-                  value={form.valortotal}
-                  onChange={e=>set("valortotal",e.target.value)}
-                  onWheel={e=>e.currentTarget.blur()}
-                  style={{ fontFamily:"monospace", fontWeight:700 }}
-                />
+                    Valor Total (R$) <span style={{color:"var(--color-error)"}}>*</span>
+                    <span style={{marginLeft:6,fontSize:"var(--text-xs)",color:"var(--color-text-muted)",fontWeight:400}}>
+                      — calculado pelos produtos, editável
+                    </span>
+                  </label>
+                  <input
+                    className="form-input"
+                    type="number" step="0.01" min="0"
+                    value={form.valortotal}
+                    onChange={e=>set("valortotal",e.target.value)}
+                    onWheel={e=>e.currentTarget.blur()}
+                    style={{ fontFamily:"monospace", fontWeight:700 }}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">
+                    Entrada (R$)
+                    <span style={{marginLeft:6,fontSize:"var(--text-xs)",color:"var(--color-text-muted)",fontWeight:400}}>opcional</span>
+                  </label>
+                  <input className="form-input" type="number" step="0.01" min="0" placeholder="0,00 (sem entrada)"
+                    value={form.valorentrada} onChange={e=>set("valorentrada",e.target.value)} onWheel={e=>e.currentTarget.blur()}/>
+                </div>
+
               </div>
-              <div className="form-group">
-                <label className="form-label">
-                  Entrada (R$)
-                  <span style={{marginLeft:6,fontSize:"var(--text-xs)",color:"var(--color-text-muted)",fontWeight:400}}>opcional</span>
-                </label>
-                <input className="form-input" type="number" step="0.01" min="0" placeholder="0,00 (sem entrada)"
-                  value={form.valorentrada} onChange={e=>set("valorentrada",e.target.value)} onWheel={e=>e.currentTarget.blur()}/>
-              </div>
+
+              {total > 0 && (
+                <div style={{
+                  display:"flex", justifyContent:"space-between", alignItems:"center",
+                  padding:"var(--space-3) var(--space-4)",
+                  background: restantePrev > 0 ? "var(--color-warning-hl)" : "var(--color-success-hl, var(--color-primary-hl))",
+                  borderRadius:"var(--radius-md)", fontSize:"var(--text-xs)"
+                }}>
+                  <span style={{color:"var(--color-text-muted)"}}>Restante a receber após entrada:</span>
+                  <strong style={{fontFamily:"monospace",color: restantePrev > 0 ? "var(--color-warning)" : "var(--color-success)"}}>{fmt(restantePrev)}</strong>
+                </div>
+              )}
             </div>
-
-            {total > 0 && (
-              <div style={{
-                display:"flex", justifyContent:"space-between", alignItems:"center",
-                padding:"var(--space-3) var(--space-4)",
-                background: restantePrev > 0 ? "var(--color-warning-hl)" : "var(--color-success-hl, var(--color-primary-highlight))",
-                borderRadius:"var(--radius-md)", fontSize:"var(--text-xs)"
-              }}>
-                <span style={{color:"var(--color-text-muted)"}}>Restante a receber após entrada:</span>
-                <strong style={{fontFamily:"monospace",color: restantePrev > 0 ? "var(--color-warning)" : "var(--color-success)"}}>{fmt(restantePrev)}</strong>
-              </div>
-            )}
+            <div className="modal-footer" style={{ position:'sticky', bottom:0, background:'var(--color-surface)', borderTop:'1px solid var(--color-divider)' }}>
+              <button className="btn btn-ghost" onClick={closeForm}>Cancelar</button>
+              <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
+                {saving ? 'Salvando…' : editData ? 'Salvar alterações' : 'Criar OS'}
+              </button>
+            </div>
           </div>
-        </div>
-        <div className="modal-footer" style={{ position:'sticky', bottom:0, background:'var(--color-surface)', borderTop:'1px solid var(--color-divider)' }}>
-          <button className="btn btn-ghost" onClick={closeForm}>Cancelar</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
-            {saving ? 'Salvando…' : editData ? 'Salvar alterações' : 'Criar OS'}
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body
-  )}
+        </div>,
+        document.body
+      )}
 
-  {/* Confirm Delete */}
-  {confirmDel && ReactDOM.createPortal(
-    <div className="modal-overlay" onClick={() => setConfirmDel(null)}>
-      <div className="modal" style={{ maxWidth:400 }} onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2 className="modal-title">Excluir Ordem</h2>
-          <button className="btn btn-ghost btn-sm" onClick={() => setConfirmDel(null)}>✕</button>
-        </div>
-        <div className="modal-body">
-          <p>Excluir a OS <strong>{confirmDel.numero}</strong> de <strong>{confirmDel.clientenome}</strong>?</p>
-          <p style={{ marginTop:'var(--space-2)', fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>Esta ação não pode ser desfeita.</p>
-        </div>
-        <div className="modal-footer">
-          <button className="btn btn-ghost" onClick={() => setConfirmDel(null)}>Cancelar</button>
-          <button
-            className="btn"
-            style={{ background:'var(--color-error)', color:'white' }}
-            onClick={() => handleDelete(confirmDel.id)}
-            disabled={deleting === confirmDel.id}
-          >
-            {deleting === confirmDel.id ? 'Excluindo…' : 'Excluir'}
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body
-  )}
-</div>
+      {/* Confirm Delete */}
+      {confirmDel && ReactDOM.createPortal(
+        <div className="modal-overlay" onClick={() => setConfirmDel(null)}>
+          <div className="modal" style={{ maxWidth:400 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">Excluir Ordem</h2>
+              <button className="btn btn-ghost btn-sm" onClick={() => setConfirmDel(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <p>Excluir a OS <strong>{confirmDel.numero}</strong> de <strong>{confirmDel.clientenome}</strong>?</p>
+              <p style={{ marginTop:'var(--space-2)', fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>Esta ação não pode ser desfeita.</p>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={() => setConfirmDel(null)}>Cancelar</button>
+              <button
+                className="btn"
+                style={{ background:'var(--color-error)', color:'white' }}
+                onClick={() => handleDelete(confirmDel.id)}
+                disabled={deleting === confirmDel.id}
+              >
+                {deleting === confirmDel.id ? 'Excluindo…' : 'Excluir'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
   );
 }
