@@ -51,6 +51,13 @@ jobs:
             /XF .env *.db
           if ($LASTEXITCODE -le 7) { exit 0 } else { exit $LASTEXITCODE }
 
+      # ── Parar PM2 ANTES do rebuild para liberar o lock do .node ──────
+      - name: Stop PM2 before rebuild
+        shell: powershell
+        run: |
+          pm2 stop sistemaarte-backend 2>$null
+          Start-Sleep -Seconds 2
+
       - name: Garantir dependências do backend
         shell: powershell
         run: |
