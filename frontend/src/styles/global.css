@@ -212,8 +212,9 @@ main {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: var(--space-6);
-  max-width: var(--content-max);
+  /* FIX: padding fluido + largura máxima centralizada */
+  padding: clamp(var(--space-4), 3vw, var(--space-8));
+  width: 100%;
 }
 @media (max-width: 768px) {
   main { padding: var(--space-4); }
