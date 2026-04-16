@@ -12,6 +12,12 @@ const PRIORIDADE_OPTS = ['Normal','Urgente'];
 const saldoAberto = (o) =>
   Number(o?.saldoaberto ?? o?.valorrestante ?? (Number(o?.valor||o?.valortotal||0) - Number(o?.entrada||o?.valorentrada||0))) || 0;
 
+// Mapeia tipo de serviço para badge válido
+const tipoBadge = (servico) => ({
+  'Moldura':'primary','Tela':'primary','Restauro':'warning',
+  'Passepartout':'success','Vidro':'primary','Diversos':'primary'
+})[servico] || 'primary';
+
 export default function Ordens() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -173,12 +179,12 @@ export default function Ordens() {
   const fmt  = v => v != null ? Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}) : '—';
   const fmtD = d => d ? new Date(d+'T00:00:00').toLocaleDateString('pt-BR') : '—';
 
-  const total     = Number(form.valortotal)  || 0;
-  const entrada   = Number(form.valorentrada) || 0;
-  const restantePrev = total - entrada;
+  const total          = Number(form.valortotal)  || 0;
+  const entrada        = Number(form.valorentrada) || 0;
+  const restantePrev   = total - entrada;
 
   const statusColor = (s) => ({
-    'Aguardando':'primary','Em Produção':'warning','Pronto':'success','Entregue':'info','Cancelado':'error'
+    'Aguardando':'primary','Em Produção':'warning','Pronto':'success','Entregue':'success','Cancelado':'error'
   })[s] || 'primary';
 
   const toggleSort = (f) => {
@@ -320,7 +326,7 @@ export default function Ordens() {
                         {o.clientenome}
                         {o.prioridade==='Urgente' && <span style={{ marginLeft:4, fontSize:9, fontWeight:700, color:'var(--color-error)', background:'rgba(161,44,123,0.10)', borderRadius:'var(--radius-full)', padding:'1px 5px' }}>URGENTE</span>}
                       </td>
-                      <td><span className={`badge badge-${{'Moldura':'primary','Tela':'secondary','Restauro':'warning','Passepartout':'info','Vidro':'success','Diversos':'diversos'}[o.servico]||'primary'}`} style={{ fontSize:10 }}>{o.servico}</span></td>
+                      <td><span className={`badge badge-${tipoBadge(o.servico)}`} style={{ fontSize:10 }}>{o.servico}</span></td>
                       <td style={{ maxWidth:180, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>{o.descricao||'—'}</td>
                       <td style={{ fontSize:'var(--text-xs)', color: vencida?'var(--color-error)':'var(--color-text-muted)', fontWeight: vencida?700:400 }}>{fmtD(o.prazoentrega)}</td>
                       <td><span className={`badge badge-${statusColor(o.status)}`} style={{ fontSize:10 }}>{o.status}</span></td>
@@ -485,7 +491,7 @@ export default function Ordens() {
                 <div style={{
                   display:"flex", justifyContent:"space-between", alignItems:"center",
                   padding:"var(--space-3) var(--space-4)",
-                  background: restantePrev > 0 ? "var(--color-warning-hl)" : "var(--color-success-hl, var(--color-primary-hl))",
+                  background: restantePrev > 0 ? 'var(--color-warning-highlight)' : 'var(--color-primary-highlight)',
                   borderRadius:"var(--radius-md)", fontSize:"var(--text-xs)"
                 }}>
                   <span style={{color:"var(--color-text-muted)"}}>Restante a receber após entrada:</span>

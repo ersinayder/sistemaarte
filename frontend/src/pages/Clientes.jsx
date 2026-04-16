@@ -63,6 +63,7 @@ export default function Clientes() {
   const openNew = () => { setEditId(null); setForm(blank); setShowForm(true); };
   const closeForm = () => { setShowForm(false); setEditId(null); setForm(blank); };
 
+  // Função unificada de busca de CEP — usa d.uf (campo correto da API ViaCEP)
   const buscarCep = async (cep) => {
     const c = cep.replace(/\D/g,'');
     if (c.length !== 8) return;
@@ -74,27 +75,8 @@ export default function Clientes() {
         setForm(f => ({
           ...f,
           endereco: f.endereco.trim() ? f.endereco : (d.logradouro ? `${d.logradouro}${d.bairro ? ', '+d.bairro : ''}` : f.endereco),
-          cidade:   f.cidade.trim()   ? f.cidade   : (d.localidade||''),
-          uf:       f.uf.trim()      ? f.uf      : (d.uf||''),
-        }));
-      }
-    } catch {}
-    finally { setCepLoading(false); }
-  };
-
-  const buscarCepEdit = async (cep) => {
-    const c = cep.replace(/\D/g,'');
-    if (c.length !== 8) return;
-    setCepLoading(true);
-    try {
-      const r = await fetch(`https://viacep.com.br/ws/${c}/json/`);
-      const d = await r.json();
-      if (!d.erro) {
-        setForm(f => ({
-          ...f,
-          endereco: f.endereco.trim() ? f.endereco : (d.logradouro ? `${d.logradouro}${d.bairro ? ', '+d.bairro : ''}` : f.endereco),
-          cidade:   f.cidade.trim()   ? f.cidade   : (d.localidade||''),
-          uf:       f.uf.trim()       ? f.uf       : (d.state||''),
+          cidade:   f.cidade.trim()   ? f.cidade   : (d.localidade || ''),
+          uf:       f.uf.trim()       ? f.uf       : (d.uf || ''),
         }));
       }
     } catch {}
@@ -381,7 +363,7 @@ export default function Clientes() {
                   <input
                     className="form-input"
                     value={form.cep}
-                    onChange={e => { set('cep', e.target.value); if(editId) buscarCepEdit(e.target.value); else buscarCep(e.target.value); }}
+                    onChange={e => { set('cep', e.target.value); buscarCep(e.target.value); }}
                     placeholder="00000-000"
                   />
                 </div>
