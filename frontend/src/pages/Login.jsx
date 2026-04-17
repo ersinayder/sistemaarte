@@ -13,11 +13,11 @@ export default function LoginPage() {
   const submit = async e => {
     e.preventDefault()
     setError('')
-    if (!form.username || !form.password) { setError('Preencha usuário e senha'); return }
+    if (!form.username || !form.password) { setError('Preencha usuario e senha'); return }
     setLoading(true)
     try {
       const u = await login(form.username, form.password)
-      toast.success(`Bem-vindo, ${u.name}!`)
+      toast.success('Bem-vindo, ' + u.name + '!')
     } catch (err) {
       setError(err.response?.data?.error || 'Erro ao conectar ao servidor')
     } finally { setLoading(false) }
@@ -30,67 +30,70 @@ export default function LoginPage() {
     { username: 'oficina', role: 'oficina' },
   ]
 
+  const inputStyle = {
+    background: '#262523',
+    border: '1px solid #393836',
+    borderRadius: '0.5rem',
+    padding: '0.75rem 1rem',
+    color: '#cdccca',
+    fontSize: '1rem',
+    outline: 'none',
+    width: '100%',
+    boxSizing: 'border-box',
+  }
+
   const labelStyle = {
-    color: 'var(--color-text)',
+    color: '#cdccca',
     fontWeight: 700,
-    fontSize: 'var(--text-xs)',
+    fontSize: '0.75rem',
     textTransform: 'uppercase',
     letterSpacing: '0.08em',
+    display: 'block',
+    marginBottom: '0.5rem',
   }
 
   return (
     <div style={{
-      position: 'fixed',
-      inset: 0,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      background: '#141312',
-      padding: 'var(--space-4)',
-      zIndex: 9999,
+      position: 'fixed', inset: 0,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: '#141312', padding: '1rem', zIndex: 9999,
     }}>
       <div style={{ width: '100%', maxWidth: '400px' }}>
 
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 'var(--space-5)' }}>
-          <img
-            src="/logo.png"
-            alt="Arte e Molduras"
-            style={{ height: 160, width: 'auto', objectFit: 'contain' }}
-          />
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.25rem' }}>
+          <img src="/logo.png" alt="Arte e Molduras" style={{ height: 160, width: 'auto', objectFit: 'contain' }} />
         </div>
 
         <p style={{
-          textAlign: 'center', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)',
-          letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 'var(--space-6)'
-        }}>
-          Sistema de Gestão
-        </p>
+          textAlign: 'center', fontSize: '0.75rem', color: '#888',
+          letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '1.5rem'
+        }}>Sistema de Gestao</p>
 
-        <div className="card card-pad" style={{ marginBottom: 'var(--space-4)' }}>
-          <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-            <div className="form-group">
-              <label className="form-label" htmlFor="username" style={labelStyle}>Usuário</label>
-              <input
-                id="username" name="username" className="form-input"
-                placeholder="ex: admin" value={form.username}
-                onChange={handle} autoComplete="username" autoFocus
-              />
+        <div style={{
+          background: '#1c1b19', border: '1px solid #393836',
+          borderRadius: '0.75rem', padding: '1.5rem', marginBottom: '1rem',
+        }}>
+          <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+
+            <div>
+              <label htmlFor="username" style={labelStyle}>Usuario</label>
+              <input id="username" name="username" placeholder="ex: admin"
+                value={form.username} onChange={handle}
+                autoComplete="username" autoFocus style={inputStyle} />
             </div>
-            <div className="form-group">
-              <label className="form-label" htmlFor="password" style={labelStyle}>Senha</label>
-              <input
-                id="password" name="password" type="password" className="form-input"
-                placeholder="••••••••" value={form.password}
-                onChange={handle} autoComplete="current-password"
-              />
+
+            <div>
+              <label htmlFor="password" style={labelStyle}>Senha</label>
+              <input id="password" name="password" type="password" placeholder="........"
+                value={form.password} onChange={handle}
+                autoComplete="current-password" style={inputStyle} />
             </div>
 
             {error && (
               <div style={{
-                background: 'var(--color-error-highlight)', color: 'var(--color-error)',
-                borderRadius: 'var(--radius-md)', padding: 'var(--space-3)',
-                fontSize: 'var(--text-xs)', fontWeight: 600,
-                display: 'flex', alignItems: 'center', gap: 'var(--space-2)'
+                background: '#4c3d46', color: '#d163a7', borderRadius: '0.5rem',
+                padding: '0.75rem', fontSize: '0.75rem', fontWeight: 600,
+                display: 'flex', alignItems: 'center', gap: '0.5rem',
               }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <circle cx="12" cy="12" r="10"/>
@@ -101,10 +104,16 @@ export default function LoginPage() {
               </div>
             )}
 
-            <button className="btn btn-primary" type="submit" disabled={loading}
-              style={{ width: '100%', justifyContent: 'center', padding: 'var(--space-3)' }}>
+            <button type="submit" disabled={loading} style={{
+              width: '100%', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', gap: '0.5rem', padding: '0.75rem',
+              background: loading ? '#1a626b' : '#01696f', color: '#fff',
+              border: 'none', borderRadius: '0.5rem',
+              fontSize: '0.875rem', fontWeight: 600,
+              cursor: loading ? 'not-allowed' : 'pointer', transition: 'background 180ms',
+            }}>
               {loading
-                ? <><div className="spinner" style={{ width: 16, height: 16 }} /> Entrando...</>
+                ? 'Entrando...'
                 : <>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3"/>
@@ -117,38 +126,28 @@ export default function LoginPage() {
         </div>
 
         {import.meta.env.DEV && (
-          <div style={{ marginBottom: 'var(--space-4)' }}>
-            <p style={{
-              fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)',
-              textAlign: 'center', marginBottom: 'var(--space-3)'
-            }}>
-              Acesso rápido (somente dev):
+          <div style={{ marginBottom: '1rem' }}>
+            <p style={{ fontSize: '0.75rem', color: '#5a5957', textAlign: 'center', marginBottom: '0.75rem' }}>
+              Acesso rapido (somente dev):
             </p>
-            <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'center' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
               {hints.map(h => (
                 <button key={h.username}
-                  onClick={() => setForm({ username: h.username, password: `${h.username}123` })}
+                  onClick={() => setForm({ username: h.username, password: h.username + '123' })}
                   style={{
-                    padding: 'var(--space-2) var(--space-3)',
-                    background: 'var(--color-surface)',
-                    border: '1px solid var(--color-border)',
-                    borderRadius: 'var(--radius-lg)',
-                    fontSize: 'var(--text-xs)',
-                    cursor: 'pointer',
-                    color: 'var(--color-text-muted)',
+                    padding: '0.5rem 0.75rem', background: '#1c1b19',
+                    border: '1px solid #393836', borderRadius: '9999px',
+                    fontSize: '0.75rem', cursor: 'pointer', color: '#797876',
                   }}
-                >
-                  {roleLabels[h.role]}
-                </button>
+                >{roleLabels[h.role]}</button>
               ))}
             </div>
           </div>
         )}
 
-        <p style={{ textAlign: 'center', fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)' }}>
+        <p style={{ textAlign: 'center', fontSize: '0.75rem', color: '#5a5957' }}>
           Servidor local · rede interna
         </p>
-
       </div>
     </div>
   )
