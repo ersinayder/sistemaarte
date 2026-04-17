@@ -317,7 +317,7 @@ export default function Ordens() {
               </thead>
               <tbody>
                 {filtered.map(o => {
-                  const vencida = o.prazoentrega && o.prazoentrega < new Date().toISOString().split('T')[0] && !['Entregue','Cancelado'].includes(o.status);
+                  const vencida = o.prazoentrega && o.prazoentrega < new Date().toISOString().split('T')[0] && !['Entregue','Cancelado','Pronto'].includes(o.status);
                   const saldo = saldoAberto(o);
                   const quitado = saldo <= 0;
                   return (

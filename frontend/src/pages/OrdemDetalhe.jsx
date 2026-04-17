@@ -88,7 +88,7 @@ export default function OrdemDetalhe() {
   if (!ordem)  return null
 
   const saldoOS   = Number(ordem.saldoaberto ?? 0)
-  const vencida   = ordem.prazo && ordem.prazo < today() && !['Entregue','Cancelado'].includes(ordem.status)
+  const vencida   = ordem.prazo && ordem.prazo < today() && !['Entregue','Cancelado','Pronto'].includes(ordem.status)
   const statusIdx = STATUS_FLOW.indexOf(ordem.status)
   const canAdvance = (isCaixa || isOficina) && ordem.status !== 'Entregue' && ordem.status !== 'Cancelado'
 
