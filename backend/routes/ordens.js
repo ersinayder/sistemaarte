@@ -3,7 +3,7 @@ const { getAll, getOne, run, runInsert, transaction } = require("../database");
 const { auth } = require("../middlewares/auth");
 const { toNumber } = require("../utils/numbers");
 const { hoje } = require("../utils/dates");
-const { validarEntradaOS, validarStatus, descricaoEntradaOS } = require("../domain/ordensRules");
+const { validarEntradaOS, validarStatus, descricaoEntradaOS, descricaoRestanteOS } = require("../domain/ordensRules");
 
 const SEL_ORDEM = `
   SELECT o.*,
@@ -73,7 +73,7 @@ router.post("/", auth(["admin","caixa"]), (req, res) => {
   const erroEntrada = validarEntradaOS(total, entrada);
   if (erroEntrada) return res.status(400).json({ error: erroEntrada });
 
-  // Resolve clienteid: se não veio no body, tenta encontrar pelo nome exato
+  // Resolve clienteid
   let cidResolvido = clienteid || null;
   if (!cidResolvido && clientenome) {
     const cli = getOne("SELECT id FROM clientes WHERE name=? LIMIT 1", [clientenome]);
@@ -97,10 +97,12 @@ router.post("/", auth(["admin","caixa"]), (req, res) => {
         "INSERT INTO statuslog (ordemid,statusanterior,statusnovo,usuarioid,obs) VALUES (?,?,?,?,?)",
         [id, null, "Aguardando", req.user.id, "Ordem criada"]
       );
+      // descrição inteligente: Total se pago na hora, Entrada se parcial
+      const desc = descricaoEntradaOS(numero, clientenome, servico, total, entrada);
       runInsert(
         `INSERT INTO lancamentos (data,tipo,descricao,pagamento,valor,pago,ordemid,criadopor,origem)
          VALUES (?,?,?,?,?,?,?,?,?)`,
-        [hoje(), servico||"Diversos", descricaoEntradaOS(numero,clientenome,servico),
+        [hoje(), servico||"Diversos", desc,
          pagamento||"Pix", entrada, 1, id, req.user.id, "entradaos"]
       );
       return { id, numero };
@@ -170,8 +172,9 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res) => {
         runInsert("INSERT INTO statuslog (ordemid,statusanterior,statusnovo,usuarioid) VALUES (?,?,?,?)",
           [req.params.id, old.status, ns, req.user.id]);
 
-      const entradaOS   = getEntradaOS(req.params.id);
-      const entradaDesc = descricaoEntradaOS(old.numero, novoCliente, novoServico);
+      const entradaOS = getEntradaOS(req.params.id);
+      // descrição inteligente: Total se entrada==total, Entrada se parcial
+      const entradaDesc = descricaoEntradaOS(old.numero, novoCliente, novoServico, total, entrada);
       if (entradaOS) {
         run("UPDATE lancamentos SET tipo=?,descricao=?,pagamento=?,valor=?,pago=1 WHERE id=?",
           [novoServico||"Diversos", entradaDesc, novoPagamento, entrada, entradaOS.id]);
