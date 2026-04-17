@@ -31,7 +31,7 @@ export default function LoginPage() {
   ]
 
   const labelStyle = {
-    color: '#3a3a3a',
+    color: 'var(--color-text)',
     fontWeight: 700,
     fontSize: 'var(--text-xs)',
     textTransform: 'uppercase',
