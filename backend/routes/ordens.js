@@ -22,12 +22,11 @@ const SEL_ORDEM = `
   LEFT JOIN users u ON u.id=o.criadopor
 `;
 
+// Gerado SEMPRE dentro de uma transaction() — serializado pelo better-sqlite3
 function nextNumero() {
-  // Conta todos (inclusive deletados) para nunca reutilizar numero
-  const row = getOne("SELECT numero FROM ordens ORDER BY id DESC LIMIT 1");
-  if (!row) return "OS-0001";
-  const n = parseInt(row.numero.split("-")[1] || "0") + 1;
-  return `OS-${String(n).padStart(4,"0")}`;
+  const row = getOne("SELECT MAX(CAST(SUBSTR(numero,4) AS INTEGER)) AS maxn FROM ordens");
+  const n = (row?.maxn ?? 0) + 1;
+  return `OS-${String(n).padStart(4, "0")}`;
 }
 
 function getEntradaOS(ordemId) {
@@ -92,6 +91,7 @@ router.post("/", auth(["admin","caixa"]), (req, res) => {
 
   try {
     const result = transaction(() => {
+      // numero gerado DENTRO da transacao — lock serial garantido
       const numero = nextNumero();
       const id = runInsert(
         `INSERT INTO ordens
@@ -118,6 +118,10 @@ router.post("/", auth(["admin","caixa"]), (req, res) => {
     res.json(result);
   } catch(e) {
     console.error("[POST /api/ordens]", e.message);
+    // UNIQUE constraint violation = colisao de numero (improvavel em single-process)
+    if (e.message?.includes("UNIQUE")) {
+      return res.status(409).json({ error: "Conflito ao gerar numero da OS. Tente novamente." });
+    }
     res.status(500).json({ error: e.message });
   }
 });
@@ -221,26 +225,26 @@ router.patch("/:id/status", auth(["admin","caixa","oficina"]), (req, res) => {
 });
 
 // DELETE /api/ordens/:id  — SOFT DELETE (admin only)
-// Body opcional: { reason: "motivo" }
 router.delete("/:id", auth(["admin"]), (req, res) => {
   try {
-    const os = getOne("SELECT id,numero FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);
+    const os = getOne("SELECT id,numero,status FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);
     if (!os) return res.status(404).json({ error: "OS nao encontrada ou ja excluida." });
     const reason = req.body?.reason || null;
-    run(
-      `UPDATE ordens SET
-        deletedat=datetime('now','localtime'),
-        deletedpor=?,
-        deletedreason=?,
-        updatedat=datetime('now','localtime')
-       WHERE id=?`,
-      [req.user.id, reason, req.params.id]
-    );
-    // Registra no log
-    runInsert(
-      "INSERT INTO statuslog (ordemid,statusanterior,statusnovo,usuarioid,obs) VALUES (?,?,?,?,?)",
-      [req.params.id, os.status || null, "Excluida", req.user.id, reason || "Exclusao pelo administrador"]
-    );
+    transaction(() => {
+      run(
+        `UPDATE ordens SET
+          deletedat=datetime('now','localtime'),
+          deletedpor=?,
+          deletedreason=?,
+          updatedat=datetime('now','localtime')
+         WHERE id=?`,
+        [req.user.id, reason, req.params.id]
+      );
+      runInsert(
+        "INSERT INTO statuslog (ordemid,statusanterior,statusnovo,usuarioid,obs) VALUES (?,?,?,?,?)",
+        [req.params.id, os.status || null, "Excluida", req.user.id, reason || "Exclusao pelo administrador"]
+      );
+    });
     res.json({ ok: true, numero: os.numero });
   } catch(e) {
     res.status(500).json({ error: e.message });
@@ -252,15 +256,17 @@ router.post("/:id/restaurar", auth(["admin"]), (req, res) => {
   try {
     const os = getOne("SELECT id,numero,status FROM ordens WHERE id=? AND deletedat IS NOT NULL", [req.params.id]);
     if (!os) return res.status(404).json({ error: "OS nao encontrada na lixeira." });
-    run(
-      `UPDATE ordens SET deletedat=NULL, deletedpor=NULL, deletedreason=NULL,
-        updatedat=datetime('now','localtime') WHERE id=?`,
-      [req.params.id]
-    );
-    runInsert(
-      "INSERT INTO statuslog (ordemid,statusanterior,statusnovo,usuarioid,obs) VALUES (?,?,?,?,?)",
-      [req.params.id, "Excluida", os.status, req.user.id, "OS restaurada da lixeira"]
-    );
+    transaction(() => {
+      run(
+        `UPDATE ordens SET deletedat=NULL, deletedpor=NULL, deletedreason=NULL,
+          updatedat=datetime('now','localtime') WHERE id=?`,
+        [req.params.id]
+      );
+      runInsert(
+        "INSERT INTO statuslog (ordemid,statusanterior,statusnovo,usuarioid,obs) VALUES (?,?,?,?,?)",
+        [req.params.id, "Excluida", os.status, req.user.id, "OS restaurada da lixeira"]
+      );
+    });
     res.json({ ok: true, numero: os.numero });
   } catch(e) {
     res.status(500).json({ error: e.message });
