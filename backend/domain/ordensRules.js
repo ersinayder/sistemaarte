@@ -17,8 +17,23 @@ function validarStatus(status) {
   return null;
 }
 
-function descricaoEntradaOS(numero, cliente, servico) {
-  return `Entrada ${numero} – ${cliente}${servico ? " / " + servico : ""}`;
+/**
+ * Gera a descrição do lançamento automático ao criar/editar OS.
+ * - Se entrada == total  → "Total OS-XXXX – Cliente / Serviço"
+ * - Se entrada <  total  → "Entrada OS-XXXX – Cliente / Serviço"
+ */
+function descricaoEntradaOS(numero, cliente, servico, total, entrada) {
+  const sufixo = `${numero} – ${cliente}${servico ? " / " + servico : ""}`;
+  const isPagamentoTotal = entrada != null && total != null && Number(entrada) >= Number(total);
+  return `${isPagamentoTotal ? "Total" : "Entrada"} ${sufixo}`;
 }
 
-module.exports = { validarEntradaOS, validarStatus, descricaoEntradaOS, STATUSES_VALIDOS };
+/**
+ * Gera a descrição do lançamento de restante (pago posteriormente via caixa).
+ * "Restante OS-XXXX – Cliente / Serviço"
+ */
+function descricaoRestanteOS(numero, cliente, servico) {
+  return `Restante ${numero} – ${cliente}${servico ? " / " + servico : ""}`;
+}
+
+module.exports = { validarEntradaOS, validarStatus, descricaoEntradaOS, descricaoRestanteOS, STATUSES_VALIDOS };
