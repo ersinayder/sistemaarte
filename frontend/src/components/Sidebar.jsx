@@ -49,8 +49,7 @@ export default function Sidebar({ collapsed, onToggle }) {
   const [vencidas, setVencidas] = useState(0)
   const theme = useTheme()
 
-  // light mode usa logo-light.jpg (logo preta), dark mantém logo.png (logo branca)
-  const logoSrc = theme === 'light' ? '/logo-light.jpg' : '/logo.png'
+  const logoSrc = theme === 'light' ? '/logo preta.png' : '/logo.png'
 
   useEffect(() => {
     let cancelled = false
