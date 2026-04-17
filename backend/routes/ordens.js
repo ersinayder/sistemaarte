@@ -4,6 +4,7 @@ const { auth } = require("../middlewares/auth");
 const { toNumber } = require("../utils/numbers");
 const { hoje } = require("../utils/dates");
 const { validarEntradaOS, validarStatus, descricaoEntradaOS } = require("../domain/ordensRules");
+const { sendWhatsApp } = require("../utils/whatsapp");
 
 const SEL_ORDEM = `
   SELECT o.*,
@@ -22,7 +23,6 @@ const SEL_ORDEM = `
   LEFT JOIN users u ON u.id=o.criadopor
 `;
 
-// Gerado SEMPRE dentro de uma transaction() — serializado pelo better-sqlite3
 function nextNumero() {
   const row = getOne("SELECT MAX(CAST(SUBSTR(numero,4) AS INTEGER)) AS maxn FROM ordens");
   const n = (row?.maxn ?? 0) + 1;
@@ -36,7 +36,16 @@ function getEntradaOS(ordemId) {
   );
 }
 
-// GET /api/ordens  — exclui deletadas por padrao; ?lixeira=1 mostra so deletadas (admin)
+// Dispara WhatsApp se status mudou para "Pronto" — fire-and-forget (não bloqueia response)
+function maybeNotifyPronto(ordemId, statusAnterior, statusNovo) {
+  if (statusAnterior === statusNovo) return;
+  if (statusNovo !== 'Pronto') return;
+  const os = getOne(SEL_ORDEM + " WHERE o.id=?", [ordemId]);
+  if (!os) return;
+  sendWhatsApp(os).catch(err => console.error('[WhatsApp] erro inesperado:', err.message));
+}
+
+// GET /api/ordens
 router.get("/", auth(), (req, res) => {
   const { status, q, vencidas, lixeira } = req.query;
   const isLixeira = lixeira === "1" && req.user.role === "admin";
@@ -91,7 +100,6 @@ router.post("/", auth(["admin","caixa"]), (req, res) => {
 
   try {
     const result = transaction(() => {
-      // numero gerado DENTRO da transacao — lock serial garantido
       const numero = nextNumero();
       const id = runInsert(
         `INSERT INTO ordens
@@ -118,7 +126,6 @@ router.post("/", auth(["admin","caixa"]), (req, res) => {
     res.json(result);
   } catch(e) {
     console.error("[POST /api/ordens]", e.message);
-    // UNIQUE constraint violation = colisao de numero (improvavel em single-process)
     if (e.message?.includes("UNIQUE")) {
       return res.status(409).json({ error: "Conflito ao gerar numero da OS. Tente novamente." });
     }
@@ -146,6 +153,8 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res) => {
           runInsert("INSERT INTO statuslog (ordemid,statusanterior,statusnovo,usuarioid) VALUES (?,?,?,?)",
             [req.params.id, old.status, status, req.user.id]);
       });
+      // Notifica WhatsApp fora da transaction (fire-and-forget)
+      maybeNotifyPronto(req.params.id, old.status, status);
       return res.json({ ok: true });
     }
 
@@ -195,6 +204,8 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res) => {
         );
       }
     });
+    // Notifica WhatsApp fora da transaction (fire-and-forget)
+    maybeNotifyPronto(req.params.id, old.status, ns);
     res.json({ ok: true });
   } catch(e) {
     console.error("[PUT /api/ordens/:id]", e.message);
@@ -218,6 +229,8 @@ router.patch("/:id/status", auth(["admin","caixa","oficina"]), (req, res) => {
         [req.params.id, old.status, status, req.user.id, obs||null]
       );
     });
+    // Notifica WhatsApp fora da transaction (fire-and-forget)
+    maybeNotifyPronto(req.params.id, old.status, status);
     res.json({ ok: true });
   } catch(e) {
     res.status(500).json({ error: e.message });
@@ -251,7 +264,7 @@ router.delete("/:id", auth(["admin"]), (req, res) => {
   }
 });
 
-// POST /api/ordens/:id/restaurar  — restaura soft delete (admin only)
+// POST /api/ordens/:id/restaurar
 router.post("/:id/restaurar", auth(["admin"]), (req, res) => {
   try {
     const os = getOne("SELECT id,numero,status FROM ordens WHERE id=? AND deletedat IS NOT NULL", [req.params.id]);
