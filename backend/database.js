@@ -48,6 +48,9 @@ CREATE TABLE IF NOT EXISTS ordens (
   pagamento       TEXT DEFAULT 'Pix',
   observacoes     TEXT,
   criadopor       INTEGER,
+  deletedat       TEXT DEFAULT NULL,
+  deletedpor      INTEGER DEFAULT NULL,
+  deletedreason   TEXT DEFAULT NULL,
   createdat       TEXT DEFAULT (datetime('now','localtime')),
   updatedat       TEXT DEFAULT (datetime('now','localtime'))
 );
@@ -102,40 +105,38 @@ function initDB() {
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA);
 
-  // Migrations idempotentes
   const migrations = [
-    "ALTER TABLE ordens     ADD COLUMN pagamento   TEXT DEFAULT 'Pix'",
-    "ALTER TABLE ordens     ADD COLUMN prioridade  TEXT DEFAULT 'Normal'",
-    "ALTER TABLE ordens     ADD COLUMN observacoes TEXT",
-    "ALTER TABLE ordens     ADD COLUMN updatedat   TEXT DEFAULT (datetime('now','localtime'))",
-    "ALTER TABLE clientes   ADD COLUMN ie          TEXT",
-    "ALTER TABLE clientes   ADD COLUMN cidade      TEXT",
-    "ALTER TABLE clientes   ADD COLUMN uf          TEXT",
-    "ALTER TABLE clientes   ADD COLUMN cep         TEXT",
-    "ALTER TABLE clientes   ADD COLUMN notes       TEXT",
-    "ALTER TABLE lancamentos ADD COLUMN origem     TEXT DEFAULT NULL",
-    "ALTER TABLE lancamentos ADD COLUMN pago       INTEGER DEFAULT 1",
+    "ALTER TABLE ordens     ADD COLUMN pagamento     TEXT DEFAULT 'Pix'",
+    "ALTER TABLE ordens     ADD COLUMN prioridade    TEXT DEFAULT 'Normal'",
+    "ALTER TABLE ordens     ADD COLUMN observacoes   TEXT",
+    "ALTER TABLE ordens     ADD COLUMN updatedat     TEXT DEFAULT (datetime('now','localtime'))",
+    "ALTER TABLE ordens     ADD COLUMN deletedat     TEXT DEFAULT NULL",
+    "ALTER TABLE ordens     ADD COLUMN deletedpor    INTEGER DEFAULT NULL",
+    "ALTER TABLE ordens     ADD COLUMN deletedreason TEXT DEFAULT NULL",
+    "ALTER TABLE clientes   ADD COLUMN ie            TEXT",
+    "ALTER TABLE clientes   ADD COLUMN cidade        TEXT",
+    "ALTER TABLE clientes   ADD COLUMN uf            TEXT",
+    "ALTER TABLE clientes   ADD COLUMN cep           TEXT",
+    "ALTER TABLE clientes   ADD COLUMN notes         TEXT",
+    "ALTER TABLE lancamentos ADD COLUMN origem       TEXT DEFAULT NULL",
+    "ALTER TABLE lancamentos ADD COLUMN pago         INTEGER DEFAULT 1",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {}
   }
 
-  // Seed SOMENTE em desenvolvimento
   if (process.env.NODE_ENV !== "production") {
     const existing = db.prepare("SELECT id FROM users WHERE role=?").get("admin");
     if (!existing) {
-      const stmt = db.prepare(
-        "INSERT INTO users (name,username,password,role) VALUES (?,?,?,?)"
-      );
+      const stmt = db.prepare("INSERT INTO users (name,username,password,role) VALUES (?,?,?,?)");
       const seed = [
         ["Administrador","admin","admin123","admin"],
         ["Caixa","caixa","caixa123","caixa"],
         ["Oficina","oficina","oficina123","oficina"],
       ];
-      for (const [name,username,pw,role] of seed) {
+      for (const [name,username,pw,role] of seed)
         stmt.run(name, username, bcrypt.hashSync(pw,10), role);
-      }
-      console.log("[DB] Usuários padrão criados (somente dev)");
+      console.log("[DB] Usuarios padrao criados (somente dev)");
     }
   }
 

@@ -3,7 +3,7 @@ const { getAll, getOne, run, runInsert, transaction } = require("../database");
 const { auth } = require("../middlewares/auth");
 const { toNumber } = require("../utils/numbers");
 const { hoje } = require("../utils/dates");
-const { validarEntradaOS, validarStatus, descricaoEntradaOS, descricaoRestanteOS } = require("../domain/ordensRules");
+const { validarEntradaOS, validarStatus, descricaoEntradaOS } = require("../domain/ordensRules");
 
 const SEL_ORDEM = `
   SELECT o.*,
@@ -23,6 +23,7 @@ const SEL_ORDEM = `
 `;
 
 function nextNumero() {
+  // Conta todos (inclusive deletados) para nunca reutilizar numero
   const row = getOne("SELECT numero FROM ordens ORDER BY id DESC LIMIT 1");
   if (!row) return "OS-0001";
   const n = parseInt(row.numero.split("-")[1] || "0") + 1;
@@ -36,14 +37,24 @@ function getEntradaOS(ordemId) {
   );
 }
 
-// GET /api/ordens
+// GET /api/ordens  — exclui deletadas por padrao; ?lixeira=1 mostra so deletadas (admin)
 router.get("/", auth(), (req, res) => {
-  const { status, q, vencidas } = req.query;
-  let sql = SEL_ORDEM + " WHERE 1=1";
+  const { status, q, vencidas, lixeira } = req.query;
+  const isLixeira = lixeira === "1" && req.user.role === "admin";
+
+  let sql = SEL_ORDEM + (isLixeira
+    ? " WHERE o.deletedat IS NOT NULL"
+    : " WHERE o.deletedat IS NULL");
   const p = [];
-  if (status && status !== "todos") { sql += " AND o.status=?"; p.push(status); }
-  if (vencidas == "1") { sql += " AND o.prazoentrega<? AND o.status NOT IN ('Entregue','Cancelado','Pronto')"; p.push(hoje()); }
-  if (q) { sql += " AND (o.clientenome LIKE ? OR o.numero LIKE ? OR o.servico LIKE ? OR COALESCE(o.descricao,'') LIKE ?)"; const lk=`%${q}%`; p.push(lk,lk,lk,lk); }
+
+  if (!isLixeira) {
+    if (status && status !== "todos") { sql += " AND o.status=?"; p.push(status); }
+    if (vencidas == "1") { sql += " AND o.prazoentrega<? AND o.status NOT IN ('Entregue','Cancelado','Pronto')"; p.push(hoje()); }
+  }
+  if (q) {
+    sql += " AND (o.clientenome LIKE ? OR o.numero LIKE ? OR o.servico LIKE ? OR COALESCE(o.descricao,'') LIKE ?)";
+    const lk = `%${q}%`; p.push(lk,lk,lk,lk);
+  }
   sql += " ORDER BY o.createdat DESC, o.id DESC";
   res.json(getAll(sql, p));
 });
@@ -51,7 +62,7 @@ router.get("/", auth(), (req, res) => {
 // GET /api/ordens/:id
 router.get("/:id", auth(), (req, res) => {
   const o = getOne(SEL_ORDEM + " WHERE o.id=?", [req.params.id]);
-  if (!o) return res.status(404).json({ error: "Não encontrado" });
+  if (!o) return res.status(404).json({ error: "Nao encontrado" });
   const logs = getAll(
     "SELECT sl.*, u.name AS usuarionome FROM statuslog sl LEFT JOIN users u ON u.id=sl.usuarioid WHERE sl.ordemid=? ORDER BY sl.createdat ASC",
     [req.params.id]
@@ -66,14 +77,13 @@ router.post("/", auth(["admin","caixa"]), (req, res) => {
           prioridade, pagamento, observacoes } = req.body ?? {};
 
   if (!clientenome || !servico || valortotal == null)
-    return res.status(400).json({ error: "clientenome, servico e valortotal são obrigatórios" });
+    return res.status(400).json({ error: "clientenome, servico e valortotal sao obrigatorios" });
 
   const total   = toNumber(valortotal);
   const entrada = toNumber(valorentrada);
   const erroEntrada = validarEntradaOS(total, entrada);
   if (erroEntrada) return res.status(400).json({ error: erroEntrada });
 
-  // Resolve clienteid
   let cidResolvido = clienteid || null;
   if (!cidResolvido && clientenome) {
     const cli = getOne("SELECT id FROM clientes WHERE name=? LIMIT 1", [clientenome]);
@@ -97,13 +107,11 @@ router.post("/", auth(["admin","caixa"]), (req, res) => {
         "INSERT INTO statuslog (ordemid,statusanterior,statusnovo,usuarioid,obs) VALUES (?,?,?,?,?)",
         [id, null, "Aguardando", req.user.id, "Ordem criada"]
       );
-      // descrição inteligente: Total se pago na hora, Entrada se parcial
       const desc = descricaoEntradaOS(numero, clientenome, servico, total, entrada);
       runInsert(
         `INSERT INTO lancamentos (data,tipo,descricao,pagamento,valor,pago,ordemid,criadopor,origem)
          VALUES (?,?,?,?,?,?,?,?,?)`,
-        [hoje(), servico||"Diversos", desc,
-         pagamento||"Pix", entrada, 1, id, req.user.id, "entradaos"]
+        [hoje(), servico||"Diversos", desc, pagamento||"Pix", entrada, 1, id, req.user.id, "entradaos"]
       );
       return { id, numero };
     });
@@ -117,14 +125,13 @@ router.post("/", auth(["admin","caixa"]), (req, res) => {
 // PUT /api/ordens/:id
 router.put("/:id", auth(["admin","caixa","oficina"]), (req, res) => {
   try {
-    const old = getOne("SELECT * FROM ordens WHERE id=?", [req.params.id]);
-    if (!old) return res.status(404).json({ error: "Não encontrado" });
+    const old = getOne("SELECT * FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);
+    if (!old) return res.status(404).json({ error: "Nao encontrado ou OS cancelada" });
 
     const { status, descricao, valortotal, valorentrada, prazoentrega,
             prioridade, pagamento, observacoes, clientenome, clientetelefone,
             clientecpf, servico, clienteid } = req.body ?? {};
 
-    // Perfil oficina só pode mudar status
     if (req.user.role === "oficina") {
       if (!status) return res.status(400).json({ error: "Informe o status" });
       const erroStatus = validarStatus(status);
@@ -148,7 +155,6 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res) => {
     const novoServico   = servico || old.servico;
     const novoPagamento = pagamento || old.pagamento || "Pix";
 
-    // Mantém ou atualiza clienteid
     let novoCid = clienteid !== undefined ? (clienteid || null) : old.clienteid;
     if (!novoCid && novoCliente) {
       const cli = getOne("SELECT id FROM clientes WHERE name=? LIMIT 1", [novoCliente]);
@@ -173,7 +179,6 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res) => {
           [req.params.id, old.status, ns, req.user.id]);
 
       const entradaOS = getEntradaOS(req.params.id);
-      // descrição inteligente: Total se entrada==total, Entrada se parcial
       const entradaDesc = descricaoEntradaOS(old.numero, novoCliente, novoServico, total, entrada);
       if (entradaOS) {
         run("UPDATE lancamentos SET tipo=?,descricao=?,pagamento=?,valor=?,pago=1 WHERE id=?",
@@ -197,11 +202,11 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res) => {
 router.patch("/:id/status", auth(["admin","caixa","oficina"]), (req, res) => {
   try {
     const { status, obs } = req.body ?? {};
-    if (!status) return res.status(400).json({ error: "status obrigatório" });
+    if (!status) return res.status(400).json({ error: "status obrigatorio" });
     const erroStatus = validarStatus(status);
     if (erroStatus) return res.status(400).json({ error: erroStatus });
-    const old = getOne("SELECT status FROM ordens WHERE id=?", [req.params.id]);
-    if (!old) return res.status(404).json({ error: "Não encontrado" });
+    const old = getOne("SELECT status FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);
+    if (!old) return res.status(404).json({ error: "Nao encontrado" });
     transaction(() => {
       run("UPDATE ordens SET status=?,updatedat=datetime('now','localtime') WHERE id=?", [status, req.params.id]);
       runInsert(
@@ -215,16 +220,47 @@ router.patch("/:id/status", auth(["admin","caixa","oficina"]), (req, res) => {
   }
 });
 
-// DELETE /api/ordens/:id
+// DELETE /api/ordens/:id  — SOFT DELETE (admin only)
+// Body opcional: { reason: "motivo" }
 router.delete("/:id", auth(["admin"]), (req, res) => {
   try {
-    const os = getOne("SELECT id,numero FROM ordens WHERE id=?", [req.params.id]);
-    if (!os) return res.status(404).json({ error: "OS não encontrada." });
-    transaction(() => {
-      run("DELETE FROM lancamentos WHERE ordemid=?", [req.params.id]);
-      run("DELETE FROM statuslog WHERE ordemid=?",   [req.params.id]);
-      run("DELETE FROM ordens WHERE id=?",           [req.params.id]);
-    });
+    const os = getOne("SELECT id,numero FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);
+    if (!os) return res.status(404).json({ error: "OS nao encontrada ou ja excluida." });
+    const reason = req.body?.reason || null;
+    run(
+      `UPDATE ordens SET
+        deletedat=datetime('now','localtime'),
+        deletedpor=?,
+        deletedreason=?,
+        updatedat=datetime('now','localtime')
+       WHERE id=?`,
+      [req.user.id, reason, req.params.id]
+    );
+    // Registra no log
+    runInsert(
+      "INSERT INTO statuslog (ordemid,statusanterior,statusnovo,usuarioid,obs) VALUES (?,?,?,?,?)",
+      [req.params.id, os.status || null, "Excluida", req.user.id, reason || "Exclusao pelo administrador"]
+    );
+    res.json({ ok: true, numero: os.numero });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/ordens/:id/restaurar  — restaura soft delete (admin only)
+router.post("/:id/restaurar", auth(["admin"]), (req, res) => {
+  try {
+    const os = getOne("SELECT id,numero,status FROM ordens WHERE id=? AND deletedat IS NOT NULL", [req.params.id]);
+    if (!os) return res.status(404).json({ error: "OS nao encontrada na lixeira." });
+    run(
+      `UPDATE ordens SET deletedat=NULL, deletedpor=NULL, deletedreason=NULL,
+        updatedat=datetime('now','localtime') WHERE id=?`,
+      [req.params.id]
+    );
+    runInsert(
+      "INSERT INTO statuslog (ordemid,statusanterior,statusnovo,usuarioid,obs) VALUES (?,?,?,?,?)",
+      [req.params.id, "Excluida", os.status, req.user.id, "OS restaurada da lixeira"]
+    );
     res.json({ ok: true, numero: os.numero });
   } catch(e) {
     res.status(500).json({ error: e.message });
