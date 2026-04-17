@@ -17,16 +17,14 @@ const tipoBadge = (servico) => ({
   'Passepartout':'success','Vidro':'primary','Diversos':'primary'
 })[servico] || 'primary';
 
-// ------- Componente de busca/adição de produtos -------
+// ------- Componente de busca de produtos -------
 function ProdutoInput({ produtos, onAdd }) {
-  const [query, setQuery]       = useState('');
-  const [open, setOpen]         = useState(false);
-  const [precoAvulso, setPreco] = useState('');
-  const [modoAvulso, setAvulso] = useState(false);
+  const [query, setQuery] = useState('');
+  const [open, setOpen]   = useState(false);
   const ref = useRef(null);
 
   useEffect(() => {
-    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) { setOpen(false); setAvulso(false); } };
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
@@ -39,15 +37,15 @@ function ProdutoInput({ produtos, onAdd }) {
   }, [query, produtos]);
 
   const handleSelect = (p) => {
-    onAdd({ produto_id: p.id, nome: p.nome, quantidade: 1, preco_unitario: p.preco || 0 });
-    setQuery(''); setOpen(false); setAvulso(false);
+    onAdd({ produto_id: p.id, nome: p.nome, quantidade: 1, preco_unitario: p.preco || 0, avulso: false });
+    setQuery(''); setOpen(false);
   };
 
+  // Avulso: entra direto na lista com preco 0 (editável inline)
   const handleAvulso = () => {
-    const preco = parseFloat(precoAvulso.replace(',', '.')) || 0;
-    if (!query.trim()) { return; }
-    onAdd({ produto_id: null, nome: query.trim(), quantidade: 1, preco_unitario: preco });
-    setQuery(''); setPreco(''); setOpen(false); setAvulso(false);
+    if (!query.trim()) return;
+    onAdd({ produto_id: null, nome: query.trim(), quantidade: 1, preco_unitario: 0, avulso: true });
+    setQuery(''); setOpen(false);
   };
 
   const semResultado = query.trim().length > 0 && sugestoes.length === 0;
@@ -55,45 +53,23 @@ function ProdutoInput({ produtos, onAdd }) {
 
   return (
     <div ref={ref} style={{ position: 'relative' }}>
-      <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-        <div style={{ position: 'relative', flex: 1 }}>
-          <svg style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:'var(--color-text-faint)', pointerEvents:'none' }}
-            width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-          </svg>
-          <input
-            className="form-input"
-            style={{ paddingLeft: 32 }}
-            placeholder="Buscar produto cadastrado ou digitar novo…"
-            value={query}
-            onChange={e => { setQuery(e.target.value); setOpen(true); setAvulso(false); }}
-            onFocus={() => setOpen(true)}
-            onKeyDown={e => {
-              if (e.key === 'Escape') { setOpen(false); setAvulso(false); }
-              if (e.key === 'Enter' && modoAvulso) { e.preventDefault(); handleAvulso(); }
-            }}
-          />
-        </div>
-        {modoAvulso && (
-          <input
-            className="form-input"
-            style={{ width: 110, fontFamily: 'monospace' }}
-            type="number" step="0.01" min="0"
-            placeholder="Preço (R$)"
-            value={precoAvulso}
-            onChange={e => setPreco(e.target.value)}
-            onWheel={e => e.currentTarget.blur()}
-            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAvulso(); } }}
-            autoFocus
-          />
-        )}
-        {modoAvulso && (
-          <button
-            className="btn btn-primary btn-sm"
-            onClick={handleAvulso}
-            type="button"
-          >Adicionar</button>
-        )}
+      <div style={{ position: 'relative' }}>
+        <svg style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:'var(--color-text-faint)', pointerEvents:'none' }}
+          width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+        </svg>
+        <input
+          className="form-input"
+          style={{ paddingLeft: 32 }}
+          placeholder="Buscar produto cadastrado ou digitar novo nome…"
+          value={query}
+          onChange={e => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={e => {
+            if (e.key === 'Escape') setOpen(false);
+            if (e.key === 'Enter') { e.preventDefault(); if (semResultado) handleAvulso(); else if (sugestoes.length === 1) handleSelect(sugestoes[0]); }
+          }}
+        />
       </div>
 
       {open && (temSugestoes || semResultado) && (
@@ -117,11 +93,13 @@ function ProdutoInput({ produtos, onAdd }) {
           ))}
           {semResultado && (
             <div
-              style={{ padding: 'var(--space-2) var(--space-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontSize: 'var(--text-sm)', color: 'var(--color-primary)' }}
-              onMouseDown={() => { setOpen(false); setAvulso(true); }}
+              style={{ padding: 'var(--space-2) var(--space-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontSize: 'var(--text-sm)', color: 'var(--color-primary)', borderTop: temSugestoes ? '1px solid var(--color-divider)' : 'none' }}
+              onMouseDown={handleAvulso}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--color-surface-offset)'}
+              onMouseLeave={e => e.currentTarget.style.background = ''}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
-              Adicionar <strong style={{ marginLeft: 2 }}>"{ query }"</strong> como item avulso
+              Adicionar <strong style={{ marginLeft: 2 }}>"{query}"</strong> como item avulso
             </div>
           )}
         </div>
@@ -129,7 +107,7 @@ function ProdutoInput({ produtos, onAdd }) {
     </div>
   );
 }
-// --------------------------------------------------------
+// -------------------------------------------------------
 
 export default function Ordens() {
   const navigate = useNavigate();
@@ -210,7 +188,7 @@ export default function Ordens() {
   const closeForm = () => { setShowForm(false); setEditData(null); setForm(blankForm); setClienteSearch(''); };
 
   const recalcTotal = useCallback((prods) => {
-    if (!prods || prods.length === 0) return;
+    if (!prods || prods.length === 0) { setForm(f => ({ ...f, valortotal: '' })); return; }
     const novoTotal = prods.reduce((acc, p) => acc + (Number(p.quantidade||1) * Number(p.preco_unitario||0)), 0);
     setForm(f => ({ ...f, valortotal: novoTotal.toFixed(2) }));
   }, []);
@@ -227,8 +205,8 @@ export default function Ordens() {
     recalcTotal(novos);
   };
 
-  const updateProdQtd = (idx, qtd) => {
-    const novos = form.produtos.map((p,i) => i===idx ? {...p, quantidade: qtd} : p);
+  const updateProd = (idx, campo, valor) => {
+    const novos = form.produtos.map((p,i) => i===idx ? {...p, [campo]: valor} : p);
     set('produtos', novos);
     recalcTotal(novos);
   };
@@ -329,7 +307,6 @@ export default function Ordens() {
     clientes.filter(c => !clienteSearch || (c.name||'').toLowerCase().includes(clienteSearch.toLowerCase())).slice(0,10)
   , [clientes, clienteSearch]);
 
-  // Produtos ja adicionados filtrados da lista de sugestões
   const produtosSugestoes = useMemo(() =>
     todosProdutos.filter(p => !(form.produtos||[]).find(fp => fp.produto_id && fp.produto_id === p.id))
   , [todosProdutos, form.produtos]);
@@ -522,23 +499,53 @@ export default function Ordens() {
                 <div className="form-group" style={{ gridColumn:'1/-1' }}>
                   <label className="form-label">Produtos</label>
                   <ProdutoInput produtos={produtosSugestoes} onAdd={addProduto} />
+
                   {form.produtos && form.produtos.length > 0 && (
                     <div style={{ marginTop:'var(--space-2)', display:'flex', flexDirection:'column', gap:'var(--space-1)' }}>
-                      {form.produtos.map((p,i) => (
+                      {form.produtos.map((p, i) => (
                         <div key={i} style={{ display:'flex', alignItems:'center', gap:'var(--space-2)', padding:'var(--space-2) var(--space-3)', background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)', fontSize:'var(--text-xs)' }}>
-                          <span style={{ flex:1, fontWeight:500 }}>
+                          {/* Nome */}
+                          <span style={{ flex:1, fontWeight:500, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                             {p.nome}
-                            {!p.produto_id && <span style={{ marginLeft:6, fontSize:9, color:'var(--color-text-faint)', fontWeight:400, background:'var(--color-surface-dynamic)', borderRadius:'var(--radius-full)', padding:'1px 5px' }}>avulso</span>}
+                            {p.avulso && <span style={{ marginLeft:6, fontSize:9, color:'var(--color-text-faint)', fontWeight:400, background:'var(--color-surface-dynamic)', borderRadius:'var(--radius-full)', padding:'1px 5px' }}>avulso</span>}
                           </span>
+
+                          {/* Preço unitário — editável apenas em avulso */}
+                          {p.avulso ? (
+                            <input
+                              type="number" step="0.01" min="0"
+                              className="form-input"
+                              style={{ width:90, fontFamily:'monospace', textAlign:'right', fontSize:'var(--text-xs)', padding:'2px 6px' }}
+                              placeholder="R$ 0,00"
+                              value={p.preco_unitario === 0 && document.activeElement !== undefined ? '' : p.preco_unitario}
+                              onChange={e => updateProd(i, 'preco_unitario', parseFloat(e.target.value)||0)}
+                              onWheel={e => e.currentTarget.blur()}
+                              title="Preço unitário"
+                            />
+                          ) : (
+                            <span style={{ fontFamily:'monospace', color:'var(--color-text-faint)', fontSize:'var(--text-xs)', minWidth:70, textAlign:'right' }}>
+                              {Number(p.preco_unitario).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
+                            </span>
+                          )}
+
+                          {/* Quantidade */}
                           <input
-                            type="number" min="1" style={{ width:56, textAlign:'center' }}
+                            type="number" min="1"
                             className="form-input"
+                            style={{ width:52, textAlign:'center', fontSize:'var(--text-xs)', padding:'2px 4px' }}
                             value={p.quantidade}
-                            onChange={e => updateProdQtd(i, Number(e.target.value))}
-                            onWheel={e=>e.currentTarget.blur()}
+                            onChange={e => updateProd(i, 'quantidade', Number(e.target.value)||1)}
+                            onWheel={e => e.currentTarget.blur()}
+                            title="Quantidade"
                           />
-                          <span style={{ fontFamily:'monospace', color:'var(--color-text-muted)', minWidth:72, textAlign:'right' }}>{fmt(Number(p.quantidade)*Number(p.preco_unitario||0))}</span>
-                          <button className="btn btn-ghost btn-xs" style={{ color:'var(--color-error)', padding:2 }} onClick={() => removeProduto(i)}>✕</button>
+
+                          {/* Subtotal */}
+                          <span style={{ fontFamily:'monospace', color:'var(--color-text-muted)', minWidth:72, textAlign:'right', fontWeight:600 }}>
+                            {(Number(p.quantidade) * Number(p.preco_unitario||0)).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
+                          </span>
+
+                          {/* Remover */}
+                          <button className="btn btn-ghost btn-xs" style={{ color:'var(--color-error)', padding:2, flexShrink:0 }} onClick={() => removeProduto(i)}>✕</button>
                         </div>
                       ))}
                     </div>
@@ -594,7 +601,7 @@ export default function Ordens() {
                   display:"flex", justifyContent:"space-between", alignItems:"center",
                   padding:"var(--space-3) var(--space-4)",
                   background: restantePrev > 0 ? 'var(--color-warning-highlight)' : 'var(--color-primary-highlight)',
-                  borderRadius:"var(--radius-md)", fontSize:"var(--text-xs)"
+                  borderRadius:"var(--radius-md)", fontSize:"var(--text-xs)", marginTop:"var(--space-3)"
                 }}>
                   <span style={{color:"var(--color-text-muted)"}}>Restante a receber após entrada:</span>
                   <strong style={{fontFamily:"monospace",color: restantePrev > 0 ? "var(--color-warning)" : "var(--color-success)"}}>{fmt(restantePrev)}</strong>
