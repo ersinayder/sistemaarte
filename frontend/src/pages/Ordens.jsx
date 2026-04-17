@@ -107,6 +107,131 @@ function ProdutoInput({ produtos, onAdd }) {
 }
 // -------------------------------------------------------
 
+// ------- Painel Lixeira -------
+function LixeiraModal({ onClose }) {
+  const [items, setItems]       = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [restoring, setRestoring] = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/ordens?lixeira=1');
+      setItems(res.data);
+    } catch { toast.error('Erro ao carregar lixeira'); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleRestore = async (o) => {
+    setRestoring(o.id);
+    try {
+      await api.post(`/ordens/${o.id}/restaurar`);
+      toast.success(`OS ${o.numero} restaurada!`);
+      load();
+    } catch(e) {
+      toast.error(e?.response?.data?.error || 'Erro ao restaurar');
+    } finally { setRestoring(null); }
+  };
+
+  const fmtD = d => d ? new Date(d).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—';
+  const fmt  = v => v != null ? Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}) : '—';
+
+  return ReactDOM.createPortal(
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 780, maxHeight: '90vh', display:'flex', flexDirection:'column' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header" style={{ position:'sticky', top:0, background:'var(--color-surface)', zIndex:1, borderBottom:'1px solid var(--color-divider)', flexShrink:0 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:'var(--space-2)' }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-error)" strokeWidth="2">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+              <path d="M10 11v6M14 11v6"/>
+              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+            </svg>
+            <h2 className="modal-title" style={{ margin:0 }}>Lixeira — Ordens Excluídas</h2>
+            <span style={{ marginLeft:'var(--space-2)', fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>{items.length} registro{items.length !== 1 ? 's' : ''}</span>
+          </div>
+          <button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button>
+        </div>
+
+        <div style={{ overflowY:'auto', flex:1 }}>
+          {loading ? (
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'center', padding:'var(--space-12)', color:'var(--color-text-muted)', gap:'var(--space-2)' }}>
+              <svg className="spin" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+              Carregando…
+            </div>
+          ) : items.length === 0 ? (
+            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'var(--space-16)', color:'var(--color-text-muted)', gap:'var(--space-3)' }}>
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                <path d="M10 11v6M14 11v6"/>
+                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+              </svg>
+              <p style={{ fontWeight:600, margin:0 }}>Lixeira vazia</p>
+              <p style={{ fontSize:'var(--text-xs)', margin:0 }}>Nenhuma OS foi excluída ainda</p>
+            </div>
+          ) : (
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Nº</th>
+                  <th>Cliente</th>
+                  <th>Tipo</th>
+                  <th>Valor</th>
+                  <th>Excluída em</th>
+                  <th>Motivo</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map(o => (
+                  <tr key={o.id}>
+                    <td style={{ fontWeight:700, color:'var(--color-error)', fontSize:'var(--text-xs)' }}>{o.numero}</td>
+                    <td style={{ fontWeight:600 }}>{o.clientenome}</td>
+                    <td><span className={`badge badge-${tipoBadge(o.servico)}`} style={{ fontSize:10 }}>{o.servico}</span></td>
+                    <td style={{ fontFamily:'monospace', fontSize:'var(--text-xs)' }}>{fmt(o.valortotal || o.valor)}</td>
+                    <td style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>{fmtD(o.deletedat)}</td>
+                    <td style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', maxWidth:160, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                      {o.deletedreason || '—'}
+                    </td>
+                    <td>
+                      <button
+                        className="btn btn-ghost btn-xs"
+                        style={{ color:'var(--color-success)', whiteSpace:'nowrap' }}
+                        title="Restaurar OS"
+                        disabled={restoring === o.id}
+                        onClick={() => handleRestore(o)}
+                      >
+                        {restoring === o.id ? (
+                          <svg className="spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                        ) : (
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                            <path d="M3 3v5h5"/>
+                          </svg>
+                        )}
+                        Restaurar
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div className="modal-footer" style={{ borderTop:'1px solid var(--color-divider)', flexShrink:0 }}>
+          <button className="btn btn-ghost" onClick={onClose}>Fechar</button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+// -------------------------------------------------------
+
 export default function Ordens() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -136,6 +261,7 @@ export default function Ordens() {
   const [sortDir,       setSortDir]      = useState('desc');
   const [clienteSearch, setClienteSearch]= useState('');
   const [clienteOpen,   setClienteOpen]  = useState(false);
+  const [showLixeira,   setShowLixeira]  = useState(false);
   const clienteRef = useRef(null);
 
   const load = useCallback(async () => {
@@ -322,12 +448,30 @@ export default function Ordens() {
           <h1 style={{ fontSize:'var(--text-xl)', fontWeight:800, margin:0 }}>Ordens de Serviço</h1>
           <p style={{ margin:0, fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>{totalAberto} ativa{totalAberto!==1?'s':''} de {totalOrdens} total</p>
         </div>
-        {canEdit && (
-          <button className="btn btn-primary" onClick={openNew}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
-            Nova OS
-          </button>
-        )}
+        <div style={{ display:'flex', gap:'var(--space-2)', alignItems:'center' }}>
+          {isAdmin && (
+            <button
+              className="btn btn-ghost btn-sm"
+              style={{ color:'var(--color-error)', border:'1px solid color-mix(in oklch, var(--color-error) 30%, transparent)' }}
+              title="Ver ordens excluídas"
+              onClick={() => setShowLixeira(true)}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                <path d="M10 11v6M14 11v6"/>
+                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+              </svg>
+              Lixeira
+            </button>
+          )}
+          {canEdit && (
+            <button className="btn btn-primary" onClick={openNew}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
+              Nova OS
+            </button>
+          )}
+        </div>
       </div>
 
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'var(--space-3)', marginBottom:'var(--space-4)', flexShrink:0 }}>
@@ -427,6 +571,7 @@ export default function Ordens() {
                             </button>
                           )}
                         </div>
+tml>
                       </td>
                     </tr>
                   );
@@ -436,6 +581,8 @@ export default function Ordens() {
           </div>
         )}
       </div>
+
+      {showLixeira && <LixeiraModal onClose={() => { setShowLixeira(false); load(); }} />}
 
       {showForm && ReactDOM.createPortal(
         <div className="modal-overlay" onClick={closeForm}>
