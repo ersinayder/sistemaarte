@@ -42,7 +42,7 @@ router.get("/", auth(), (req, res) => {
   let sql = SEL_ORDEM + " WHERE 1=1";
   const p = [];
   if (status && status !== "todos") { sql += " AND o.status=?"; p.push(status); }
-  if (vencidas == "1") { sql += " AND o.prazoentrega<? AND o.status NOT IN ('Entregue','Cancelado')"; p.push(hoje()); }
+  if (vencidas == "1") { sql += " AND o.prazoentrega<? AND o.status NOT IN ('Entregue','Cancelado','Pronto')"; p.push(hoje()); }
   if (q) { sql += " AND (o.clientenome LIKE ? OR o.numero LIKE ? OR o.servico LIKE ? OR COALESCE(o.descricao,'') LIKE ?)"; const lk=`%${q}%`; p.push(lk,lk,lk,lk); }
   sql += " ORDER BY o.createdat DESC, o.id DESC";
   res.json(getAll(sql, p));
