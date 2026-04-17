@@ -17,6 +17,120 @@ const tipoBadge = (servico) => ({
   'Passepartout':'success','Vidro':'primary','Diversos':'primary'
 })[servico] || 'primary';
 
+// ------- Componente de busca/adição de produtos -------
+function ProdutoInput({ produtos, onAdd }) {
+  const [query, setQuery]       = useState('');
+  const [open, setOpen]         = useState(false);
+  const [precoAvulso, setPreco] = useState('');
+  const [modoAvulso, setAvulso] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) { setOpen(false); setAvulso(false); } };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+
+  const fmt = v => v != null ? Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}) : '';
+
+  const sugestoes = useMemo(() => {
+    if (!query.trim()) return produtos.slice(0, 8);
+    return produtos.filter(p => p.nome.toLowerCase().includes(query.toLowerCase()));
+  }, [query, produtos]);
+
+  const handleSelect = (p) => {
+    onAdd({ produto_id: p.id, nome: p.nome, quantidade: 1, preco_unitario: p.preco || 0 });
+    setQuery(''); setOpen(false); setAvulso(false);
+  };
+
+  const handleAvulso = () => {
+    const preco = parseFloat(precoAvulso.replace(',', '.')) || 0;
+    if (!query.trim()) { return; }
+    onAdd({ produto_id: null, nome: query.trim(), quantidade: 1, preco_unitario: preco });
+    setQuery(''); setPreco(''); setOpen(false); setAvulso(false);
+  };
+
+  const semResultado = query.trim().length > 0 && sugestoes.length === 0;
+  const temSugestoes = sugestoes.length > 0;
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+        <div style={{ position: 'relative', flex: 1 }}>
+          <svg style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:'var(--color-text-faint)', pointerEvents:'none' }}
+            width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+          <input
+            className="form-input"
+            style={{ paddingLeft: 32 }}
+            placeholder="Buscar produto cadastrado ou digitar novo…"
+            value={query}
+            onChange={e => { setQuery(e.target.value); setOpen(true); setAvulso(false); }}
+            onFocus={() => setOpen(true)}
+            onKeyDown={e => {
+              if (e.key === 'Escape') { setOpen(false); setAvulso(false); }
+              if (e.key === 'Enter' && modoAvulso) { e.preventDefault(); handleAvulso(); }
+            }}
+          />
+        </div>
+        {modoAvulso && (
+          <input
+            className="form-input"
+            style={{ width: 110, fontFamily: 'monospace' }}
+            type="number" step="0.01" min="0"
+            placeholder="Preço (R$)"
+            value={precoAvulso}
+            onChange={e => setPreco(e.target.value)}
+            onWheel={e => e.currentTarget.blur()}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAvulso(); } }}
+            autoFocus
+          />
+        )}
+        {modoAvulso && (
+          <button
+            className="btn btn-primary btn-sm"
+            onClick={handleAvulso}
+            type="button"
+          >Adicionar</button>
+        )}
+      </div>
+
+      {open && (temSugestoes || semResultado) && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
+          background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+          borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-md)',
+          zIndex: 200, maxHeight: 220, overflowY: 'auto'
+        }}>
+          {temSugestoes && sugestoes.map(p => (
+            <div
+              key={p.id}
+              style={{ padding: 'var(--space-2) var(--space-3)', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 'var(--text-sm)' }}
+              onMouseDown={() => handleSelect(p)}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--color-surface-offset)'}
+              onMouseLeave={e => e.currentTarget.style.background = ''}
+            >
+              <span style={{ fontWeight: 500 }}>{p.nome}</span>
+              <span style={{ fontFamily: 'monospace', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>{fmt(p.preco)}</span>
+            </div>
+          ))}
+          {semResultado && (
+            <div
+              style={{ padding: 'var(--space-2) var(--space-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontSize: 'var(--text-sm)', color: 'var(--color-primary)' }}
+              onMouseDown={() => { setOpen(false); setAvulso(true); }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
+              Adicionar <strong style={{ marginLeft: 2 }}>"{ query }"</strong> como item avulso
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+// --------------------------------------------------------
+
 export default function Ordens() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -28,23 +142,23 @@ export default function Ordens() {
     status:'Aguardando', produtos:[]
   };
 
-  const [ordens,      setOrdens]      = useState([]);
-  const [clientes,    setClientes]    = useState([]);
-  const [produtos,    setProdutos]    = useState([]);
-  const [loading,     setLoading]     = useState(true);
-  const [saving,      setSaving]      = useState(false);
-  const [showForm,    setShowForm]    = useState(false);
-  const [editData,    setEditData]    = useState(null);
-  const [form,        setForm]        = useState(blankForm);
-  const [confirmDel,  setConfirmDel]  = useState(null);
-  const [deleting,    setDeleting]    = useState(null);
-  const [search,      setSearch]      = useState('');
-  const [filterStatus,setFilterStatus]= useState('');
-  const [filterServico,setFilterServico]=useState('');
-  const [sortField,   setSortField]   = useState('numero');
-  const [sortDir,     setSortDir]     = useState('desc');
-  const [clienteSearch, setClienteSearch] = useState('');
-  const [clienteOpen, setClienteOpen] = useState(false);
+  const [ordens,        setOrdens]       = useState([]);
+  const [clientes,      setClientes]     = useState([]);
+  const [todosProdutos, setTodosProdutos] = useState([]);
+  const [loading,       setLoading]      = useState(true);
+  const [saving,        setSaving]       = useState(false);
+  const [showForm,      setShowForm]     = useState(false);
+  const [editData,      setEditData]     = useState(null);
+  const [form,          setForm]         = useState(blankForm);
+  const [confirmDel,    setConfirmDel]   = useState(null);
+  const [deleting,      setDeleting]     = useState(null);
+  const [search,        setSearch]       = useState('');
+  const [filterStatus,  setFilterStatus] = useState('');
+  const [filterServico, setFilterServico]= useState('');
+  const [sortField,     setSortField]    = useState('numero');
+  const [sortDir,       setSortDir]      = useState('desc');
+  const [clienteSearch, setClienteSearch]= useState('');
+  const [clienteOpen,   setClienteOpen]  = useState(false);
   const clienteRef = useRef(null);
 
   const load = useCallback(async () => {
@@ -57,7 +171,7 @@ export default function Ordens() {
       ]);
       setOrdens(ordRes.data);
       setClientes(cliRes.data);
-      setProdutos(proRes.data);
+      setTodosProdutos(proRes.data);
     } catch { toast.error('Erro ao carregar dados'); }
     finally { setLoading(false); }
   }, []);
@@ -72,28 +186,23 @@ export default function Ordens() {
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const openNew = () => {
-    setEditData(null);
-    setForm(blankForm);
-    setClienteSearch('');
-    setShowForm(true);
-  };
+  const openNew = () => { setEditData(null); setForm(blankForm); setClienteSearch(''); setShowForm(true); };
 
   const openEdit = (o) => {
     setEditData(o);
     const cli = clientes.find(c => c.id === (o.cliente_id || o.clienteid));
     setClienteSearch(cli?.name || o.clientenome || '');
     setForm({
-      cliente_id:    o.cliente_id || o.clienteid || '',
-      clientenome:   o.clientenome || '',
-      servico:       o.servico || TIPO_OPTS[0],
-      observacoes:   o.observacoes || '',
-      prazoentrega:  o.prazoentrega || '',
-      prioridade:    o.prioridade || 'Normal',
-      status:        o.status || 'Aguardando',
-      valortotal:    String(o.valortotal  ?? o.valor   ?? ""),
-      valorentrada:  String(o.valorentrada ?? o.entrada ?? ""),
-      produtos:      o.produtos || [],
+      cliente_id:   o.cliente_id || o.clienteid || '',
+      clientenome:  o.clientenome || '',
+      servico:      o.servico || TIPO_OPTS[0],
+      observacoes:  o.observacoes || '',
+      prazoentrega: o.prazoentrega || '',
+      prioridade:   o.prioridade || 'Normal',
+      status:       o.status || 'Aguardando',
+      valortotal:   String(o.valortotal  ?? o.valor   ?? ""),
+      valorentrada: String(o.valorentrada ?? o.entrada ?? ""),
+      produtos:     o.produtos || [],
     });
     setShowForm(true);
   };
@@ -102,13 +211,12 @@ export default function Ordens() {
 
   const recalcTotal = useCallback((prods) => {
     if (!prods || prods.length === 0) return;
-    const novoTotal = prods.reduce((acc, p) => acc + (Number(p.quantidade||1) * Number(p.preco_unitario||p.preco||0)), 0);
+    const novoTotal = prods.reduce((acc, p) => acc + (Number(p.quantidade||1) * Number(p.preco_unitario||0)), 0);
     setForm(f => ({ ...f, valortotal: novoTotal.toFixed(2) }));
   }, []);
 
   const addProduto = (prod) => {
-    const novoProd = { produto_id: prod.id, nome: prod.nome, quantidade: 1, preco_unitario: prod.preco || 0 };
-    const novos = [...(form.produtos||[]), novoProd];
+    const novos = [...(form.produtos||[]), { ...prod }];
     set('produtos', novos);
     recalcTotal(novos);
   };
@@ -136,17 +244,17 @@ export default function Ordens() {
     setSaving(true);
     try {
       const payload = {
-        cliente_id:    form.cliente_id || null,
-        clientenome:   form.clientenome,
-        servico:       form.servico,
-        descricao:     '',
-        observacoes:   form.observacoes,
-        prazoentrega:  form.prazoentrega || null,
-        prioridade:    form.prioridade,
-        status:        form.status,
-        valortotal:    total,
-        valorentrada:  entrada,
-        produtos:      form.produtos,
+        cliente_id:   form.cliente_id || null,
+        clientenome:  form.clientenome,
+        servico:      form.servico,
+        descricao:    '',
+        observacoes:  form.observacoes,
+        prazoentrega: form.prazoentrega || null,
+        prioridade:   form.prioridade,
+        status:       form.status,
+        valortotal:   total,
+        valorentrada: entrada,
+        produtos:     form.produtos,
       };
       if (editData) {
         await api.put(`/ordens/${editData.id}`, payload);
@@ -177,9 +285,9 @@ export default function Ordens() {
   const fmt  = v => v != null ? Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}) : '—';
   const fmtD = d => d ? new Date(d+'T00:00:00').toLocaleDateString('pt-BR') : '—';
 
-  const total          = Number(form.valortotal)  || 0;
-  const entrada        = Number(form.valorentrada) || 0;
-  const restantePrev   = total - entrada;
+  const total        = Number(form.valortotal)  || 0;
+  const entrada      = Number(form.valorentrada) || 0;
+  const restantePrev = total - entrada;
 
   const statusColor = (s) => ({
     'Aguardando':'primary','Em Produção':'warning','Pronto':'success','Entregue':'success','Cancelado':'error'
@@ -221,9 +329,10 @@ export default function Ordens() {
     clientes.filter(c => !clienteSearch || (c.name||'').toLowerCase().includes(clienteSearch.toLowerCase())).slice(0,10)
   , [clientes, clienteSearch]);
 
-  const produtosFiltrados = useMemo(() =>
-    produtos.filter(p => !(form.produtos||[]).find(fp => fp.produto_id === p.id))
-  , [produtos, form.produtos]);
+  // Produtos ja adicionados filtrados da lista de sugestões
+  const produtosSugestoes = useMemo(() =>
+    todosProdutos.filter(p => !(form.produtos||[]).find(fp => fp.produto_id && fp.produto_id === p.id))
+  , [todosProdutos, form.produtos]);
 
   const totalOrdens   = ordens.length;
   const totalAberto   = ordens.filter(o => !['Entregue','Cancelado'].includes(o.status)).length;
@@ -412,23 +521,23 @@ export default function Ordens() {
                 {/* Produtos */}
                 <div className="form-group" style={{ gridColumn:'1/-1' }}>
                   <label className="form-label">Produtos</label>
-                  <select className="form-input" onChange={e => { if(e.target.value) { const p = produtos.find(x=>x.id===Number(e.target.value)); if(p) addProduto(p); e.target.value=''; } }}>
-                    <option value="">Adicionar produto…</option>
-                    {produtosFiltrados.map(p => <option key={p.id} value={p.id}>{p.nome} — {fmt(p.preco)}</option>)}
-                  </select>
+                  <ProdutoInput produtos={produtosSugestoes} onAdd={addProduto} />
                   {form.produtos && form.produtos.length > 0 && (
                     <div style={{ marginTop:'var(--space-2)', display:'flex', flexDirection:'column', gap:'var(--space-1)' }}>
                       {form.produtos.map((p,i) => (
                         <div key={i} style={{ display:'flex', alignItems:'center', gap:'var(--space-2)', padding:'var(--space-2) var(--space-3)', background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)', fontSize:'var(--text-xs)' }}>
-                          <span style={{ flex:1, fontWeight:500 }}>{p.nome}</span>
+                          <span style={{ flex:1, fontWeight:500 }}>
+                            {p.nome}
+                            {!p.produto_id && <span style={{ marginLeft:6, fontSize:9, color:'var(--color-text-faint)', fontWeight:400, background:'var(--color-surface-dynamic)', borderRadius:'var(--radius-full)', padding:'1px 5px' }}>avulso</span>}
+                          </span>
                           <input
-                            type="number" min="1" style={{ width:60, textAlign:'center' }}
+                            type="number" min="1" style={{ width:56, textAlign:'center' }}
                             className="form-input"
                             value={p.quantidade}
                             onChange={e => updateProdQtd(i, Number(e.target.value))}
                             onWheel={e=>e.currentTarget.blur()}
                           />
-                          <span style={{ fontFamily:'monospace', color:'var(--color-text-muted)' }}>{fmt(Number(p.quantidade)*Number(p.preco_unitario||p.preco||0))}</span>
+                          <span style={{ fontFamily:'monospace', color:'var(--color-text-muted)', minWidth:72, textAlign:'right' }}>{fmt(Number(p.quantidade)*Number(p.preco_unitario||0))}</span>
                           <button className="btn btn-ghost btn-xs" style={{ color:'var(--color-error)', padding:2 }} onClick={() => removeProduto(i)}>✕</button>
                         </div>
                       ))}
@@ -458,9 +567,7 @@ export default function Ordens() {
                 <div className="form-group">
                   <label className="form-label">
                     Valor Total (R$) <span style={{color:"var(--color-error)"}}>*</span>
-                    <span style={{marginLeft:6,fontSize:"var(--text-xs)",color:"var(--color-text-muted)",fontWeight:400}}>
-                      — calculado pelos produtos, editável
-                    </span>
+                    <span style={{marginLeft:6,fontSize:"var(--text-xs)",color:"var(--color-text-muted)",fontWeight:400}}>— calculado pelos produtos, editável</span>
                   </label>
                   <input
                     className="form-input"
