@@ -1,9 +1,18 @@
-
 const router  = require("express").Router();
 const jwt     = require("jsonwebtoken");
 const bcrypt  = require("bcryptjs");
 const { getOne } = require("../database");
 const { auth, JWT_SECRET } = require("../middlewares/auth");
+
+const IS_PROD = process.env.NODE_ENV === "production";
+
+const COOKIE_OPTS = {
+  httpOnly: true,          // inacessível via JS — bloqueia XSS
+  secure:   IS_PROD,       // HTTPS only em produção
+  sameSite: "lax",         // protege contra CSRF em navegações normais
+  maxAge:   12 * 60 * 60 * 1000, // 12h em ms
+  path:     "/",
+};
 
 // POST /api/auth/login
 router.post("/login", (req, res) => {
@@ -18,12 +27,17 @@ router.post("/login", (req, res) => {
   if (!user || !bcrypt.compareSync(password, user.password))
     return res.status(401).json({ error: "Usuário ou senha inválidos" });
 
-  const token = jwt.sign(
-    { id: user.id, name: user.name, username: user.username, role: user.role },
-    JWT_SECRET,
-    { expiresIn: "12h" }
-  );
-  res.json({ token, user: { id: user.id, name: user.name, username: user.username, role: user.role } });
+  const payload = { id: user.id, name: user.name, username: user.username, role: user.role };
+  const token   = jwt.sign(payload, JWT_SECRET, { expiresIn: "12h" });
+
+  res.cookie("token", token, COOKIE_OPTS);
+  res.json({ user: payload });
+});
+
+// POST /api/auth/logout
+router.post("/logout", (_req, res) => {
+  res.clearCookie("token", { path: "/" });
+  res.json({ ok: true });
 });
 
 // GET /api/auth/me

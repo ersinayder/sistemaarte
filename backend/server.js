@@ -1,8 +1,9 @@
 require("dotenv").config();
-const express = require("express");
-const cors    = require("cors");
-const path    = require("path");
-const fs      = require("fs");
+const express      = require("express");
+const cors         = require("cors");
+const cookieParser = require("cookie-parser");
+const path         = require("path");
+const fs           = require("fs");
 
 const { initDB, backup } = require("./database");
 const { auth }           = require("./middlewares/auth");
@@ -10,9 +11,13 @@ const { auth }           = require("./middlewares/auth");
 const app  = express();
 const PORT = process.env.PORT || 3001;
 
-// CORS — libera same-origin e origens localhost em dev
-app.use(cors({ origin: true, credentials: true }));
+const allowedOrigins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(",").map(o => o.trim())
+  : true;
+
+app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json());
+app.use(cookieParser());
 
 // ── Rotas ──────────────────────────────────────────────────────────────────
 app.use("/api/auth",      require("./routes/auth"));
