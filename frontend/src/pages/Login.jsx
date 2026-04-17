@@ -30,6 +30,14 @@ export default function LoginPage() {
     { username: 'oficina', role: 'oficina' },
   ]
 
+  const labelStyle = {
+    color: '#3a3a3a',
+    fontWeight: 700,
+    fontSize: 'var(--text-xs)',
+    textTransform: 'uppercase',
+    letterSpacing: '0.08em',
+  }
+
   return (
     <div style={{
       position: 'fixed',
@@ -61,7 +69,7 @@ export default function LoginPage() {
         <div className="card card-pad" style={{ marginBottom: 'var(--space-4)' }}>
           <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
             <div className="form-group">
-              <label className="form-label" htmlFor="username">Usuário</label>
+              <label className="form-label" htmlFor="username" style={labelStyle}>Usuário</label>
               <input
                 id="username" name="username" className="form-input"
                 placeholder="ex: admin" value={form.username}
@@ -69,7 +77,7 @@ export default function LoginPage() {
               />
             </div>
             <div className="form-group">
-              <label className="form-label" htmlFor="password">Senha</label>
+              <label className="form-label" htmlFor="password" style={labelStyle}>Senha</label>
               <input
                 id="password" name="password" type="password" className="form-input"
                 placeholder="••••••••" value={form.password}
