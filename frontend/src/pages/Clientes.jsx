@@ -5,28 +5,71 @@ import { toast } from 'react-hot-toast';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
-const UFS=['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
+const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
+
+// ── Máscaras ──────────────────────────────────────────────
+const maskCPF  = v => v.replace(/\D/g,'')
+  .replace(/(\d{3})(\d)/,'$1.$2')
+  .replace(/(\d{3})(\d)/,'$1.$2')
+  .replace(/(\d{3})(\d{1,2})$/,'$1-$2')
+  .slice(0,14);
+
+const maskCNPJ = v => v.replace(/\D/g,'')
+  .replace(/(\d{2})(\d)/,'$1.$2')
+  .replace(/(\d{3})(\d)/,'$1.$2')
+  .replace(/(\d{3})(\d)/,'$1/$2')
+  .replace(/(\d{4})(\d{1,2})$/,'$1-$2')
+  .slice(0,18);
+
+// ── Validações ────────────────────────────────────────────
+const validaCPF = cpf => {
+  const n = cpf.replace(/\D/g,'');
+  if (n.length !== 11 || /^(\d)\1{10}$/.test(n)) return false;
+  let s = 0;
+  for (let i = 0; i < 9; i++) s += parseInt(n[i]) * (10 - i);
+  let r = (s * 10) % 11; if (r === 10 || r === 11) r = 0;
+  if (r !== parseInt(n[9])) return false;
+  s = 0;
+  for (let i = 0; i < 10; i++) s += parseInt(n[i]) * (11 - i);
+  r = (s * 10) % 11; if (r === 10 || r === 11) r = 0;
+  return r === parseInt(n[10]);
+};
+
+const validaCNPJ = cnpj => {
+  const n = cnpj.replace(/\D/g,'');
+  if (n.length !== 14 || /^(\d)\1{13}$/.test(n)) return false;
+  const calc = (s) => {
+    let sum = 0, pos = s - 7;
+    for (let i = s; i >= 1; i--) { sum += parseInt(n[s - i]) * pos--; if (pos < 2) pos = 9; }
+    return sum % 11 < 2 ? 0 : 11 - (sum % 11);
+  };
+  return calc(12) === parseInt(n[12]) && calc(13) === parseInt(n[13]);
+};
 
 export default function Clientes() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const canEdit = user?.role !== 'viewer';
 
-  const blank = { nome:'', cpf:'', ie:'', contato:'', email:'', cep:'', endereco:'', cidade:'', uf:'', obs:'' };
-  const [clientes, setClientes] = useState([]);
-  const [loading,  setLoading]  = useState(true);
-  const [search,   setSearch]   = useState('');
-  const [form,     setForm]     = useState(blank);
-  const [editId,   setEditId]   = useState(null);
-  const [showForm, setShowForm] = useState(false);
-  const [saving,   setSaving]   = useState(false);
-  const [deleting, setDeleting] = useState(null);
-  const [confirmDel, setConfirmDel] = useState(null);
-  const [cepLoading, setCepLoading] = useState(false);
-  const [sortField, setSortField] = useState('nome');
-  const [sortDir,   setSortDir]   = useState('asc');
-  const [detailId,  setDetailId]  = useState(null);
-  const [detailData, setDetailData] = useState(null);
+  const blank = { tipo:'PF', nome:'', cpf:'', cnpj:'', ie:'', contato:'', email:'', cep:'', endereco:'', cidade:'', uf:'', obs:'' };
+
+  const [clientes,      setClientes]      = useState([]);
+  const [loading,       setLoading]       = useState(true);
+  const [search,        setSearch]        = useState('');
+  const [form,          setForm]          = useState(blank);
+  const [editId,        setEditId]        = useState(null);
+  const [showForm,      setShowForm]      = useState(false);
+  const [saving,        setSaving]        = useState(false);
+  const [deleting,      setDeleting]      = useState(null);
+  const [confirmDel,    setConfirmDel]    = useState(null);
+  const [cepLoading,    setCepLoading]    = useState(false);
+  const [cnpjLoading,   setCnpjLoading]   = useState(false);
+  const [cpfError,      setCpfError]      = useState('');
+  const [cnpjError,     setCnpjError]     = useState('');
+  const [sortField,     setSortField]     = useState('nome');
+  const [sortDir,       setSortDir]       = useState('asc');
+  const [detailId,      setDetailId]      = useState(null);
+  const [detailData,    setDetailData]    = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const searchRef = useRef(null);
 
@@ -43,26 +86,36 @@ export default function Clientes() {
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const openEdit = (c) => {
-    setEditId(c.id);
-    setForm({
-      nome:     c.name || '',
-      cpf:      c.cpf || '',
-      ie:       c.ie || '',
-      contato:  c.phone || '',
-      email:    c.email || '',
-      cep:      c.cep || '',
-      endereco: c.address || '',
-      cidade:   c.cidade || '',
-      uf:       c.uf || '',
-      obs:      c.notes || ''
-    });
-    setShowForm(true);
+  // ── Busca CNPJ via BrasilAPI ──────────────────────────
+  const buscarCNPJ = async (raw) => {
+    const n = raw.replace(/\D/g,'');
+    if (n.length !== 14) return;
+    if (!validaCNPJ(n)) { setCnpjError('CNPJ inválido'); return; }
+    setCnpjError('');
+    setCnpjLoading(true);
+    try {
+      const r = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${n}`);
+      if (!r.ok) throw new Error('não encontrado');
+      const d = await r.json();
+      setForm(f => ({
+        ...f,
+        nome:     f.nome.trim()     ? f.nome     : (d.razao_social || d.nome_fantasia || f.nome),
+        email:    f.email.trim()    ? f.email    : (d.email?.toLowerCase() || f.email),
+        contato:  f.contato.trim()  ? f.contato  : (d.ddd_telefone_1 ? d.ddd_telefone_1.replace(/[^\d]/g,'').replace(/(\d{2})(\d+)/,'($1) $2') : f.contato),
+        cep:      f.cep.trim()      ? f.cep      : (d.cep?.replace(/\D/g,'').replace(/(\d{5})(\d{3})/,'$1-$2') || f.cep),
+        endereco: f.endereco.trim() ? f.endereco : [d.logradouro, d.numero, d.bairro].filter(Boolean).join(', '),
+        cidade:   f.cidade.trim()   ? f.cidade   : (d.municipio || f.cidade),
+        uf:       f.uf.trim()       ? f.uf       : (d.uf || f.uf),
+      }));
+      toast.success('Dados do CNPJ carregados');
+    } catch {
+      setCnpjError('CNPJ não encontrado na Receita Federal');
+    } finally {
+      setCnpjLoading(false);
+    }
   };
 
-  const openNew = () => { setEditId(null); setForm(blank); setShowForm(true); };
-  const closeForm = () => { setShowForm(false); setEditId(null); setForm(blank); };
-
+  // ── Busca CEP ─────────────────────────────────────────
   const buscarCep = async (cep) => {
     const c = cep.replace(/\D/g,'');
     if (c.length !== 8) return;
@@ -82,11 +135,64 @@ export default function Clientes() {
     finally { setCepLoading(false); }
   };
 
+  // ── Handlers CPF ─────────────────────────────────────
+  const handleCPF = (v) => {
+    const masked = maskCPF(v);
+    set('cpf', masked);
+    const digits = masked.replace(/\D/g,'');
+    if (digits.length === 11) {
+      setCpfError(validaCPF(digits) ? '' : 'CPF inválido');
+    } else {
+      setCpfError('');
+    }
+  };
+
+  // ── openEdit ─────────────────────────────────────────
+  const openEdit = (c) => {
+    setEditId(c.id);
+    // detecta PF ou PJ pelo campo cnpj salvo
+    const tipo = c.cnpj ? 'PJ' : 'PF';
+    setForm({
+      tipo,
+      nome:     c.name    || '',
+      cpf:      c.cpf     || '',
+      cnpj:     c.cnpj    || '',
+      ie:       c.ie      || '',
+      contato:  c.phone   || '',
+      email:    c.email   || '',
+      cep:      c.cep     || '',
+      endereco: c.address || '',
+      cidade:   c.cidade  || '',
+      uf:       c.uf      || '',
+      obs:      c.notes   || ''
+    });
+    setCpfError(''); setCnpjError('');
+    setShowForm(true);
+  };
+
+  const openNew  = () => { setEditId(null); setForm(blank); setCpfError(''); setCnpjError(''); setShowForm(true); };
+  const closeForm = () => { setShowForm(false); setEditId(null); setForm(blank); setCpfError(''); setCnpjError(''); };
+
+  // ── Save ─────────────────────────────────────────────
   const handleSave = async () => {
     if (!form.nome.trim()) { toast.error('Nome é obrigatório'); return; }
+    if (form.tipo === 'PF' && form.cpf && !validaCPF(form.cpf)) { toast.error('CPF inválido'); return; }
+    if (form.tipo === 'PJ' && form.cnpj && !validaCNPJ(form.cnpj)) { toast.error('CNPJ inválido'); return; }
     setSaving(true);
     try {
-      const payload={name:form.nome,phone:form.contato,email:form.email,cpf:form.cpf,ie:form.ie,address:form.endereco,cidade:form.cidade,uf:form.uf,cep:form.cep,notes:form.obs};
+      const payload = {
+        name:    form.nome,
+        phone:   form.contato,
+        email:   form.email,
+        cpf:     form.tipo === 'PF' ? form.cpf  : '',
+        cnpj:    form.tipo === 'PJ' ? form.cnpj : '',
+        ie:      form.ie,
+        address: form.endereco,
+        cidade:  form.cidade,
+        uf:      form.uf,
+        cep:     form.cep,
+        notes:   form.obs
+      };
       if (editId) {
         await api.put(`/clientes/${editId}`, payload);
         toast.success('Cliente atualizado');
@@ -114,7 +220,6 @@ export default function Clientes() {
     } finally { setDeleting(null); }
   };
 
-  // FIX: usa rota correta /clientes/:id/ordens
   const loadDetail = useCallback(async (id) => {
     setDetailLoading(true);
     try {
@@ -132,20 +237,22 @@ export default function Clientes() {
     else setDetailData(null);
   }, [detailId, loadDetail]);
 
-  const fmt = v => v != null ? Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}) : '—';
-
-  // FIX: aceita ISO completo ou apenas data, sem duplicar T00:00:00
-  const fmtD = d => {
+  const fmt  = v  => v != null ? Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}) : '—';
+  const fmtD = d  => {
     if (!d) return '—';
-    const dateStr = d.includes('T') ? d : d + 'T00:00:00';
-    const dt = new Date(dateStr);
+    const s = d.includes('T') ? d : d + 'T00:00:00';
+    const dt = new Date(s);
     return isNaN(dt.getTime()) ? '—' : dt.toLocaleDateString('pt-BR');
   };
 
   const sorted = [...clientes]
     .filter(c => {
       const q = search.toLowerCase();
-      return !q || (c.name||'').toLowerCase().includes(q) || (c.phone||'').includes(q) || (c.email||'').toLowerCase().includes(q) || (c.cpf||'').includes(q);
+      return !q || (c.name||'').toLowerCase().includes(q)
+        || (c.phone||'').includes(q)
+        || (c.email||'').toLowerCase().includes(q)
+        || (c.cpf||'').includes(q)
+        || (c.cnpj||'').includes(q);
     })
     .sort((a,b) => {
       let va = a[sortField === 'nome' ? 'name' : sortField] || '';
@@ -160,25 +267,39 @@ export default function Clientes() {
     else { setSortField(f); setSortDir('asc'); }
   };
 
-  const SortIcon = ({ f }) => sortField !== f ? <span style={{color:'var(--color-text-faint)',marginLeft:4}}>⇅</span>
+  const SortIcon = ({ f }) => sortField !== f
+    ? <span style={{color:'var(--color-text-faint)',marginLeft:4}}>⇅</span>
     : <span style={{marginLeft:4}}>{sortDir==='asc'?'↑':'↓'}</span>;
+
+  // ── Estilos do toggle PF/PJ ──────────────────────────
+  const tabStyle = (active) => ({
+    flex: 1,
+    padding: 'var(--space-2) var(--space-3)',
+    borderRadius: 'var(--radius-md)',
+    fontSize: 'var(--text-sm)',
+    fontWeight: 600,
+    cursor: 'pointer',
+    border: 'none',
+    background: active ? 'var(--color-primary)' : 'transparent',
+    color: active ? '#fff' : 'var(--color-text-muted)',
+    transition: 'background var(--ease), color var(--ease)',
+  });
 
   return (
     <div style={{ height:'calc(100vh - 60px - var(--space-12))', display:'flex', flexDirection:'column', minHeight:0 }}>
+
       {/* Header */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'var(--space-4)', flexShrink:0 }}>
         <div>
           <h1 style={{ fontSize:'var(--text-xl)', fontWeight:800, margin:0 }}>Clientes</h1>
           <p style={{ margin:0, fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>{clientes.length} cadastrado{clientes.length!==1?'s':''}</p>
         </div>
-        <div style={{ display:'flex', gap:'var(--space-2)' }}>
-          {canEdit && (
-            <button className="btn btn-primary" onClick={openNew}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
-              Novo Cliente
-            </button>
-          )}
-        </div>
+        {canEdit && (
+          <button className="btn btn-primary" onClick={openNew}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
+            Novo Cliente
+          </button>
+        )}
       </div>
 
       {/* Search */}
@@ -189,7 +310,7 @@ export default function Clientes() {
             ref={searchRef}
             className="form-input"
             style={{ paddingLeft:36 }}
-            placeholder="Buscar por nome, telefone, email ou CPF…"
+            placeholder="Buscar por nome, telefone, email, CPF ou CNPJ…"
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
@@ -198,6 +319,7 @@ export default function Clientes() {
 
       {/* Content */}
       <div style={{ flex:1, overflow:'hidden', display:'flex', gap:'var(--space-4)', minHeight:0 }}>
+
         {/* Table */}
         <div className="card" style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column', minWidth:0 }}>
           {loading ? (
@@ -220,7 +342,7 @@ export default function Clientes() {
                   <tr>
                     <th style={{ cursor:'pointer', userSelect:'none' }} onClick={() => toggleSort('nome')}>Nome <SortIcon f="nome"/></th>
                     <th>Contato</th>
-                    <th>CPF / IE</th>
+                    <th>CPF / CNPJ</th>
                     <th>Cidade / UF</th>
                     <th>OS</th>
                     <th>Total gasto</th>
@@ -240,12 +362,12 @@ export default function Clientes() {
                       </td>
                       <td style={{ fontSize:'var(--text-xs)' }}>{c.phone||'—'}</td>
                       <td style={{ fontSize:'var(--text-xs)' }}>
-                        {c.cpf && <div>CPF: {c.cpf}</div>}
-                        {c.ie  && <div>IE: {c.ie}</div>}
-                        {!c.cpf && !c.ie && '—'}
+                        {c.cnpj && <div><span style={{color:'var(--color-text-faint)'}}>CNPJ </span>{c.cnpj}</div>}
+                        {c.cpf  && <div><span style={{color:'var(--color-text-faint)'}}>CPF </span>{c.cpf}</div>}
+                        {c.ie   && <div><span style={{color:'var(--color-text-faint)'}}>IE </span>{c.ie}</div>}
+                        {!c.cpf && !c.cnpj && !c.ie && '—'}
                       </td>
-                      <td style={{fontSize:'var(--text-xs)'}}>{c.cidade?<span>{c.cidade}{c.uf?` / ${c.uf}`:''}</span>:'—'}</td>
-                      {/* FIX: campo correto do backend é totalordens e gastototal */}
+                      <td style={{fontSize:'var(--text-xs)'}}>{c.cidade ? <span>{c.cidade}{c.uf ? ` / ${c.uf}` : ''}</span> : '—'}</td>
                       <td style={{ textAlign:'center' }}><span className="badge badge-primary">{c.totalordens ?? 0}</span></td>
                       <td style={{ textAlign:'right', fontFamily:'monospace', fontSize:'var(--text-xs)' }}>{fmt(c.gastototal)}</td>
                       <td>
@@ -273,7 +395,7 @@ export default function Clientes() {
         {/* Detail Panel */}
         {detailId && (
           <div className="card" style={{ width:340, overflow:'hidden', display:'flex', flexDirection:'column', flexShrink:0 }}>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'var(--space-3)', flexShrink:0 }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'var(--space-3)', flexShrink:0, padding:'var(--space-3) var(--space-4) 0' }}>
               <span style={{ fontWeight:700, fontSize:'var(--text-sm)' }}>Detalhes do Cliente</span>
               <button className="btn btn-ghost btn-xs" onClick={() => setDetailId(null)}>✕</button>
             </div>
@@ -283,19 +405,17 @@ export default function Clientes() {
                 Carregando…
               </div>
             ) : detailData ? (
-              <div style={{ overflowY:'auto', flex:1 }}>
-                {/* Info */}
+              <div style={{ overflowY:'auto', flex:1, padding:'var(--space-3) var(--space-4)' }}>
                 <div style={{ marginBottom:'var(--space-4)' }}>
                   <div style={{ fontWeight:800, fontSize:'var(--text-base)', marginBottom:'var(--space-1)' }}>{detailData.cliente.name}</div>
-                  {detailData.cliente.email && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>✉ {detailData.cliente.email}</div>}
-                  {detailData.cliente.phone && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>📞 {detailData.cliente.phone}</div>}
-                  {detailData.cliente.cpf   && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>CPF: {detailData.cliente.cpf}</div>}
-                  {detailData.cliente.ie    && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>IE: {detailData.cliente.ie}</div>}
+                  {detailData.cliente.email   && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>✉ {detailData.cliente.email}</div>}
+                  {detailData.cliente.phone   && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>📞 {detailData.cliente.phone}</div>}
+                  {detailData.cliente.cnpj    && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>CNPJ: {detailData.cliente.cnpj}</div>}
+                  {detailData.cliente.cpf     && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>CPF: {detailData.cliente.cpf}</div>}
+                  {detailData.cliente.ie      && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>IE: {detailData.cliente.ie}</div>}
                   {detailData.cliente.address && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>📍 {detailData.cliente.address}{detailData.cliente.cidade ? `, ${detailData.cliente.cidade}` : ''}{detailData.cliente.uf ? `/${detailData.cliente.uf}` : ''}{detailData.cliente.cep ? ` — ${detailData.cliente.cep}` : ''}</div>}
-                  {detailData.cliente.notes && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginTop:'var(--space-2)', padding:'var(--space-2)', background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)' }}>💬 {detailData.cliente.notes}</div>}
+                  {detailData.cliente.notes   && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginTop:'var(--space-2)', padding:'var(--space-2)', background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)' }}>💬 {detailData.cliente.notes}</div>}
                 </div>
-
-                {/* Stats */}
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'var(--space-2)', marginBottom:'var(--space-4)' }}>
                   <div style={{ background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)', padding:'var(--space-3)', textAlign:'center' }}>
                     <div style={{ fontSize:'var(--text-lg)', fontWeight:800, color:'var(--color-primary)' }}>{detailData.ordens.length}</div>
@@ -306,21 +426,14 @@ export default function Clientes() {
                     <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>Total gasto</div>
                   </div>
                 </div>
-
-                {/* Ordens */}
                 {detailData.ordens.length > 0 && (
                   <div>
                     <div style={{ fontWeight:700, fontSize:'var(--text-xs)', color:'var(--color-text-muted)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:'var(--space-2)' }}>Histórico de OS</div>
                     <div style={{ display:'flex', flexDirection:'column', gap:'var(--space-2)' }}>
                       {detailData.ordens.map(o => (
-                        <div
-                          key={o.id}
-                          style={{ background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)', padding:'var(--space-2) var(--space-3)', cursor:'pointer', border:'1px solid var(--color-border)' }}
-                          onClick={() => navigate(`/ordens/${o.id}`)}
-                        >
+                        <div key={o.id} style={{ background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)', padding:'var(--space-2) var(--space-3)', cursor:'pointer', border:'1px solid var(--color-border)' }} onClick={() => navigate(`/ordens/${o.id}`)}>
                           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                             <span style={{ fontWeight:700, fontSize:'var(--text-xs)', color:'var(--color-primary)' }}>{o.numero}</span>
-                            {/* FIX: fmtD já trata ISO completo corretamente */}
                             <span style={{ fontSize:10, color:'var(--color-text-muted)' }}>{fmtD(o.createdat || o.criadoem)}</span>
                           </div>
                           <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginTop:2 }}>{o.servico} — {fmt(o.valortotal||o.valor)}</div>
@@ -338,7 +451,7 @@ export default function Clientes() {
         )}
       </div>
 
-      {/* Form Modal */}
+      {/* ── Form Modal ── */}
       {showForm && ReactDOM.createPortal(
         <div className="modal-overlay" onClick={closeForm}>
           <div className="modal" style={{ maxWidth:560 }} onClick={e => e.stopPropagation()}>
@@ -347,44 +460,107 @@ export default function Clientes() {
               <button className="btn btn-ghost btn-sm" onClick={closeForm}>✕</button>
             </div>
             <div className="modal-body">
+
+              {/* Toggle PF / PJ */}
+              <div style={{ display:'flex', background:'var(--color-surface-offset)', borderRadius:'var(--radius-lg)', padding:3, gap:2 }}>
+                <button style={tabStyle(form.tipo==='PF')} onClick={() => { set('tipo','PF'); setCnpjError(''); }}>
+                  👤 Pessoa Física
+                </button>
+                <button style={tabStyle(form.tipo==='PJ')} onClick={() => { set('tipo','PJ'); setCpfError(''); }}>
+                  🏢 Pessoa Jurídica
+                </button>
+              </div>
+
               <div className="form-grid">
+
+                {/* CPF — só PF */}
+                {form.tipo === 'PF' && (
+                  <div className="form-group">
+                    <label className="form-label">CPF</label>
+                    <input
+                      className="form-input"
+                      style={cpfError ? {borderColor:'var(--color-error)'} : {}}
+                      value={form.cpf}
+                      onChange={e => handleCPF(e.target.value)}
+                      placeholder="000.000.000-00"
+                      inputMode="numeric"
+                    />
+                    {cpfError && <span className="form-error">{cpfError}</span>}
+                  </div>
+                )}
+
+                {/* CNPJ — só PJ */}
+                {form.tipo === 'PJ' && (
+                  <div className="form-group">
+                    <label className="form-label" style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                      <span>CNPJ</span>
+                      {cnpjLoading && <span style={{fontSize:'var(--text-xs)',color:'var(--color-text-muted)',fontWeight:400}}>🔍 buscando…</span>}
+                    </label>
+                    <input
+                      className="form-input"
+                      style={cnpjError ? {borderColor:'var(--color-error)'} : {}}
+                      value={form.cnpj}
+                      onChange={e => {
+                        const v = maskCNPJ(e.target.value);
+                        set('cnpj', v);
+                        setCnpjError('');
+                        if (v.replace(/\D/g,'').length === 14) buscarCNPJ(v);
+                      }}
+                      placeholder="00.000.000/0000-00"
+                      inputMode="numeric"
+                    />
+                    {cnpjError && <span className="form-error">{cnpjError}</span>}
+                  </div>
+                )}
+
+                {/* IE — só PJ */}
+                {form.tipo === 'PJ' && (
+                  <div className="form-group">
+                    <label className="form-label">Inscrição Estadual</label>
+                    <input className="form-input" value={form.ie} onChange={e => set('ie', e.target.value)} placeholder="IE" />
+                  </div>
+                )}
+
+                {/* Nome — largura total */}
                 <div className="form-group" style={{ gridColumn:'1/-1' }}>
-                  <label className="form-label">Nome <span style={{color:"var(--color-error)"}}>*</span></label>
-                  <input className="form-input" value={form.nome} onChange={e => set('nome', e.target.value)} placeholder="Nome completo ou razão social" />
+                  <label className="form-label">Nome / Razão Social <span style={{color:"var(--color-error)"}}>*</span></label>
+                  <input className="form-input" value={form.nome} onChange={e => set('nome', e.target.value)} placeholder={form.tipo==='PJ' ? 'Razão social ou nome fantasia' : 'Nome completo'} />
                 </div>
-                <div className="form-group">
-                  <label className="form-label">CPF</label>
-                  <input className="form-input" value={form.cpf} onChange={e => set('cpf', e.target.value)} placeholder="000.000.000-00" />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">IE</label>
-                  <input className="form-input" value={form.ie} onChange={e => set('ie', e.target.value)} placeholder="Inscrição Estadual" />
-                </div>
+
                 <div className="form-group">
                   <label className="form-label">Telefone / WhatsApp</label>
                   <input className="form-input" value={form.contato} onChange={e => set('contato', e.target.value)} placeholder="(31) 99999-9999" />
                 </div>
+
                 <div className="form-group">
                   <label className="form-label">E-mail</label>
                   <input className="form-input" type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="email@exemplo.com" />
                 </div>
+
                 <div className="form-group">
-                  <label className="form-label">CEP {cepLoading && <span style={{fontSize:'var(--text-xs)',color:'var(--color-text-muted)'}}>buscando…</span>}</label>
+                  <label className="form-label" style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                    <span>CEP</span>
+                    {cepLoading && <span style={{fontSize:'var(--text-xs)',color:'var(--color-text-muted)',fontWeight:400}}>buscando…</span>}
+                  </label>
                   <input
                     className="form-input"
                     value={form.cep}
                     onChange={e => { set('cep', e.target.value); buscarCep(e.target.value); }}
                     placeholder="00000-000"
+                    inputMode="numeric"
                   />
                 </div>
+
                 <div className="form-group" style={{ gridColumn:'1/-1' }}>
                   <label className="form-label">Endereço</label>
                   <input className="form-input" value={form.endereco} onChange={e => set('endereco', e.target.value)} placeholder="Rua, número, bairro" />
                 </div>
+
                 <div className="form-group">
                   <label className="form-label">Cidade</label>
                   <input className="form-input" value={form.cidade} onChange={e => set('cidade', e.target.value)} placeholder="Cidade" />
                 </div>
+
                 <div className="form-group">
                   <label className="form-label">UF</label>
                   <select className="form-input" value={form.uf} onChange={e => set('uf', e.target.value)}>
@@ -392,6 +568,7 @@ export default function Clientes() {
                     {UFS.map(u => <option key={u} value={u}>{u}</option>)}
                   </select>
                 </div>
+
                 <div className="form-group" style={{ gridColumn:'1/-1' }}>
                   <label className="form-label">Observações</label>
                   <textarea className="form-input" rows={3} value={form.obs} onChange={e => set('obs', e.target.value)} placeholder="Anotações sobre o cliente…" />
@@ -409,7 +586,7 @@ export default function Clientes() {
         document.body
       )}
 
-      {/* Confirm Delete */}
+      {/* ── Confirm Delete ── */}
       {confirmDel && ReactDOM.createPortal(
         <div className="modal-overlay" onClick={() => setConfirmDel(null)}>
           <div className="modal" style={{ maxWidth:420 }} onClick={e => e.stopPropagation()}>
