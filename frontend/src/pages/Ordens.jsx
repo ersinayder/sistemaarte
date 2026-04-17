@@ -12,7 +12,6 @@ const PRIORIDADE_OPTS = ['Normal','Urgente'];
 const saldoAberto = (o) =>
   Number(o?.saldoaberto ?? o?.valorrestante ?? (Number(o?.valor||o?.valortotal||0) - Number(o?.entrada||o?.valorentrada||0))) || 0;
 
-// Mapeia tipo de serviço para badge válido
 const tipoBadge = (servico) => ({
   'Moldura':'primary','Tela':'primary','Restauro':'warning',
   'Passepartout':'success','Vidro':'primary','Diversos':'primary'
@@ -25,7 +24,7 @@ export default function Ordens() {
 
   const blankForm = {
     cliente_id:'', clientenome:'', servico:TIPO_OPTS[0], valortotal:"", valorentrada:"",
-    descricao:'', observacoes:'', prazoentrega:'', prioridade:'Normal',
+    observacoes:'', prazoentrega:'', prioridade:'Normal',
     status:'Aguardando', produtos:[]
   };
 
@@ -88,7 +87,6 @@ export default function Ordens() {
       cliente_id:    o.cliente_id || o.clienteid || '',
       clientenome:   o.clientenome || '',
       servico:       o.servico || TIPO_OPTS[0],
-      descricao:     o.descricao || '',
       observacoes:   o.observacoes || '',
       prazoentrega:  o.prazoentrega || '',
       prioridade:    o.prioridade || 'Normal',
@@ -109,7 +107,7 @@ export default function Ordens() {
   }, []);
 
   const addProduto = (prod) => {
-    const novoProd = { produto_id: prod.id, nome: prod.name, quantidade: 1, preco_unitario: prod.preco || 0 };
+    const novoProd = { produto_id: prod.id, nome: prod.nome, quantidade: 1, preco_unitario: prod.preco || 0 };
     const novos = [...(form.produtos||[]), novoProd];
     set('produtos', novos);
     recalcTotal(novos);
@@ -141,7 +139,7 @@ export default function Ordens() {
         cliente_id:    form.cliente_id || null,
         clientenome:   form.clientenome,
         servico:       form.servico,
-        descricao:     form.descricao,
+        descricao:     '',
         observacoes:   form.observacoes,
         prazoentrega:  form.prazoentrega || null,
         prioridade:    form.prioridade,
@@ -411,36 +409,12 @@ export default function Ordens() {
                   </select>
                 </div>
 
-                {/* Descricao */}
-                <div className="form-group" style={{ gridColumn:'1/-1' }}>
-                  <label className="form-label">Descrição do Serviço</label>
-                  <input className="form-input" value={form.descricao} onChange={e=>set('descricao',e.target.value)} placeholder="Ex: Moldura dourada 60x80, vidro anti-reflexo…" />
-                </div>
-
-                {/* Observacoes */}
-                <div className="form-group" style={{ gridColumn:'1/-1' }}>
-                  <label className="form-label">Observações internas</label>
-                  <textarea className="form-input" rows={2} value={form.observacoes} onChange={e=>set('observacoes',e.target.value)} placeholder="Notas para a equipe da oficina…" />
-                </div>
-
-                {/* Prazo e Status */}
-                <div className="form-group">
-                  <label className="form-label">Prazo de Entrega</label>
-                  <input className="form-input" type="date" value={form.prazoentrega} onChange={e=>set('prazoentrega',e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Status</label>
-                  <select className="form-input" value={form.status} onChange={e=>set('status',e.target.value)}>
-                    {STATUS_OPTS.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-
                 {/* Produtos */}
                 <div className="form-group" style={{ gridColumn:'1/-1' }}>
-                  <label className="form-label">Produtos / Matérias-primas</label>
+                  <label className="form-label">Produtos</label>
                   <select className="form-input" onChange={e => { if(e.target.value) { const p = produtos.find(x=>x.id===Number(e.target.value)); if(p) addProduto(p); e.target.value=''; } }}>
                     <option value="">Adicionar produto…</option>
-                    {produtosFiltrados.map(p => <option key={p.id} value={p.id}>{p.name} — {fmt(p.preco)}</option>)}
+                    {produtosFiltrados.map(p => <option key={p.id} value={p.id}>{p.nome} — {fmt(p.preco)}</option>)}
                   </select>
                   {form.produtos && form.produtos.length > 0 && (
                     <div style={{ marginTop:'var(--space-2)', display:'flex', flexDirection:'column', gap:'var(--space-1)' }}>
@@ -460,6 +434,24 @@ export default function Ordens() {
                       ))}
                     </div>
                   )}
+                </div>
+
+                {/* Observacoes */}
+                <div className="form-group" style={{ gridColumn:'1/-1' }}>
+                  <label className="form-label">Observações internas</label>
+                  <textarea className="form-input" rows={2} value={form.observacoes} onChange={e=>set('observacoes',e.target.value)} placeholder="Notas para a equipe da oficina…" />
+                </div>
+
+                {/* Prazo e Status */}
+                <div className="form-group">
+                  <label className="form-label">Prazo de Entrega</label>
+                  <input className="form-input" type="date" value={form.prazoentrega} onChange={e=>set('prazoentrega',e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Status</label>
+                  <select className="form-input" value={form.status} onChange={e=>set('status',e.target.value)}>
+                    {STATUS_OPTS.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
                 </div>
 
                 {/* Valores */}
