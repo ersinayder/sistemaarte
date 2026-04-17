@@ -5,7 +5,7 @@ import { toast } from 'react-hot-toast';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
-const TIPO_OPTS = ['Moldura','Tela','Restauro','Passepartout','Vidro','Diversos'];
+const TIPO_OPTS = ['Quadro','Caixas','Corte a Laser','Diversos'];
 const STATUS_OPTS = ['Aguardando','Em Produção','Pronto','Entregue','Cancelado'];
 const PRIORIDADE_OPTS = ['Normal','Urgente'];
 
@@ -13,8 +13,7 @@ const saldoAberto = (o) =>
   Number(o?.saldoaberto ?? o?.valorrestante ?? (Number(o?.valor||o?.valortotal||0) - Number(o?.entrada||o?.valorentrada||0))) || 0;
 
 const tipoBadge = (servico) => ({
-  'Moldura':'primary','Tela':'primary','Restauro':'warning',
-  'Passepartout':'success','Vidro':'primary','Diversos':'primary'
+  'Quadro':'primary','Caixas':'warning','Corte a Laser':'success','Diversos':'primary'
 })[servico] || 'primary';
 
 // ------- Componente de busca de produtos -------
@@ -41,7 +40,6 @@ function ProdutoInput({ produtos, onAdd }) {
     setQuery(''); setOpen(false);
   };
 
-  // Avulso: entra direto na lista com preco 0 (editável inline)
   const handleAvulso = () => {
     if (!query.trim()) return;
     onAdd({ produto_id: null, nome: query.trim(), quantidade: 1, preco_unitario: 0, avulso: true });
@@ -318,7 +316,6 @@ export default function Ordens() {
 
   return (
     <div style={{ height:'calc(100vh - 60px - var(--space-12))', display:'flex', flexDirection:'column', minHeight:0 }}>
-      {/* Header */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'var(--space-4)', flexShrink:0 }}>
         <div>
           <h1 style={{ fontSize:'var(--text-xl)', fontWeight:800, margin:0 }}>Ordens de Serviço</h1>
@@ -332,7 +329,6 @@ export default function Ordens() {
         )}
       </div>
 
-      {/* KPIs */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'var(--space-3)', marginBottom:'var(--space-4)', flexShrink:0 }}>
         {[
           { label:'Total OS', value:totalOrdens, icon:'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2', color:'var(--color-primary)' },
@@ -352,7 +348,6 @@ export default function Ordens() {
         ))}
       </div>
 
-      {/* Filters */}
       <div style={{ display:'flex', gap:'var(--space-2)', marginBottom:'var(--space-3)', flexShrink:0 }}>
         <div style={{ position:'relative', flex:1 }}>
           <svg style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:'var(--color-text-faint)' }} width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
@@ -368,7 +363,6 @@ export default function Ordens() {
         </select>
       </div>
 
-      {/* Table */}
       <div className="card" style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column' }}>
         {loading ? (
           <div style={{ display:'flex', alignItems:'center', justifyContent:'center', flex:1, color:'var(--color-text-muted)', gap:'var(--space-2)' }}>
@@ -442,7 +436,6 @@ export default function Ordens() {
         )}
       </div>
 
-      {/* Form Modal */}
       {showForm && ReactDOM.createPortal(
         <div className="modal-overlay" onClick={closeForm}>
           <div className="modal" style={{ maxWidth:640, maxHeight:'92vh', overflowY:'auto' }} onClick={e => e.stopPropagation()}>
@@ -452,8 +445,6 @@ export default function Ordens() {
             </div>
             <div className="modal-body">
               <div className="form-grid">
-
-                {/* Cliente */}
                 <div className="form-group" style={{ gridColumn:'1/-1', position:'relative' }} ref={clienteRef}>
                   <label className="form-label">Cliente <span style={{color:"var(--color-error)"}}>*</span></label>
                   <input
@@ -466,13 +457,10 @@ export default function Ordens() {
                   {clienteOpen && cliFiltered.length > 0 && (
                     <div style={{ position:'absolute', top:'100%', left:0, right:0, background:'var(--color-surface)', border:'1px solid var(--color-border)', borderRadius:'var(--radius-md)', boxShadow:'var(--shadow-md)', zIndex:100, maxHeight:200, overflowY:'auto' }}>
                       {cliFiltered.map(c => (
-                        <div
-                          key={c.id}
-                          style={{ padding:'var(--space-2) var(--space-3)', cursor:'pointer', fontSize:'var(--text-sm)' }}
+                        <div key={c.id} style={{ padding:'var(--space-2) var(--space-3)', cursor:'pointer', fontSize:'var(--text-sm)' }}
                           onMouseDown={() => { set('cliente_id', c.id); set('clientenome', c.name); setClienteSearch(c.name); setClienteOpen(false); }}
                           onMouseEnter={e => e.currentTarget.style.background='var(--color-surface-offset)'}
-                          onMouseLeave={e => e.currentTarget.style.background=''}
-                        >
+                          onMouseLeave={e => e.currentTarget.style.background=''}>
                           <span style={{ fontWeight:600 }}>{c.name}</span>
                           {c.phone && <span style={{ marginLeft:8, fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>{c.phone}</span>}
                         </div>
@@ -481,7 +469,6 @@ export default function Ordens() {
                   )}
                 </div>
 
-                {/* Tipo e Prioridade */}
                 <div className="form-group">
                   <label className="form-label">Tipo de Serviço</label>
                   <select className="form-input" value={form.servico} onChange={e=>set('servico',e.target.value)}>
@@ -495,29 +482,22 @@ export default function Ordens() {
                   </select>
                 </div>
 
-                {/* Produtos */}
                 <div className="form-group" style={{ gridColumn:'1/-1' }}>
                   <label className="form-label">Produtos</label>
                   <ProdutoInput produtos={produtosSugestoes} onAdd={addProduto} />
-
                   {form.produtos && form.produtos.length > 0 && (
                     <div style={{ marginTop:'var(--space-2)', display:'flex', flexDirection:'column', gap:'var(--space-1)' }}>
                       {form.produtos.map((p, i) => (
                         <div key={i} style={{ display:'flex', alignItems:'center', gap:'var(--space-2)', padding:'var(--space-2) var(--space-3)', background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)', fontSize:'var(--text-xs)' }}>
-                          {/* Nome */}
                           <span style={{ flex:1, fontWeight:500, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                             {p.nome}
                             {p.avulso && <span style={{ marginLeft:6, fontSize:9, color:'var(--color-text-faint)', fontWeight:400, background:'var(--color-surface-dynamic)', borderRadius:'var(--radius-full)', padding:'1px 5px' }}>avulso</span>}
                           </span>
-
-                          {/* Preço unitário — editável apenas em avulso */}
                           {p.avulso ? (
-                            <input
-                              type="number" step="0.01" min="0"
-                              className="form-input"
+                            <input type="number" step="0.01" min="0" className="form-input"
                               style={{ width:90, fontFamily:'monospace', textAlign:'right', fontSize:'var(--text-xs)', padding:'2px 6px' }}
                               placeholder="R$ 0,00"
-                              value={p.preco_unitario === 0 && document.activeElement !== undefined ? '' : p.preco_unitario}
+                              value={p.preco_unitario || ''}
                               onChange={e => updateProd(i, 'preco_unitario', parseFloat(e.target.value)||0)}
                               onWheel={e => e.currentTarget.blur()}
                               title="Preço unitário"
@@ -527,24 +507,16 @@ export default function Ordens() {
                               {Number(p.preco_unitario).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
                             </span>
                           )}
-
-                          {/* Quantidade */}
-                          <input
-                            type="number" min="1"
-                            className="form-input"
+                          <input type="number" min="1" className="form-input"
                             style={{ width:52, textAlign:'center', fontSize:'var(--text-xs)', padding:'2px 4px' }}
                             value={p.quantidade}
                             onChange={e => updateProd(i, 'quantidade', Number(e.target.value)||1)}
                             onWheel={e => e.currentTarget.blur()}
                             title="Quantidade"
                           />
-
-                          {/* Subtotal */}
                           <span style={{ fontFamily:'monospace', color:'var(--color-text-muted)', minWidth:72, textAlign:'right', fontWeight:600 }}>
                             {(Number(p.quantidade) * Number(p.preco_unitario||0)).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
                           </span>
-
-                          {/* Remover */}
                           <button className="btn btn-ghost btn-xs" style={{ color:'var(--color-error)', padding:2, flexShrink:0 }} onClick={() => removeProduto(i)}>✕</button>
                         </div>
                       ))}
@@ -552,13 +524,11 @@ export default function Ordens() {
                   )}
                 </div>
 
-                {/* Observacoes */}
                 <div className="form-group" style={{ gridColumn:'1/-1' }}>
                   <label className="form-label">Observações internas</label>
                   <textarea className="form-input" rows={2} value={form.observacoes} onChange={e=>set('observacoes',e.target.value)} placeholder="Notas para a equipe da oficina…" />
                 </div>
 
-                {/* Prazo e Status */}
                 <div className="form-group">
                   <label className="form-label">Prazo de Entrega</label>
                   <input className="form-input" type="date" value={form.prazoentrega} onChange={e=>set('prazoentrega',e.target.value)} />
@@ -570,19 +540,14 @@ export default function Ordens() {
                   </select>
                 </div>
 
-                {/* Valores */}
                 <div className="form-group">
                   <label className="form-label">
                     Valor Total (R$) <span style={{color:"var(--color-error)"}}>*</span>
                     <span style={{marginLeft:6,fontSize:"var(--text-xs)",color:"var(--color-text-muted)",fontWeight:400}}>— calculado pelos produtos, editável</span>
                   </label>
-                  <input
-                    className="form-input"
-                    type="number" step="0.01" min="0"
-                    value={form.valortotal}
-                    onChange={e=>set("valortotal",e.target.value)}
-                    onWheel={e=>e.currentTarget.blur()}
-                    style={{ fontFamily:"monospace", fontWeight:700 }}
+                  <input className="form-input" type="number" step="0.01" min="0"
+                    value={form.valortotal} onChange={e=>set("valortotal",e.target.value)}
+                    onWheel={e=>e.currentTarget.blur()} style={{ fontFamily:"monospace", fontWeight:700 }}
                   />
                 </div>
                 <div className="form-group">
@@ -593,12 +558,10 @@ export default function Ordens() {
                   <input className="form-input" type="number" step="0.01" min="0" placeholder="0,00 (sem entrada)"
                     value={form.valorentrada} onChange={e=>set("valorentrada",e.target.value)} onWheel={e=>e.currentTarget.blur()}/>
                 </div>
-
               </div>
 
               {total > 0 && (
-                <div style={{
-                  display:"flex", justifyContent:"space-between", alignItems:"center",
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
                   padding:"var(--space-3) var(--space-4)",
                   background: restantePrev > 0 ? 'var(--color-warning-highlight)' : 'var(--color-primary-highlight)',
                   borderRadius:"var(--radius-md)", fontSize:"var(--text-xs)", marginTop:"var(--space-3)"
@@ -619,7 +582,6 @@ export default function Ordens() {
         document.body
       )}
 
-      {/* Confirm Delete */}
       {confirmDel && ReactDOM.createPortal(
         <div className="modal-overlay" onClick={() => setConfirmDel(null)}>
           <div className="modal" style={{ maxWidth:400 }} onClick={e => e.stopPropagation()}>
@@ -633,12 +595,7 @@ export default function Ordens() {
             </div>
             <div className="modal-footer">
               <button className="btn btn-ghost" onClick={() => setConfirmDel(null)}>Cancelar</button>
-              <button
-                className="btn"
-                style={{ background:'var(--color-error)', color:'white' }}
-                onClick={() => handleDelete(confirmDel.id)}
-                disabled={deleting === confirmDel.id}
-              >
+              <button className="btn btn-danger" onClick={() => handleDelete(confirmDel.id)} disabled={deleting === confirmDel.id}>
                 {deleting === confirmDel.id ? 'Excluindo…' : 'Excluir'}
               </button>
             </div>

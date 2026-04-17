@@ -6,11 +6,11 @@ import ReactDOM from 'react-dom'
 
 const fmt = v => 'R$ ' + Number(v||0).toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.')
 
-const CATEGORIAS = ['Moldura','Vidro','Passepartout','Impressão','Material 3D','Insumo Laser','Embalagem','Outros']
+const CATEGORIAS = ['Quadro','Caixas','Corte a Laser','Diversos']
 const UNIDADES   = ['un','m','m²','kg','g','l','ml','rolo','folha','pacote']
 
 function Modal({ open, onClose, onSaved, editData }) {
-  const BLANK = { nome: '', categoria: 'Outros', unidade: 'un', preco: '', estoque: '', estoquemin: '', descricao: '' }
+  const BLANK = { nome: '', categoria: 'Diversos', unidade: 'un', preco: '', estoque: '', estoquemin: '', descricao: '' }
   const [form, setForm] = useState(BLANK)
   const [saving, setSaving] = useState(false)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -19,7 +19,7 @@ function Modal({ open, onClose, onSaved, editData }) {
     if (!open) return
     setForm(editData ? {
       nome:       editData.nome        || '',
-      categoria:  editData.categoria   || 'Outros',
+      categoria:  editData.categoria   || 'Diversos',
       unidade:    editData.unidade     || 'un',
       preco:      editData.preco       != null ? String(editData.preco)       : '',
       estoque:    editData.estoque     != null ? String(editData.estoque)     : '',
@@ -122,9 +122,10 @@ function Modal({ open, onClose, onSaved, editData }) {
 }
 
 const CATBADGE = {
-  'Moldura':'quadro','Vidro':'quadro','Passepartout':'quadro',
-  'Impressão':'3d','Material 3D':'3d','Insumo Laser':'laser',
-  'Embalagem':'caixas','Outros':'diversos',
+  'Quadro':'primary',
+  'Caixas':'warning',
+  'Corte a Laser':'success',
+  'Diversos':'primary',
 }
 
 export default function Produtos() {
@@ -220,7 +221,7 @@ export default function Produtos() {
                         <div style={{fontWeight:600}}>{p.nome}</div>
                         {p.descricao && <div style={{fontSize:'var(--text-xs)',color:'var(--color-text-muted)'}}>{p.descricao}</div>}
                       </td>
-                      <td><span className={`badge badge-${CATBADGE[p.categoria]||'diversos'}`}>{p.categoria}</span></td>
+                      <td><span className={`badge badge-${CATBADGE[p.categoria]||'primary'}`}>{p.categoria}</span></td>
                       <td className="tabnum" style={{fontWeight:700}}>{fmt(p.preco)}</td>
                       <td className="tabnum" style={{fontWeight:700,color:baixo?'var(--color-warning)':undefined}}>
                         {p.estoque} {baixo && <span style={{fontSize:10}}>⚠</span>}
