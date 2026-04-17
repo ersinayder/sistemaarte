@@ -53,7 +53,6 @@
   --radius-xl: 1rem;
   --radius-full: 9999px;
 
-  /* Escala de texto — base maior para melhor aproveitamento de tela */
   --text-xs:   clamp(0.75rem,  0.65rem + 0.3vw,  0.875rem);
   --text-sm:   clamp(0.875rem, 0.8rem  + 0.4vw,  1rem);
   --text-base: clamp(0.9375rem,0.85rem + 0.45vw, 1.0625rem);
@@ -69,7 +68,6 @@
   --sidebar-w: 220px;
   --sidebar-w-collapsed: 56px;
 
-  /* Sem max-width fixo — conteúdo usa toda a área disponível */
   --content-max: 100%;
   --content-default: 100%;
   --content-narrow: 860px;
@@ -228,13 +226,11 @@ main {
   main { padding: var(--space-4); }
 }
 
-/* ── main > * : ocupa 100% sem max-width restritivo ─────── */
 main > * {
   width: 100%;
   animation: fadeSlideIn 0.18s ease both;
 }
 
-/* Páginas estreitas (formulários, usuários) */
 main > .page-narrow {
   max-width: var(--content-narrow);
   margin-inline: auto;
@@ -245,7 +241,6 @@ main > .page-narrow {
   to   { opacity: 1; transform: none; }
 }
 
-/* ── Classes de container explícitas ───────────────────── */
 .page-content {
   width: 100%;
   display: flex;
@@ -448,30 +443,30 @@ textarea.form-input { resize: vertical; min-height: 80px; }
 .badge-secondary { background: var(--color-surface-dynamic); color: var(--color-text-muted); }
 .badge-diversos  { background: var(--color-surface-dynamic); color: var(--color-text-muted); }
 
-/* Status badges — OS */
 .badge-recebido   { background: var(--color-blue-hl);         color: var(--color-blue); }
 .badge-emproducao { background: var(--color-orange-hl);       color: var(--color-orange); }
 .badge-pronto     { background: var(--color-success-hl);      color: var(--color-success); }
 .badge-entregue   { background: var(--color-surface-dynamic); color: var(--color-text-muted); }
 .badge-cancelado  { background: var(--color-error-hl);        color: var(--color-error); }
 
-/* Tipo serviço */
 .badge-laser  { background: var(--color-primary-hl); color: var(--color-primary); }
 .badge-quadro { background: var(--color-orange-hl);  color: var(--color-orange); }
 .badge-caixas { background: var(--color-blue-hl);    color: var(--color-blue); }
 .badge-3d     { background: var(--color-purple-hl);  color: var(--color-purple); }
 
-/* Pagamento */
 .badge-pix      { background: var(--color-primary-hl); color: var(--color-primary); }
 .badge-dinheiro { background: var(--color-success-hl); color: var(--color-success); }
 .badge-credito  { background: var(--color-orange-hl);  color: var(--color-orange); }
 .badge-debito   { background: var(--color-blue-hl);    color: var(--color-blue); }
 .badge-link     { background: var(--color-purple-hl);  color: var(--color-purple); }
 
-/* Perfil */
 .badge-admin        { background: var(--color-purple-hl); color: var(--color-purple); }
 .badge-caixa-role   { background: var(--color-gold-hl);   color: var(--color-gold); }
 .badge-oficina-role { background: var(--color-orange-hl); color: var(--color-orange); }
+
+/* Prioridade */
+.badge-urgente { background: var(--color-error-hl); color: var(--color-error); }
+.badge-normal  { background: var(--color-surface-dynamic); color: var(--color-text-muted); }
 
 /* ── Table ──────────────────────────────────────────────── */
 .table-wrap {
@@ -543,6 +538,8 @@ textarea.form-input { resize: vertical; min-height: 80px; }
   padding: var(--space-4);
   backdrop-filter: blur(2px);
   animation: fadeIn 0.15s ease;
+  /* permite scroll do overlay em telas muito pequenas */
+  overflow-y: auto;
 }
 
 @keyframes fadeIn {
@@ -557,33 +554,34 @@ textarea.form-input { resize: vertical; min-height: 80px; }
   box-shadow: var(--shadow-lg);
   width: 100%;
   max-width: 580px;
+  /* limita altura e habilita scroll interno */
+  max-height: calc(100dvh - var(--space-8));
+  display: flex;
+  flex-direction: column;
   animation: slideUp 0.18s cubic-bezier(0.16,1,0.3,1);
 }
 
-@keyframes slideUp {
-  from { opacity: 0; transform: translateY(12px) scale(0.98); }
-  to   { opacity: 1; transform: none; }
-}
-
+/* header e footer ficam fixos; body rola */
 .modal-header {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: var(--space-4) var(--space-5);
   border-bottom: 1px solid var(--color-divider);
 }
-.modal-title {
-  font-size: var(--text-base);
-  font-weight: 700;
-  margin: 0;
-}
+
 .modal-body {
+  flex: 1;
+  overflow-y: auto;
   padding: var(--space-5);
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
 }
+
 .modal-footer {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -591,6 +589,27 @@ textarea.form-input { resize: vertical; min-height: 80px; }
   padding: var(--space-4) var(--space-5);
   border-top: 1px solid var(--color-divider);
 }
+
+/* telas pequenas: ocupa quase toda a altura disponivel */
+@media (max-width: 600px) {
+  .modal-overlay { padding: var(--space-3); align-items: flex-end; }
+  .modal {
+    max-width: 100%;
+    max-height: 92dvh;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* modal sizes */
+.modal-sm { max-width: 420px; }
+.modal-lg { max-width: 720px; }
+.modal-xl { max-width: 900px; }
 
 /* ── Spinner / Loading ──────────────────────────────────── */
 @keyframes spin { to { transform: rotate(360deg); } }
