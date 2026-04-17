@@ -1,9 +1,9 @@
-
 const router = require("express").Router();
 const { getAll, getOne, run, runInsert, transaction } = require("../database");
 const { auth } = require("../middlewares/auth");
 const { toNumber } = require("../utils/numbers");
 const { getResumoFinanceiroOS } = require("../domain/financeiroRules");
+const { descricaoRestanteOS } = require("../domain/ordensRules");
 
 // GET /api/caixa
 router.get("/", auth(), (req, res) => {
@@ -22,11 +22,12 @@ router.get("/", auth(), (req, res) => {
 router.post("/", auth(["admin","caixa"]), (req, res) => {
   try {
     const { data, tipo, descricao, pagamento, valor, pago, ordemid } = req.body ?? {};
-    if (!data || !descricao || !pagamento || valor == null)
-      return res.status(400).json({ error: "data, descricao, pagamento e valor são obrigatórios" });
+    if (!data || !pagamento || valor == null)
+      return res.status(400).json({ error: "data, pagamento e valor são obrigatórios" });
 
     const nValor = toNumber(valor);
     let origem = "manual";
+    let descFinal = descricao;
 
     if (ordemid) {
       const resumo = getResumoFinanceiroOS(ordemid);
@@ -35,11 +36,20 @@ router.post("/", auth(["admin","caixa"]), (req, res) => {
       if (nValor > resumo.saldo + 0.0001)
         return res.status(400).json({ error: `Saldo disponível para a ${resumo.ordem.numero}: R$ ${resumo.saldo.toFixed(2)}` });
       origem = "saldoos";
+      // Gera descrição automática: "Restante OS-XXXX – Cliente / Serviço"
+      descFinal = descricaoRestanteOS(
+        resumo.ordem.numero,
+        resumo.ordem.clientenome,
+        resumo.ordem.servico
+      );
     }
+
+    if (!descFinal)
+      return res.status(400).json({ error: "descricao é obrigatória" });
 
     const id = runInsert(
       "INSERT INTO lancamentos (data,tipo,descricao,pagamento,valor,pago,ordemid,criadopor,origem) VALUES (?,?,?,?,?,?,?,?,?)",
-      [data, tipo||"Diversos", descricao, pagamento, nValor, pago ? 1 : 0, ordemid||null, req.user.id, origem]
+      [data, tipo||"Diversos", descFinal, pagamento, nValor, pago ? 1 : 0, ordemid||null, req.user.id, origem]
     );
     res.json({ id, origem });
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -57,9 +67,10 @@ router.put("/:id", auth(["admin","caixa"]), (req, res) => {
     const novoOrdemId = ordemid || null;
     const nValor = toNumber(valor);
     let origem = novoOrdemId ? "saldoos" : "manual";
+    let descFinal = descricao;
 
     if (novoOrdemId) {
-      const ordem = getOne("SELECT id,numero,valortotal FROM ordens WHERE id=?", [novoOrdemId]);
+      const ordem = getOne("SELECT id,numero,clientenome,servico,valortotal FROM ordens WHERE id=?", [novoOrdemId]);
       if (!ordem) return res.status(404).json({ error: "OS vinculada não encontrada." });
       const recebido = getOne(
         "SELECT COALESCE(SUM(valor),0) AS total FROM lancamentos WHERE ordemid=? AND pago=1 AND valor>0 AND id!=?",
@@ -69,11 +80,13 @@ router.put("/:id", auth(["admin","caixa"]), (req, res) => {
       if (!(nValor > 0)) return res.status(400).json({ error: "Recebimento de saldo deve ter valor maior que zero." });
       if (nValor > saldo + 0.0001)
         return res.status(400).json({ error: `Saldo disponível para ${ordem.numero}: R$ ${saldo.toFixed(2)}` });
+      // Mantém descrição automática ao editar também
+      descFinal = descricaoRestanteOS(ordem.numero, ordem.clientenome, ordem.servico);
     }
 
     run(
       "UPDATE lancamentos SET data=?,tipo=?,descricao=?,pagamento=?,valor=?,pago=?,ordemid=?,origem=? WHERE id=?",
-      [data, tipo||"Diversos", descricao, pagamento, nValor, pago ? 1 : 0, novoOrdemId, origem, req.params.id]
+      [data, tipo||"Diversos", descFinal, pagamento, nValor, pago ? 1 : 0, novoOrdemId, origem, req.params.id]
     );
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
