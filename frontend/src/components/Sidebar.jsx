@@ -25,9 +25,32 @@ const ICONS = {
 const ROLE_LABEL = { admin: 'Administrador', caixa: 'Caixa', oficina: 'Oficina' }
 const ROLE_COLOR = { admin: 'var(--color-purple)', caixa: 'var(--color-primary)', oficina: 'var(--color-orange)' }
 
+function useTheme() {
+  const getTheme = () =>
+    document.documentElement.getAttribute('data-theme') ||
+    (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+
+  const [theme, setTheme] = useState(getTheme)
+
+  useEffect(() => {
+    const obs = new MutationObserver(() => setTheme(getTheme()))
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const mqHandler = () => setTheme(getTheme())
+    mq.addEventListener('change', mqHandler)
+    return () => { obs.disconnect(); mq.removeEventListener('change', mqHandler) }
+  }, [])
+
+  return theme
+}
+
 export default function Sidebar({ collapsed, onToggle }) {
   const { user, logout, switchUser } = useAuth()
   const [vencidas, setVencidas] = useState(0)
+  const theme = useTheme()
+
+  // light mode usa logo-light.jpg (logo preta), dark mantém logo.png (logo branca)
+  const logoSrc = theme === 'light' ? '/logo-light.jpg' : '/logo.png'
 
   useEffect(() => {
     let cancelled = false
@@ -100,14 +123,20 @@ export default function Sidebar({ collapsed, onToggle }) {
         }}
       >
         {!collapsed ? (
-          <img src="/logo.png" alt="Arte & Molduras"
+          <img
+            key={logoSrc}
+            src={logoSrc}
+            alt="Arte & Molduras"
             style={{ width: '100%', maxWidth: 148, height: 'auto', objectFit: 'contain', display: 'block' }}
-            onError={e => { e.target.style.display = 'none' }}
+            onError={e => { e.target.src = '/logo.png' }}
           />
         ) : (
-          <img src="/logo.png" alt="Arte & Molduras"
+          <img
+            key={logoSrc + '-sm'}
+            src={logoSrc}
+            alt="Arte & Molduras"
             style={{ width: 32, height: 32, objectFit: 'contain', borderRadius: 'var(--radius-sm)' }}
-            onError={e => { e.target.style.display = 'none' }}
+            onError={e => { e.target.src = '/logo.png' }}
           />
         )}
         <button
@@ -124,27 +153,22 @@ export default function Sidebar({ collapsed, onToggle }) {
       {/* ── Navegação ── */}
       <nav className="sidebar-nav" style={{ paddingTop: 'var(--space-3)' }}>
 
-        {/* Perfil Oficina: acesso direto à fila */}
         {isOficina && navItem('/oficina', 'Fila da Oficina', 'oficina')}
 
         {(isAdmin || isCaixa) && (
           <>
-            {/* ── Operação ── */}
             {section('Operação')}
             {navItem('/dashboard', 'Resumo', 'resumo')}
             {navItem('/caixa', 'Caixa', 'caixa')}
             {navItemBadge('/ordens', 'Ordens de Serviço', 'ordens', vencidas)}
             {navItem('/orcamento', 'Orçamento', 'orcamento')}
 
-            {/* ── Produção ── */}
             {section('Produção')}
             {navItem('/oficina', 'Fila da Oficina', 'oficina')}
 
-            {/* ── Análise ── */}
             {section('Análise')}
             {navItem('/relatorios', 'Relatórios', 'relat')}
 
-            {/* ── Cadastros ── */}
             {section('Cadastros')}
             {navItem('/clientes', 'Clientes', 'clientes')}
             {navItem('/produtos', 'Produtos', 'produtos')}
