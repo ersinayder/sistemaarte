@@ -3,9 +3,17 @@ export function imprimirOS(o) {
   const endereco = '';
   const telefone = '';
 
-  const saldo = o.valorrestante !== undefined
-    ? o.valorrestante
-    : Number(o.valor||o.valortotal||0) - Number(o.entrada||o.valorentrada||0);
+  const total   = Number(o.valor || o.valortotal || 0);
+  const entrada = Number(o.entrada || o.valorentrada || 0);
+  const saldo   = o.saldoaberto !== undefined
+    ? Number(o.saldoaberto)
+    : o.valorrestante !== undefined
+      ? Number(o.valorrestante)
+      : Math.max(0, total - entrada);
+
+  const quitado       = saldo <= 0.001;
+  const pagouTotal    = entrada >= total - 0.001;
+  const labelEntrada  = pagouTotal ? 'Pago (Total)' : 'Entrada Paga';
 
   const fmtBRL = v =>
     `R$ ${Math.abs(Number(v)||0).toFixed(2).replace('.',',').replace(/(\d)(?=(\d{3})+(?!\d))/g,'$1.')}`;
@@ -52,8 +60,11 @@ export function imprimirOS(o) {
   .finance-box{border:1px solid #e0e0e0;border-radius:8px;overflow:hidden;margin-top:4px}
   .finance-row{display:flex;justify-content:space-between;align-items:center;padding:7px 12px;border-bottom:1px solid #f0f0f0;font-size:11px}
   .finance-row:last-child{border:none}
+  .finance-row.total-row{font-weight:700;font-size:12px}
+  .finance-row.pago-total{background:#f0faf3;font-weight:700;font-size:12px;color:#437a22}
+  .finance-row.pago-parcial{background:#f0faf3;font-weight:600;color:#437a22}
   .finance-row.saldo{background:#fff8ed;font-weight:800;font-size:13px;color:#da7101}
-  .finance-row.saldo-zero{background:#f0faf3;font-weight:800;font-size:13px;color:#437a22}
+  .finance-row.quitado{background:#f0faf3;font-weight:800;font-size:13px;color:#437a22}
   .tabnum{font-variant-numeric:tabular-nums}
   .obs-box{background:#fafafa;border-radius:6px;border:1px solid #eee;padding:10px 12px;font-size:11px;color:#444;line-height:1.6;white-space:pre-wrap}
   .sign-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:28px}
@@ -129,18 +140,23 @@ ${(o.obs||o.observacoes) ? `
 <div class="section">
   <div class="section-title">Financeiro</div>
   <div class="finance-box">
-    <div class="finance-row">
-      <span>Valor Total</span>
-      <span class="tabnum" style="font-weight:700">${fmtBRL(o.valor||o.valortotal)}</span>
+    <div class="finance-row total-row">
+      <span>Valor Total do Serviço</span>
+      <span class="tabnum">${fmtBRL(total)}</span>
     </div>
-    <div class="finance-row">
-      <span>Entrada Paga</span>
-      <span class="tabnum" style="color:#437a22;font-weight:600">${fmtBRL(o.entrada||o.valorentrada)}</span>
+    <div class="finance-row ${pagouTotal ? 'pago-total' : 'pago-parcial'}">
+      <span>${labelEntrada}</span>
+      <span class="tabnum">${fmtBRL(entrada)}</span>
     </div>
-    <div class="finance-row ${saldo<=0?'saldo-zero':'saldo'}">
-      <span>Saldo a Receber</span>
+    ${!quitado ? `
+    <div class="finance-row saldo">
+      <span>Saldo Restante</span>
       <span class="tabnum">${fmtBRL(saldo)}</span>
-    </div>
+    </div>` : `
+    <div class="finance-row quitado">
+      <span>Situação</span>
+      <span>✓ Quitado</span>
+    </div>`}
   </div>
 </div>
 <div class="sign-grid">
