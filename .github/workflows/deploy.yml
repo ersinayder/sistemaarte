@@ -43,7 +43,16 @@ jobs:
           robocopy $source $dest /MIR /NFL /NDL /NJH /NJS
           if ($LASTEXITCODE -le 7) { exit 0 } else { exit $LASTEXITCODE }
 
-      # ── BACKEND (apenas source, nunca node_modules/.env) ───────────────
+      # ── PARAR PM2 ANTES de qualquer operação no backend ──────────────
+      - name: Stop PM2 (libera lock do better-sqlite3)
+        shell: powershell
+        run: |
+          $env:HOMEPATH = "C:\Users\Administrator"
+          $env:HOME     = "C:\Users\Administrator"
+          pm2 stop sistemaarte-backend 2>$null; $true
+          Start-Sleep -Seconds 3
+
+      # ── BACKEND (apenas source, nunca node_modules/.env) ─────────────
       - name: Sync backend source (nunca node_modules, data, .env)
         shell: powershell
         run: |
@@ -55,23 +64,13 @@ jobs:
             /XF .env *.db
           if ($LASTEXITCODE -le 7) { exit 0 } else { exit $LASTEXITCODE }
 
-      # ── Parar PM2 ANTES do rebuild para liberar o lock do .node ──────
-      - name: Stop PM2 before rebuild
-        shell: powershell
-        run: |
-          $env:HOMEPATH = "C:\Users\Administrator"
-          $env:HOME     = "C:\Users\Administrator"
-          pm2 stop sistemaarte-backend 2>$null; $true
-          Start-Sleep -Seconds 2
-
-      - name: Garantir dependências do backend
+      - name: Instalar dependências do backend (sem rebuild nativo)
         shell: powershell
         run: |
           Set-Location "C:\sistemaarte\backend"
-          npm install --production --prefer-offline
-          npm rebuild better-sqlite3
+          npm install --production --prefer-offline --ignore-scripts
 
-      # ── PM2 ───────────────────────────────────────────────────────────────
+      # ── PM2 ──────────────────────────────────────────────────────────
       - name: Reload PM2
         shell: powershell
         run: |
