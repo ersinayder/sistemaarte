@@ -36,23 +36,22 @@ function getEntradaOS(ordemId) {
   );
 }
 
-// Busca telefone e cpf do cadastro de clientes como fallback
+// Herda telefone e cpf do cadastro de clientes quando não fornecidos na OS
 function resolveClienteData(clienteid, clientenome, telefoneFornecido, cpfFornecido) {
   let telefone = telefoneFornecido || null;
   let cpf = cpfFornecido || null;
   if (clienteid && (!telefone || !cpf)) {
-    const cli = getOne("SELECT phone, cpf_cnpj FROM clientes WHERE id=? LIMIT 1", [clienteid]);
+    const cli = getOne("SELECT phone, cpf FROM clientes WHERE id=? LIMIT 1", [clienteid]);
     if (cli) {
       if (!telefone && cli.phone) telefone = cli.phone;
-      if (!cpf && cli.cpf_cnpj) cpf = cli.cpf_cnpj;
+      if (!cpf && cli.cpf) cpf = cli.cpf;
     }
   }
-  // Fallback por nome se ainda sem telefone
   if (!telefone && clientenome) {
-    const cli = getOne("SELECT phone, cpf_cnpj FROM clientes WHERE name=? LIMIT 1", [clientenome]);
+    const cli = getOne("SELECT phone, cpf FROM clientes WHERE name=? LIMIT 1", [clientenome]);
     if (cli) {
       if (!telefone && cli.phone) telefone = cli.phone;
-      if (!cpf && cli.cpf_cnpj) cpf = cli.cpf_cnpj;
+      if (!cpf && cli.cpf) cpf = cli.cpf;
     }
   }
   return { telefone, cpf };
@@ -119,7 +118,6 @@ router.post("/", auth(["admin","caixa"]), (req, res) => {
     if (cli) cidResolvido = cli.id;
   }
 
-  // Herda telefone e CPF do cadastro se não fornecidos
   const { telefone: telFinal, cpf: cpfFinal } = resolveClienteData(
     cidResolvido, clientenome, clientetelefone, clientecpf
   );
@@ -199,7 +197,6 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res) => {
       if (cli) novoCid = cli.id;
     }
 
-    // Herda telefone e CPF do cadastro se não fornecidos
     const telInput = clientetelefone !== undefined ? clientetelefone : old.clientetelefone;
     const cpfInput = clientecpf !== undefined ? clientecpf : old.clientecpf;
     const { telefone: telFinal, cpf: cpfFinal } = resolveClienteData(
@@ -273,7 +270,6 @@ router.post("/:id/whatsapp-confirmacao", auth(["admin","caixa"]), async (req, re
     const os = getOne(SEL_ORDEM + " WHERE o.id=? AND o.deletedat IS NULL", [req.params.id]);
     if (!os) return res.status(404).json({ error: "OS nao encontrada" });
 
-    // Fallback: se OS não tem telefone, busca no cadastro do cliente
     if (!os.clientetelefone && !os.clientecontato && os.clienteid) {
       const cli = getOne("SELECT phone FROM clientes WHERE id=? LIMIT 1", [os.clienteid]);
       if (cli?.phone) os.clientetelefone = cli.phone;
@@ -290,7 +286,7 @@ router.post("/:id/whatsapp-confirmacao", auth(["admin","caixa"]), async (req, re
   }
 });
 
-// DELETE /api/ordens/:id  — SOFT DELETE (admin only)
+// DELETE /api/ordens/:id
 router.delete("/:id", auth(["admin"]), (req, res) => {
   try {
     const os = getOne("SELECT id,numero,status FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);
