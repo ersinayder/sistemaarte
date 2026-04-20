@@ -1,37 +1,22 @@
 /**
  * whatsapp.js — Integração Evolution API
- * Dispara mensagem automática ao cliente quando OS muda para "Pronto"
- *
- * Variáveis de ambiente necessárias (.env):
- *   EVOLUTION_API_URL      = https://sua-evolution.exemplo.com
- *   EVOLUTION_API_KEY      = sua_api_key_aqui
- *   EVOLUTION_INSTANCE     = nome_da_instancia
- *   WHATSAPP_ENABLED       = true   (default: true se URL estiver configurada)
+ * - Disparo automático ao mover OS para "Pronto"
+ * - Disparo manual de confirmação de pedido (cliente presencial)
  */
 
 const https = require('https');
 const http  = require('http');
 const url   = require('url');
 
-/**
- * Normaliza número de telefone para formato internacional (55XXXXXXXXXXX)
- * Aceita: (31) 99999-9999 | 31999999999 | +5531999999999 | etc.
- */
 function normalizePhone(raw) {
   if (!raw) return null;
   let digits = String(raw).replace(/\D/g, '');
-  // Remove o 0 inicial de DDI caso o usuário tenha digitado 0XX
   if (digits.startsWith('0')) digits = digits.slice(1);
-  // Se não tem DDI (menos de 12 dígitos), adiciona 55
   if (digits.length <= 11) digits = '55' + digits;
-  // Garante pelo menos 12 dígitos (55 + DDD + número)
   if (digits.length < 12) return null;
   return digits;
 }
 
-/**
- * Monta a mensagem enviada ao cliente
- */
 function buildMessage(os) {
   const nome    = os.clientenome || 'Cliente';
   const numero  = os.numero      || '—';
@@ -55,9 +40,37 @@ function buildMessage(os) {
   return msg;
 }
 
-/**
- * Faz POST JSON via http/https nativo (sem dependências externas)
- */
+function buildMessageConfirmacao(os) {
+  const nome    = os.clientenome || 'Cliente';
+  const numero  = os.numero      || '—';
+  const servico = os.servico     || os.tipo || '';
+  const total   = Number(os.valortotal || os.valor || 0);
+  const entrada = Number(os.valorentrada || os.entrada || 0);
+  const saldo   = Number(os.saldoaberto ?? os.valorrestante ?? (total - entrada));
+  const fmtVal  = v => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+  let msg =
+    `📋 *Arte e Molduras — Confirmação de Pedido*\n\n` +
+    `Olá, *${nome}*! Seu pedido foi registrado com sucesso. 😊\n\n` +
+    `🖼️ *Serviço:* ${servico}\n` +
+    `🔖 *OS:* ${numero}\n` +
+    `💵 *Valor Total:* ${fmtVal(total)}\n`;
+
+  if (entrada > 0) {
+    msg += `✅ *Entrada paga:* ${fmtVal(entrada)}\n`;
+  }
+
+  if (saldo > 0) {
+    msg += `💳 *Saldo restante na retirada:* ${fmtVal(saldo)}\n`;
+  } else {
+    msg += `✔️ *Pagamento quitado.*\n`;
+  }
+
+  msg += `\nEntraremos em contato quando seu pedido estiver pronto!\n_Arte e Molduras_ 🎨`;
+
+  return msg;
+}
+
 function postJSON(apiUrl, headers, body) {
   return new Promise((resolve, reject) => {
     const parsed   = url.parse(apiUrl);
@@ -97,12 +110,7 @@ function postJSON(apiUrl, headers, body) {
   });
 }
 
-/**
- * Envia mensagem WhatsApp via Evolution API
- * Retorna { ok: true } ou { ok: false, error: string }
- * Nunca lança exceção — falha silenciosa (não bloqueia o fluxo da OS)
- */
-async function sendWhatsApp(os) {
+async function _dispatch(os, message) {
   const BASE     = (process.env.EVOLUTION_API_URL  || '').replace(/\/$/, '');
   const KEY      = process.env.EVOLUTION_API_KEY   || '';
   const INSTANCE = process.env.EVOLUTION_INSTANCE  || '';
@@ -115,21 +123,15 @@ async function sendWhatsApp(os) {
 
   const phone = normalizePhone(os.clientetelefone || os.clientecontato);
   if (!phone) {
-    console.warn(`[WhatsApp] OS ${os.numero} — telefone inválido ou ausente: "${os.clientetelefone}"`)
+    console.warn(`[WhatsApp] OS ${os.numero} — telefone inválido ou ausente: "${os.clientetelefone}"`);
     return { ok: false, error: 'invalid_phone' };
   }
 
-  const message = buildMessage(os);
-  const apiUrl  = `${BASE}/message/sendText/${INSTANCE}`;
+  const apiUrl = `${BASE}/message/sendText/${INSTANCE}`;
 
-  // Tenta até 2 vezes com delay de 3s
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      await postJSON(
-        apiUrl,
-        { apikey: KEY },
-        { number: phone, text: message }
-      );
+      await postJSON(apiUrl, { apikey: KEY }, { number: phone, text: message });
       console.log(`[WhatsApp] ✅ Mensagem enviada para ${phone} (OS ${os.numero})`);
       return { ok: true, phone };
     } catch (err) {
@@ -141,4 +143,12 @@ async function sendWhatsApp(os) {
   return { ok: false, error: 'send_failed' };
 }
 
-module.exports = { sendWhatsApp, normalizePhone, buildMessage };
+async function sendWhatsApp(os) {
+  return _dispatch(os, buildMessage(os));
+}
+
+async function sendWhatsAppConfirmacao(os) {
+  return _dispatch(os, buildMessageConfirmacao(os));
+}
+
+module.exports = { sendWhatsApp, sendWhatsAppConfirmacao, normalizePhone, buildMessage, buildMessageConfirmacao };
