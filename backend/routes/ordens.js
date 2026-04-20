@@ -4,7 +4,7 @@ const { auth } = require("../middlewares/auth");
 const { toNumber } = require("../utils/numbers");
 const { hoje } = require("../utils/dates");
 const { validarEntradaOS, validarStatus, descricaoEntradaOS } = require("../domain/ordensRules");
-const { sendWhatsApp } = require("../utils/whatsapp");
+const { sendWhatsApp, sendWhatsAppConfirmacao } = require("../utils/whatsapp");
 
 const SEL_ORDEM = `
   SELECT o.*,
@@ -36,7 +36,6 @@ function getEntradaOS(ordemId) {
   );
 }
 
-// Dispara WhatsApp se status mudou para "Pronto" — fire-and-forget (não bloqueia response)
 function maybeNotifyPronto(ordemId, statusAnterior, statusNovo) {
   if (statusAnterior === statusNovo) return;
   if (statusNovo !== 'Pronto') return;
@@ -153,7 +152,6 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res) => {
           runInsert("INSERT INTO statuslog (ordemid,statusanterior,statusnovo,usuarioid) VALUES (?,?,?,?)",
             [req.params.id, old.status, status, req.user.id]);
       });
-      // Notifica WhatsApp fora da transaction (fire-and-forget)
       maybeNotifyPronto(req.params.id, old.status, status);
       return res.json({ ok: true });
     }
@@ -204,7 +202,6 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res) => {
         );
       }
     });
-    // Notifica WhatsApp fora da transaction (fire-and-forget)
     maybeNotifyPronto(req.params.id, old.status, ns);
     res.json({ ok: true });
   } catch(e) {
@@ -229,9 +226,24 @@ router.patch("/:id/status", auth(["admin","caixa","oficina"]), (req, res) => {
         [req.params.id, old.status, status, req.user.id, obs||null]
       );
     });
-    // Notifica WhatsApp fora da transaction (fire-and-forget)
     maybeNotifyPronto(req.params.id, old.status, status);
     res.json({ ok: true });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/ordens/:id/whatsapp-confirmacao
+router.post("/:id/whatsapp-confirmacao", auth(["admin","caixa"]), async (req, res) => {
+  try {
+    const os = getOne(SEL_ORDEM + " WHERE o.id=? AND o.deletedat IS NULL", [req.params.id]);
+    if (!os) return res.status(404).json({ error: "OS nao encontrada" });
+    const result = await sendWhatsAppConfirmacao(os);
+    if (result.ok) {
+      res.json({ ok: true, phone: result.phone });
+    } else {
+      res.status(400).json({ ok: false, error: result.error });
+    }
   } catch(e) {
     res.status(500).json({ error: e.message });
   }
