@@ -103,10 +103,8 @@ router.get("/:id/pdf", auth(), (req, res) => {
     display: flex;
     flex-direction: column;
     align-items: center;
-    border-bottom: 2px solid var(--primary);
-    padding-bottom: 20px;
-    margin-bottom: 20px;
-    gap: 16px;
+    margin-bottom: 0;
+    gap: 14px;
   }
   .brand-logo {
     height: 120px;
@@ -114,27 +112,51 @@ router.get("/:id/pdf", auth(), (req, res) => {
     object-fit: contain;
     display: block;
   }
-  .header-bottom {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    width: 100%;
-  }
+  /* titulo centralizado */
   .doc-title {
     font-size: 20px;
     font-weight: 700;
     color: var(--primary);
     text-transform: uppercase;
     letter-spacing: 1.5px;
+    text-align: center;
   }
-  .os-badge { text-align: right; }
-  .os-numero {
-    font-size: 26px;
+  /* linha divisoria */
+  .header-divider {
+    width: 100%;
+    border: none;
+    border-top: 2px solid var(--primary);
+    margin: 4px 0 0 0;
+  }
+  /* infos da OS abaixo da linha */
+  .os-meta {
+    display: flex;
+    gap: 28px;
+    align-items: center;
+    width: 100%;
+    padding: 10px 0 16px 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 20px;
+  }
+  .os-meta-item { display: flex; flex-direction: column; gap: 2px; }
+  .os-meta-label {
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--muted);
+  }
+  .os-meta-value {
+    font-size: 15px;
     font-weight: 700;
     color: var(--accent);
-    letter-spacing: -1px;
+    font-variant-numeric: tabular-nums;
   }
-  .os-data { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .os-meta-value.normal {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+  }
 
   /* ── Status pill ── */
   .status-bar {
@@ -236,7 +258,8 @@ router.get("/:id/pdf", auth(), (req, res) => {
   .fin-label { color: inherit; }
   .amount { font-weight: 600; font-variant-numeric: tabular-nums; }
 
-  /* ── Historico ── */
+  /* ── Historico (visivel na tela, oculto na impressao) ── */
+  .historico-section { margin-bottom: 18px; }
   table { width: 100%; border-collapse: collapse; font-size: 12px; }
   th {
     text-align: left;
@@ -284,6 +307,7 @@ router.get("/:id/pdf", auth(), (req, res) => {
   @media print {
     body { padding: 0; max-width: none; }
     .no-print { display: none !important; }
+    .historico-section { display: none !important; }
     @page { margin: 18mm 14mm; }
   }
 
@@ -317,20 +341,28 @@ router.get("/:id/pdf", auth(), (req, res) => {
   Imprimir / Salvar PDF
 </button>
 
-<!-- Header -->
+<!-- Header: logo + titulo centralizados, linha preta, infos abaixo -->
 <div class="header">
-  <!-- Logo centralizada em destaque -->
   <img src="/logo preta.png" alt="Arte &amp; Molduras" class="brand-logo" />
+  <div class="doc-title">Ordem de Servi&ccedil;o</div>
+  <hr class="header-divider" />
+</div>
 
-  <!-- Linha inferior: titulo + numero da OS -->
-  <div class="header-bottom">
-    <span class="doc-title">Ordem de Servi&ccedil;o</span>
-    <div class="os-badge">
-      <div class="os-numero">${os.numero}</div>
-      <div class="os-data">Abertura: ${fmtDate(os.createdat)}</div>
-      ${os.prazoentrega ? `<div class="os-data">Prazo: <strong>${fmtDate(os.prazoentrega)}</strong></div>` : ""}
-    </div>
+<!-- Infos da OS abaixo da linha preta -->
+<div class="os-meta">
+  <div class="os-meta-item">
+    <span class="os-meta-label">Número</span>
+    <span class="os-meta-value">${os.numero}</span>
   </div>
+  <div class="os-meta-item">
+    <span class="os-meta-label">Abertura</span>
+    <span class="os-meta-value normal">${fmtDate(os.createdat)}</span>
+  </div>
+  ${os.prazoentrega ? `
+  <div class="os-meta-item">
+    <span class="os-meta-label">Prazo</span>
+    <span class="os-meta-value normal">${fmtDate(os.prazoentrega)}</span>
+  </div>` : ""}
 </div>
 
 <!-- Status -->
@@ -395,9 +427,9 @@ ${os.observacoes ? `
   </div>
 </div>
 
-<!-- Historico de status -->
+<!-- Historico de status (visivel na tela, oculto na impressao) -->
 ${logs.length > 0 ? `
-<div class="section">
+<div class="historico-section">
   <div class="section-title">Hist&oacute;rico de Status</div>
   <table>
     <thead>
