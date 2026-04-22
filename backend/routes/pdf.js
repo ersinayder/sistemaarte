@@ -107,12 +107,13 @@ router.get("/:id/pdf", auth(), (req, res) => {
     padding-bottom: 16px;
     margin-bottom: 20px;
   }
-  .brand { display: flex; flex-direction: column; gap: 2px; }
-  .brand-name {
-    font-size: 22px;
-    font-weight: 700;
-    color: var(--primary);
-    letter-spacing: -0.5px;
+  .brand { display: flex; flex-direction: column; gap: 6px; }
+  .brand-logo {
+    height: 52px;
+    width: auto;
+    object-fit: contain;
+    object-position: left center;
+    display: block;
   }
   .brand-sub { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; }
   .os-badge {
@@ -317,7 +318,7 @@ router.get("/:id/pdf", auth(), (req, res) => {
 <!-- Header -->
 <div class="header">
   <div class="brand">
-    <span class="brand-name">Arte &amp; Molduras</span>
+    <img src="/logo preta.png" alt="Arte &amp; Molduras" class="brand-logo" />
     <span class="brand-sub">Ordem de Servi&ccedil;o</span>
   </div>
   <div class="os-badge">
