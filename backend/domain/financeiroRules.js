@@ -1,4 +1,3 @@
-
 const { getOne } = require("../database");
 const { toNumber } = require("../utils/numbers");
 
@@ -20,7 +19,7 @@ function getResumoFinanceiroOS(ordemId) {
     [ordemId]
   );
 
-  const recebidoTotal = toNumber(recebido?.total, toNumber(ordem.valorentrada, 0));
+  const recebidoTotal = toNumber(recebido?.total, 0); // fallback sempre 0
   const total         = toNumber(ordem.valortotal, 0);
 
   return { ordem, recebido: recebidoTotal, saldo: Math.max(0, total - recebidoTotal) };
