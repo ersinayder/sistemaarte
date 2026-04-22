@@ -93,7 +93,7 @@ router.get("/:id/pdf", auth(), (req, res) => {
     font-size: 13px;
     color: var(--ink);
     background: #fff;
-    padding: 32px 40px;
+    padding: 20px 40px 24px;
     max-width: 860px;
     margin: 0 auto;
   }
@@ -104,15 +104,15 @@ router.get("/:id/pdf", auth(), (req, res) => {
     flex-direction: column;
     align-items: center;
     margin-bottom: 0;
-    gap: 14px;
+    gap: 0;          /* controlado via margin-bottom individual */
   }
   .brand-logo {
     height: 120px;
     width: auto;
     object-fit: contain;
     display: block;
+    margin-bottom: 28px; /* espaço generoso logo → titulo */
   }
-  /* titulo centralizado */
   .doc-title {
     font-size: 20px;
     font-weight: 700;
@@ -120,23 +120,24 @@ router.get("/:id/pdf", auth(), (req, res) => {
     text-transform: uppercase;
     letter-spacing: 1.5px;
     text-align: center;
+    margin-bottom: 10px;
   }
-  /* linha divisoria */
   .header-divider {
     width: 100%;
     border: none;
     border-top: 2px solid var(--primary);
-    margin: 4px 0 0 0;
+    margin: 0;
   }
+
   /* infos da OS abaixo da linha */
   .os-meta {
     display: flex;
     gap: 28px;
     align-items: center;
     width: 100%;
-    padding: 10px 0 16px 0;
+    padding: 8px 0 12px 0;
     border-bottom: 1px solid var(--border);
-    margin-bottom: 20px;
+    margin-bottom: 14px;
   }
   .os-meta-item { display: flex; flex-direction: column; gap: 2px; }
   .os-meta-label {
@@ -163,7 +164,7 @@ router.get("/:id/pdf", auth(), (req, res) => {
     display: flex;
     align-items: center;
     gap: 10px;
-    margin-bottom: 20px;
+    margin-bottom: 14px;
   }
   .status-pill {
     display: inline-block;
@@ -185,21 +186,21 @@ router.get("/:id/pdf", auth(), (req, res) => {
   }
 
   /* ── Seções ── */
-  .section { margin-bottom: 18px; }
+  .section { margin-bottom: 12px; }
   .section-title {
     font-size: 10px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 1px;
     color: var(--muted);
-    margin-bottom: 8px;
+    margin-bottom: 6px;
     padding-bottom: 4px;
     border-bottom: 1px solid var(--border);
   }
 
   /* ── Grid de campos ── */
-  .grid   { display: grid; grid-template-columns: 1fr 1fr;       gap: 10px 24px; }
-  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr;  gap: 10px 24px; }
+  .grid   { display: grid; grid-template-columns: 1fr 1fr;       gap: 8px 24px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr;  gap: 8px 24px; }
   .field label {
     display: block;
     font-size: 10px;
@@ -221,12 +222,12 @@ router.get("/:id/pdf", auth(), (req, res) => {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 6px;
-    padding: 10px 12px;
+    padding: 8px 12px;
     font-size: 13px;
     line-height: 1.6;
     white-space: pre-wrap;
     color: var(--ink);
-    min-height: 40px;
+    min-height: 36px;
   }
 
   /* ── Financeiro ── */
@@ -240,7 +241,7 @@ router.get("/:id/pdf", auth(), (req, res) => {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 9px 16px;
+    padding: 8px 16px;
     border-bottom: 1px solid var(--border);
     font-size: 13px;
   }
@@ -259,7 +260,7 @@ router.get("/:id/pdf", auth(), (req, res) => {
   .amount { font-weight: 600; font-variant-numeric: tabular-nums; }
 
   /* ── Historico (visivel na tela, oculto na impressao) ── */
-  .historico-section { margin-bottom: 18px; }
+  .historico-section { margin-bottom: 12px; }
   table { width: 100%; border-collapse: collapse; font-size: 12px; }
   th {
     text-align: left;
@@ -271,7 +272,7 @@ router.get("/:id/pdf", auth(), (req, res) => {
     padding: 6px 8px;
     border-bottom: 1px solid var(--border);
   }
-  td { padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  td { padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
   tr:last-child td { border-bottom: none; }
 
   .badge {
@@ -287,17 +288,17 @@ router.get("/:id/pdf", auth(), (req, res) => {
   .assinatura {
     display: flex;
     gap: 40px;
-    margin-top: 32px;
-    padding-top: 16px;
+    margin-top: 20px;
+    padding-top: 14px;
     border-top: 1px solid var(--border);
   }
   .ass-campo { flex: 1; text-align: center; }
-  .ass-linha { border-bottom: 1px solid var(--ink); height: 36px; margin-bottom: 6px; }
+  .ass-linha { border-bottom: 1px solid var(--ink); height: 32px; margin-bottom: 6px; }
   .ass-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; }
 
   /* ── Footer ── */
   .footer {
-    margin-top: 24px;
+    margin-top: 16px;
     text-align: center;
     font-size: 10px;
     color: var(--muted);
@@ -308,7 +309,7 @@ router.get("/:id/pdf", auth(), (req, res) => {
     body { padding: 0; max-width: none; }
     .no-print { display: none !important; }
     .historico-section { display: none !important; }
-    @page { margin: 18mm 14mm; }
+    @page { margin: 14mm 14mm; }
   }
 
   /* ── Botao imprimir ── */
@@ -324,7 +325,7 @@ router.get("/:id/pdf", auth(), (req, res) => {
     font-size: 13px;
     font-weight: 600;
     cursor: pointer;
-    margin-bottom: 24px;
+    margin-bottom: 16px;
   }
   .btn-print:hover { background: var(--accent); }
 </style>
@@ -341,7 +342,7 @@ router.get("/:id/pdf", auth(), (req, res) => {
   Imprimir / Salvar PDF
 </button>
 
-<!-- Header: logo + titulo centralizados, linha preta, infos abaixo -->
+<!-- Header -->
 <div class="header">
   <img src="/logo preta.png" alt="Arte &amp; Molduras" class="brand-logo" />
   <div class="doc-title">Ordem de Servi&ccedil;o</div>
@@ -351,7 +352,7 @@ router.get("/:id/pdf", auth(), (req, res) => {
 <!-- Infos da OS abaixo da linha preta -->
 <div class="os-meta">
   <div class="os-meta-item">
-    <span class="os-meta-label">Número</span>
+    <span class="os-meta-label">N&uacute;mero</span>
     <span class="os-meta-value">${os.numero}</span>
   </div>
   <div class="os-meta-item">
@@ -452,7 +453,7 @@ ${logs.length > 0 ? `
   </div>
   <div class="ass-campo">
     <div class="ass-linha"></div>
-    <div class="ass-label">Responsável pela Entrega</div>
+    <div class="ass-label">Respons&aacute;vel pela Entrega</div>
   </div>
 </div>
 
