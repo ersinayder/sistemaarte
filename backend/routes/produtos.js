@@ -2,6 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const { getAll, getOne, run, runInsert } = require('../database');
 const { auth } = require('../middlewares/auth');
+const { toNumber } = require('../utils/numbers');
 
 // GET /api/produtos?q=termo
 router.get('/', auth(), (req, res, next) => {
@@ -40,12 +41,12 @@ router.post('/', auth(['admin','caixa']), (req, res, next) => {
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
         nome.trim(),
-        categoria  || 'Outros',
-        unidade    || 'un',
-        Number(preco)      || 0,
-        Number(estoque)    || 0,
-        Number(estoquemin) || 0,
-        descricao?.trim()  || ''
+        categoria         || 'Outros',
+        unidade           || 'un',
+        toNumber(preco),
+        toNumber(estoque),
+        toNumber(estoquemin),
+        descricao?.trim() || ''
       ]
     );
     const novo = getOne('SELECT * FROM produtos WHERE id=?', [id]);
@@ -63,12 +64,12 @@ router.put('/:id', auth(['admin','caixa']), (req, res, next) => {
        updatedat=datetime('now','localtime') WHERE id=?`,
       [
         nome.trim(),
-        categoria  || 'Outros',
-        unidade    || 'un',
-        Number(preco)      || 0,
-        Number(estoque)    || 0,
-        Number(estoquemin) || 0,
-        descricao?.trim()  || '',
+        categoria         || 'Outros',
+        unidade           || 'un',
+        toNumber(preco),
+        toNumber(estoque),
+        toNumber(estoquemin),
+        descricao?.trim() || '',
         req.params.id
       ]
     );
