@@ -65,6 +65,8 @@ CREATE TABLE IF NOT EXISTS lancamentos (
   ordemid   INTEGER,
   criadopor INTEGER,
   origem    TEXT DEFAULT NULL,
+  deletedat TEXT DEFAULT NULL,
+  deletedpor INTEGER DEFAULT NULL,
   createdat TEXT DEFAULT (datetime('now','localtime'))
 );
 CREATE TABLE IF NOT EXISTS statuslog (
@@ -124,6 +126,9 @@ function initDB() {
     "ALTER TABLE clientes ADD COLUMN notes TEXT",
     "ALTER TABLE lancamentos ADD COLUMN origem TEXT DEFAULT NULL",
     "ALTER TABLE lancamentos ADD COLUMN pago INTEGER DEFAULT 1",
+    // C4: soft-delete auditavel em lancamentos
+    "ALTER TABLE lancamentos ADD COLUMN deletedat TEXT DEFAULT NULL",
+    "ALTER TABLE lancamentos ADD COLUMN deletedpor INTEGER DEFAULT NULL",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {}

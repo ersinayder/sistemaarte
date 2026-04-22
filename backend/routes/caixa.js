@@ -9,7 +9,7 @@ const { descricaoRestanteOS } = require("../domain/ordensRules");
 router.get("/", auth(), (req, res, next) => {
   try {
     const { data, mes } = req.query;
-    let sql = "SELECT l.*, o.numero AS ordemnumero FROM lancamentos l LEFT JOIN ordens o ON o.id=l.ordemid WHERE 1=1";
+    let sql = "SELECT l.*, o.numero AS ordemnumero FROM lancamentos l LEFT JOIN ordens o ON o.id=l.ordemid WHERE l.deletedat IS NULL";
     const p = [];
     if (data) { sql += " AND l.data=?"; p.push(data); }
     if (mes)  { sql += " AND strftime('%Y-%m',l.data)=?"; p.push(mes); }
@@ -53,7 +53,7 @@ router.post("/", auth(["admin","caixa"]), (req, res, next) => {
 // PUT /api/caixa/:id
 router.put("/:id", auth(["admin","caixa"]), (req, res, next) => {
   try {
-    const old = getOne("SELECT * FROM lancamentos WHERE id=?", [req.params.id]);
+    const old = getOne("SELECT * FROM lancamentos WHERE id=? AND deletedat IS NULL", [req.params.id]);
     if (!old) return res.status(404).json({ error: "Lancamento nao encontrado." });
     if (old.origem === "entradaos")
       return res.status(400).json({ error: "A entrada vinculada a OS deve ser alterada pela propria OS." });
@@ -68,7 +68,7 @@ router.put("/:id", auth(["admin","caixa"]), (req, res, next) => {
       const ordem = getOne("SELECT id,numero,clientenome,servico,valortotal FROM ordens WHERE id=?", [novoOrdemId]);
       if (!ordem) return res.status(404).json({ error: "OS vinculada nao encontrada." });
       const recebido = getOne(
-        "SELECT COALESCE(SUM(valor),0) AS total FROM lancamentos WHERE ordemid=? AND pago=1 AND valor>0 AND id!=?",
+        "SELECT COALESCE(SUM(valor),0) AS total FROM lancamentos WHERE ordemid=? AND pago=1 AND valor>0 AND id!=? AND deletedat IS NULL",
         [novoOrdemId, req.params.id]
       );
       const saldo = Math.max(0, toNumber(ordem.valortotal) - toNumber(recebido?.total));
@@ -86,14 +86,17 @@ router.put("/:id", auth(["admin","caixa"]), (req, res, next) => {
   } catch(e) { next(e); }
 });
 
-// DELETE /api/caixa/:id
+// DELETE /api/caixa/:id  — soft delete com auditoria
 router.delete("/:id", auth(["admin"]), (req, res, next) => {
   try {
-    const old = getOne("SELECT * FROM lancamentos WHERE id=?", [req.params.id]);
+    const old = getOne("SELECT * FROM lancamentos WHERE id=? AND deletedat IS NULL", [req.params.id]);
     if (!old) return res.status(404).json({ error: "Lancamento nao encontrado." });
     if (old.origem === "entradaos")
       return res.status(400).json({ error: "A entrada automatica da OS nao pode ser excluida pelo caixa." });
-    run("DELETE FROM lancamentos WHERE id=?", [req.params.id]);
+    run(
+      "UPDATE lancamentos SET deletedat=datetime('now','localtime'), deletedpor=? WHERE id=?",
+      [req.user.id, req.params.id]
+    );
     res.json({ ok: true });
   } catch(e) { next(e); }
 });
