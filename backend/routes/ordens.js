@@ -3,7 +3,8 @@ const { getAll, getOne, run, runInsert, transaction } = require("../database");
 const { auth } = require("../middlewares/auth");
 const { toNumber } = require("../utils/numbers");
 const { hoje } = require("../utils/dates");
-const { validarEntradaOS, validarStatus, descricaoEntradaOS } = require("../domain/ordensRules");
+const { validarEntradaOS, validarStatus, validarPrazo, descricaoEntradaOS } = require("../domain/ordensRules");
+const { descricaoRestanteOS } = require("../domain/ordensRules");
 const { sendWhatsApp, sendWhatsAppConfirmacao } = require("../utils/whatsapp");
 
 const SEL_ORDEM = `
@@ -17,8 +18,8 @@ const SEL_ORDEM = `
     o.observacoes AS obs,
     o.createdat AS criadoem,
     CAST(o.valortotal - o.valorentrada AS REAL) AS valorrestante,
-    COALESCE((SELECT SUM(l.valor) FROM lancamentos l WHERE l.ordemid=o.id AND l.pago=1 AND l.valor>0),0) AS valorrecebido,
-    CAST(o.valortotal - COALESCE((SELECT SUM(l.valor) FROM lancamentos l WHERE l.ordemid=o.id AND l.pago=1 AND l.valor>0),0) AS REAL) AS saldoaberto
+    COALESCE((SELECT SUM(l.valor) FROM lancamentos l WHERE l.ordemid=o.id AND l.pago=1 AND l.valor>0 AND l.deletedat IS NULL),0) AS valorrecebido,
+    CAST(o.valortotal - COALESCE((SELECT SUM(l.valor) FROM lancamentos l WHERE l.ordemid=o.id AND l.pago=1 AND l.valor>0 AND l.deletedat IS NULL),0) AS REAL) AS saldoaberto
   FROM ordens o
   LEFT JOIN users u ON u.id=o.criadopor
 `;
@@ -130,6 +131,9 @@ router.post("/", auth(["admin","caixa"]), (req, res) => {
   const erroEntrada = validarEntradaOS(total, entrada);
   if (erroEntrada) return res.status(400).json({ error: erroEntrada });
 
+  const erroPrazo = validarPrazo(prazoentrega);
+  if (erroPrazo) return res.status(400).json({ error: erroPrazo });
+
   let cidResolvido = clienteid || null;
   if (!cidResolvido && clientenome) {
     const cli = getOne("SELECT id FROM clientes WHERE name=? LIMIT 1", [clientenome]);
@@ -207,6 +211,11 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res) => {
     const erroEntrada = validarEntradaOS(total, entrada);
     if (erroEntrada) return res.status(400).json({ error: erroEntrada });
 
+    // Valida prazo apenas se estiver sendo alterado
+    const novoPrazo = prazoentrega !== undefined ? prazoentrega : old.prazoentrega;
+    const erroPrazo = validarPrazo(prazoentrega !== undefined ? prazoentrega : null);
+    if (erroPrazo) return res.status(400).json({ error: erroPrazo });
+
     const ns = status || old.status;
     const novoCliente = clientenome || old.clientenome;
     const novoServico = servico || old.servico;
@@ -231,7 +240,7 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res) => {
         valortotal=?,valorentrada=?,prazoentrega=?,prioridade=?,pagamento=?,
         observacoes=?,status=?,updatedat=datetime('now','localtime') WHERE id=?`,
         [novoCid, novoCliente, telFinal, cpfFinal, novoServico, descricao !== undefined ? descricao : old.descricao,
-         total, entrada, prazoentrega||old.prazoentrega, prioridade||old.prioridade, novoPagamento,
+         total, entrada, novoPrazo, prioridade||old.prioridade, novoPagamento,
          observacoes !== undefined ? observacoes : old.observacoes, ns, req.params.id]
       );
 

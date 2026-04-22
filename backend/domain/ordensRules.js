@@ -1,4 +1,4 @@
-const STATUSES_VALIDOS = ['Aguardando', 'Em Produção', 'Pronto', 'Entregue', 'Cancelado'];
+const STATUSES_VALIDOS = ['Aguardando', 'Em Produção', 'Em Producao', 'Pronto', 'Entregue', 'Cancelado'];
 
 /**
  * Valida regras financeiras da OS.
@@ -31,6 +31,17 @@ function validarStatus(status) {
 }
 
 /**
+ * Valida formato do prazo de entrega.
+ * @returns {string|null} mensagem de erro ou null se OK
+ */
+function validarPrazo(prazo) {
+  if (!prazo) return null; // campo opcional
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(prazo))
+    return 'Prazo deve estar no formato YYYY-MM-DD.';
+  return null;
+}
+
+/**
  * Gera a descricao do lancamento automatico ao criar/editar OS.
  * - Se entrada >= total → "Total OS-XXXX – Cliente / Servico"
  * - Se entrada <  total → "Entrada OS-XXXX – Cliente / Servico"
@@ -51,4 +62,4 @@ function descricaoRestanteOS(numero, cliente, servico) {
   return `Restante ${numero} – ${cliente}${servico ? ' / ' + servico : ''}`;
 }
 
-module.exports = { validarEntradaOS, validarStatus, descricaoEntradaOS, descricaoRestanteOS, STATUSES_VALIDOS };
+module.exports = { validarEntradaOS, validarStatus, validarPrazo, descricaoEntradaOS, descricaoRestanteOS, STATUSES_VALIDOS };
