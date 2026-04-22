@@ -25,6 +25,7 @@ app.use("/api/auth",       require("./routes/auth"));
 app.use("/api/users",      require("./routes/users"));
 app.use("/api/clientes",   require("./routes/clientes"));
 app.use("/api/ordens",     require("./routes/ordens"));
+app.use("/api/ordens",     require("./routes/pdf"));       // GET /api/ordens/:id/pdf
 app.use("/api/caixa",      require("./routes/caixa"));
 app.use("/api/relatorios", require("./routes/relatorios"));
 app.use("/api/consulta",   require("./routes/consulta"));
