@@ -1,10 +1,9 @@
 const jwt = require("jsonwebtoken");
 
-const SECRET = process.env.JWT_SECRET;
-if (!SECRET && process.env.NODE_ENV === "production") {
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
   throw new Error("FATAL: JWT_SECRET não definido. Configure a variável de ambiente.");
 }
-const JWT_SECRET = SECRET || "oficina-dev-secret-troque-em-producao";
 
 /**
  * Lê o token do cookie HttpOnly (preferencial) ou do header Authorization (fallback).
