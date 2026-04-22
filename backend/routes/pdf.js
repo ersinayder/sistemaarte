@@ -55,8 +55,8 @@ router.get("/:id/pdf", auth(), (req, res) => {
       [req.params.id]
     );
 
-    const saldo = Number(os.saldoaberto) || 0;
-    const total = Number(os.valortotal)  || 0;
+    const saldo    = Number(os.saldoaberto)   || 0;
+    const total    = Number(os.valortotal)    || 0;
     const recebido = Number(os.valorrecebido) || 0;
 
     const logsHtml = logs.map(l => `
@@ -101,24 +101,33 @@ router.get("/:id/pdf", auth(), (req, res) => {
   /* ── Header ── */
   .header {
     display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
+    flex-direction: column;
+    align-items: center;
     border-bottom: 2px solid var(--primary);
-    padding-bottom: 16px;
+    padding-bottom: 20px;
     margin-bottom: 20px;
+    gap: 16px;
   }
-  .brand { display: flex; flex-direction: column; gap: 6px; }
   .brand-logo {
-    height: 52px;
+    height: 120px;
     width: auto;
     object-fit: contain;
-    object-position: left center;
     display: block;
   }
-  .brand-sub { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; }
-  .os-badge {
-    text-align: right;
+  .header-bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    width: 100%;
   }
+  .doc-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--primary);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+  }
+  .os-badge { text-align: right; }
   .os-numero {
     font-size: 26px;
     font-weight: 700;
@@ -167,8 +176,8 @@ router.get("/:id/pdf", auth(), (req, res) => {
   }
 
   /* ── Grid de campos ── */
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 24px; }
-  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px 24px; }
+  .grid   { display: grid; grid-template-columns: 1fr 1fr;       gap: 10px 24px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr;  gap: 10px 24px; }
   .field label {
     display: block;
     font-size: 10px;
@@ -259,15 +268,8 @@ router.get("/:id/pdf", auth(), (req, res) => {
     padding-top: 16px;
     border-top: 1px solid var(--border);
   }
-  .ass-campo {
-    flex: 1;
-    text-align: center;
-  }
-  .ass-linha {
-    border-bottom: 1px solid var(--ink);
-    height: 36px;
-    margin-bottom: 6px;
-  }
+  .ass-campo { flex: 1; text-align: center; }
+  .ass-linha { border-bottom: 1px solid var(--ink); height: 36px; margin-bottom: 6px; }
   .ass-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; }
 
   /* ── Footer ── */
@@ -317,14 +319,17 @@ router.get("/:id/pdf", auth(), (req, res) => {
 
 <!-- Header -->
 <div class="header">
-  <div class="brand">
-    <img src="/logo preta.png" alt="Arte &amp; Molduras" class="brand-logo" />
-    <span class="brand-sub">Ordem de Servi&ccedil;o</span>
-  </div>
-  <div class="os-badge">
-    <div class="os-numero">${os.numero}</div>
-    <div class="os-data">Abertura: ${fmtDate(os.createdat)}</div>
-    ${os.prazoentrega ? `<div class="os-data">Prazo: <strong>${fmtDate(os.prazoentrega)}</strong></div>` : ""}
+  <!-- Logo centralizada em destaque -->
+  <img src="/logo preta.png" alt="Arte &amp; Molduras" class="brand-logo" />
+
+  <!-- Linha inferior: titulo + numero da OS -->
+  <div class="header-bottom">
+    <span class="doc-title">Ordem de Servi&ccedil;o</span>
+    <div class="os-badge">
+      <div class="os-numero">${os.numero}</div>
+      <div class="os-data">Abertura: ${fmtDate(os.createdat)}</div>
+      ${os.prazoentrega ? `<div class="os-data">Prazo: <strong>${fmtDate(os.prazoentrega)}</strong></div>` : ""}
+    </div>
   </div>
 </div>
 
