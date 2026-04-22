@@ -7,7 +7,6 @@ import { useAuth } from '../context/AuthContext';
 
 const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
-// ── Máscaras ──────────────────────────────────────────────
 const maskCPF  = v => v.replace(/\D/g,'')
   .replace(/(\d{3})(\d)/,'$1.$2')
   .replace(/(\d{3})(\d)/,'$1.$2')
@@ -21,7 +20,6 @@ const maskCNPJ = v => v.replace(/\D/g,'')
   .replace(/(\d{4})(\d{1,2})$/,'$1-$2')
   .slice(0,18);
 
-// ── Validações ────────────────────────────────────────────
 const validaCPF = cpf => {
   const n = cpf.replace(/\D/g,'');
   if (n.length !== 11 || /^(\d)\1{10}$/.test(n)) return false;
@@ -44,6 +42,14 @@ const validaCNPJ = cnpj => {
     return sum % 11 < 2 ? 0 : 11 - (sum % 11);
   };
   return calc(12) === parseInt(n[12]) && calc(13) === parseInt(n[13]);
+};
+
+const STATUS_COLOR = {
+  'Recebido':    'var(--color-primary)',
+  'Em Produção': 'var(--color-warning)',
+  'Pronto':      'var(--color-blue)',
+  'Entregue':    'var(--color-success)',
+  'Cancelado':   'var(--color-error)',
 };
 
 export default function Clientes() {
@@ -86,7 +92,6 @@ export default function Clientes() {
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  // ── Busca CNPJ via BrasilAPI ──────────────────────────
   const buscarCNPJ = async (raw) => {
     const n = raw.replace(/\D/g,'');
     if (n.length !== 14) return;
@@ -115,7 +120,6 @@ export default function Clientes() {
     }
   };
 
-  // ── Busca CEP ─────────────────────────────────────────
   const buscarCep = async (cep) => {
     const c = cep.replace(/\D/g,'');
     if (c.length !== 8) return;
@@ -135,7 +139,6 @@ export default function Clientes() {
     finally { setCepLoading(false); }
   };
 
-  // ── Handlers CPF ─────────────────────────────────────
   const handleCPF = (v) => {
     const masked = maskCPF(v);
     set('cpf', masked);
@@ -147,10 +150,8 @@ export default function Clientes() {
     }
   };
 
-  // ── openEdit ─────────────────────────────────────────
   const openEdit = (c) => {
     setEditId(c.id);
-    // detecta PF ou PJ pelo campo cnpj salvo
     const tipo = c.cnpj ? 'PJ' : 'PF';
     setForm({
       tipo,
@@ -170,10 +171,9 @@ export default function Clientes() {
     setShowForm(true);
   };
 
-  const openNew  = () => { setEditId(null); setForm(blank); setCpfError(''); setCnpjError(''); setShowForm(true); };
+  const openNew   = () => { setEditId(null); setForm(blank); setCpfError(''); setCnpjError(''); setShowForm(true); };
   const closeForm = () => { setShowForm(false); setEditId(null); setForm(blank); setCpfError(''); setCnpjError(''); };
 
-  // ── Save ─────────────────────────────────────────────
   const handleSave = async () => {
     if (!form.nome.trim()) { toast.error('Nome é obrigatório'); return; }
     if (form.tipo === 'PF' && form.cpf && !validaCPF(form.cpf)) { toast.error('CPF inválido'); return; }
@@ -220,14 +220,15 @@ export default function Clientes() {
     } finally { setDeleting(null); }
   };
 
+  // ── loadDetail: consome o endpoint enriquecido + ordens separado
   const loadDetail = useCallback(async (id) => {
     setDetailLoading(true);
     try {
       const [cliRes, ordRes] = await Promise.all([
         api.get(`/clientes/${id}`),
-        api.get(`/clientes/${id}/ordens`)
+        api.get(`/clientes/${id}/ordens`),
       ]);
-      setDetailData({ cliente: cliRes.data, ordens: ordRes.data });
+      setDetailData({ cliente: cliRes.data, sumario: cliRes.data._sumario, ordens: ordRes.data });
     } catch { toast.error('Erro ao carregar detalhes'); }
     finally { setDetailLoading(false); }
   }, []);
@@ -271,7 +272,6 @@ export default function Clientes() {
     ? <span style={{color:'var(--color-text-faint)',marginLeft:4}}>⇅</span>
     : <span style={{marginLeft:4}}>{sortDir==='asc'?'↑':'↓'}</span>;
 
-  // ── Estilos do toggle PF/PJ ──────────────────────────
   const tabStyle = (active) => ({
     flex: 1,
     padding: 'var(--space-2) var(--space-3)',
@@ -285,10 +285,142 @@ export default function Clientes() {
     transition: 'background var(--ease), color var(--ease)',
   });
 
+  // ── Painel lateral enriquecido ──────────────────────────
+  const DetailPanel = () => {
+    const s = detailData?.sumario;
+    const c = detailData?.cliente;
+    const ordens = detailData?.ordens || [];
+
+    const KpiBox = ({ label, value, color, sub }) => (
+      <div style={{ background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)', padding:'var(--space-3)', textAlign:'center' }}>
+        <div style={{ fontSize:'var(--text-sm)', fontWeight:800, color: color || 'var(--color-text)', fontVariantNumeric:'tabular-nums', lineHeight:1.1 }}>{value}</div>
+        {sub && <div style={{ fontSize:9, color:'var(--color-text-faint)', marginTop:2 }}>{sub}</div>}
+        <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginTop:'var(--space-1)' }}>{label}</div>
+      </div>
+    );
+
+    return (
+      <div style={{ overflowY:'auto', flex:1, padding:'var(--space-3) var(--space-4)' }}>
+
+        {/* Identidade */}
+        <div style={{ marginBottom:'var(--space-4)' }}>
+          <div style={{ fontWeight:800, fontSize:'var(--text-base)', marginBottom:'var(--space-1)' }}>{c.name}</div>
+          {c.email   && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>✉ {c.email}</div>}
+          {c.phone   && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>📞 {c.phone}</div>}
+          {c.cnpj    && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>CNPJ: {c.cnpj}</div>}
+          {c.cpf     && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>CPF: {c.cpf}</div>}
+          {c.ie      && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>IE: {c.ie}</div>}
+          {c.address && (
+            <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>
+              📍 {c.address}{c.cidade ? `, ${c.cidade}` : ''}{c.uf ? `/${c.uf}` : ''}{c.cep ? ` — ${c.cep}` : ''}
+            </div>
+          )}
+          {c.notes && (
+            <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginTop:'var(--space-2)', padding:'var(--space-2)', background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)' }}>💬 {c.notes}</div>
+          )}
+        </div>
+
+        {/* KPIs — grid 2x2 */}
+        {s && (
+          <>
+            <div style={{ fontWeight:700, fontSize:'var(--text-xs)', color:'var(--color-text-muted)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:'var(--space-2)' }}>Resumo financeiro</div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'var(--space-2)', marginBottom:'var(--space-4)' }}>
+              <KpiBox label="Total de OS" value={s.totalOrdens} color="var(--color-primary)" />
+              <KpiBox label="Total gasto" value={fmt(s.totalGasto)} color="var(--color-success)" />
+              <KpiBox label="Ticket médio" value={fmt(s.ticketMedio)} color="var(--color-text)" />
+              <KpiBox
+                label="Em aberto"
+                value={s.osEmAberto}
+                color={s.osEmAberto > 0 ? 'var(--color-warning)' : 'var(--color-text-muted)'}
+                sub={s.osVencidas > 0 ? `${s.osVencidas} vencida${s.osVencidas > 1 ? 's' : ''}` : null}
+              />
+            </div>
+
+            {/* Última OS */}
+            {s.ultimaOs && (
+              <div style={{ marginBottom:'var(--space-4)' }}>
+                <div style={{ fontWeight:700, fontSize:'var(--text-xs)', color:'var(--color-text-muted)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:'var(--space-2)' }}>Última OS</div>
+                <div
+                  style={{ background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)', padding:'var(--space-2) var(--space-3)', cursor:'pointer', border:'1px solid var(--color-border)' }}
+                  onClick={() => navigate(`/ordens/${s.ultimaOs.id}`)}
+                >
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                    <span style={{ fontWeight:700, fontSize:'var(--text-xs)', color:'var(--color-primary)' }}>{s.ultimaOs.numero}</span>
+                    <span style={{ fontSize:10, color:'var(--color-text-muted)' }}>{fmtD(s.ultimaOs.createdat)}</span>
+                  </div>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:3 }}>
+                    <span style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>{s.ultimaOs.servico}</span>
+                    <span style={{ fontSize:'var(--text-xs)', fontFamily:'monospace', fontWeight:700 }}>{fmt(s.ultimaOs.valortotal || s.ultimaOs.valor)}</span>
+                  </div>
+                  <div style={{ marginTop:4 }}>
+                    <span
+                      style={{ fontSize:9, fontWeight:700, padding:'1px 6px', borderRadius:'var(--radius-full)',
+                        background: `color-mix(in oklch, ${STATUS_COLOR[s.ultimaOs.status] || 'var(--color-primary)'} 15%, var(--color-surface))`,
+                        color: STATUS_COLOR[s.ultimaOs.status] || 'var(--color-primary)' }}
+                    >{s.ultimaOs.status}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Status breakdown */}
+            {Object.keys(s.statusBreakdown).length > 0 && (
+              <div style={{ marginBottom:'var(--space-4)' }}>
+                <div style={{ fontWeight:700, fontSize:'var(--text-xs)', color:'var(--color-text-muted)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:'var(--space-2)' }}>Por status</div>
+                <div style={{ display:'flex', flexDirection:'column', gap:'var(--space-1)' }}>
+                  {Object.entries(s.statusBreakdown).map(([st, qty]) => (
+                    <div key={st} style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                      <span style={{ fontSize:'var(--text-xs)', display:'flex', alignItems:'center', gap:'var(--space-1)' }}>
+                        <span style={{ width:6, height:6, borderRadius:'50%', background: STATUS_COLOR[st] || 'var(--color-text-faint)', display:'inline-block', flexShrink:0 }} />
+                        {st}
+                      </span>
+                      <span style={{ fontSize:'var(--text-xs)', fontWeight:700, color:'var(--color-text-muted)', fontVariantNumeric:'tabular-nums' }}>{qty}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Histórico de OS */}
+        {ordens.length > 0 && (
+          <div>
+            <div style={{ fontWeight:700, fontSize:'var(--text-xs)', color:'var(--color-text-muted)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:'var(--space-2)' }}>Histórico de OS</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:'var(--space-2)' }}>
+              {ordens.map(o => (
+                <div
+                  key={o.id}
+                  style={{ background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)', padding:'var(--space-2) var(--space-3)', cursor:'pointer', border:'1px solid var(--color-border)' }}
+                  onClick={() => navigate(`/ordens/${o.id}`)}
+                >
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                    <span style={{ fontWeight:700, fontSize:'var(--text-xs)', color:'var(--color-primary)' }}>{o.numero}</span>
+                    <span style={{ fontSize:10, color:'var(--color-text-muted)' }}>{fmtD(o.createdat || o.criadoem)}</span>
+                  </div>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:2 }}>
+                    <span style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>{o.servico}</span>
+                    <span style={{ fontSize:'var(--text-xs)', fontFamily:'monospace', fontWeight:600 }}>{fmt(o.valortotal||o.valor)}</span>
+                  </div>
+                  <div style={{ marginTop:4 }}>
+                    <span
+                      style={{ fontSize:9, fontWeight:700, padding:'1px 6px', borderRadius:'var(--radius-full)',
+                        background: `color-mix(in oklch, ${STATUS_COLOR[o.status] || 'var(--color-primary)'} 15%, var(--color-surface))`,
+                        color: STATUS_COLOR[o.status] || 'var(--color-primary)' }}
+                    >{o.status}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div style={{ height:'calc(100vh - 60px - var(--space-12))', display:'flex', flexDirection:'column', minHeight:0 }}>
 
-      {/* Header */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'var(--space-4)', flexShrink:0 }}>
         <div>
           <h1 style={{ fontSize:'var(--text-xl)', fontWeight:800, margin:0 }}>Clientes</h1>
@@ -302,7 +434,6 @@ export default function Clientes() {
         )}
       </div>
 
-      {/* Search */}
       <div style={{ marginBottom:'var(--space-3)', flexShrink:0 }}>
         <div style={{ position:'relative' }}>
           <svg style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:'var(--color-text-faint)' }} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
@@ -317,10 +448,8 @@ export default function Clientes() {
         </div>
       </div>
 
-      {/* Content */}
       <div style={{ flex:1, overflow:'hidden', display:'flex', gap:'var(--space-4)', minHeight:0 }}>
 
-        {/* Table */}
         <div className="card" style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column', minWidth:0 }}>
           {loading ? (
             <div style={{ display:'flex', alignItems:'center', justifyContent:'center', flex:1, color:'var(--color-text-muted)', gap:'var(--space-2)' }}>
@@ -395,7 +524,7 @@ export default function Clientes() {
         {/* Detail Panel */}
         {detailId && (
           <div className="card" style={{ width:340, overflow:'hidden', display:'flex', flexDirection:'column', flexShrink:0 }}>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'var(--space-3)', flexShrink:0, padding:'var(--space-3) var(--space-4) 0' }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0, padding:'var(--space-3) var(--space-4) var(--space-2)' }}>
               <span style={{ fontWeight:700, fontSize:'var(--text-sm)' }}>Detalhes do Cliente</span>
               <button className="btn btn-ghost btn-xs" onClick={() => setDetailId(null)}>✕</button>
             </div>
@@ -405,53 +534,13 @@ export default function Clientes() {
                 Carregando…
               </div>
             ) : detailData ? (
-              <div style={{ overflowY:'auto', flex:1, padding:'var(--space-3) var(--space-4)' }}>
-                <div style={{ marginBottom:'var(--space-4)' }}>
-                  <div style={{ fontWeight:800, fontSize:'var(--text-base)', marginBottom:'var(--space-1)' }}>{detailData.cliente.name}</div>
-                  {detailData.cliente.email   && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>✉ {detailData.cliente.email}</div>}
-                  {detailData.cliente.phone   && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>📞 {detailData.cliente.phone}</div>}
-                  {detailData.cliente.cnpj    && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>CNPJ: {detailData.cliente.cnpj}</div>}
-                  {detailData.cliente.cpf     && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>CPF: {detailData.cliente.cpf}</div>}
-                  {detailData.cliente.ie      && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>IE: {detailData.cliente.ie}</div>}
-                  {detailData.cliente.address && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>📍 {detailData.cliente.address}{detailData.cliente.cidade ? `, ${detailData.cliente.cidade}` : ''}{detailData.cliente.uf ? `/${detailData.cliente.uf}` : ''}{detailData.cliente.cep ? ` — ${detailData.cliente.cep}` : ''}</div>}
-                  {detailData.cliente.notes   && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginTop:'var(--space-2)', padding:'var(--space-2)', background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)' }}>💬 {detailData.cliente.notes}</div>}
-                </div>
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'var(--space-2)', marginBottom:'var(--space-4)' }}>
-                  <div style={{ background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)', padding:'var(--space-3)', textAlign:'center' }}>
-                    <div style={{ fontSize:'var(--text-lg)', fontWeight:800, color:'var(--color-primary)' }}>{detailData.ordens.length}</div>
-                    <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>Ordens</div>
-                  </div>
-                  <div style={{ background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)', padding:'var(--space-3)', textAlign:'center' }}>
-                    <div style={{ fontSize:'var(--text-sm)', fontWeight:800, color:'var(--color-success)' }}>{fmt(detailData.ordens.reduce((s,o) => s + Number(o.valortotal||o.valor||0), 0))}</div>
-                    <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>Total gasto</div>
-                  </div>
-                </div>
-                {detailData.ordens.length > 0 && (
-                  <div>
-                    <div style={{ fontWeight:700, fontSize:'var(--text-xs)', color:'var(--color-text-muted)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:'var(--space-2)' }}>Histórico de OS</div>
-                    <div style={{ display:'flex', flexDirection:'column', gap:'var(--space-2)' }}>
-                      {detailData.ordens.map(o => (
-                        <div key={o.id} style={{ background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)', padding:'var(--space-2) var(--space-3)', cursor:'pointer', border:'1px solid var(--color-border)' }} onClick={() => navigate(`/ordens/${o.id}`)}>
-                          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                            <span style={{ fontWeight:700, fontSize:'var(--text-xs)', color:'var(--color-primary)' }}>{o.numero}</span>
-                            <span style={{ fontSize:10, color:'var(--color-text-muted)' }}>{fmtD(o.createdat || o.criadoem)}</span>
-                          </div>
-                          <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginTop:2 }}>{o.servico} — {fmt(o.valortotal||o.valor)}</div>
-                          <div style={{ marginTop:4 }}>
-                            <span className={`badge badge-${o.status==='Entregue'?'success':o.status==='Cancelado'?'error':o.status==='Em Produção'?'warning':'primary'}`} style={{ fontSize:9 }}>{o.status}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
+              <DetailPanel />
             ) : null}
           </div>
         )}
       </div>
 
-      {/* ── Form Modal ── */}
+      {/* Form Modal */}
       {showForm && ReactDOM.createPortal(
         <div className="modal-overlay" onClick={closeForm}>
           <div className="modal" style={{ maxWidth:560 }} onClick={e => e.stopPropagation()}>
@@ -460,107 +549,63 @@ export default function Clientes() {
               <button className="btn btn-ghost btn-sm" onClick={closeForm}>✕</button>
             </div>
             <div className="modal-body">
-
-              {/* Toggle PF / PJ */}
               <div style={{ display:'flex', background:'var(--color-surface-offset)', borderRadius:'var(--radius-lg)', padding:3, gap:2 }}>
-                <button style={tabStyle(form.tipo==='PF')} onClick={() => { set('tipo','PF'); setCnpjError(''); }}>
-                  👤 Pessoa Física
-                </button>
-                <button style={tabStyle(form.tipo==='PJ')} onClick={() => { set('tipo','PJ'); setCpfError(''); }}>
-                  🏢 Pessoa Jurídica
-                </button>
+                <button style={tabStyle(form.tipo==='PF')} onClick={() => { set('tipo','PF'); setCnpjError(''); }}>👤 Pessoa Física</button>
+                <button style={tabStyle(form.tipo==='PJ')} onClick={() => { set('tipo','PJ'); setCpfError(''); }}>🏢 Pessoa Jurídica</button>
               </div>
-
               <div className="form-grid">
-
-                {/* CPF — só PF */}
                 {form.tipo === 'PF' && (
                   <div className="form-group">
                     <label className="form-label">CPF</label>
-                    <input
-                      className="form-input"
-                      style={cpfError ? {borderColor:'var(--color-error)'} : {}}
-                      value={form.cpf}
-                      onChange={e => handleCPF(e.target.value)}
-                      placeholder="000.000.000-00"
-                      inputMode="numeric"
-                    />
+                    <input className="form-input" style={cpfError ? {borderColor:'var(--color-error)'} : {}} value={form.cpf} onChange={e => handleCPF(e.target.value)} placeholder="000.000.000-00" inputMode="numeric" />
                     {cpfError && <span className="form-error">{cpfError}</span>}
                   </div>
                 )}
-
-                {/* CNPJ — só PJ */}
                 {form.tipo === 'PJ' && (
                   <div className="form-group">
                     <label className="form-label" style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                       <span>CNPJ</span>
                       {cnpjLoading && <span style={{fontSize:'var(--text-xs)',color:'var(--color-text-muted)',fontWeight:400}}>🔍 buscando…</span>}
                     </label>
-                    <input
-                      className="form-input"
-                      style={cnpjError ? {borderColor:'var(--color-error)'} : {}}
-                      value={form.cnpj}
-                      onChange={e => {
-                        const v = maskCNPJ(e.target.value);
-                        set('cnpj', v);
-                        setCnpjError('');
-                        if (v.replace(/\D/g,'').length === 14) buscarCNPJ(v);
-                      }}
-                      placeholder="00.000.000/0000-00"
-                      inputMode="numeric"
-                    />
+                    <input className="form-input" style={cnpjError ? {borderColor:'var(--color-error)'} : {}} value={form.cnpj}
+                      onChange={e => { const v = maskCNPJ(e.target.value); set('cnpj', v); setCnpjError(''); if (v.replace(/\D/g,'').length === 14) buscarCNPJ(v); }}
+                      placeholder="00.000.000/0000-00" inputMode="numeric" />
                     {cnpjError && <span className="form-error">{cnpjError}</span>}
                   </div>
                 )}
-
-                {/* IE — só PJ */}
                 {form.tipo === 'PJ' && (
                   <div className="form-group">
                     <label className="form-label">Inscrição Estadual</label>
                     <input className="form-input" value={form.ie} onChange={e => set('ie', e.target.value)} placeholder="IE" />
                   </div>
                 )}
-
-                {/* Nome — largura total */}
                 <div className="form-group" style={{ gridColumn:'1/-1' }}>
                   <label className="form-label">Nome / Razão Social <span style={{color:"var(--color-error)"}}>*</span></label>
                   <input className="form-input" value={form.nome} onChange={e => set('nome', e.target.value)} placeholder={form.tipo==='PJ' ? 'Razão social ou nome fantasia' : 'Nome completo'} />
                 </div>
-
                 <div className="form-group">
                   <label className="form-label">Telefone / WhatsApp</label>
                   <input className="form-input" value={form.contato} onChange={e => set('contato', e.target.value)} placeholder="(31) 99999-9999" />
                 </div>
-
                 <div className="form-group">
                   <label className="form-label">E-mail</label>
                   <input className="form-input" type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="email@exemplo.com" />
                 </div>
-
                 <div className="form-group">
                   <label className="form-label" style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                     <span>CEP</span>
                     {cepLoading && <span style={{fontSize:'var(--text-xs)',color:'var(--color-text-muted)',fontWeight:400}}>buscando…</span>}
                   </label>
-                  <input
-                    className="form-input"
-                    value={form.cep}
-                    onChange={e => { set('cep', e.target.value); buscarCep(e.target.value); }}
-                    placeholder="00000-000"
-                    inputMode="numeric"
-                  />
+                  <input className="form-input" value={form.cep} onChange={e => { set('cep', e.target.value); buscarCep(e.target.value); }} placeholder="00000-000" inputMode="numeric" />
                 </div>
-
                 <div className="form-group" style={{ gridColumn:'1/-1' }}>
                   <label className="form-label">Endereço</label>
                   <input className="form-input" value={form.endereco} onChange={e => set('endereco', e.target.value)} placeholder="Rua, número, bairro" />
                 </div>
-
                 <div className="form-group">
                   <label className="form-label">Cidade</label>
                   <input className="form-input" value={form.cidade} onChange={e => set('cidade', e.target.value)} placeholder="Cidade" />
                 </div>
-
                 <div className="form-group">
                   <label className="form-label">UF</label>
                   <select className="form-input" value={form.uf} onChange={e => set('uf', e.target.value)}>
@@ -568,7 +613,6 @@ export default function Clientes() {
                     {UFS.map(u => <option key={u} value={u}>{u}</option>)}
                   </select>
                 </div>
-
                 <div className="form-group" style={{ gridColumn:'1/-1' }}>
                   <label className="form-label">Observações</label>
                   <textarea className="form-input" rows={3} value={form.obs} onChange={e => set('obs', e.target.value)} placeholder="Anotações sobre o cliente…" />
@@ -586,7 +630,6 @@ export default function Clientes() {
         document.body
       )}
 
-      {/* ── Confirm Delete ── */}
       {confirmDel && ReactDOM.createPortal(
         <div className="modal-overlay" onClick={() => setConfirmDel(null)}>
           <div className="modal" style={{ maxWidth:420 }} onClick={e => e.stopPropagation()}>
@@ -602,12 +645,8 @@ export default function Clientes() {
             </div>
             <div className="modal-footer">
               <button className="btn btn-ghost" onClick={() => setConfirmDel(null)}>Cancelar</button>
-              <button
-                className="btn"
-                style={{ background:'var(--color-error)', color:'white' }}
-                onClick={() => handleDelete(confirmDel.id)}
-                disabled={deleting === confirmDel.id}
-              >
+              <button className="btn" style={{ background:'var(--color-error)', color:'white' }}
+                onClick={() => handleDelete(confirmDel.id)} disabled={deleting === confirmDel.id}>
                 {deleting === confirmDel.id ? 'Excluindo…' : 'Excluir'}
               </button>
             </div>

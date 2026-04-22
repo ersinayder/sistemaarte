@@ -10,7 +10,24 @@ const CATEG_OPT = {
   Saída:  ['Fornecedor','Despesa Fixa','Despesa Variável','Retirada','Outros'],
 };
 
-// ------- Componente de Paginação -------
+function getToday() {
+  return new Date().toISOString().split('T')[0];
+}
+
+function shiftDay(dateStr, delta) {
+  const d = new Date(dateStr + 'T12:00:00');
+  d.setDate(d.getDate() + delta);
+  return d.toISOString().split('T')[0];
+}
+
+function labelDay(dateStr) {
+  const today = getToday();
+  const yesterday = shiftDay(today, -1);
+  if (dateStr === today) return 'Hoje';
+  if (dateStr === yesterday) return 'Ontem';
+  return new Date(dateStr + 'T12:00:00').toLocaleDateString('pt-BR', { weekday:'short', day:'2-digit', month:'short' });
+}
+
 function Pagination({ current, total, onChange }) {
   if (total <= 1) return null;
   const pages = [];
@@ -25,9 +42,7 @@ function Pagination({ current, total, onChange }) {
     <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
       padding:'var(--space-3) var(--space-4)', borderTop:'1px solid var(--color-border)',
       flexShrink:0, gap:'var(--space-2)', flexWrap:'wrap', background:'var(--color-surface)' }}>
-      <span style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>
-        Página {current} de {total}
-      </span>
+      <span style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>Página {current} de {total}</span>
       <div style={{ display:'flex', gap:'var(--space-1)', alignItems:'center' }}>
         <button className="btn btn-ghost btn-xs" onClick={() => onChange(current - 1)} disabled={current === 1}>‹ Anterior</button>
         {pages.map((p, i) =>
@@ -41,13 +56,12 @@ function Pagination({ current, total, onChange }) {
     </div>
   );
 }
-// -------------------------------------------------------
 
 export default function Caixa() {
   const { user } = useAuth();
   const canEdit  = user?.role !== 'viewer';
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = getToday();
   const blankForm = { tipo:'Entrada', categoria:'Pagamento OS', descricao:'', valor:'', data:today, ordem_id:'' };
 
   const [lancamentos,   setLancamentos]   = useState([]);
@@ -60,7 +74,8 @@ export default function Caixa() {
   const [confirmDel,    setConfirmDel]    = useState(null);
   const [deleting,      setDeleting]      = useState(null);
   const [search,        setSearch]        = useState('');
-  const [date,          setDate]          = useState('');
+  // date inicia com hoje
+  const [date,          setDate]          = useState(today);
   const [currentPage,   setCurrentPage]   = useState(1);
   const PAGE_SIZE = 20;
 
@@ -75,54 +90,28 @@ export default function Caixa() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
-
   useEffect(() => { setCurrentPage(1); }, [search, date]);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const openNew = () => { setEditData(null); setForm(blankForm); setShowForm(true); };
-
+  const openNew  = () => { setEditData(null); setForm(blankForm); setShowForm(true); };
   const openEdit = (l) => {
     setEditData(l);
-    setForm({
-      tipo:        l.tipo,
-      categoria:   l.categoria || '',
-      descricao:   l.descricao || '',
-      valor:       String(l.valor || ''),
-      data:        l.data?.slice(0,10) || today,
-      ordem_id:    l.ordem_id || '',
-    });
+    setForm({ tipo:l.tipo, categoria:l.categoria||'', descricao:l.descricao||'', valor:String(l.valor||''), data:l.data?.slice(0,10)||today, ordem_id:l.ordem_id||'' });
     setShowForm(true);
   };
-
   const closeForm = () => { setShowForm(false); setEditData(null); setForm(blankForm); };
 
   const handleSave = async () => {
-    if (!form.valor || isNaN(Number(form.valor)) || Number(form.valor) <= 0) {
-      toast.error('Valor inválido'); return;
-    }
+    if (!form.valor || isNaN(Number(form.valor)) || Number(form.valor) <= 0) { toast.error('Valor inválido'); return; }
     setSaving(true);
     try {
-      const payload = {
-        tipo:      form.tipo,
-        categoria: form.categoria,
-        descricao: form.descricao,
-        valor:     Number(form.valor),
-        data:      form.data || today,
-        ordem_id:  form.ordem_id || null,
-      };
-      if (editData) {
-        await api.put(`/caixa/${editData.id}`, payload);
-        toast.success('Lançamento atualizado');
-      } else {
-        await api.post('/caixa', payload);
-        toast.success('Lançamento registrado');
-      }
-      closeForm();
-      load();
-    } catch(e) {
-      toast.error(e?.response?.data?.error || 'Erro ao salvar');
-    } finally { setSaving(false); }
+      const payload = { tipo:form.tipo, categoria:form.categoria, descricao:form.descricao, valor:Number(form.valor), data:form.data||today, ordem_id:form.ordem_id||null };
+      if (editData) { await api.put(`/caixa/${editData.id}`, payload); toast.success('Lançamento atualizado'); }
+      else          { await api.post('/caixa', payload);              toast.success('Lançamento registrado'); }
+      closeForm(); load();
+    } catch(e) { toast.error(e?.response?.data?.error || 'Erro ao salvar'); }
+    finally { setSaving(false); }
   };
 
   const handleDelete = async (id) => {
@@ -130,11 +119,9 @@ export default function Caixa() {
     try {
       await api.delete(`/caixa/${id}`);
       toast.success('Lançamento removido');
-      setConfirmDel(null);
-      load();
-    } catch(e) {
-      toast.error(e?.response?.data?.error || 'Erro ao remover');
-    } finally { setDeleting(null); }
+      setConfirmDel(null); load();
+    } catch(e) { toast.error(e?.response?.data?.error || 'Erro ao remover'); }
+    finally { setDeleting(null); }
   };
 
   const fmt  = v => v != null ? Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}) : '—';
@@ -159,16 +146,26 @@ export default function Caixa() {
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paginated  = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
+  // totais do dia filtrado
+  const diaEntrada = filtered.filter(l => l.tipo==='Entrada').reduce((s,l) => s+Number(l.valor||0), 0);
+  const diaSaida   = filtered.filter(l => l.tipo==='Saída').reduce((s,l)   => s+Number(l.valor||0), 0);
+  const diaSaldo   = diaEntrada - diaSaida;
+
+  // totais gerais
   const totalEntrada = lancamentos.filter(l => l.tipo==='Entrada').reduce((s,l) => s+Number(l.valor||0), 0);
-  const totalSaida   = lancamentos.filter(l => l.tipo==='Saída').reduce((s,l) => s+Number(l.valor||0), 0);
+  const totalSaida   = lancamentos.filter(l => l.tipo==='Saída').reduce((s,l)   => s+Number(l.valor||0), 0);
   const saldoFinal   = totalEntrada - totalSaida;
+
+  const isToday = date === today;
 
   return (
     <div style={{ height:'calc(100vh - 60px - var(--space-12))', display:'flex', flexDirection:'column', minHeight:0 }}>
+
+      {/* Header */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'var(--space-4)', flexShrink:0 }}>
         <div>
           <h1 style={{ fontSize:'var(--text-xl)', fontWeight:800, margin:0 }}>Caixa</h1>
-          <p style={{ margin:0, fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>{lancamentos.length} lançamento{lancamentos.length!==1?'s':''}</p>
+          <p style={{ margin:0, fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>{lancamentos.length} lançamento{lancamentos.length!==1?'s':''} no total</p>
         </div>
         {canEdit && (
           <button className="btn btn-primary" onClick={openNew}>
@@ -178,11 +175,71 @@ export default function Caixa() {
         )}
       </div>
 
+      {/* ── Navegador de dias ── */}
+      <div style={{ display:'flex', alignItems:'center', gap:'var(--space-2)', marginBottom:'var(--space-3)', flexShrink:0 }}>
+        <button
+          className="btn btn-ghost btn-sm"
+          onClick={() => setDate(d => shiftDay(d, -1))}
+          title="Dia anterior"
+          style={{ flexShrink:0 }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+
+        <div style={{
+          flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:'var(--space-2)',
+          background: isToday ? 'color-mix(in oklch, var(--color-primary) 10%, var(--color-surface))' : 'var(--color-surface-offset)',
+          border: isToday ? '1.5px solid color-mix(in oklch, var(--color-primary) 35%, var(--color-border))' : '1px solid var(--color-border)',
+          borderRadius:'var(--radius-lg)',
+          padding:'var(--space-2) var(--space-4)',
+          transition:'background 180ms, border-color 180ms',
+        }}>
+          <span style={{ fontWeight:700, fontSize:'var(--text-sm)', color: isToday ? 'var(--color-primary)' : 'var(--color-text)' }}>
+            {labelDay(date)}
+          </span>
+          {isToday && (
+            <span style={{ fontSize:'var(--text-xs)', fontWeight:600, color:'var(--color-primary)', background:'color-mix(in oklch, var(--color-primary) 15%, var(--color-surface))', padding:'1px 8px', borderRadius:'var(--radius-full)' }}>
+              hoje
+            </span>
+          )}
+          <span style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', fontVariantNumeric:'tabular-nums' }}>
+            {new Date(date+'T12:00:00').toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric' })}
+          </span>
+        </div>
+
+        <button
+          className="btn btn-ghost btn-sm"
+          onClick={() => setDate(d => shiftDay(d, +1))}
+          disabled={date >= today}
+          title="Próximo dia"
+          style={{ flexShrink:0 }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
+        </button>
+
+        <input
+          className="form-input"
+          type="date"
+          style={{ width:'auto', flexShrink:0 }}
+          value={date}
+          max={today}
+          onChange={e => setDate(e.target.value)}
+          title="Selecionar data"
+        />
+
+        {date !== today && (
+          <button className="btn btn-ghost btn-sm" onClick={() => setDate(today)} title="Voltar para hoje" style={{ flexShrink:0, color:'var(--color-primary)', fontWeight:600 }}>
+            Hoje
+          </button>
+        )}
+      </div>
+
+      {/* KPIs do dia filtrado */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:'var(--space-3)', marginBottom:'var(--space-4)', flexShrink:0 }}>
         {[
-          { label:'Total Entradas', value:fmt(totalEntrada), color:'var(--color-success)', icon:'M12 5v14M5 12h14' },
-          { label:'Total Saídas',   value:fmt(totalSaida),   color:'var(--color-error)',   icon:'M5 12h14' },
-          { label:'Saldo Final',    value:fmt(saldoFinal),   color: saldoFinal>=0 ? 'var(--color-primary)' : 'var(--color-error)', icon:'M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6' },
+          { label: isToday ? 'Entradas hoje' : 'Entradas do dia', value:fmt(diaEntrada), color:'var(--color-success)', icon:'M12 5v14M5 12h14' },
+          { label: isToday ? 'Saídas hoje'   : 'Saídas do dia',   value:fmt(diaSaida),   color:'var(--color-error)',   icon:'M5 12h14' },
+          { label: isToday ? 'Saldo hoje'    : 'Saldo do dia',    value:fmt(diaSaldo),   color: diaSaldo>=0 ? 'var(--color-primary)' : 'var(--color-error)', icon:'M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6' },
         ].map(k => (
           <div key={k.label} className="card" style={{ padding:'var(--space-3) var(--space-4)', display:'flex', alignItems:'center', gap:'var(--space-3)' }}>
             <div style={{ width:36, height:36, borderRadius:'var(--radius-md)', background:`color-mix(in oklch, ${k.color} 12%, var(--color-surface))`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
@@ -196,13 +253,16 @@ export default function Caixa() {
         ))}
       </div>
 
+      {/* Busca */}
       <div style={{ display:'flex', gap:'var(--space-2)', marginBottom:'var(--space-3)', flexShrink:0 }}>
         <div style={{ position:'relative', flex:1 }}>
           <svg style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:'var(--color-text-faint)' }} width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
           <input className="form-input" style={{ paddingLeft:34 }} placeholder="Buscar por descrição, categoria, OS…" value={search} onChange={e => setSearch(e.target.value)} />
         </div>
-        <input className="form-input" type="date" style={{ width:'auto' }} value={date} onChange={e => setDate(e.target.value)} title="Filtrar por data" />
-        {date && <button className="btn btn-ghost btn-sm" onClick={() => setDate('')} title="Limpar filtro de data">✕ data</button>}
+        {/* saldo geral discreto */}
+        <div style={{ display:'flex', alignItems:'center', gap:'var(--space-2)', padding:'0 var(--space-3)', background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)', fontSize:'var(--text-xs)', color:'var(--color-text-muted)', whiteSpace:'nowrap', flexShrink:0 }}>
+          Saldo total: <strong style={{ fontFamily:'monospace', color: saldoFinal>=0 ? 'var(--color-success)' : 'var(--color-error)', marginLeft:'var(--space-1)' }}>{fmt(saldoFinal)}</strong>
+        </div>
       </div>
 
       <div className="card" style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column' }}>
@@ -215,8 +275,8 @@ export default function Caixa() {
           <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', flex:1, color:'var(--color-text-muted)', gap:'var(--space-3)' }}>
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
             <div style={{ textAlign:'center' }}>
-              <p style={{ fontWeight:600, margin:0 }}>{search || date ? 'Nenhum lançamento encontrado' : 'Caixa vazia'}</p>
-              {!search && !date && canEdit && <p style={{ fontSize:'var(--text-xs)', margin:'var(--space-1) 0 0' }}>Clique em "Novo Lançamento" para registrar uma movimentação</p>}
+              <p style={{ fontWeight:600, margin:0 }}>{search ? 'Nenhum lançamento encontrado' : `Sem lançamentos em ${labelDay(date)}`}</p>
+              {!search && canEdit && <p style={{ fontSize:'var(--text-xs)', margin:'var(--space-1) 0 0' }}>Clique em "Novo Lançamento" para registrar uma movimentação</p>}
             </div>
           </div>
         ) : (
@@ -279,7 +339,7 @@ export default function Caixa() {
           <div className="card" style={{ padding:'var(--space-3) var(--space-4)' }}>
             <h3 style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:'var(--space-2)', fontWeight:500 }}>Por Categoria — Entradas</h3>
             {CATEG_OPT['Entrada'].map(cat => {
-              const tot = lancamentos.filter(l => l.tipo==='Entrada' && l.categoria===cat).reduce((s,l)=>s+Number(l.valor||0),0);
+              const tot = filtered.filter(l => l.tipo==='Entrada' && l.categoria===cat).reduce((s,l)=>s+Number(l.valor||0),0);
               if (!tot) return null;
               return (
                 <div key={cat} style={{ display:'flex', justifyContent:'space-between', fontSize:'var(--text-xs)', marginBottom:'var(--space-1)' }}>
@@ -292,7 +352,7 @@ export default function Caixa() {
           <div className="card" style={{ padding:'var(--space-3) var(--space-4)' }}>
             <h3 style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:'var(--space-2)', fontWeight:500 }}>Por Categoria — Saídas</h3>
             {CATEG_OPT['Saída'].map(cat => {
-              const tot = lancamentos.filter(l => l.tipo==='Saída' && l.categoria===cat).reduce((s,l)=>s+Number(l.valor||0),0);
+              const tot = filtered.filter(l => l.tipo==='Saída' && l.categoria===cat).reduce((s,l)=>s+Number(l.valor||0),0);
               if (!tot) return null;
               return (
                 <div key={cat} style={{ display:'flex', justifyContent:'space-between', fontSize:'var(--text-xs)', marginBottom:'var(--space-1)' }}>
