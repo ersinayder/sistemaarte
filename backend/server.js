@@ -34,10 +34,19 @@ app.use("/api/produtos",   require("./routes/produtos"));
 // Health
 app.get("/api/health", (_req, res) => res.json({ ok: true, ts: Date.now() }));
 
-// Backup automatico diario as 02:00
+// Backup automatico diario — roda a partir das 02:00, uma vez por dia.
+// A flag _backupDate garante idempotencia mesmo apos reinicio do processo.
+let _backupDate = "";
 setInterval(() => {
-  const h = new Date().getHours();
-  if (h === 2) backup().catch(() => {});
+  const now   = new Date();
+  const hoje  = now.toISOString().slice(0, 10);
+  const h     = now.getHours();
+  if (h >= 2 && _backupDate !== hoje) {
+    _backupDate = hoje;
+    backup()
+      .then(() => console.log("[Backup] Concluido:", new Date().toISOString()))
+      .catch(err => console.error("[Backup] FALHOU:", err.message));
+  }
 }, 60 * 60 * 1000);
 
 // ── Servir SPA ───────────────────────────────────────────────────────────────────
