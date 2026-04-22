@@ -8,6 +8,7 @@ import {
 import { Doughnut, Line } from 'react-chartjs-2'
 import api from '../services/api'
 import toast from 'react-hot-toast'
+import { useKpiStream } from '../hooks/useKpiStream'
 
 ChartJS.register(
   CategoryScale, LinearScale, BarElement, LineElement,
@@ -30,7 +31,6 @@ const STATUS_BADGE = {
   'Pronto': 'pronto', 'Entregue': 'entregue', 'Cancelado': 'cancelado'
 }
 
-// Cores reais (hex) para Chart.js que não resolve CSS variables
 const C_PRIMARY      = '#01696f'
 const C_PRIMARY_LIGHT= '#4f98a3'
 const C_BG_DARK      = '#1c1b19'
@@ -39,6 +39,7 @@ const C_TEXT_MUTED   = '#797876'
 const C_TEXT_FAINT   = '#5a5957'
 const C_DIVIDER      = '#262523'
 
+// ── KPI card estático (financeiro/mensal) ────────────────────────────────────
 function KPI({ label, value, sub, accent }) {
   return (
     <div style={{
@@ -60,6 +61,43 @@ function KPI({ label, value, sub, accent }) {
         lineHeight: 1, fontVariantNumeric: 'tabular-nums',
         color: accent || 'var(--color-text)'
       }}>{value}</span>
+      {sub && <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)' }}>{sub}</span>}
+    </div>
+  )
+}
+
+// ── KPI card ao vivo ─────────────────────────────────────────────────────────
+function LiveKPI({ label, value, sub, accent, pulse }) {
+  return (
+    <div style={{
+      background: 'var(--color-surface)',
+      border: '1px solid var(--color-border)',
+      borderRadius: 'var(--radius-xl)',
+      borderTop: `3px solid ${accent || 'var(--color-primary)'}`,
+      padding: 'var(--space-4) var(--space-5)',
+      boxShadow: 'var(--shadow-sm)',
+      display: 'flex', flexDirection: 'column', gap: 'var(--space-1)',
+      position: 'relative', overflow: 'hidden'
+    }}>
+      {pulse && (
+        <span style={{
+          position: 'absolute', top: 10, right: 12,
+          width: 8, height: 8, borderRadius: '50%',
+          background: accent || 'var(--color-primary)',
+          boxShadow: `0 0 0 3px ${(accent || '#01696f')}33`,
+          animation: 'kpi-pulse 2s infinite'
+        }} />
+      )}
+      <span style={{
+        fontSize: 'var(--text-xs)', fontWeight: 700,
+        color: 'var(--color-text-muted)',
+        textTransform: 'uppercase', letterSpacing: '0.07em'
+      }}>{label}</span>
+      <span style={{
+        fontSize: 'var(--text-xl)', fontWeight: 800,
+        lineHeight: 1, fontVariantNumeric: 'tabular-nums',
+        color: accent || 'var(--color-text)'
+      }}>{value ?? '—'}</span>
       {sub && <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)' }}>{sub}</span>}
     </div>
   )
@@ -94,7 +132,6 @@ function ChartCard({ title, subtitle, children, style }) {
   )
 }
 
-// Plugin para gradiente sob a linha
 const gradientPlugin = {
   id: 'customGradient',
   beforeDatasetsDraw(chart) {
@@ -112,9 +149,10 @@ const gradientPlugin = {
 
 export default function Dashboard() {
   const navigate = useNavigate()
+  const { kpis: live, online } = useKpiStream()
 
   const [mesSel, setMesSel] = useState(MES_PADRAO)
-  const [dados, setDados] = useState(null)
+  const [dados, setDados]   = useState(null)
   const [ordens, setOrdens] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -142,11 +180,10 @@ export default function Dashboard() {
   useEffect(() => { load() }, [load])
 
   if (loading) return (
-    <div className="loading-center">
-      <div className="spinner" />
-    </div>
+    <div className="loading-center"><div className="spinner" /></div>
   )
 
+  // ── Gráfico linha ────────────────────────────────────────────────────────
   const lineData = {
     labels: dados?.dias?.map(d => {
       const [, , day] = d.data.split('-')
@@ -155,7 +192,7 @@ export default function Dashboard() {
     datasets: [{
       data: dados?.dias?.map(d => d.total) || [],
       borderColor: C_PRIMARY_LIGHT,
-      backgroundColor: 'transparent', // sobrescrito pelo plugin
+      backgroundColor: 'transparent',
       tension: 0.4,
       pointRadius: 4,
       pointHoverRadius: 6,
@@ -166,107 +203,63 @@ export default function Dashboard() {
       fill: true,
     }]
   }
-
   const lineOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
+    responsive: true, maintainAspectRatio: false,
     interaction: { mode: 'index', intersect: false },
     plugins: {
       legend: { display: false },
       tooltip: {
-        backgroundColor: '#171614',
-        titleColor: '#cdccca',
-        bodyColor: C_TEXT_MUTED,
-        borderColor: C_BORDER_DARK,
-        borderWidth: 1,
-        padding: 12,
-        cornerRadius: 8,
+        backgroundColor: '#171614', titleColor: '#cdccca', bodyColor: C_TEXT_MUTED,
+        borderColor: C_BORDER_DARK, borderWidth: 1, padding: 12, cornerRadius: 8,
         callbacks: { label: ctx => '  ' + fmt(ctx.raw) }
       }
     },
     scales: {
-      x: {
-        grid: { display: false },
-        border: { display: false },
-        ticks: { color: C_TEXT_FAINT, font: { size: 11 } }
-      },
+      x: { grid: { display: false }, border: { display: false }, ticks: { color: C_TEXT_FAINT, font: { size: 11 } } },
       y: {
         grid: { color: C_DIVIDER, drawBorder: false },
         border: { display: false, dash: [4, 4] },
-        ticks: {
-          color: C_TEXT_FAINT, font: { size: 11 },
-          callback: v => 'R$' + (v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v)
-        }
+        ticks: { color: C_TEXT_FAINT, font: { size: 11 }, callback: v => 'R$' + (v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v) }
       }
     }
   }
 
+  // ── Gráfico donut ────────────────────────────────────────────────────────
   const pagLabels = Object.keys(dados?.porpagamento || {}).filter(k => dados.porpagamento[k] > 0)
   const pagValues = pagLabels.map(k => dados.porpagamento[k])
-  const PAG_COLORS = {
-    Pix: '#01696f', Dinheiro: '#d19900', Credito: '#da7101',
-    Debito: '#006494', Link: '#7a39bb'
-  }
+  const PAG_COLORS = { Pix: '#01696f', Dinheiro: '#d19900', Credito: '#da7101', Debito: '#006494', Link: '#7a39bb' }
   const doughnutData = {
     labels: pagLabels,
     datasets: [{
       data: pagValues,
       backgroundColor: pagLabels.map(k => PAG_COLORS[k] || '#bbb'),
-      borderWidth: 0,
-      hoverOffset: 4
+      borderWidth: 0, hoverOffset: 4
     }]
   }
   const doughnutOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    cutout: '72%',
+    responsive: true, maintainAspectRatio: false, cutout: '72%',
     plugins: {
       legend: {
         position: 'bottom',
-        labels: {
-          color: C_TEXT_MUTED,
-          font: { size: 12 },
-          padding: 14,
-          boxWidth: 10,
-          boxHeight: 10,
-          borderRadius: 3,
-          useBorderRadius: true,
-        }
+        labels: { color: C_TEXT_MUTED, font: { size: 12 }, padding: 14, boxWidth: 10, boxHeight: 10, borderRadius: 3, useBorderRadius: true }
       },
       tooltip: {
-        backgroundColor: '#171614',
-        titleColor: '#cdccca',
-        bodyColor: C_TEXT_MUTED,
-        borderColor: C_BORDER_DARK,
-        borderWidth: 1,
-        padding: 10,
-        cornerRadius: 8,
+        backgroundColor: '#171614', titleColor: '#cdccca', bodyColor: C_TEXT_MUTED,
+        borderColor: C_BORDER_DARK, borderWidth: 1, padding: 10, cornerRadius: 8,
         callbacks: { label: ctx => '  ' + fmt(ctx.raw) }
       }
     }
   }
 
-  const ordensRecentes = [...ordens]
-    .sort((a, b) => (b.id || 0) - (a.id || 0))
-    .slice(0, 5)
-
+  const ordensRecentes = [...ordens].sort((a, b) => (b.id || 0) - (a.id || 0)).slice(0, 5)
   const tipoCount = {}
-  ordens.forEach(o => {
-    const t = o.servico || 'Outros'
-    tipoCount[t] = (tipoCount[t] || 0) + 1
-  })
+  ordens.forEach(o => { const t = o.servico || 'Outros'; tipoCount[t] = (tipoCount[t] || 0) + 1 })
   const TIPO_COLORS = {
-    'Corte a Laser': 'var(--color-primary)',
-    'Quadro': 'var(--color-orange)',
-    'Caixas': 'var(--color-blue)',
-    '3D': 'var(--color-purple)',
-    'Diversos': 'var(--color-text-faint)',
+    'Corte a Laser': 'var(--color-primary)', 'Quadro': 'var(--color-orange)',
+    'Caixas': 'var(--color-blue)', '3D': 'var(--color-purple)', 'Diversos': 'var(--color-text-faint)',
   }
-
   const ordensVencidas = ordens.filter(o =>
-    !['Entregue', 'Cancelado'].includes(o.status) &&
-    o.prazoentrega &&
-    o.prazoentrega < HOJE
+    !['Entregue', 'Cancelado'].includes(o.status) && o.prazoentrega && o.prazoentrega < HOJE
   ).length
 
   return (
@@ -281,36 +274,94 @@ export default function Dashboard() {
           </span>
         </div>
         <input
-          type="month"
-          value={mesSel}
-          max={MES_PADRAO}
+          type="month" value={mesSel} max={MES_PADRAO}
           onChange={e => e.target.value && setMesSel(e.target.value)}
           style={{
-            background: 'var(--color-surface)',
-            border: '1px solid var(--color-border)',
-            borderRadius: 'var(--radius-lg)',
-            padding: 'var(--space-2) var(--space-3)',
-            fontSize: 'var(--text-xs)',
-            color: 'var(--color-text-muted)',
-            cursor: 'pointer'
+            background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+            borderRadius: 'var(--radius-lg)', padding: 'var(--space-2) var(--space-3)',
+            fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', cursor: 'pointer'
           }}
         />
       </div>
 
-      {/* KPIs */}
+      {/* ── SEÇÃO AO VIVO ────────────────────────────────────────────────── */}
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
+          <span style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>Ao Vivo</span>
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 5,
+            fontSize: 11, fontWeight: 600,
+            color: online ? 'var(--color-success)' : 'var(--color-text-faint)',
+            background: online ? 'var(--color-success-highlight)' : 'var(--color-surface-offset)',
+            padding: '2px 8px', borderRadius: 'var(--radius-full)'
+          }}>
+            <span style={{
+              width: 6, height: 6, borderRadius: '50%',
+              background: online ? 'var(--color-success)' : 'var(--color-text-faint)',
+              display: 'inline-block',
+              animation: online ? 'kpi-pulse 2s infinite' : 'none'
+            }} />
+            {online ? 'SSE conectado' : 'polling'}
+          </span>
+          {live?.ts && (
+            <span style={{ fontSize: 10, color: 'var(--color-text-faint)', marginLeft: 4 }}>
+              atualizado {new Date(live.ts).toLocaleTimeString('pt-BR')}
+            </span>
+          )}
+        </div>
+
+        <style>{`
+          @keyframes kpi-pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50%       { opacity: 0.4; transform: scale(1.4); }
+          }
+        `}</style>
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+          gap: 'var(--space-3)'
+        }}>
+          <LiveKPI label="OS Abertas"     value={live?.abertas}      accent="var(--color-primary)"  pulse />
+          <LiveKPI label="Em Produção"    value={live?.emProducao}   accent="var(--color-blue)"     pulse />
+          <LiveKPI label="Prontas"        value={live?.prontas}      accent="var(--color-success)"  pulse />
+          <LiveKPI label="Aguardando"     value={live?.aguardando}   accent="var(--color-gold)"     pulse />
+          <LiveKPI
+            label="Vencidas"
+            value={live?.vencidas}
+            accent={live?.vencidas > 0 ? 'var(--color-error)' : 'var(--color-text-faint)'}
+            sub={live?.vencidas > 0 ? 'prazo expirado' : 'todas no prazo'}
+            pulse={live?.vencidas > 0}
+          />
+          <LiveKPI
+            label="Entregues Hoje"
+            value={live?.entreguesHoje}
+            accent="var(--color-purple)"
+            sub={live?.abertasHoje != null ? `${live.abertasHoje} abertas hoje` : undefined}
+          />
+          <LiveKPI
+            label="Faturado Hoje"
+            value={live?.faturamentoHoje != null ? fmtShort(live.faturamentoHoje) : '—'}
+            accent="var(--color-orange)"
+            pulse
+          />
+        </div>
+      </div>
+
+      {/* ── KPIs mensais ────────────────────────────────────────────────── */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
         gap: 'var(--space-4)'
       }}>
-        <KPI label="Total do Mês" value={fmtShort(dados?.total)}
+        <KPI label="Total do Mês"    value={fmtShort(dados?.total)}
           sub={`${dados?.count || 0} lançamento${dados?.count !== 1 ? 's' : ''}`}
           accent="var(--color-primary)" />
         <KPI label="Faturamento Hoje" value={fmtShort(dados?.hoje)}
           sub="dia atual" accent="var(--color-blue)" />
-        <KPI label="Ticket Médio" value={fmtShort(dados?.ticket_medio || dados?.ticketmedio)}
+        <KPI label="Ticket Médio"    value={fmtShort(dados?.ticket_medio || dados?.ticketmedio)}
           sub="por lançamento" accent="var(--color-gold)" />
-        <KPI label="OS em Aberto" value={dados?.ordensabertas ?? 0}
+        <KPI label="OS em Aberto"    value={dados?.ordensabertas ?? 0}
           sub={ordensVencidas > 0 ? `${ordensVencidas} vencida${ordensVencidas > 1 ? 's' : ''}` : 'no prazo'}
           accent={ordensVencidas > 0 ? 'var(--color-error)' : 'var(--color-success)'} />
       </div>
@@ -348,19 +399,14 @@ export default function Dashboard() {
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-        gap: 'var(--space-4)',
-        alignItems: 'start'
+        gap: 'var(--space-4)', alignItems: 'start'
       }}>
         <div style={{
-          background: 'var(--color-surface)',
-          border: '1px solid var(--color-border)',
-          borderRadius: 'var(--radius-xl)',
-          boxShadow: 'var(--shadow-sm)',
-          overflow: 'hidden'
+          background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+          borderRadius: 'var(--radius-xl)', boxShadow: 'var(--shadow-sm)', overflow: 'hidden'
         }}>
           <div style={{
-            padding: 'var(--space-4) var(--space-5)',
-            borderBottom: '1px solid var(--color-divider)',
+            padding: 'var(--space-4) var(--space-5)', borderBottom: '1px solid var(--color-divider)',
             display: 'flex', alignItems: 'center', justifyContent: 'space-between'
           }}>
             <div>
@@ -377,10 +423,7 @@ export default function Dashboard() {
           <div className="table-wrap">
             <table>
               <thead>
-                <tr>
-                  <th>OS</th><th>Cliente</th><th>Tipo</th>
-                  <th>Status</th><th>Valor</th><th>Prazo</th>
-                </tr>
+                <tr><th>OS</th><th>Cliente</th><th>Tipo</th><th>Status</th><th>Valor</th><th>Prazo</th></tr>
               </thead>
               <tbody>
                 {ordensRecentes.length ? ordensRecentes.map(o => (
@@ -391,26 +434,16 @@ export default function Dashboard() {
                     </td>
                     <td>
                       <span className={`badge badge-${
-                        o.servico === 'Corte a Laser' ? 'laser' :
-                        o.servico === 'Quadro' ? 'quadro' :
-                        o.servico === '3D' ? '3d' :
-                        o.servico === 'Caixas' ? 'caixas' : 'diversos'
+                        o.servico === 'Corte a Laser' ? 'laser' : o.servico === 'Quadro' ? 'quadro' :
+                        o.servico === '3D' ? '3d' : o.servico === 'Caixas' ? 'caixas' : 'diversos'
                       }`}>{o.servico || 'Outros'}</span>
                     </td>
-                    <td>
-                      <span className={`badge badge-${STATUS_BADGE[o.status] || 'diversos'}`}>{o.status}</span>
-                    </td>
-                    <td className="tabnum" style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
-                      {fmt(o.valor || o.valortotal)}
-                    </td>
-                    <td style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>
-                      {fmtD(o.prazoentrega)}
-                    </td>
+                    <td><span className={`badge badge-${STATUS_BADGE[o.status] || 'diversos'}`}>{o.status}</span></td>
+                    <td className="tabnum" style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{fmt(o.valor || o.valortotal)}</td>
+                    <td style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>{fmtD(o.prazoentrega)}</td>
                   </tr>
                 )) : (
-                  <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--color-text-faint)', padding: 'var(--space-8)' }}>
-                    Nenhuma OS ainda
-                  </td></tr>
+                  <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--color-text-faint)', padding: 'var(--space-8)' }}>Nenhuma OS ainda</td></tr>
                 )}
               </tbody>
             </table>
@@ -420,31 +453,27 @@ export default function Dashboard() {
         <ChartCard title="OS por Tipo" subtitle="Contagem geral">
           {Object.keys(tipoCount).length ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-              {Object.entries(tipoCount)
-                .sort((a, b) => b[1] - a[1])
-                .map(([tipo, count]) => {
-                  const total = ordens.length || 1
-                  const pct = Math.round((count / total) * 100)
-                  const cor = TIPO_COLORS[tipo] || 'var(--color-text-faint)'
-                  return (
-                    <div key={tipo}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 600 }}>{tipo}</span>
-                        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)', fontVariantNumeric: 'tabular-nums' }}>
-                          {count} <span style={{ opacity: 0.6 }}>({pct}%)</span>
-                        </span>
-                      </div>
-                      <div className="progress-bar">
-                        <div className="progress-fill" style={{ width: `${pct}%`, background: cor }} />
-                      </div>
+              {Object.entries(tipoCount).sort((a, b) => b[1] - a[1]).map(([tipo, count]) => {
+                const total = ordens.length || 1
+                const pct = Math.round((count / total) * 100)
+                const cor = TIPO_COLORS[tipo] || 'var(--color-text-faint)'
+                return (
+                  <div key={tipo}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 600 }}>{tipo}</span>
+                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)', fontVariantNumeric: 'tabular-nums' }}>
+                        {count} <span style={{ opacity: 0.6 }}>({pct}%)</span>
+                      </span>
                     </div>
-                  )
-                })}
+                    <div className="progress-bar">
+                      <div className="progress-fill" style={{ width: `${pct}%`, background: cor }} />
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           ) : (
-            <div style={{ textAlign: 'center', padding: 'var(--space-8)', color: 'var(--color-text-faint)', fontSize: 'var(--text-xs)' }}>
-              Sem dados
-            </div>
+            <div style={{ textAlign: 'center', padding: 'var(--space-8)', color: 'var(--color-text-faint)', fontSize: 'var(--text-xs)' }}>Sem dados</div>
           )}
         </ChartCard>
       </div>

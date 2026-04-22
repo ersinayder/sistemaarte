@@ -14,7 +14,7 @@ const PORT = process.env.PORT || 3001;
 
 const allowedOrigins = process.env.CORS_ORIGINS
   ? process.env.CORS_ORIGINS.split(",").map(o => o.trim())
-  : ["http://localhost:5173"]; // apenas dev — em producao defina CORS_ORIGINS no .env
+  : ["http://localhost:5173"];
 
 app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json());
@@ -31,12 +31,12 @@ app.use("/api/relatorios", require("./routes/relatorios"));
 app.use("/api/consulta",   require("./routes/consulta"));
 app.use("/api/backup",     require("./routes/backup"));
 app.use("/api/produtos",   require("./routes/produtos"));
+app.use("/api/kpis",       require("./routes/kpis"));      // GET /api/kpis  + /api/kpis/stream (SSE)
 
 // Health
 app.get("/api/health", (_req, res) => res.json({ ok: true, ts: Date.now() }));
 
-// Backup automatico diario — roda a partir das 02:00, uma vez por dia.
-// A flag _backupDate garante idempotencia mesmo apos reinicio do processo.
+// Backup automatico diario
 let _backupDate = "";
 setInterval(() => {
   const now   = new Date();
@@ -65,10 +65,8 @@ if (fs.existsSync(DIST)) {
   });
 }
 
-// ── Error handler global (deve ser o ULTIMO middleware) ───────────────────────────
 app.use(errorHandler);
 
-// ── Init ──────────────────────────────────────────────────────────────────────────
 initDB();
 app.listen(PORT, "0.0.0.0", () => {
   console.log("\n╔══════════════════════════════════════╗");
