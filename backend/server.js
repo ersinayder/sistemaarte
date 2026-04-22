@@ -14,7 +14,7 @@ const PORT = process.env.PORT || 3001;
 
 const allowedOrigins = process.env.CORS_ORIGINS
   ? process.env.CORS_ORIGINS.split(",").map(o => o.trim())
-  : true;
+  : ["http://localhost:5173"]; // apenas dev — em producao defina CORS_ORIGINS no .env
 
 app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json());
