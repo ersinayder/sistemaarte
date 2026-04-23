@@ -14,7 +14,7 @@ function calcKpis() {
 
   const emProducao = getOne(
     `SELECT COUNT(*) AS n FROM ordens
-     WHERE status IN ('Em Produção','Em Producao') AND deletedat IS NULL`
+     WHERE status = 'Em Produção' AND deletedat IS NULL`
   )?.n ?? 0;
 
   const prontas = getOne(
@@ -86,7 +86,7 @@ router.get("/stream", auth(), (req, res) => {
   res.setHeader("Content-Type",  "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection",    "keep-alive");
-  res.setHeader("X-Accel-Buffering", "no"); // nginx passthrough
+  res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
 
   const send = () => {
@@ -98,9 +98,8 @@ router.get("/stream", auth(), (req, res) => {
     }
   };
 
-  send(); // push imediato
+  send();
   const timer = setInterval(send, 15000);
-
   req.on("close", () => clearInterval(timer));
 });
 
