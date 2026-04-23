@@ -25,9 +25,12 @@ const SEL_ORDEM = `
 `;
 
 function nextNumero() {
+  // Garante a linha mesmo em ambientes de teste onde initDB não rodou
+  run("INSERT OR IGNORE INTO sequencias (nome, ultimo) VALUES ('os', 0)");
   const row = getOne(
     "UPDATE sequencias SET ultimo=ultimo+1 WHERE nome='os' RETURNING ultimo"
   );
+  if (!row) throw new Error("Falha ao gerar número da OS: sequência 'os' não encontrada.");
   return `OS-${String(row.ultimo).padStart(4, "0")}`;
 }
 
