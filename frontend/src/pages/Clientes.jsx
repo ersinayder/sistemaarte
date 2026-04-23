@@ -57,6 +57,8 @@ export default function Clientes() {
   const { user } = useAuth();
   const canEdit = user?.role !== 'viewer';
 
+  // cnpj existe apenas no estado local do form — usado para autocomplete via BrasilAPI
+  // NÃO é enviado ao backend (coluna inexistente na tabela clientes)
   const blank = { tipo:'PF', nome:'', cpf:'', cnpj:'', ie:'', contato:'', email:'', cep:'', endereco:'', cidade:'', uf:'', obs:'' };
 
   const [clientes,      setClientes]      = useState([]);
@@ -152,12 +154,13 @@ export default function Clientes() {
 
   const openEdit = (c) => {
     setEditId(c.id);
-    const tipo = c.cnpj ? 'PJ' : 'PF';
+    // PJ detectado pela presença de ie (Inscrição Estadual) — cnpj não existe no banco
+    const tipo = c.ie ? 'PJ' : 'PF';
     setForm({
       tipo,
       nome:     c.name    || '',
       cpf:      c.cpf     || '',
-      cnpj:     c.cnpj    || '',
+      cnpj:     '',           // campo local apenas; não vem do banco
       ie:       c.ie      || '',
       contato:  c.phone   || '',
       email:    c.email   || '',
@@ -180,12 +183,12 @@ export default function Clientes() {
     if (form.tipo === 'PJ' && form.cnpj && !validaCNPJ(form.cnpj)) { toast.error('CNPJ inválido'); return; }
     setSaving(true);
     try {
+      // cnpj NÃO incluído — coluna inexistente na tabela clientes
       const payload = {
         name:    form.nome,
         phone:   form.contato,
         email:   form.email,
-        cpf:     form.tipo === 'PF' ? form.cpf  : '',
-        cnpj:    form.tipo === 'PJ' ? form.cnpj : '',
+        cpf:     form.tipo === 'PF' ? form.cpf : '',
         ie:      form.ie,
         address: form.endereco,
         cidade:  form.cidade,
@@ -220,7 +223,6 @@ export default function Clientes() {
     } finally { setDeleting(null); }
   };
 
-  // ── loadDetail: consome o endpoint enriquecido + ordens separado
   const loadDetail = useCallback(async (id) => {
     setDetailLoading(true);
     try {
@@ -253,7 +255,7 @@ export default function Clientes() {
         || (c.phone||'').includes(q)
         || (c.email||'').toLowerCase().includes(q)
         || (c.cpf||'').includes(q)
-        || (c.cnpj||'').includes(q);
+        || (c.ie||'').includes(q);
     })
     .sort((a,b) => {
       let va = a[sortField === 'nome' ? 'name' : sortField] || '';
@@ -285,7 +287,6 @@ export default function Clientes() {
     transition: 'background var(--ease), color var(--ease)',
   });
 
-  // ── Painel lateral enriquecido ──────────────────────────
   const DetailPanel = () => {
     const s = detailData?.sumario;
     const c = detailData?.cliente;
@@ -302,12 +303,10 @@ export default function Clientes() {
     return (
       <div style={{ overflowY:'auto', flex:1, padding:'var(--space-3) var(--space-4)' }}>
 
-        {/* Identidade */}
         <div style={{ marginBottom:'var(--space-4)' }}>
           <div style={{ fontWeight:800, fontSize:'var(--text-base)', marginBottom:'var(--space-1)' }}>{c.name}</div>
           {c.email   && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>✉ {c.email}</div>}
           {c.phone   && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>📞 {c.phone}</div>}
-          {c.cnpj    && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>CNPJ: {c.cnpj}</div>}
           {c.cpf     && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>CPF: {c.cpf}</div>}
           {c.ie      && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>IE: {c.ie}</div>}
           {c.address && (
@@ -320,7 +319,6 @@ export default function Clientes() {
           )}
         </div>
 
-        {/* KPIs — grid 2x2 */}
         {s && (
           <>
             <div style={{ fontWeight:700, fontSize:'var(--text-xs)', color:'var(--color-text-muted)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:'var(--space-2)' }}>Resumo financeiro</div>
@@ -336,7 +334,6 @@ export default function Clientes() {
               />
             </div>
 
-            {/* Última OS */}
             {s.ultimaOs && (
               <div style={{ marginBottom:'var(--space-4)' }}>
                 <div style={{ fontWeight:700, fontSize:'var(--text-xs)', color:'var(--color-text-muted)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:'var(--space-2)' }}>Última OS</div>
@@ -363,7 +360,6 @@ export default function Clientes() {
               </div>
             )}
 
-            {/* Status breakdown */}
             {Object.keys(s.statusBreakdown).length > 0 && (
               <div style={{ marginBottom:'var(--space-4)' }}>
                 <div style={{ fontWeight:700, fontSize:'var(--text-xs)', color:'var(--color-text-muted)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:'var(--space-2)' }}>Por status</div>
@@ -383,7 +379,6 @@ export default function Clientes() {
           </>
         )}
 
-        {/* Histórico de OS */}
         {ordens.length > 0 && (
           <div>
             <div style={{ fontWeight:700, fontSize:'var(--text-xs)', color:'var(--color-text-muted)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:'var(--space-2)' }}>Histórico de OS</div>
@@ -441,7 +436,7 @@ export default function Clientes() {
             ref={searchRef}
             className="form-input"
             style={{ paddingLeft:36 }}
-            placeholder="Buscar por nome, telefone, email, CPF ou CNPJ…"
+            placeholder="Buscar por nome, telefone, email ou CPF…"
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
@@ -471,8 +466,7 @@ export default function Clientes() {
                   <tr>
                     <th style={{ cursor:'pointer', userSelect:'none' }} onClick={() => toggleSort('nome')}>Nome <SortIcon f="nome"/></th>
                     <th>Contato</th>
-                    <th>CPF / CNPJ</th>
-                    <th>Cidade / UF</th>
+                    <th>CPF / IE</th>
                     <th>OS</th>
                     <th>Total gasto</th>
                     <th></th>
@@ -491,12 +485,10 @@ export default function Clientes() {
                       </td>
                       <td style={{ fontSize:'var(--text-xs)' }}>{c.phone||'—'}</td>
                       <td style={{ fontSize:'var(--text-xs)' }}>
-                        {c.cnpj && <div><span style={{color:'var(--color-text-faint)'}}>CNPJ </span>{c.cnpj}</div>}
                         {c.cpf  && <div><span style={{color:'var(--color-text-faint)'}}>CPF </span>{c.cpf}</div>}
                         {c.ie   && <div><span style={{color:'var(--color-text-faint)'}}>IE </span>{c.ie}</div>}
-                        {!c.cpf && !c.cnpj && !c.ie && '—'}
+                        {!c.cpf && !c.ie && '—'}
                       </td>
-                      <td style={{fontSize:'var(--text-xs)'}}>{c.cidade ? <span>{c.cidade}{c.uf ? ` / ${c.uf}` : ''}</span> : '—'}</td>
                       <td style={{ textAlign:'center' }}><span className="badge badge-primary">{c.totalordens ?? 0}</span></td>
                       <td style={{ textAlign:'right', fontFamily:'monospace', fontSize:'var(--text-xs)' }}>{fmt(c.gastototal)}</td>
                       <td>
@@ -521,7 +513,6 @@ export default function Clientes() {
           )}
         </div>
 
-        {/* Detail Panel */}
         {detailId && (
           <div className="card" style={{ width:340, overflow:'hidden', display:'flex', flexDirection:'column', flexShrink:0 }}>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0, padding:'var(--space-3) var(--space-4) var(--space-2)' }}>
@@ -540,7 +531,6 @@ export default function Clientes() {
         )}
       </div>
 
-      {/* Form Modal */}
       {showForm && ReactDOM.createPortal(
         <div className="modal-overlay" onClick={closeForm}>
           <div className="modal" style={{ maxWidth:560 }} onClick={e => e.stopPropagation()}>
@@ -564,7 +554,7 @@ export default function Clientes() {
                 {form.tipo === 'PJ' && (
                   <div className="form-group">
                     <label className="form-label" style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                      <span>CNPJ</span>
+                      <span>CNPJ <span style={{fontWeight:400,color:'var(--color-text-faint)',fontSize:'var(--text-xs)'}}>— só para consulta</span></span>
                       {cnpjLoading && <span style={{fontSize:'var(--text-xs)',color:'var(--color-text-muted)',fontWeight:400}}>🔍 buscando…</span>}
                     </label>
                     <input className="form-input" style={cnpjError ? {borderColor:'var(--color-error)'} : {}} value={form.cnpj}
