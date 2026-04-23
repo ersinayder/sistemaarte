@@ -17,7 +17,6 @@ const SEL_ORDEM = `
     o.prazoentrega AS prazo,
     o.observacoes AS obs,
     o.createdat AS criadoem,
-    CAST(o.valortotal - o.valorentrada AS REAL) AS valorrestante,
     COALESCE((SELECT SUM(l.valor) FROM lancamentos l WHERE l.ordemid=o.id AND l.pago=1 AND l.valor>0 AND l.deletedat IS NULL),0) AS valorrecebido,
     CAST(o.valortotal - COALESCE((SELECT SUM(l.valor) FROM lancamentos l WHERE l.ordemid=o.id AND l.pago=1 AND l.valor>0 AND l.deletedat IS NULL),0) AS REAL) AS saldoaberto
   FROM ordens o
@@ -25,7 +24,6 @@ const SEL_ORDEM = `
 `;
 
 function nextNumero() {
-  // Garante a linha mesmo em ambientes de teste onde initDB não rodou
   run("INSERT OR IGNORE INTO sequencias (nome, ultimo) VALUES ('os', 0)");
   const row = getOne(
     "UPDATE sequencias SET ultimo=ultimo+1 WHERE nome='os' RETURNING ultimo"
@@ -41,7 +39,6 @@ function getEntradaOS(ordemId) {
   );
 }
 
-// Herda telefone e cpf do cadastro de clientes quando não fornecidos na OS
 function resolveClienteData(clienteid, clientenome, telefoneFornecido, cpfFornecido) {
   let telefone = telefoneFornecido || null;
   let cpf = cpfFornecido || null;
@@ -90,7 +87,8 @@ router.get("/", auth(), (req, res, next) => {
         p.push(status);
       }
       if (vencidas == "1") {
-        sql += " AND o.prazoentrega < ? AND o.status NOT IN ('Pronto','Entregue','Cancelada')";
+        // C-1: usa 'Cancelado' (valor gravado pelo ordensRules), mantém 'Cancelada' como fallback de dados legados
+        sql += " AND o.prazoentrega < ? AND o.status NOT IN ('Pronto','Entregue','Cancelado','Cancelada')";
         p.push(hoje());
       }
     }
