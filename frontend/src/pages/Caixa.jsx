@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import { toast } from 'react-hot-toast';
+import { useParams } from 'react-router-dom';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -60,6 +61,7 @@ function Pagination({ current, total, onChange }) {
 
 export default function Caixa() {
   const { user } = useAuth();
+  const { id: paramId } = useParams();
   const canEdit  = user?.role !== 'viewer';
 
   const today = getToday();
@@ -92,6 +94,15 @@ export default function Caixa() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { setCurrentPage(1); }, [search, date]);
 
+  // Se vier /caixa/:id, abre o lançamento correspondente para edição após carregar
+  useEffect(() => {
+    if (paramId && lancamentos.length > 0) {
+      const found = lancamentos.find(l => String(l.id) === String(paramId));
+      if (found) openEdit(found);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paramId, lancamentos]);
+
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const openNew  = () => { setEditData(null); setForm(blankForm); setShowForm(true); };
@@ -109,6 +120,25 @@ export default function Caixa() {
     setShowForm(true);
   };
   const closeForm = () => { setShowForm(false); setEditData(null); setForm(blankForm); };
+
+  // Selecionar OS: move campo para antes do pagamento e auto-preenche descrição
+  const handleOrdemChange = (val) => {
+    set('ordem_id', val);
+    if (val) {
+      const osSel = ordensPendentes.find(o => String(o.id) === String(val));
+      if (osSel) {
+        setForm(f => ({
+          ...f,
+          ordem_id: val,
+          descricao: f.descricao.trim() === '' || f.descricao.startsWith('Restante ')
+            ? `Restante ${osSel.numero}`
+            : f.descricao,
+        }));
+      }
+    } else {
+      set('ordem_id', '');
+    }
+  };
 
   const handleSave = async () => {
     if (!form.valor || isNaN(Number(form.valor)) || Number(form.valor) <= 0) { toast.error('Valor inválido'); return; }
@@ -150,7 +180,6 @@ export default function Caixa() {
   const fmt  = v => v != null ? Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}) : '—';
   const fmtD = d => d ? new Date(d+'T12:00:00').toLocaleDateString('pt-BR') : '—';
 
-  // OS com saldo pendente (saldoaberto > 0) e não canceladas
   const ordensPendentes = useMemo(() =>
     ordens.filter(o => !['Cancelada'].includes(o.status) && Number(o.saldoaberto || 0) > 0),
     [ordens]
@@ -186,10 +215,14 @@ export default function Caixa() {
 
   const isToday = date === today;
 
+  // OS selecionada no form
+  const osSelecionada = form.ordem_id
+    ? ordensPendentes.find(o => String(o.id) === String(form.ordem_id))
+    : null;
+
   return (
     <div style={{ height:'calc(100vh - 60px - var(--space-12))', display:'flex', flexDirection:'column', minHeight:0 }}>
 
-      {/* Header */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'var(--space-4)', flexShrink:0 }}>
         <div>
           <h1 style={{ fontSize:'var(--text-xl)', fontWeight:800, margin:0 }}>Caixa</h1>
@@ -203,94 +236,37 @@ export default function Caixa() {
         )}
       </div>
 
-      {/* ── Navegador de dias ── */}
+      {/* Navegador de dias */}
       <div style={{ display:'flex', alignItems:'center', gap:'var(--space-2)', marginBottom:'var(--space-3)', flexShrink:0 }}>
-        <button
-          className="btn btn-ghost btn-sm"
-          onClick={() => setDate(d => shiftDay(d, -1))}
-          title="Dia anterior"
-          style={{ flexShrink:0 }}
-        >
+        <button className="btn btn-ghost btn-sm" onClick={() => setDate(d => shiftDay(d, -1))} title="Dia anterior" style={{ flexShrink:0 }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6"/></svg>
         </button>
-
         <div style={{
-          flex:1,
-          display:'flex',
-          alignItems:'center',
-          justifyContent:'center',
-          gap:'var(--space-3)',
-          background: isToday
-            ? 'color-mix(in oklch, var(--color-primary) 10%, var(--color-surface))'
-            : 'var(--color-surface-offset)',
-          border: isToday
-            ? '2px solid color-mix(in oklch, var(--color-primary) 45%, var(--color-border))'
-            : '1px solid var(--color-border)',
-          borderRadius:'var(--radius-lg)',
-          padding:'var(--space-2) var(--space-5)',
+          flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:'var(--space-3)',
+          background: isToday ? 'color-mix(in oklch, var(--color-primary) 10%, var(--color-surface))' : 'var(--color-surface-offset)',
+          border: isToday ? '2px solid color-mix(in oklch, var(--color-primary) 45%, var(--color-border))' : '1px solid var(--color-border)',
+          borderRadius:'var(--radius-lg)', padding:'var(--space-2) var(--space-5)',
           transition:'background 200ms, border-color 200ms',
           boxShadow: isToday ? '0 0 0 3px color-mix(in oklch, var(--color-primary) 12%, transparent)' : 'none',
         }}>
-          <span style={{
-            fontWeight: isToday ? 800 : 600,
-            fontSize: isToday ? 'var(--text-base)' : 'var(--text-sm)',
-            color: isToday ? 'var(--color-primary)' : 'var(--color-text)',
-            letterSpacing: isToday ? '0.01em' : 'normal',
-          }}>
+          <span style={{ fontWeight: isToday ? 800 : 600, fontSize: isToday ? 'var(--text-base)' : 'var(--text-sm)', color: isToday ? 'var(--color-primary)' : 'var(--color-text)', letterSpacing: isToday ? '0.01em' : 'normal' }}>
             {labelDay(date)}
           </span>
-
           <span style={{ color:'var(--color-border)', fontSize:'var(--text-sm)' }}>|</span>
-
-          <span style={{
-            fontSize:'var(--text-xs)',
-            color: isToday ? 'color-mix(in oklch, var(--color-primary) 70%, var(--color-text-muted))' : 'var(--color-text-muted)',
-            fontVariantNumeric:'tabular-nums',
-            fontWeight: isToday ? 600 : 400,
-          }}>
+          <span style={{ fontSize:'var(--text-xs)', color: isToday ? 'color-mix(in oklch, var(--color-primary) 70%, var(--color-text-muted))' : 'var(--color-text-muted)', fontVariantNumeric:'tabular-nums', fontWeight: isToday ? 600 : 400 }}>
             {new Date(date+'T12:00:00').toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric' })}
           </span>
         </div>
-
-        <button
-          className="btn btn-ghost btn-sm"
-          onClick={() => setDate(d => shiftDay(d, +1))}
-          disabled={date >= today}
-          title="Próximo dia"
-          style={{ flexShrink:0 }}
-        >
+        <button className="btn btn-ghost btn-sm" onClick={() => setDate(d => shiftDay(d, +1))} disabled={date >= today} title="Próximo dia" style={{ flexShrink:0 }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
         </button>
-
-        <input
-          className="form-input"
-          type="date"
-          style={{ width:'auto', flexShrink:0 }}
-          value={date}
-          max={today}
-          onChange={e => setDate(e.target.value)}
-          title="Selecionar data"
-        />
-
+        <input className="form-input" type="date" style={{ width:'auto', flexShrink:0 }} value={date} max={today} onChange={e => setDate(e.target.value)} title="Selecionar data" />
         {date !== today && (
-          <button
-            className="btn btn-sm"
-            onClick={() => setDate(today)}
-            title="Voltar para hoje"
-            style={{
-              flexShrink:0,
-              background:'color-mix(in oklch, var(--color-primary) 12%, var(--color-surface))',
-              color:'var(--color-primary)',
-              border:'1px solid color-mix(in oklch, var(--color-primary) 30%, var(--color-border))',
-              fontWeight:700,
-            }}
-          >
-            Hoje
-          </button>
+          <button className="btn btn-sm" onClick={() => setDate(today)} style={{ flexShrink:0, background:'color-mix(in oklch, var(--color-primary) 12%, var(--color-surface))', color:'var(--color-primary)', border:'1px solid color-mix(in oklch, var(--color-primary) 30%, var(--color-border))', fontWeight:700 }}>Hoje</button>
         )}
       </div>
 
-      {/* KPIs do dia filtrado */}
+      {/* KPIs */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:'var(--space-3)', marginBottom:'var(--space-4)', flexShrink:0 }}>
         {[
           { label: isToday ? 'Entradas hoje' : 'Entradas do dia', value:fmt(diaEntrada), color:'var(--color-success)', icon:'M12 5v14M5 12h14' },
@@ -431,51 +407,29 @@ export default function Caixa() {
             </div>
             <div className="modal-body">
               <div className="form-grid">
+                {/* Tipo */}
                 <div className="form-group">
                   <label className="form-label">Tipo</label>
                   <select className="form-input" value={form.tipo}
-                    onChange={e=>{ set('tipo',e.target.value); set('categoria',CATEG_OPT[e.target.value][0]); }}>
+                    onChange={e=>{ set('tipo',e.target.value); set('categoria',CATEG_OPT[e.target.value][0]); if(e.target.value!=='Entrada') set('ordem_id',''); }}>
                     {TIPO_OPT.map(t=><option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
+                {/* Categoria */}
                 <div className="form-group">
                   <label className="form-label">Categoria</label>
                   <select className="form-input" value={form.categoria} onChange={e=>set('categoria',e.target.value)}>
                     {(CATEG_OPT[form.tipo]||[]).map(c=><option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
-                <div className="form-group" style={{ gridColumn:'1/-1' }}>
-                  <label className="form-label">Forma de Pagamento <span style={{color:'var(--color-error)'}}>*</span></label>
-                  <select className="form-input" value={form.pagamento} onChange={e=>set('pagamento',e.target.value)}>
-                    {PAGAMENTO_OPT.map(p=><option key={p} value={p}>{p}</option>)}
-                  </select>
-                </div>
-                <div className="form-group" style={{ gridColumn:'1/-1' }}>
-                  <label className="form-label">Descrição</label>
-                  <input className="form-input" value={form.descricao} onChange={e=>set('descricao',e.target.value)} placeholder="Ex: Pagamento OS-0042, Conta de luz…" />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Valor (R$) <span style={{color:'var(--color-error)'}}>*</span></label>
-                  <input className="form-input" type="number" step="0.01" min="0" value={form.valor} onChange={e=>set('valor',e.target.value)} onWheel={e=>e.currentTarget.blur()} style={{ fontFamily:'monospace', fontWeight:700 }} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Data</label>
-                  <input className="form-input" type="date" value={form.data} onChange={e=>set('data',e.target.value)} />
-                </div>
+                {/* OS — ANTES da forma de pagamento */}
                 {form.tipo==='Entrada' && (
                   <div className="form-group" style={{ gridColumn:'1/-1' }}>
                     <label className="form-label">
                       Vincular a uma OS
-                      <span style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', fontWeight:400, marginLeft:'var(--space-2)' }}>
-                        (opcional — apenas OS com saldo pendente)
-                      </span>
+                      <span style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', fontWeight:400, marginLeft:'var(--space-2)' }}>(opcional — OS com saldo pendente)</span>
                     </label>
-                    <select
-                      className="form-input"
-                      value={form.ordem_id}
-                      onChange={e => set('ordem_id', e.target.value)}
-                      style={{ fontFamily:'monospace' }}
-                    >
+                    <select className="form-input" value={form.ordem_id} onChange={e => handleOrdemChange(e.target.value)} style={{ fontFamily:'monospace' }}>
                       <option value="">Sem vínculo</option>
                       {ordensPendentes.map(o => (
                         <option key={o.id} value={o.id}>
@@ -483,38 +437,38 @@ export default function Caixa() {
                         </option>
                       ))}
                     </select>
-                    {/* Indicador visual do saldo pendente da OS selecionada */}
-                    {form.ordem_id && (() => {
-                      const osSel = ordensPendentes.find(o => String(o.id) === String(form.ordem_id));
-                      if (!osSel) return null;
-                      return (
-                        <div style={{
-                          marginTop:'var(--space-2)',
-                          padding:'var(--space-2) var(--space-3)',
-                          borderRadius:'var(--radius-md)',
-                          background:'color-mix(in oklch, var(--color-error) 8%, var(--color-surface))',
-                          border:'1px solid color-mix(in oklch, var(--color-error) 25%, var(--color-border))',
-                          display:'flex',
-                          alignItems:'center',
-                          justifyContent:'space-between',
-                          gap:'var(--space-2)',
-                        }}>
-                          <span style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>
-                            Saldo pendente desta OS:
-                          </span>
-                          <strong style={{
-                            fontFamily:'monospace',
-                            fontSize:'var(--text-sm)',
-                            color:'var(--color-error)',
-                            fontWeight:800,
-                          }}>
-                            {Number(osSel.saldoaberto).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
-                          </strong>
-                        </div>
-                      );
-                    })()}
+                    {osSelecionada && (
+                      <div style={{ marginTop:'var(--space-2)', padding:'var(--space-2) var(--space-3)', borderRadius:'var(--radius-md)', background:'color-mix(in oklch, var(--color-error) 8%, var(--color-surface))', border:'1px solid color-mix(in oklch, var(--color-error) 25%, var(--color-border))', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'var(--space-2)' }}>
+                        <span style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>Saldo pendente desta OS:</span>
+                        <strong style={{ fontFamily:'monospace', fontSize:'var(--text-sm)', color:'var(--color-error)', fontWeight:800 }}>
+                          {Number(osSelecionada.saldoaberto).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
+                        </strong>
+                      </div>
+                    )}
                   </div>
                 )}
+                {/* Forma de pagamento — DEPOIS da OS */}
+                <div className="form-group" style={{ gridColumn:'1/-1' }}>
+                  <label className="form-label">Forma de Pagamento <span style={{color:'var(--color-error)'}}>*</span></label>
+                  <select className="form-input" value={form.pagamento} onChange={e=>set('pagamento',e.target.value)}>
+                    {PAGAMENTO_OPT.map(p=><option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+                {/* Descrição */}
+                <div className="form-group" style={{ gridColumn:'1/-1' }}>
+                  <label className="form-label">Descrição</label>
+                  <input className="form-input" value={form.descricao} onChange={e=>set('descricao',e.target.value)} placeholder="Ex: Pagamento OS-0042, Conta de luz…" />
+                </div>
+                {/* Valor */}
+                <div className="form-group">
+                  <label className="form-label">Valor (R$) <span style={{color:'var(--color-error)'}}>*</span></label>
+                  <input className="form-input" type="number" step="0.01" min="0" value={form.valor} onChange={e=>set('valor',e.target.value)} onWheel={e=>e.currentTarget.blur()} style={{ fontFamily:'monospace', fontWeight:700 }} />
+                </div>
+                {/* Data */}
+                <div className="form-group">
+                  <label className="form-label">Data</label>
+                  <input className="form-input" type="date" value={form.data} onChange={e=>set('data',e.target.value)} />
+                </div>
               </div>
             </div>
             <div className="modal-footer">

@@ -37,11 +37,14 @@ function AppRoutes() {
         <Route element={<Layout />}>
           <Route index element={<Navigate to={defaultRoute} replace />} />
           <Route path="/oficina" element={<PrivateRoute><Oficina /></PrivateRoute>}/>
+          <Route path="/oficina/:id" element={<PrivateRoute><Oficina /></PrivateRoute>}/>
           <Route path="/dashboard" element={<PrivateRoute roles={['admin','caixa']}><Dashboard /></PrivateRoute>}/>
           <Route path="/ordens" element={<PrivateRoute roles={['admin','caixa']}><Ordens /></PrivateRoute>}/>
           <Route path="/ordens/:id" element={<PrivateRoute roles={['admin','caixa']}><OrdemDetalhe /></PrivateRoute>}/>
           <Route path="/caixa" element={<PrivateRoute roles={['admin','caixa']}><Caixa /></PrivateRoute>}/>
+          <Route path="/caixa/:id" element={<PrivateRoute roles={['admin','caixa']}><Caixa /></PrivateRoute>}/>
           <Route path="/clientes" element={<PrivateRoute roles={['admin','caixa']}><Clientes /></PrivateRoute>}/>
+          <Route path="/clientes/:id" element={<PrivateRoute roles={['admin','caixa']}><Clientes /></PrivateRoute>}/>
           <Route path="/relatorios" element={<PrivateRoute roles={['admin','caixa']}><Relatorios /></PrivateRoute>}/>
           <Route path="/orcamento" element={<PrivateRoute roles={['admin','caixa']}><Orcamento /></PrivateRoute>}/>
           <Route path="/produtos" element={<PrivateRoute roles={['admin','caixa']}><Produtos /></PrivateRoute>}/>
