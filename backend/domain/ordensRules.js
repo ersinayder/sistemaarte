@@ -1,4 +1,4 @@
-const STATUSES_VALIDOS = ['Aguardando', 'Em Produção', 'Em Producao', 'Pronto', 'Entregue', 'Cancelado'];
+const STATUSES_VALIDOS = ['Aguardando', 'Em Produção', 'Pronto', 'Entregue', 'Cancelado'];
 
 /**
  * Valida regras financeiras da OS.
