@@ -12,11 +12,11 @@ router.get('/', auth(), (req, res, next) => {
     if (q && q.trim().length > 0) {
       const like = `%${q.trim()}%`;
       rows = getAll(
-        'SELECT * FROM produtos WHERE nome LIKE ? OR categoria LIKE ? OR descricao LIKE ? ORDER BY nome COLLATE NOCASE LIMIT 20',
+        'SELECT * FROM produtos WHERE deletedat IS NULL AND (nome LIKE ? OR categoria LIKE ? OR descricao LIKE ?) ORDER BY nome COLLATE NOCASE LIMIT 20',
         [like, like, like]
       );
     } else {
-      rows = getAll('SELECT * FROM produtos ORDER BY nome COLLATE NOCASE');
+      rows = getAll('SELECT * FROM produtos WHERE deletedat IS NULL ORDER BY nome COLLATE NOCASE');
     }
     res.json(rows);
   } catch(e) { next(e); }
@@ -25,7 +25,7 @@ router.get('/', auth(), (req, res, next) => {
 // GET /api/produtos/:id
 router.get('/:id', auth(), (req, res, next) => {
   try {
-    const row = getOne('SELECT * FROM produtos WHERE id=?', [req.params.id]);
+    const row = getOne('SELECT * FROM produtos WHERE id=? AND deletedat IS NULL', [req.params.id]);
     if (!row) return res.status(404).json({ error: 'Nao encontrado' });
     res.json(row);
   } catch(e) { next(e); }
@@ -61,7 +61,7 @@ router.put('/:id', auth(['admin','caixa']), (req, res, next) => {
     if (!nome?.trim()) return res.status(400).json({ error: 'Nome obrigatorio' });
     const result = run(
       `UPDATE produtos SET nome=?, categoria=?, unidade=?, preco=?, estoque=?, estoquemin=?, descricao=?,
-       updatedat=datetime('now','localtime') WHERE id=?`,
+       updatedat=datetime('now','localtime') WHERE id=? AND deletedat IS NULL`,
       [
         nome.trim(),
         categoria         || 'Outros',
@@ -79,10 +79,13 @@ router.put('/:id', auth(['admin','caixa']), (req, res, next) => {
   } catch(e) { next(e); }
 });
 
-// DELETE /api/produtos/:id
+// DELETE /api/produtos/:id  →  soft-delete (preserva histórico de OS)
 router.delete('/:id', auth(['admin']), (req, res, next) => {
   try {
-    const result = run('DELETE FROM produtos WHERE id=?', [req.params.id]);
+    const result = run(
+      `UPDATE produtos SET deletedat=datetime('now','localtime') WHERE id=? AND deletedat IS NULL`,
+      [req.params.id]
+    );
     if (result.changes === 0) return res.status(404).json({ error: 'Nao encontrado' });
     res.json({ ok: true });
   } catch(e) { next(e); }
