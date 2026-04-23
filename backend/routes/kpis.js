@@ -43,11 +43,12 @@ function calcKpis() {
     [hoje]
   )?.n ?? 0;
 
+  // Usa l.data (data real do pagamento), nao createdat (data de digitacao)
   const faturamentoHoje = getOne(
     `SELECT COALESCE(SUM(l.valor),0) AS total
      FROM lancamentos l
      WHERE l.pago = 1 AND l.valor > 0
-       AND date(l.createdat) = ?
+       AND date(l.data) = ?
        AND l.deletedat IS NULL`,
     [hoje]
   )?.total ?? 0;
@@ -72,11 +73,11 @@ function calcKpis() {
 }
 
 // REST – snapshot único
-router.get("/", auth(), (req, res) => {
+router.get("/", auth(), (req, res, next) => {
   try {
     res.json(calcKpis());
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    next(e);
   }
 });
 
