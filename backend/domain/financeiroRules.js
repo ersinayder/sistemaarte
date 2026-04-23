@@ -3,13 +3,13 @@ const { toNumber } = require("../utils/numbers");
 
 /**
  * Calcula o resumo financeiro de uma OS.
- * Ignora lancamentos soft-deleted (deletedat IS NULL).
+ * Ignora OS soft-deleted (deletedat IS NULL) e lançamentos soft-deleted.
  * @returns {{ ordem, recebido, saldo }|null}
  */
 function getResumoFinanceiroOS(ordemId) {
   const ordem = getOne(
     `SELECT id, numero, clientenome, servico, valortotal, valorentrada, pagamento
-       FROM ordens WHERE id=?`,
+       FROM ordens WHERE id=? AND deletedat IS NULL`,
     [ordemId]
   );
   if (!ordem) return null;
