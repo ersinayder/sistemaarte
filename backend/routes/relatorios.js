@@ -4,17 +4,17 @@ const { auth } = require("../middlewares/auth");
 const { hoje } = require("../utils/dates");
 const { toNumber } = require("../utils/numbers");
 
-// Filtro reutilizavel: exclui lancamentos soft-deleted (C4) e lancamentos
-// vinculados a OS que foram soft-deleted (I4).
+// Filtro reutilizavel: exclui lancamentos soft-deleted e lancamentos
+// vinculados a OS que foram soft-deleted.
 const FILTRO_ATIVO = `
   l.deletedat IS NULL
   AND (l.ordemid IS NULL OR (SELECT deletedat FROM ordens WHERE id=l.ordemid) IS NULL)
 `;
 
-router.get("/resumo", auth(), (req, res) => {
+router.get("/resumo", auth(), (req, res, next) => {
   try {
     const { mes } = req.query;
-    if (!mes) return res.status(400).json({ error: "Informe o m\u00eas YYYY-MM" });
+    if (!mes) return res.status(400).json({ error: "Informe o mês YYYY-MM" });
 
     const hj = hoje();
 
@@ -50,8 +50,9 @@ router.get("/resumo", auth(), (req, res) => {
       [mes]
     );
 
-    const ordensabertas  = getOne("SELECT COUNT(*) AS c FROM ordens WHERE status NOT IN ('Entregue','Cancelado') AND deletedat IS NULL")?.c ?? 0;
-    const ordensvencidas = getOne("SELECT COUNT(*) AS c FROM ordens WHERE prazoentrega<? AND status NOT IN ('Entregue','Cancelado') AND deletedat IS NULL", [hj])?.c ?? 0;
+    // C-1: usar 'Cancelado' (valor gravado pelo ordensRules)
+    const ordensabertas  = getOne("SELECT COUNT(*) AS c FROM ordens WHERE status NOT IN ('Entregue','Cancelado','Cancelada') AND deletedat IS NULL")?.c ?? 0;
+    const ordensvencidas = getOne("SELECT COUNT(*) AS c FROM ordens WHERE prazoentrega<? AND status NOT IN ('Entregue','Cancelado','Cancelada') AND deletedat IS NULL", [hj])?.c ?? 0;
 
     const lancamentos = getAll(
       `SELECT l.* FROM lancamentos l WHERE strftime('%Y-%m',l.data)=? AND ${FILTRO_ATIVO} ORDER BY l.data DESC, l.id DESC`,
@@ -65,19 +66,15 @@ router.get("/resumo", auth(), (req, res) => {
       porpagamento: porPag, portipo: porTipo,
       dias, lancamentos
     });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { next(e); }
 });
 
 // GET /api/relatorios/producao?mes=YYYY-MM
-// Calcula metricas de producao por operador a partir do statuslog existente.
-// Duracao de cada fase = diferenca entre createdat da entrada e do proximo registro da mesma OS.
-// Fases ainda abertas (sem registro posterior) sao incluidas com finalizadoem=null e duracao_min=null.
-router.get("/producao", auth(["admin"]), (req, res) => {
+router.get("/producao", auth(["admin"]), (req, res, next) => {
   try {
     const { mes } = req.query;
     if (!mes) return res.status(400).json({ error: "Informe o mes YYYY-MM" });
 
-    // Todas as transicoes do mes, para OS nao deletadas
     const fases = getAll(`
       SELECT
         s1.id,
@@ -107,7 +104,6 @@ router.get("/producao", auth(["admin"]), (req, res) => {
       ORDER BY s1.createdat DESC
     `, [mes]);
 
-    // Resumo por operador: contagem de fases concluidas e media de duracao
     const porOperador = getAll(`
       SELECT
         s1.usuarioid,
@@ -134,7 +130,6 @@ router.get("/producao", auth(["admin"]), (req, res) => {
       ORDER BY fases_concluidas DESC
     `, [mes]);
 
-    // Resumo por status/fase: tempo medio por etapa do fluxo
     const porFase = getAll(`
       SELECT
         s1.statusnovo  AS fase,
@@ -159,7 +154,7 @@ router.get("/producao", auth(["admin"]), (req, res) => {
     `, [mes]);
 
     res.json({ mes, fases, porOperador, porFase });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { next(e); }
 });
 
 module.exports = router;
