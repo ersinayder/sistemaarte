@@ -5,6 +5,7 @@ import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 const TIPO_OPT = ['Entrada','Saída'];
+const PAGAMENTO_OPT = ['Dinheiro','Pix','Cartão de Débito','Cartão de Crédito','Transferência','Outros'];
 const CATEG_OPT = {
   Entrada: ['Pagamento OS','Adiantamento','Outros'],
   Saída:  ['Fornecedor','Despesa Fixa','Despesa Variável','Retirada','Outros'],
@@ -62,7 +63,7 @@ export default function Caixa() {
   const canEdit  = user?.role !== 'viewer';
 
   const today = getToday();
-  const blankForm = { tipo:'Entrada', categoria:'Pagamento OS', descricao:'', valor:'', data:today, ordem_id:'' };
+  const blankForm = { tipo:'Entrada', categoria:'Pagamento OS', pagamento:'Pix', descricao:'', valor:'', data:today, ordem_id:'' };
 
   const [lancamentos,   setLancamentos]   = useState([]);
   const [ordens,        setOrdens]        = useState([]);
@@ -74,7 +75,6 @@ export default function Caixa() {
   const [confirmDel,    setConfirmDel]    = useState(null);
   const [deleting,      setDeleting]      = useState(null);
   const [search,        setSearch]        = useState('');
-  // date inicia com hoje
   const [date,          setDate]          = useState(today);
   const [currentPage,   setCurrentPage]   = useState(1);
   const PAGE_SIZE = 20;
@@ -97,18 +97,41 @@ export default function Caixa() {
   const openNew  = () => { setEditData(null); setForm(blankForm); setShowForm(true); };
   const openEdit = (l) => {
     setEditData(l);
-    setForm({ tipo:l.tipo, categoria:l.categoria||'', descricao:l.descricao||'', valor:String(l.valor||''), data:l.data?.slice(0,10)||today, ordem_id:l.ordem_id||'' });
+    setForm({
+      tipo: l.tipo,
+      categoria: l.categoria || '',
+      pagamento: l.pagamento || 'Pix',
+      descricao: l.descricao || '',
+      valor: String(l.valor || ''),
+      data: l.data?.slice(0,10) || today,
+      ordem_id: l.ordemid || l.ordem_id || ''
+    });
     setShowForm(true);
   };
   const closeForm = () => { setShowForm(false); setEditData(null); setForm(blankForm); };
 
   const handleSave = async () => {
     if (!form.valor || isNaN(Number(form.valor)) || Number(form.valor) <= 0) { toast.error('Valor inválido'); return; }
+    if (!form.pagamento) { toast.error('Selecione a forma de pagamento'); return; }
     setSaving(true);
     try {
-      const payload = { tipo:form.tipo, categoria:form.categoria, descricao:form.descricao, valor:Number(form.valor), data:form.data||today, ordem_id:form.ordem_id||null };
-      if (editData) { await api.put(`/caixa/${editData.id}`, payload); toast.success('Lançamento atualizado'); }
-      else          { await api.post('/caixa', payload);              toast.success('Lançamento registrado'); }
+      const payload = {
+        tipo: form.tipo,
+        categoria: form.categoria,
+        pagamento: form.pagamento,
+        descricao: form.descricao,
+        valor: Number(form.valor),
+        data: form.data || today,
+        pago: true,
+        ordemid: form.ordem_id || null,
+      };
+      if (editData) {
+        await api.put(`/caixa/${editData.id}`, payload);
+        toast.success('Lançamento atualizado');
+      } else {
+        await api.post('/caixa', payload);
+        toast.success('Lançamento registrado');
+      }
       closeForm(); load();
     } catch(e) { toast.error(e?.response?.data?.error || 'Erro ao salvar'); }
     finally { setSaving(false); }
@@ -134,8 +157,9 @@ export default function Caixa() {
       list = list.filter(l =>
         (l.descricao||'').toLowerCase().includes(q) ||
         (l.categoria||'').toLowerCase().includes(q) ||
+        (l.pagamento||'').toLowerCase().includes(q) ||
         (l.tipo||'').toLowerCase().includes(q) ||
-        (l.ordem_numero||l.ordemNumero||'').toLowerCase().includes(q)
+        (l.ordemnumero||l.ordem_numero||'').toLowerCase().includes(q)
       );
     }
     if (date) list = list.filter(l => l.data?.slice(0,10) === date);
@@ -146,12 +170,10 @@ export default function Caixa() {
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paginated  = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
-  // totais do dia filtrado
   const diaEntrada = filtered.filter(l => l.tipo==='Entrada').reduce((s,l) => s+Number(l.valor||0), 0);
   const diaSaida   = filtered.filter(l => l.tipo==='Saída').reduce((s,l)   => s+Number(l.valor||0), 0);
   const diaSaldo   = diaEntrada - diaSaida;
 
-  // totais gerais
   const totalEntrada = lancamentos.filter(l => l.tipo==='Entrada').reduce((s,l) => s+Number(l.valor||0), 0);
   const totalSaida   = lancamentos.filter(l => l.tipo==='Saída').reduce((s,l)   => s+Number(l.valor||0), 0);
   const saldoFinal   = totalEntrada - totalSaida;
@@ -187,22 +209,42 @@ export default function Caixa() {
         </button>
 
         <div style={{
-          flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:'var(--space-2)',
-          background: isToday ? 'color-mix(in oklch, var(--color-primary) 10%, var(--color-surface))' : 'var(--color-surface-offset)',
-          border: isToday ? '1.5px solid color-mix(in oklch, var(--color-primary) 35%, var(--color-border))' : '1px solid var(--color-border)',
+          flex:1,
+          display:'flex',
+          alignItems:'center',
+          justifyContent:'center',
+          gap:'var(--space-3)',
+          background: isToday
+            ? 'color-mix(in oklch, var(--color-primary) 10%, var(--color-surface))'
+            : 'var(--color-surface-offset)',
+          border: isToday
+            ? '2px solid color-mix(in oklch, var(--color-primary) 45%, var(--color-border))'
+            : '1px solid var(--color-border)',
           borderRadius:'var(--radius-lg)',
-          padding:'var(--space-2) var(--space-4)',
-          transition:'background 180ms, border-color 180ms',
+          padding:'var(--space-2) var(--space-5)',
+          transition:'background 200ms, border-color 200ms',
+          boxShadow: isToday ? '0 0 0 3px color-mix(in oklch, var(--color-primary) 12%, transparent)' : 'none',
         }}>
-          <span style={{ fontWeight:700, fontSize:'var(--text-sm)', color: isToday ? 'var(--color-primary)' : 'var(--color-text)' }}>
+          {/* Label do dia — Hoje em destaque, outros dias em texto normal */}
+          <span style={{
+            fontWeight: isToday ? 800 : 600,
+            fontSize: isToday ? 'var(--text-base)' : 'var(--text-sm)',
+            color: isToday ? 'var(--color-primary)' : 'var(--color-text)',
+            letterSpacing: isToday ? '0.01em' : 'normal',
+          }}>
             {labelDay(date)}
           </span>
-          {isToday && (
-            <span style={{ fontSize:'var(--text-xs)', fontWeight:600, color:'var(--color-primary)', background:'color-mix(in oklch, var(--color-primary) 15%, var(--color-surface))', padding:'1px 8px', borderRadius:'var(--radius-full)' }}>
-              hoje
-            </span>
-          )}
-          <span style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', fontVariantNumeric:'tabular-nums' }}>
+
+          {/* Separador */}
+          <span style={{ color:'var(--color-border)', fontSize:'var(--text-sm)' }}>|</span>
+
+          {/* Data numérica */}
+          <span style={{
+            fontSize:'var(--text-xs)',
+            color: isToday ? 'color-mix(in oklch, var(--color-primary) 70%, var(--color-text-muted))' : 'var(--color-text-muted)',
+            fontVariantNumeric:'tabular-nums',
+            fontWeight: isToday ? 600 : 400,
+          }}>
             {new Date(date+'T12:00:00').toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric' })}
           </span>
         </div>
@@ -228,7 +270,18 @@ export default function Caixa() {
         />
 
         {date !== today && (
-          <button className="btn btn-ghost btn-sm" onClick={() => setDate(today)} title="Voltar para hoje" style={{ flexShrink:0, color:'var(--color-primary)', fontWeight:600 }}>
+          <button
+            className="btn btn-sm"
+            onClick={() => setDate(today)}
+            title="Voltar para hoje"
+            style={{
+              flexShrink:0,
+              background:'color-mix(in oklch, var(--color-primary) 12%, var(--color-surface))',
+              color:'var(--color-primary)',
+              border:'1px solid color-mix(in oklch, var(--color-primary) 30%, var(--color-border))',
+              fontWeight:700,
+            }}
+          >
             Hoje
           </button>
         )}
@@ -259,7 +312,6 @@ export default function Caixa() {
           <svg style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:'var(--color-text-faint)' }} width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
           <input className="form-input" style={{ paddingLeft:34 }} placeholder="Buscar por descrição, categoria, OS…" value={search} onChange={e => setSearch(e.target.value)} />
         </div>
-        {/* saldo geral discreto */}
         <div style={{ display:'flex', alignItems:'center', gap:'var(--space-2)', padding:'0 var(--space-3)', background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)', fontSize:'var(--text-xs)', color:'var(--color-text-muted)', whiteSpace:'nowrap', flexShrink:0 }}>
           Saldo total: <strong style={{ fontFamily:'monospace', color: saldoFinal>=0 ? 'var(--color-success)' : 'var(--color-error)', marginLeft:'var(--space-1)' }}>{fmt(saldoFinal)}</strong>
         </div>
@@ -288,6 +340,7 @@ export default function Caixa() {
                     <th>Data</th>
                     <th>Tipo</th>
                     <th>Categoria</th>
+                    <th>Pagamento</th>
                     <th>Descrição</th>
                     <th>OS vinculada</th>
                     <th style={{ textAlign:'right' }}>Valor</th>
@@ -304,9 +357,10 @@ export default function Caixa() {
                         </span>
                       </td>
                       <td style={{ fontSize:'var(--text-xs)' }}>{l.categoria||'—'}</td>
+                      <td style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>{l.pagamento||'—'}</td>
                       <td style={{ maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:'var(--text-xs)' }}>{l.descricao||'—'}</td>
                       <td style={{ fontSize:'var(--text-xs)', color:'var(--color-primary)', fontWeight:600 }}>
-                        {l.ordem_numero || l.ordemNumero || (l.ordem_id ? `#${l.ordem_id}` : '—')}
+                        {l.ordemnumero || l.ordem_numero || (l.ordemid || l.ordem_id ? `#${l.ordemid||l.ordem_id}` : '—')}
                       </td>
                       <td style={{ textAlign:'right', fontFamily:'monospace', fontSize:'var(--text-sm)', fontWeight:700,
                         color: l.tipo==='Entrada' ? 'var(--color-success)' : 'var(--color-error)' }}>
@@ -385,6 +439,12 @@ export default function Caixa() {
                   <label className="form-label">Categoria</label>
                   <select className="form-input" value={form.categoria} onChange={e=>set('categoria',e.target.value)}>
                     {(CATEG_OPT[form.tipo]||[]).map(c=><option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div className="form-group" style={{ gridColumn:'1/-1' }}>
+                  <label className="form-label">Forma de Pagamento <span style={{color:'var(--color-error)'}}>*</span></label>
+                  <select className="form-input" value={form.pagamento} onChange={e=>set('pagamento',e.target.value)}>
+                    {PAGAMENTO_OPT.map(p=><option key={p} value={p}>{p}</option>)}
                   </select>
                 </div>
                 <div className="form-group" style={{ gridColumn:'1/-1' }}>
