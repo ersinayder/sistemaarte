@@ -29,6 +29,8 @@ router.post("/", auth(["admin"]), (req, res, next) => {
 router.put("/:id", auth(["admin"]), (req, res, next) => {
   try {
     const { name, role, active, password } = req.body ?? {};
+    if (!ROLES_VALIDOS.includes(role))
+      return res.status(400).json({ error: "Perfil invalido" });
     if (password && password.length >= 4) {
       run(
         "UPDATE users SET name=?,role=?,active=?,password=? WHERE id=?",
