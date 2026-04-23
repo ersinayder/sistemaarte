@@ -76,49 +76,53 @@ function maybeNotifyPronto(ordemId, statusAnterior, statusNovo) {
 }
 
 // GET /api/ordens
-router.get("/", auth(), (req, res) => {
-  const { status, q, vencidas, lixeira } = req.query;
-  const isLixeira = lixeira === "1" && req.user.role === "admin";
+router.get("/", auth(), (req, res, next) => {
+  try {
+    const { status, q, vencidas, lixeira } = req.query;
+    const isLixeira = lixeira === "1" && req.user.role === "admin";
 
-  let sql = SEL_ORDEM + (isLixeira ? " WHERE o.deletedat IS NOT NULL" : " WHERE o.deletedat IS NULL");
-  const p = [];
+    let sql = SEL_ORDEM + (isLixeira ? " WHERE o.deletedat IS NOT NULL" : " WHERE o.deletedat IS NULL");
+    const p = [];
 
-  if (!isLixeira) {
-    if (status && status !== "todos") {
-      sql += " AND o.status=?";
-      p.push(status);
+    if (!isLixeira) {
+      if (status && status !== "todos") {
+        sql += " AND o.status=?";
+        p.push(status);
+      }
+      if (vencidas == "1") {
+        sql += " AND o.prazoentrega < ? AND o.status NOT IN ('Pronto','Entregue','Cancelada')";
+        p.push(hoje());
+      }
     }
-    if (vencidas == "1") {
-      sql += " AND o.prazoentrega < ? AND o.status NOT IN ('Pronto','Entregue','Cancelada')";
-      p.push(hoje());
+
+    if (q) {
+      sql += " AND (o.numero LIKE ? OR o.clientenome LIKE ? OR o.servico LIKE ?)";
+      const search = `%${q}%`;
+      p.push(search, search, search);
     }
-  }
 
-  if (q) {
-    sql += " AND (o.numero LIKE ? OR o.clientenome LIKE ? OR o.servico LIKE ?)";
-    const search = `%${q}%`;
-    p.push(search, search, search);
-  }
-
-  sql += " ORDER BY o.id DESC";
-  res.json(getAll(sql, p));
+    sql += " ORDER BY o.id DESC";
+    res.json(getAll(sql, p));
+  } catch(e) { next(e); }
 });
 
 // GET /api/ordens/:id
-router.get("/:id", auth(), (req, res) => {
-  const o = getOne(SEL_ORDEM + " WHERE o.id=?", [req.params.id]);
-  if (!o) return res.status(404).json({ error: "Nao encontrado" });
+router.get("/:id", auth(), (req, res, next) => {
+  try {
+    const o = getOne(SEL_ORDEM + " WHERE o.id=?", [req.params.id]);
+    if (!o) return res.status(404).json({ error: "Nao encontrado" });
 
-  const logs = getAll(
-    "SELECT sl.*, u.name AS usuarionome FROM statuslog sl LEFT JOIN users u ON u.id=sl.usuarioid WHERE sl.ordemid=? ORDER BY sl.createdat ASC",
-    [req.params.id]
-  );
+    const logs = getAll(
+      "SELECT sl.*, u.name AS usuarionome FROM statuslog sl LEFT JOIN users u ON u.id=sl.usuarioid WHERE sl.ordemid=? ORDER BY sl.createdat ASC",
+      [req.params.id]
+    );
 
-  res.json({ ...o, logs });
+    res.json({ ...o, logs });
+  } catch(e) { next(e); }
 });
 
 // POST /api/ordens
-router.post("/", auth(["admin","caixa"]), (req, res) => {
+router.post("/", auth(["admin","caixa"]), (req, res, next) => {
   const {
     clienteid, clientenome, clientetelefone, clientecpf,
     servico, descricao, valortotal, valorentrada,
@@ -177,12 +181,12 @@ router.post("/", auth(["admin","caixa"]), (req, res) => {
     if (e.message?.includes("UNIQUE")) {
       return res.status(409).json({ error: "Conflito ao gerar numero da OS. Tente novamente." });
     }
-    res.status(500).json({ error: e.message });
+    next(e);
   }
 });
 
 // PUT /api/ordens/:id
-router.put("/:id", auth(["admin","caixa","oficina"]), (req, res) => {
+router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
   try {
     const old = getOne("SELECT * FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);
     if (!old) return res.status(404).json({ error: "Nao encontrado ou OS cancelada" });
@@ -214,7 +218,6 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res) => {
     const erroEntrada = validarEntradaOS(total, entrada);
     if (erroEntrada) return res.status(400).json({ error: erroEntrada });
 
-    // Valida prazo apenas se estiver sendo alterado
     const novoPrazo = prazoentrega !== undefined ? prazoentrega : old.prazoentrega;
     const erroPrazo = validarPrazo(prazoentrega !== undefined ? prazoentrega : null);
     if (erroPrazo) return res.status(400).json({ error: erroPrazo });
@@ -265,14 +268,11 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res) => {
 
     maybeNotifyPronto(req.params.id, old.status, ns);
     res.json({ ok: true });
-  } catch(e) {
-    console.error("[PUT /api/ordens/:id]", e.message);
-    res.status(500).json({ error: e.message });
-  }
+  } catch(e) { next(e); }
 });
 
 // PATCH /api/ordens/:id/status
-router.patch("/:id/status", auth(["admin","caixa","oficina"]), (req, res) => {
+router.patch("/:id/status", auth(["admin","caixa","oficina"]), (req, res, next) => {
   try {
     const { status, obs } = req.body ?? {};
     if (!status) return res.status(400).json({ error: "status obrigatorio" });
@@ -293,13 +293,11 @@ router.patch("/:id/status", auth(["admin","caixa","oficina"]), (req, res) => {
 
     maybeNotifyPronto(req.params.id, old.status, status);
     res.json({ ok: true });
-  } catch(e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch(e) { next(e); }
 });
 
 // POST /api/ordens/:id/whatsapp-confirmacao
-router.post("/:id/whatsapp-confirmacao", auth(["admin","caixa"]), async (req, res) => {
+router.post("/:id/whatsapp-confirmacao", auth(["admin","caixa"]), async (req, res, next) => {
   try {
     const os = getOne(SEL_ORDEM + " WHERE o.id=? AND o.deletedat IS NULL", [req.params.id]);
     if (!os) return res.status(404).json({ error: "OS nao encontrada" });
@@ -315,13 +313,11 @@ router.post("/:id/whatsapp-confirmacao", auth(["admin","caixa"]), async (req, re
     } else {
       res.status(400).json({ ok: false, error: result.error });
     }
-  } catch(e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch(e) { next(e); }
 });
 
 // DELETE /api/ordens/:id
-router.delete("/:id", auth(["admin"]), (req, res) => {
+router.delete("/:id", auth(["admin"]), (req, res, next) => {
   try {
     const os = getOne("SELECT id,numero,status FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);
     if (!os) return res.status(404).json({ error: "OS nao encontrada ou ja excluida." });
@@ -340,13 +336,11 @@ router.delete("/:id", auth(["admin"]), (req, res) => {
     });
 
     res.json({ ok: true, numero: os.numero });
-  } catch(e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch(e) { next(e); }
 });
 
 // POST /api/ordens/:id/restaurar
-router.post("/:id/restaurar", auth(["admin"]), (req, res) => {
+router.post("/:id/restaurar", auth(["admin"]), (req, res, next) => {
   try {
     const os = getOne("SELECT id,numero,status FROM ordens WHERE id=? AND deletedat IS NOT NULL", [req.params.id]);
     if (!os) return res.status(404).json({ error: "OS nao encontrada na lixeira." });
@@ -363,9 +357,7 @@ router.post("/:id/restaurar", auth(["admin"]), (req, res) => {
     });
 
     res.json({ ok: true, numero: os.numero });
-  } catch(e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch(e) { next(e); }
 });
 
 module.exports = router;

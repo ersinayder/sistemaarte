@@ -2,6 +2,7 @@ require("dotenv").config();
 const express      = require("express");
 const cors         = require("cors");
 const cookieParser = require("cookie-parser");
+const rateLimit    = require("express-rate-limit");
 const path         = require("path");
 const fs           = require("fs");
 
@@ -9,16 +10,36 @@ const { initDB, backup }     = require("./database");
 const { auth }               = require("./middlewares/auth");
 const { errorHandler }       = require("./middlewares/errorHandler");
 
-const app  = express();
-const PORT = process.env.PORT || 3001;
+const IS_PROD = process.env.NODE_ENV === "production";
+
+// Guard: CORS_ORIGINS obrigatório em produção
+if (IS_PROD && !process.env.CORS_ORIGINS) {
+  throw new Error("[Config] CORS_ORIGINS deve ser definido em produção!");
+}
 
 const allowedOrigins = process.env.CORS_ORIGINS
   ? process.env.CORS_ORIGINS.split(",").map(o => o.trim())
   : ["http://localhost:5173"];
 
+const app  = express();
+const PORT = process.env.PORT || 3001;
+
+// Trust proxy: necessário para rate-limit e secure cookies atrás de nginx
+app.set("trust proxy", 1);
+
 app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json());
 app.use(cookieParser());
+
+// Rate limit global — protege todas as rotas /api contra flood de usuários autenticados
+const globalLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Muitas requisições. Tente novamente em instantes." },
+});
+app.use("/api", globalLimiter);
 
 // ── Rotas ──────────────────────────────────────────────────────────────────────────
 app.use("/api/auth",       require("./routes/auth"));
@@ -31,12 +52,12 @@ app.use("/api/relatorios", require("./routes/relatorios"));
 app.use("/api/consulta",   require("./routes/consulta"));
 app.use("/api/backup",     require("./routes/backup"));
 app.use("/api/produtos",   require("./routes/produtos"));
-app.use("/api/kpis",       require("./routes/kpis"));      // GET /api/kpis  + /api/kpis/stream (SSE)
+app.use("/api/kpis",       require("./routes/kpis"));
 
 // Health
 app.get("/api/health", (_req, res) => res.json({ ok: true, ts: Date.now() }));
 
-// Backup automatico diario
+// Backup automático diário
 let _backupDate = "";
 setInterval(() => {
   const now   = new Date();

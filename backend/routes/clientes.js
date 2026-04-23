@@ -29,23 +29,25 @@ router.get("/:id", auth(), (req, res, next) => {
     const c = getOne("SELECT * FROM clientes WHERE id=?", [id]);
     if (!c) return res.status(404).json({ error: "Cliente nao encontrado" });
 
+    // Busca ordens sem datafinalizado (campo inexistente) — usa prazoentrega
     const ordens = getAll(
-      "SELECT id, numero, status, servico, valortotal, valor, createdat, datafinalizado FROM ordens WHERE clienteid=? ORDER BY createdat DESC",
+      "SELECT id, numero, status, servico, valortotal, createdat, prazoentrega FROM ordens WHERE clienteid=? ORDER BY createdat DESC",
       [id]
     );
 
-    const total = ordens.reduce((s, o) => s + Number(o.valortotal || o.valor || 0), 0);
+    const total = ordens.reduce((s, o) => s + Number(o.valortotal || 0), 0);
     const ticketMedio = ordens.length ? total / ordens.length : 0;
 
     const hoje = new Date().toISOString().slice(0, 10);
     const statusAberto = ['Recebido', 'Em Produção', 'Pronto'];
     const osEmAberto = ordens.filter(o => statusAberto.includes(o.status)).length;
 
-    const osVencidas = ordens.filter(o => {
-      if (!statusAberto.includes(o.status)) return false;
-      if (!o.datafinalizado) return false;
-      return o.datafinalizado.slice(0, 10) < hoje;
-    }).length;
+    // Corrigido: era o.datafinalizado (campo inexistente) → o.prazoentrega
+    const osVencidas = ordens.filter(o =>
+      statusAberto.includes(o.status) &&
+      o.prazoentrega &&
+      o.prazoentrega.slice(0, 10) < hoje
+    ).length;
 
     const ultimaOs = ordens[0] || null;
 
