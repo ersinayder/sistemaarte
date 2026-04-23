@@ -3,6 +3,7 @@ const { toNumber } = require("../utils/numbers");
 
 /**
  * Calcula o resumo financeiro de uma OS.
+ * Ignora lancamentos soft-deleted (deletedat IS NULL).
  * @returns {{ ordem, recebido, saldo }|null}
  */
 function getResumoFinanceiroOS(ordemId) {
@@ -15,11 +16,11 @@ function getResumoFinanceiroOS(ordemId) {
 
   const recebido = getOne(
     `SELECT COALESCE(SUM(valor),0) AS total
-       FROM lancamentos WHERE ordemid=? AND pago=1 AND valor>0`,
+       FROM lancamentos WHERE ordemid=? AND pago=1 AND valor>0 AND deletedat IS NULL`,
     [ordemId]
   );
 
-  const recebidoTotal = toNumber(recebido?.total, 0); // fallback sempre 0
+  const recebidoTotal = toNumber(recebido?.total, 0);
   const total         = toNumber(ordem.valortotal, 0);
 
   return { ordem, recebido: recebidoTotal, saldo: Math.max(0, total - recebidoTotal) };
