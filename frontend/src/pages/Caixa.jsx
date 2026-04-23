@@ -150,6 +150,12 @@ export default function Caixa() {
   const fmt  = v => v != null ? Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}) : '—';
   const fmtD = d => d ? new Date(d+'T12:00:00').toLocaleDateString('pt-BR') : '—';
 
+  // OS com saldo pendente (saldoaberto > 0) e não canceladas
+  const ordensPendentes = useMemo(() =>
+    ordens.filter(o => !['Cancelada'].includes(o.status) && Number(o.saldoaberto || 0) > 0),
+    [ordens]
+  );
+
   const filtered = useMemo(() => {
     let list = [...lancamentos];
     if (search) {
@@ -225,7 +231,6 @@ export default function Caixa() {
           transition:'background 200ms, border-color 200ms',
           boxShadow: isToday ? '0 0 0 3px color-mix(in oklch, var(--color-primary) 12%, transparent)' : 'none',
         }}>
-          {/* Label do dia — Hoje em destaque, outros dias em texto normal */}
           <span style={{
             fontWeight: isToday ? 800 : 600,
             fontSize: isToday ? 'var(--text-base)' : 'var(--text-sm)',
@@ -235,10 +240,8 @@ export default function Caixa() {
             {labelDay(date)}
           </span>
 
-          {/* Separador */}
           <span style={{ color:'var(--color-border)', fontSize:'var(--text-sm)' }}>|</span>
 
-          {/* Data numérica */}
           <span style={{
             fontSize:'var(--text-xs)',
             color: isToday ? 'color-mix(in oklch, var(--color-primary) 70%, var(--color-text-muted))' : 'var(--color-text-muted)',
@@ -461,13 +464,55 @@ export default function Caixa() {
                 </div>
                 {form.tipo==='Entrada' && (
                   <div className="form-group" style={{ gridColumn:'1/-1' }}>
-                    <label className="form-label">Vincular a uma OS <span style={{fontSize:'var(--text-xs)',color:'var(--color-text-muted)',fontWeight:400}}>(opcional)</span></label>
-                    <select className="form-input" value={form.ordem_id} onChange={e=>set('ordem_id',e.target.value)}>
+                    <label className="form-label">
+                      Vincular a uma OS
+                      <span style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', fontWeight:400, marginLeft:'var(--space-2)' }}>
+                        (opcional — apenas OS com saldo pendente)
+                      </span>
+                    </label>
+                    <select
+                      className="form-input"
+                      value={form.ordem_id}
+                      onChange={e => set('ordem_id', e.target.value)}
+                      style={{ fontFamily:'monospace' }}
+                    >
                       <option value="">Sem vínculo</option>
-                      {ordens.filter(o=>!['Cancelado'].includes(o.status)).map(o=>(
-                        <option key={o.id} value={o.id}>{o.numero} — {o.clientenome}</option>
+                      {ordensPendentes.map(o => (
+                        <option key={o.id} value={o.id}>
+                          {o.numero} — {o.clientenome}{'    '}⚠ {Number(o.saldoaberto).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} pendente
+                        </option>
                       ))}
                     </select>
+                    {/* Indicador visual do saldo pendente da OS selecionada */}
+                    {form.ordem_id && (() => {
+                      const osSel = ordensPendentes.find(o => String(o.id) === String(form.ordem_id));
+                      if (!osSel) return null;
+                      return (
+                        <div style={{
+                          marginTop:'var(--space-2)',
+                          padding:'var(--space-2) var(--space-3)',
+                          borderRadius:'var(--radius-md)',
+                          background:'color-mix(in oklch, var(--color-error) 8%, var(--color-surface))',
+                          border:'1px solid color-mix(in oklch, var(--color-error) 25%, var(--color-border))',
+                          display:'flex',
+                          alignItems:'center',
+                          justifyContent:'space-between',
+                          gap:'var(--space-2)',
+                        }}>
+                          <span style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>
+                            Saldo pendente desta OS:
+                          </span>
+                          <strong style={{
+                            fontFamily:'monospace',
+                            fontSize:'var(--text-sm)',
+                            color:'var(--color-error)',
+                            fontWeight:800,
+                          }}>
+                            {Number(osSel.saldoaberto).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
+                          </strong>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
