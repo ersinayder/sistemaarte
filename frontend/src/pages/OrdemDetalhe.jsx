@@ -15,7 +15,7 @@ const STATUS_FLOW  = ['Recebido','Em Produção','Pronto','Entregue']
 const STATUS_BADGE = { 'Recebido':'recebido','Em Produção':'emproducao','Pronto':'pronto','Entregue':'entregue','Cancelado':'cancelado' }
 const STATUS_COLOR = { 'Recebido':'var(--color-blue)','Em Produção':'var(--color-orange)','Pronto':'var(--color-primary)','Entregue':'var(--color-success)','Cancelado':'var(--color-text-faint)' }
 const PAG_BADGE    = { Pix:'pix', Dinheiro:'dinheiro', Credito:'credito', Debito:'debito', Link:'link' }
-const PAG_LABEL    = { Credito:'Crédito', Debito:'Débito', Link:'Link Pag.' }
+const PAG_LABEL    = { Credito:'Crédito', Débito:'Débito', Link:'Link Pag.' }
 
 function IconWhatsApp() {
   return (
@@ -25,10 +25,16 @@ function IconWhatsApp() {
   )
 }
 
-export default function OrdemDetalhe() {
+export default function OrdemDetalhe({ context }) {
   const { id } = useParams()
   const navigate = useNavigate()
   const { isCaixa, isAdmin, isOficina } = useAuth()
+
+  // context="oficina" → modo somente-leitura: sem excluir, sem WhatsApp manual,
+  // mas o técnico ainda pode mover o status da OS.
+  const isOficinaContext = context === 'oficina' || isOficina
+  const backPath = isOficinaContext ? '/oficina' : '/ordens'
+
   const [ordem, setOrdem]               = useState(null)
   const [historico, setHistorico]       = useState([])
   const [loading, setLoading]           = useState(true)
@@ -53,11 +59,11 @@ export default function OrdemDetalhe() {
       setHistorico(ro.data.logs || [])
     } catch {
       toast.error('Erro ao carregar OS')
-      navigate('/ordens')
+      navigate(backPath)
     } finally {
       setLoading(false)
     }
-  }, [id, navigate])
+  }, [id, navigate, backPath])
 
   useEffect(() => { load() }, [load])
 
@@ -118,19 +124,22 @@ export default function OrdemDetalhe() {
   if (loading) return <div className="loading-center"><div className="spinner"/></div>
   if (!ordem)  return null
 
-  const saldoOS   = Number(ordem.saldoaberto ?? 0)
-  const vencida   = ordem.prazo && ordem.prazo < today() && !['Entregue','Cancelado','Pronto'].includes(ordem.status)
-  const statusIdx = STATUS_FLOW.indexOf(ordem.status)
+  const saldoOS    = Number(ordem.saldoaberto ?? 0)
+  const vencida    = ordem.prazo && ordem.prazo < today() && !['Entregue','Cancelado','Pronto'].includes(ordem.status)
+  const statusIdx  = STATUS_FLOW.indexOf(ordem.status)
+  // Oficina pode mover status, mas não cancelar nem excluir
   const canAdvance = (isCaixa || isOficina) && ordem.status !== 'Entregue' && ordem.status !== 'Cancelado'
-  const canSendWpp = (isAdmin || isCaixa) && !['Cancelado'].includes(ordem.status)
+  const canCancel  = isCaixa && !isOficinaContext && ordem.status !== 'Cancelado'
+  const canSendWpp = (isAdmin || isCaixa) && !isOficinaContext && !['Cancelado'].includes(ordem.status)
+  const canDelete  = isAdmin && !isOficinaContext
 
   return (
     <div>
       {/* Breadcrumb + ações */}
       <div style={{ display:'flex', alignItems:'center', gap:'var(--space-3)', marginBottom:'var(--space-5)', flexWrap:'wrap' }}>
-        <button className="btn btn-ghost btn-sm" onClick={() => navigate('/ordens')}>
+        <button className="btn btn-ghost btn-sm" onClick={() => navigate(backPath)}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M15 18l-6-6 6-6"/></svg>
-          Ordens
+          {isOficinaContext ? 'Oficina' : 'Ordens'}
         </button>
         <span style={{ color:'var(--color-text-faint)' }}>/</span>
         <span style={{ fontWeight:700, color:'var(--color-primary)' }}>{ordem.numero}</span>
@@ -141,9 +150,14 @@ export default function OrdemDetalhe() {
             ⚠ Prazo vencido
           </span>
         )}
+        {isOficinaContext && (
+          <span className="badge" style={{ background:'var(--color-surface-dynamic)', color:'var(--color-text-muted)', fontSize:'var(--text-xs)' }}>
+            🔧 Modo Oficina
+          </span>
+        )}
         <div style={{ flex:1 }}/>
 
-        {/* Botão confirmação WhatsApp */}
+        {/* Botão confirmação WhatsApp — oculto no contexto oficina */}
         {canSendWpp && (
           <button
             className="btn btn-sm"
@@ -170,7 +184,9 @@ export default function OrdemDetalhe() {
           </svg>
           Imprimir OS
         </button>
-        {isAdmin && (
+
+        {/* Excluir — oculto no contexto oficina */}
+        {canDelete && (
           <button className="btn btn-sm" onClick={() => setConfirmDelete(true)}
             style={{ color:'var(--color-error)', border:'1px solid var(--color-error)', background:'transparent' }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -187,11 +203,12 @@ export default function OrdemDetalhe() {
           <div style={{ fontWeight:700, fontSize:'var(--text-xs)', color:'var(--color-text-muted)', textTransform:'uppercase', letterSpacing:'0.05em' }}>
             Progresso
           </div>
-          {/* Aviso disparo automático */}
-          <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-faint)', display:'flex', alignItems:'center', gap:'var(--space-1)' }}>
-            <IconWhatsApp />
-            <span>WhatsApp automático ao mover para <strong>Pronto</strong></span>
-          </div>
+          {!isOficinaContext && (
+            <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-faint)', display:'flex', alignItems:'center', gap:'var(--space-1)' }}>
+              <IconWhatsApp />
+              <span>WhatsApp automático ao mover para <strong>Pronto</strong></span>
+            </div>
+          )}
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:0, marginBottom:'var(--space-4)', overflowX:'auto', paddingBottom:'var(--space-2)' }}>
           {STATUS_FLOW.map((s, i) => {
@@ -219,7 +236,7 @@ export default function OrdemDetalhe() {
                     <span style={{ fontSize:'var(--text-xs)', fontWeight: current ? 700 : 400, color: current ? STATUS_COLOR[s] : 'var(--color-text-muted)', textAlign:'center', whiteSpace:'nowrap' }}>
                       {s}
                     </span>
-                    {s === 'Pronto' && (
+                    {s === 'Pronto' && !isOficinaContext && (
                       <span style={{ fontSize:9, color:'#25D366', display:'flex', alignItems:'center', gap:2, whiteSpace:'nowrap' }}>
                         <IconWhatsApp /> auto
                       </span>
@@ -242,7 +259,7 @@ export default function OrdemDetalhe() {
                 → {s}
               </button>
             ))}
-            {isCaixa && ordem.status !== 'Cancelado' && (
+            {canCancel && (
               <button className="btn btn-ghost btn-sm"
                 style={{ borderColor:'var(--color-text-faint)', color:'var(--color-text-faint)' }}
                 onClick={() => mudarStatus('Cancelado')}>
@@ -290,30 +307,33 @@ export default function OrdemDetalhe() {
           </div>
         </div>
 
-        <div className="card card-pad">
-          <div style={{ fontWeight:700, fontSize:'var(--text-sm)', marginBottom:'var(--space-4)' }}>Financeiro</div>
-          {[
-            ['Valor Total', fmt(ordem.valortotal || ordem.valor)],
-            ['Entrada',     fmt(ordem.valorentrada || ordem.entrada)],
-          ].map(([l,v]) => (
-            <div key={l} style={{ display:'flex', justifyContent:'space-between', padding:'var(--space-2) 0', borderBottom:'1px solid var(--color-divider)' }}>
-              <span style={{ fontSize:'var(--text-sm)', color:'var(--color-text-muted)' }}>{l}</span>
-              <span className="tabnum" style={{ fontWeight:600 }}>{v}</span>
+        {/* Financeiro — oculto no contexto oficina */}
+        {!isOficinaContext && (
+          <div className="card card-pad">
+            <div style={{ fontWeight:700, fontSize:'var(--text-sm)', marginBottom:'var(--space-4)' }}>Financeiro</div>
+            {[
+              ['Valor Total', fmt(ordem.valortotal || ordem.valor)],
+              ['Entrada',     fmt(ordem.valorentrada || ordem.entrada)],
+            ].map(([l,v]) => (
+              <div key={l} style={{ display:'flex', justifyContent:'space-between', padding:'var(--space-2) 0', borderBottom:'1px solid var(--color-divider)' }}>
+                <span style={{ fontSize:'var(--text-sm)', color:'var(--color-text-muted)' }}>{l}</span>
+                <span className="tabnum" style={{ fontWeight:600 }}>{v}</span>
+              </div>
+            ))}
+            <div style={{ display:'flex', justifyContent:'space-between', paddingTop:'var(--space-3)', marginTop:'var(--space-1)' }}>
+              <span style={{ fontWeight:700 }}>Restante</span>
+              <span className="tabnum" style={{ fontWeight:800, color: saldoOS > 0 ? 'var(--color-warning)' : 'var(--color-success)', fontSize:'var(--text-base)' }}>
+                {saldoOS > 0 ? fmt(saldoOS) : '✓ Quitado'}
+              </span>
             </div>
-          ))}
-          <div style={{ display:'flex', justifyContent:'space-between', paddingTop:'var(--space-3)', marginTop:'var(--space-1)' }}>
-            <span style={{ fontWeight:700 }}>Restante</span>
-            <span className="tabnum" style={{ fontWeight:800, color: saldoOS > 0 ? 'var(--color-warning)' : 'var(--color-success)', fontSize:'var(--text-base)' }}>
-              {saldoOS > 0 ? fmt(saldoOS) : '✓ Quitado'}
-            </span>
+            <div style={{ marginTop:'var(--space-4)', padding:'var(--space-2) 0', borderTop:'1px solid var(--color-divider)' }}>
+              <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:4 }}>Forma de Pagamento</div>
+              <span className={`badge badge-${PAG_BADGE[ordem.pagamento]||'normal'}`}>
+                {PAG_LABEL[ordem.pagamento] || ordem.pagamento || '—'}
+              </span>
+            </div>
           </div>
-          <div style={{ marginTop:'var(--space-4)', padding:'var(--space-2) 0', borderTop:'1px solid var(--color-divider)' }}>
-            <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:4 }}>Forma de Pagamento</div>
-            <span className={`badge badge-${PAG_BADGE[ordem.pagamento]||'normal'}`}>
-              {PAG_LABEL[ordem.pagamento] || ordem.pagamento || '—'}
-            </span>
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Histórico */}
@@ -365,8 +385,8 @@ export default function OrdemDetalhe() {
         </div>
       </div>
 
-      {/* Modal confirmar exclusão via Portal */}
-      {confirmDelete && ReactDOM.createPortal(
+      {/* Modal confirmar exclusão — só aparece fora do contexto oficina */}
+      {confirmDelete && !isOficinaContext && ReactDOM.createPortal(
         <div
           className="modal-overlay"
           onClick={e => e.target===e.currentTarget && setConfirmDelete(false)}
