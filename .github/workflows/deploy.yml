@@ -1,4 +1,4 @@
-name: Deploy Produção
+name: Deploy Producao
 
 on:
   push:
@@ -23,10 +23,10 @@ jobs:
         with:
           node-version: '22'
 
-      # ── FRONTEND ─────────────────────────────────────────────────────
+      # FRONTEND
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm install
 
       - name: Build frontend
         working-directory: frontend
@@ -34,7 +34,7 @@ jobs:
         env:
           NODE_ENV: production
 
-      - name: Deploy frontend → C:\sistemaarte\frontend\dist
+      - name: Deploy frontend dist
         shell: powershell
         run: |
           $source = "${{ github.workspace }}\frontend\dist\"
@@ -43,8 +43,8 @@ jobs:
           robocopy $source $dest /MIR /NFL /NDL /NJH /NJS
           if ($LASTEXITCODE -le 7) { exit 0 } else { exit $LASTEXITCODE }
 
-      # ── PARAR PM2 ANTES de qualquer operação no backend ──────────────
-      - name: Stop PM2 (libera lock do better-sqlite3)
+      # PARAR PM2 antes de copiar backend
+      - name: Stop PM2
         shell: powershell
         run: |
           $env:HOMEPATH = "C:\Users\Administrator"
@@ -52,8 +52,8 @@ jobs:
           pm2 stop sistemaarte-backend 2>$null; $true
           Start-Sleep -Seconds 3
 
-      # ── BACKEND (apenas source, nunca node_modules/.env) ─────────────
-      - name: Sync backend source (nunca node_modules, data, .env)
+      # BACKEND
+      - name: Sync backend source
         shell: powershell
         run: |
           $source = "${{ github.workspace }}\backend\"
@@ -64,13 +64,13 @@ jobs:
             /XF .env *.db
           if ($LASTEXITCODE -le 7) { exit 0 } else { exit $LASTEXITCODE }
 
-      - name: Instalar dependências do backend (sem rebuild nativo)
+      - name: Install backend dependencies
         shell: powershell
         run: |
           Set-Location "C:\sistemaarte\backend"
           npm install --production --prefer-offline --ignore-scripts
 
-      # ── PM2 ──────────────────────────────────────────────────────────
+      # PM2 RELOAD
       - name: Reload PM2
         shell: powershell
         run: |
@@ -84,7 +84,6 @@ jobs:
           }
           pm2 save
 
-      - name: Concluído
+      - name: Concluido
         shell: powershell
-        run: |
-          Write-Host "✅ Deploy concluído em $(Get-Date -Format 'dd/MM/yyyy HH:mm:ss')"
+        run: Write-Host "Deploy concluido em $(Get-Date -Format 'dd/MM/yyyy HH:mm:ss')"
