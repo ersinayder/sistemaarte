@@ -43,7 +43,6 @@ function calcKpis() {
     [hoje]
   )?.n ?? 0;
 
-  // Usa l.data (data real do pagamento), nao createdat (data de digitacao)
   const faturamentoHoje = getOne(
     `SELECT COALESCE(SUM(l.valor),0) AS total
      FROM lancamentos l
@@ -81,8 +80,16 @@ router.get("/", auth(), (req, res, next) => {
   }
 });
 
-// SSE – stream contínuo a cada 15 s
+// SSE – stream contínuo a cada 15 s com limite de conexões
+let activeSSE = 0;
+const MAX_SSE = 10;
+
 router.get("/stream", auth(), (req, res) => {
+  if (activeSSE >= MAX_SSE) {
+    return res.status(429).json({ error: `Limite de streams atingido (máx ${MAX_SSE})` });
+  }
+
+  activeSSE++;
   res.setHeader("Content-Type",  "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection",    "keep-alive");
@@ -100,7 +107,11 @@ router.get("/stream", auth(), (req, res) => {
 
   send();
   const timer = setInterval(send, 15000);
-  req.on("close", () => clearInterval(timer));
+
+  req.on("close", () => {
+    clearInterval(timer);
+    activeSSE--;
+  });
 });
 
 module.exports = router;
