@@ -144,7 +144,6 @@ function ModuloQuadros({ onAdd, precos, setPrecos }) {
   const [impressao, setImpressao] = useState(false)
   const [qtd, setQtd]             = useState('1')
 
-  // hasData deve ser declarado ANTES de calc
   const hasData  = (parseFloat(L) > 0) && (parseFloat(A) > 0)
   const q        = Math.max(1, parseInt(qtd) || 1)
   const calc     = hasData ? calcQuadros({ L, A, precoMoldura: precos.moldura, vidro, impressao }) : null
@@ -736,8 +735,11 @@ export default function Orcamento() {
     { id: '3d',      label: '🖨 3D'      },
   ]
 
+  // Guard: ignora clientes sem nome (null/undefined) para evitar crash no toLowerCase
   const filteredClientes = clientes.filter(c =>
-    cliente.length > 1 && c.nome.toLowerCase().includes(cliente.toLowerCase())
+    cliente.length > 1 &&
+    c.nome != null &&
+    c.nome.toLowerCase().includes(cliente.toLowerCase())
   )
 
   return (
