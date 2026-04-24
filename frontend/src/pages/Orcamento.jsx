@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react'
+import React, { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import toast from 'react-hot-toast'
@@ -9,76 +9,153 @@ const fmt = v =>
 const fmtN = (v, d = 2) => Number(v || 0).toFixed(d).replace('.', ',')
 const uid = (() => { let n = 0; return () => ++n })()
 
-/* ── Highlights via color-mix ─────────────────────────────── */
 const HL = {
   orange: 'color-mix(in oklab, var(--color-orange) 12%, var(--color-surface-offset))',
   blue:   'color-mix(in oklab, var(--color-blue)   12%, var(--color-surface-offset))',
   purple: 'color-mix(in oklab, var(--color-purple)  12%, var(--color-surface-offset))',
 }
 
-/* ── sub-components ──────────────────────────────────────── */
-function CalcRow({ label, value, total, highlight }) {
+/* ── Chip selector (vidro / opções) ─────────────────────── */
+function ChipGroup({ options, value, onChange, colorActive = 'var(--color-primary)' }) {
   return (
-    <div style={{
-      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-      padding: '6px 0', borderBottom: '1px solid var(--color-divider)',
-      fontSize: 'var(--text-xs)',
-    }}>
-      <span style={{ color: highlight ? 'var(--color-text)' : 'var(--color-text-muted)', fontWeight: highlight ? 600 : 400 }}>{label}</span>
-      <span style={{
-        fontFamily: 'monospace', fontWeight: total ? 700 : 600,
-        color: highlight ? 'var(--color-primary)' : 'var(--color-text)',
-        fontSize: total ? 'var(--text-sm)' : 'var(--text-xs)',
-      }}>{value}</span>
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      {options.map(opt => {
+        const active = value === opt.value
+        return (
+          <button
+            key={opt.value}
+            onClick={() => onChange(opt.value)}
+            style={{
+              padding: '7px 16px',
+              borderRadius: 'var(--radius-full)',
+              border: active ? `2px solid ${colorActive}` : '2px solid var(--color-border)',
+              background: active
+                ? `color-mix(in oklab, ${colorActive} 14%, var(--color-surface))`
+                : 'var(--color-surface-offset)',
+              color: active ? colorActive : 'var(--color-text-muted)',
+              fontWeight: active ? 700 : 500,
+              fontSize: 'var(--text-xs)',
+              cursor: 'pointer',
+              transition: 'all 160ms ease',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {opt.label}
+          </button>
+        )
+      })}
     </div>
   )
 }
 
-function ModuleHeader({ emoji, title, desc }) {
+/* ── Toggle switch ───────────────────────────────────────── */
+function Toggle({ checked, onChange, label, sub }) {
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
-      marginBottom: 'var(--space-5)', paddingBottom: 'var(--space-4)',
-      borderBottom: '1px solid var(--color-divider)',
-    }}>
-      <div style={{
-        width: 36, height: 36, borderRadius: 'var(--radius-md)',
-        background: 'var(--color-surface-dynamic)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 18, flexShrink: 0,
-      }}>{emoji}</div>
-      <div>
-        <div style={{ fontWeight: 700, fontSize: 'var(--text-base)' }}>{title}</div>
-        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>{desc}</div>
+    <button
+      onClick={() => onChange(!checked)}
+      style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '12px 16px',
+        background: checked
+          ? 'color-mix(in oklab, var(--color-primary) 10%, var(--color-surface))'
+          : 'var(--color-surface-offset)',
+        border: checked ? '1.5px solid var(--color-primary)' : '1.5px solid var(--color-border)',
+        borderRadius: 'var(--radius-lg)',
+        cursor: 'pointer', width: '100%',
+        transition: 'all 160ms ease',
+        gap: 12,
+      }}
+    >
+      <div style={{ textAlign: 'left' }}>
+        <div style={{
+          fontSize: 'var(--text-sm)', fontWeight: 600,
+          color: checked ? 'var(--color-primary)' : 'var(--color-text)',
+        }}>{label}</div>
+        {sub && (
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: 2 }}>{sub}</div>
+        )}
       </div>
+      {/* pill toggle */}
+      <div style={{
+        width: 40, height: 22, borderRadius: 11, flexShrink: 0,
+        background: checked ? 'var(--color-primary)' : 'var(--color-border)',
+        position: 'relative', transition: 'background 160ms ease',
+      }}>
+        <div style={{
+          position: 'absolute', top: 3, left: checked ? 21 : 3,
+          width: 16, height: 16, borderRadius: '50%',
+          background: '#fff', transition: 'left 160ms ease',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+        }} />
+      </div>
+    </button>
+  )
+}
+
+/* ── Big number input ────────────────────────────────────── */
+function BigInput({ label, value, onChange, unit, placeholder = '0', hint, step = '0.1' }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <label style={{
+        fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+        letterSpacing: '0.08em', color: 'var(--color-text-muted)',
+      }}>{label}</label>
+      <div style={{
+        display: 'flex', alignItems: 'center',
+        background: 'var(--color-surface-offset)',
+        border: '1.5px solid var(--color-border)',
+        borderRadius: 'var(--radius-lg)',
+        overflow: 'hidden',
+        transition: 'border-color 160ms',
+      }}
+        onFocusCapture={e => e.currentTarget.style.borderColor = 'var(--color-primary)'}
+        onBlurCapture={e => e.currentTarget.style.borderColor = 'var(--color-border)'}
+      >
+        <input
+          type="number" value={value} placeholder={placeholder}
+          step={step} min="0"
+          onChange={e => onChange(e.target.value)}
+          style={{
+            flex: 1, background: 'transparent', border: 'none', outline: 'none',
+            padding: '12px 14px',
+            fontSize: 'var(--text-lg)', fontWeight: 700,
+            color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums',
+            width: '100%',
+          }}
+        />
+        {unit && (
+          <span style={{
+            padding: '0 14px 0 4px',
+            fontSize: 'var(--text-sm)', fontWeight: 600,
+            color: 'var(--color-text-faint)',
+          }}>{unit}</span>
+        )}
+      </div>
+      {hint && <span style={{ fontSize: 11, color: 'var(--color-text-faint)' }}>{hint}</span>}
     </div>
   )
 }
 
-function PrecoInput({ label, id, value, onChange, prefix = 'R$' }) {
+/* ── Preço input compacto ────────────────────────────────── */
+function PrecoField({ label, value, onChange }) {
   return (
-    <div className="form-group">
-      <label className="form-label">{label}</label>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 500 }}>{label}</span>
       <div style={{
-        display: 'flex', alignItems: 'stretch',
-        background: 'var(--color-surface-offset)',
+        display: 'flex', alignItems: 'center', gap: 6,
+        background: 'var(--color-surface-dynamic)',
         border: '1px solid var(--color-border)',
-        borderRadius: 'var(--radius-md)', overflow: 'hidden',
+        borderRadius: 'var(--radius-md)', padding: '5px 10px',
       }}>
-        <span style={{
-          padding: '0 var(--space-3)', fontSize: 'var(--text-xs)',
-          color: 'var(--color-text-faint)', borderRight: '1px solid var(--color-border)',
-          display: 'flex', alignItems: 'center',
-          background: 'var(--color-surface-dynamic)',
-          whiteSpace: 'nowrap',
-        }}>{prefix}</span>
+        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)' }}>R$</span>
         <input
-          type="number" id={id} value={value} min="0" step="0.01"
+          type="number" value={value} min="0" step="0.01"
           onChange={e => onChange(parseFloat(e.target.value) || 0)}
           style={{
             background: 'transparent', border: 'none', outline: 'none',
-            padding: 'var(--space-2) var(--space-3)',
-            fontSize: 'var(--text-sm)', color: 'var(--color-text)', width: '100%',
+            fontSize: 'var(--text-sm)', fontWeight: 700,
+            color: 'var(--color-text)', width: 70,
+            fontVariantNumeric: 'tabular-nums',
           }}
         />
       </div>
@@ -86,58 +163,77 @@ function PrecoInput({ label, id, value, onChange, prefix = 'R$' }) {
   )
 }
 
-function AddButton({ onClick, label = 'Adicionar à OS' }) {
+/* ── Breakdown row ───────────────────────────────────────── */
+function Row({ label, value, accent, total, faint }) {
   return (
-    <button onClick={onClick} className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-        <path d="M12 5v14M5 12h14"/>
-      </svg>
-      {label}
-    </button>
+    <div style={{
+      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      padding: '5px 0',
+    }}>
+      <span style={{
+        fontSize: faint ? 11 : 'var(--text-xs)',
+        color: faint ? 'var(--color-text-faint)' : total ? 'var(--color-text)' : 'var(--color-text-muted)',
+        fontWeight: total ? 700 : 400,
+      }}>{label}</span>
+      <span style={{
+        fontSize: total ? 'var(--text-sm)' : 'var(--text-xs)',
+        fontFamily: 'monospace', fontWeight: total ? 800 : 600,
+        color: accent ? 'var(--color-primary)' : total ? 'var(--color-text)' : 'var(--color-text-muted)',
+        fontVariantNumeric: 'tabular-nums',
+      }}>{value}</span>
+    </div>
   )
 }
 
-/* ── Module 1: Quadros (lógica da planilha) ──────────────── */
-/*
-  MOLDURA  : perímetro (m) + folga (1,5m se L>=1m ou A>=1m, senão 1m) × preço/m
-  VIDRO    : Sem+<1m → 0,5×preço moldura | Sem → 0 | Liso → área×300 | Antirreflexo → área×400
-  FUNDO    : área (m²) × 100
-  IMPRESSÃO: area (m²) × 150 (opcional)
-*/
-const VIDRO_OPTS = ['Sem', 'Liso', 'Antirreflexo']
+/* ── Section label ───────────────────────────────────────── */
+function SectionLabel({ children }) {
+  return (
+    <div style={{
+      fontSize: 10, fontWeight: 800, textTransform: 'uppercase',
+      letterSpacing: '0.1em', color: 'var(--color-text-faint)',
+      marginBottom: 8, marginTop: 4,
+    }}>{children}</div>
+  )
+}
+
+/* ── Divider ─────────────────────────────────────────────── */
+function Divider() {
+  return <div style={{ height: 1, background: 'var(--color-divider)', margin: '6px 0' }} />
+}
+
+/* ── calcQuadros ─────────────────────────────────────────── */
+const VIDRO_OPTS = [
+  { value: 'Sem',          label: 'Sem vidro' },
+  { value: 'Liso',         label: 'Liso' },
+  { value: 'Antirreflexo', label: 'Antirreflexo' },
+]
 
 function calcQuadros({ L, A, precoMoldura, vidro, impressao }) {
-  const lM = L / 100
-  const aM = A / 100
+  const lM = L / 100, aM = A / 100
   const area = lM * aM
   const perimetro = (lM + aM) * 2
   const folga = (lM >= 1 || aM >= 1) ? 1.5 : 1
   const metrosTotal = perimetro + folga
-
   const vMoldura = metrosTotal * precoMoldura
-
   let vVidro = 0
-  if (vidro === 'Sem') {
-    vVidro = (lM < 1 && aM < 1) ? 0.5 * precoMoldura : 0
-  } else if (vidro === 'Liso') {
-    vVidro = area * 300
-  } else if (vidro === 'Antirreflexo') {
-    vVidro = area * 400
-  }
-
+  if (vidro === 'Sem')          vVidro = (lM < 1 && aM < 1) ? 0.5 * precoMoldura : 0
+  else if (vidro === 'Liso')    vVidro = area * 300
+  else if (vidro === 'Antirreflexo') vVidro = area * 400
   const vFundo = area * 100
   const vImpressao = impressao ? area * 150 : 0
   const total = vMoldura + vVidro + vFundo + vImpressao
-
   return { lM, aM, area, perimetro, folga, metrosTotal, vMoldura, vVidro, vFundo, vImpressao, total }
 }
 
+/* ══════════════════════════════════════════════════════════
+   MODULE 1 — Molduras & Quadros
+══════════════════════════════════════════════════════════ */
 function ModuloQuadros({ onAdd, precos, setPrecos }) {
-  const [desc, setDesc]         = useState('')
-  const [L, setL]               = useState('')
-  const [A, setA]               = useState('')
-  const [qtd, setQtd]           = useState(1)
-  const [vidro, setVidro]       = useState('Sem')
+  const [desc, setDesc]           = useState('')
+  const [L, setL]                 = useState('')
+  const [A, setA]                 = useState('')
+  const [qtd, setQtd]             = useState('1')
+  const [vidro, setVidro]         = useState('Sem')
   const [impressao, setImpressao] = useState(false)
   const [extraNome, setExtraNome] = useState('')
   const [extraVal, setExtraVal]   = useState('')
@@ -154,310 +250,429 @@ function ModuloQuadros({ onAdd, precos, setPrecos }) {
 
   const addExtra = () => {
     if (!extraNome.trim() || !parseFloat(extraVal)) return
-    setExtras(prev => [...prev, { id: uid(), nome: extraNome.trim(), val: parseFloat(extraVal) }])
-    setExtraNome('')
-    setExtraVal('')
-  }
-  const removeExtra = id => setExtras(prev => prev.filter(e => e.id !== id))
-
-  const buildSub = () => {
-    const parts = [`${l}×${a}cm`, `Vidro: ${vidro}`]
-    if (impressao) parts.push('c/ Impressão')
-    if (q > 1) parts.push(`×${q}`)
-    return parts.join(' · ')
+    setExtras(p => [...p, { id: uid(), nome: extraNome.trim(), val: parseFloat(extraVal) }])
+    setExtraNome(''); setExtraVal('')
   }
 
   const handleAdd = () => {
     if (!hasData) return
-    onAdd({
-      type: 'quadros', emoji: '🖼',
-      name: desc || `Moldura ${l}×${a}cm`,
-      sub: buildSub(),
-      price: subtotal,
-    })
+    const parts = [`${l}×${a}cm`, `Vidro: ${vidro}`]
+    if (impressao) parts.push('c/ Impressão')
+    if (q > 1) parts.push(`×${q}`)
+    onAdd({ type: 'quadros', emoji: '🖼', name: desc || `Moldura ${l}×${a}cm`, sub: parts.join(' · '), price: subtotal })
   }
 
   return (
-    <div className="card card-pad">
-      <ModuleHeader emoji="🖼" title="Molduras & Quadros" desc="Perímetro + folga · vidro por m² · fundo por m²" />
-
-      {/* Preço da moldura por metro */}
-      <div style={{ marginBottom: 'var(--space-4)' }}>
-        <PrecoInput label="Valor Moldura / metro (R$)" id="q_pm" value={precos.moldura} onChange={v => setPrecos(p => ({ ...p, moldura: v }))} />
-      </div>
-
-      {/* Dimensões + qtd */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px,1fr))', gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
-        <div className="form-group">
-          <label className="form-label">Largura (cm)</label>
-          <input type="number" className="form-input" placeholder="25" min="0" step="0.1"
-            value={L} onChange={e => setL(e.target.value)} />
+    <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+      {/* Header */}
+      <div style={{
+        padding: '16px 20px',
+        borderBottom: '1px solid var(--color-divider)',
+        display: 'flex', alignItems: 'center', gap: 12,
+      }}>
+        <div style={{
+          width: 38, height: 38, borderRadius: 'var(--radius-md)',
+          background: 'color-mix(in oklab, var(--color-orange) 14%, var(--color-surface-offset))',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0,
+        }}>🖼</div>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>Molduras &amp; Quadros</div>
+          <div style={{ fontSize: 11, color: 'var(--color-text-faint)' }}>Perímetro · Vidro · Fundo</div>
         </div>
-        <div className="form-group">
-          <label className="form-label">Altura (cm)</label>
-          <input type="number" className="form-input" placeholder="25" min="0" step="0.1"
-            value={A} onChange={e => setA(e.target.value)} />
-        </div>
-        <div className="form-group" style={{ maxWidth: 90 }}>
-          <label className="form-label">Qtd</label>
-          <input type="number" className="form-input" min="1" step="1"
-            value={qtd} onChange={e => setQtd(e.target.value)} />
+        <div style={{ marginLeft: 'auto' }}>
+          <PrecoField label="R$/metro" value={precos.moldura} onChange={v => setPrecos(p => ({ ...p, moldura: v }))} />
         </div>
       </div>
 
-      {/* Vidro + Impressão */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 'var(--space-3)', alignItems: 'end', marginBottom: 'var(--space-3)' }}>
-        <div className="form-group" style={{ marginBottom: 0 }}>
-          <label className="form-label">Vidro</label>
-          <select className="form-input" value={vidro} onChange={e => setVidro(e.target.value)}>
-            {VIDRO_OPTS.map(o => <option key={o}>{o}</option>)}
-          </select>
+      <div style={{ padding: '20px' }}>
+        {/* Dimensões */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px', gap: 10, marginBottom: 20 }}>
+          <BigInput label="Largura" value={L} onChange={setL} unit="cm" placeholder="60" />
+          <BigInput label="Altura" value={A} onChange={setA} unit="cm" placeholder="90" />
+          <BigInput label="Qtd" value={qtd} onChange={setQtd} unit="×" placeholder="1" step="1" />
         </div>
-        <label style={{
-          display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
-          fontSize: 'var(--text-sm)', cursor: 'pointer', paddingBottom: 'var(--space-1)',
-          whiteSpace: 'nowrap',
-        }}>
-          <input
-            type="checkbox" checked={impressao} onChange={e => setImpressao(e.target.checked)}
-            style={{ width: 16, height: 16, accentColor: 'var(--color-primary)', cursor: 'pointer' }}
-          />
-          Impressão
-        </label>
-      </div>
-
-      {/* Descrição */}
-      <div className="form-group" style={{ marginBottom: 'var(--space-4)' }}>
-        <label className="form-label">Descrição</label>
-        <input type="text" className="form-input" placeholder="Ex: Quadro sala 25×25"
-          value={desc} onChange={e => setDesc(e.target.value)} />
-      </div>
-
-      {/* Extras */}
-      <div style={{ display: 'flex', gap: 'var(--space-3)', marginBottom: 'var(--space-3)', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-        <div className="form-group" style={{ flex: '2 1 120px' }}>
-          <label className="form-label">Extra (nome)</label>
-          <input type="text" className="form-input" placeholder="Ex: Pendurador"
-            value={extraNome} onChange={e => setExtraNome(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && addExtra()} />
-        </div>
-        <div className="form-group" style={{ flex: '1 1 80px' }}>
-          <label className="form-label">Valor R$</label>
-          <input type="number" className="form-input" placeholder="0,00" min="0" step="0.01"
-            value={extraVal} onChange={e => setExtraVal(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && addExtra()} />
-        </div>
-        <button className="btn btn-ghost btn-sm" onClick={addExtra} style={{ marginBottom: 1, whiteSpace: 'nowrap', flexShrink: 0 }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
-          Add
-        </button>
-      </div>
-      {extras.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
-          {extras.map(e => (
-            <span key={e.id} style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              background: 'var(--color-surface-dynamic)', border: '1px solid var(--color-border)',
-              borderRadius: 'var(--radius-full)', padding: '2px 10px', fontSize: 'var(--text-xs)',
-              color: 'var(--color-text-muted)',
-            }}>
-              {e.nome} <strong style={{ color: 'var(--color-text)' }}>+{fmt(e.val)}</strong>
-              <span onClick={() => removeExtra(e.id)}
-                style={{ cursor: 'pointer', color: 'var(--color-text-faint)', marginLeft: 2, lineHeight: 1 }}
-                role="button" aria-label="Remover extra">×</span>
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* Breakdown dos cálculos */}
-      <div style={{ background: 'var(--color-surface-offset)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4)', marginBottom: 'var(--space-5)' }}>
-        {/* Moldura */}
-        <CalcRow label="Perímetro (m)" value={hasData ? fmtN(calc.perimetro, 3) + ' m' : '—'} />
-        <CalcRow
-          label={hasData ? `Folga (${calc.lM >= 1 || calc.aM >= 1 ? '1,5m — lado ≥ 1m' : '1,0m — padrão'})` : 'Folga'}
-          value={hasData ? fmtN(calc.folga, 1) + ' m' : '—'}
-        />
-        <CalcRow label={hasData ? `Total moldura: ${fmtN(calc.metrosTotal, 3)}m × ${fmt(precos.moldura)}/m` : 'Valor Moldura'} value={hasData ? fmt(calc.vMoldura) : '—'} highlight />
-
-        <div style={{ height: 1, background: 'var(--color-border)', margin: '6px 0' }} />
 
         {/* Vidro */}
-        <CalcRow label="Área (m²)" value={hasData ? fmtN(calc.area, 4) + ' m²' : '—'} />
-        <CalcRow
-          label={
-            hasData
-              ? vidro === 'Sem' && calc.lM < 1 && calc.aM < 1
-                ? 'Vidro: Sem (taxa mínima 0,5× moldura)'
-                : vidro === 'Sem'
-                  ? 'Vidro: Sem'
-                  : `Vidro: ${vidro} (m² × ${vidro === 'Liso' ? 'R$300' : 'R$400'})`
-              : 'Valor Vidro'
-          }
-          value={hasData ? fmt(calc.vVidro) : '—'} highlight
-        />
+        <div style={{ marginBottom: 14 }}>
+          <SectionLabel>Vidro</SectionLabel>
+          <ChipGroup options={VIDRO_OPTS} value={vidro} onChange={setVidro} />
+        </div>
 
-        <div style={{ height: 1, background: 'var(--color-border)', margin: '6px 0' }} />
+        {/* Impressão toggle */}
+        <div style={{ marginBottom: 18 }}>
+          <Toggle
+            checked={impressao}
+            onChange={setImpressao}
+            label="Impressão"
+            sub={hasData && impressao && calc ? `${fmtN(calc.area, 4)} m² × R$150 = ${fmt(calc.vImpressao)}` : 'área × R$150/m²'}
+          />
+        </div>
 
-        {/* Fundo */}
-        <CalcRow label={hasData ? `Fundo: ${fmtN(calc.area, 4)}m² × R$100` : 'Valor Fundo'} value={hasData ? fmt(calc.vFundo) : '—'} highlight />
-
-        {/* Impressão */}
-        <CalcRow
-          label={hasData && impressao ? `Impressão: ${fmtN(calc.area, 4)}m² × R$150` : 'Impressão'}
-          value={hasData ? fmt(calc.vImpressao) : '—'}
-          highlight={impressao}
-        />
+        {/* Descrição */}
+        <div style={{ marginBottom: 16 }}>
+          <SectionLabel>Descrição (opcional)</SectionLabel>
+          <input
+            type="text" value={desc} onChange={e => setDesc(e.target.value)}
+            placeholder="Ex: Quadro sala 60×90"
+            style={{
+              width: '100%', background: 'var(--color-surface-offset)',
+              border: '1.5px solid var(--color-border)', borderRadius: 'var(--radius-md)',
+              padding: '9px 12px', fontSize: 'var(--text-sm)', color: 'var(--color-text)',
+              outline: 'none',
+            }}
+            onFocus={e => e.target.style.borderColor = 'var(--color-primary)'}
+            onBlur={e => e.target.style.borderColor = 'var(--color-border)'}
+          />
+        </div>
 
         {/* Extras */}
-        {extrasTotal > 0 && <CalcRow label="Extras" value={fmt(extrasTotal)} />}
+        <div style={{ marginBottom: extras.length > 0 ? 10 : 18 }}>
+          <SectionLabel>Extras</SectionLabel>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              type="text" value={extraNome} onChange={e => setExtraNome(e.target.value)}
+              placeholder="Nome (ex: Pendurador)"
+              onKeyDown={e => e.key === 'Enter' && addExtra()}
+              style={{
+                flex: 2, background: 'var(--color-surface-offset)',
+                border: '1.5px solid var(--color-border)', borderRadius: 'var(--radius-md)',
+                padding: '8px 12px', fontSize: 'var(--text-xs)', color: 'var(--color-text)',
+                outline: 'none',
+              }}
+              onFocus={e => e.target.style.borderColor = 'var(--color-primary)'}
+              onBlur={e => e.target.style.borderColor = 'var(--color-border)'}
+            />
+            <input
+              type="number" value={extraVal} onChange={e => setExtraVal(e.target.value)}
+              placeholder="R$"
+              onKeyDown={e => e.key === 'Enter' && addExtra()}
+              style={{
+                flex: 1, background: 'var(--color-surface-offset)',
+                border: '1.5px solid var(--color-border)', borderRadius: 'var(--radius-md)',
+                padding: '8px 12px', fontSize: 'var(--text-xs)', color: 'var(--color-text)',
+                outline: 'none',
+              }}
+              onFocus={e => e.target.style.borderColor = 'var(--color-primary)'}
+              onBlur={e => e.target.style.borderColor = 'var(--color-border)'}
+            />
+            <button
+              onClick={addExtra}
+              style={{
+                width: 36, height: 36, flexShrink: 0,
+                background: 'var(--color-surface-dynamic)',
+                border: '1.5px solid var(--color-border)',
+                borderRadius: 'var(--radius-md)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', color: 'var(--color-text-muted)',
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M12 5v14M5 12h14"/>
+              </svg>
+            </button>
+          </div>
+        </div>
 
-        <div style={{ height: 1, background: 'var(--color-border)', margin: '6px 0' }} />
-        <CalcRow label={`Subtotal × ${q}`} value={hasData ? fmt(subtotal) : '—'} total />
+        {extras.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 18 }}>
+            {extras.map(e => (
+              <span key={e.id} style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                background: 'var(--color-surface-dynamic)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 'var(--radius-full)', padding: '3px 10px',
+                fontSize: 11, color: 'var(--color-text-muted)',
+              }}>
+                {e.nome} <strong style={{ color: 'var(--color-text)' }}>+{fmt(e.val)}</strong>
+                <span
+                  onClick={() => setExtras(p => p.filter(x => x.id !== e.id))}
+                  style={{ cursor: 'pointer', color: 'var(--color-text-faint)', lineHeight: 1 }}
+                  role="button" aria-label="Remover">×</span>
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* ── Breakdown ── */}
+        <div style={{
+          background: 'var(--color-surface-offset)',
+          border: '1px solid var(--color-divider)',
+          borderRadius: 'var(--radius-lg)',
+          padding: '14px 16px',
+          marginBottom: 16,
+        }}>
+          <Row label="Perímetro" value={hasData ? fmtN(calc.perimetro, 3) + ' m' : '—'} faint />
+          <Row
+            label={hasData ? `Folga (${calc.lM >= 1 || calc.aM >= 1 ? '1,5m' : '1,0m'})` : 'Folga'}
+            value={hasData ? fmtN(calc.folga, 1) + ' m' : '—'} faint
+          />
+          <Row
+            label={hasData ? `${fmtN(calc.metrosTotal, 3)}m × R$${precos.moldura}/m` : 'Moldura'}
+            value={hasData ? fmt(calc.vMoldura) : '—'} accent
+          />
+          <Divider />
+          <Row label="Área" value={hasData ? fmtN(calc.area, 4) + ' m²' : '—'} faint />
+          <Row
+            label={hasData
+              ? vidro === 'Sem' && calc.lM < 1 && calc.aM < 1
+                ? 'Vidro: taxa mínima (0,5×)'
+                : vidro === 'Sem' ? 'Vidro: Sem'
+                : `Vidro ${vidro} (m² × ${vidro === 'Liso' ? 'R$300' : 'R$400'})`
+              : 'Vidro'}
+            value={hasData ? fmt(calc.vVidro) : '—'} accent
+          />
+          <Divider />
+          <Row
+            label={hasData ? `Fundo: ${fmtN(calc.area, 4)}m² × R$100` : 'Fundo'}
+            value={hasData ? fmt(calc.vFundo) : '—'} accent
+          />
+          {impressao && (
+            <Row
+              label={hasData ? `Impressão: ${fmtN(calc.area, 4)}m² × R$150` : 'Impressão'}
+              value={hasData ? fmt(calc.vImpressao) : '—'} accent
+            />
+          )}
+          {extrasTotal > 0 && <Row label="Extras" value={fmt(extrasTotal)} />}
+          <Divider />
+          {/* Subtotal em destaque */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            marginTop: 4,
+          }}>
+            <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)' }}>
+              Subtotal {q > 1 ? `× ${q}` : ''}
+            </span>
+            <span style={{
+              fontSize: 'var(--text-xl)', fontWeight: 800,
+              color: hasData ? 'var(--color-primary)' : 'var(--color-text-faint)',
+              fontFamily: 'monospace', fontVariantNumeric: 'tabular-nums',
+              letterSpacing: '-0.02em',
+            }}>
+              {hasData ? fmt(subtotal) : 'R$ —'}
+            </span>
+          </div>
+        </div>
+
+        <button
+          onClick={handleAdd}
+          disabled={!hasData}
+          className="btn btn-primary"
+          style={{ width: '100%', justifyContent: 'center', opacity: hasData ? 1 : 0.45 }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+          Adicionar à OS
+        </button>
       </div>
-
-      <AddButton onClick={handleAdd} />
     </div>
   )
 }
 
-/* ── Module 2: Nomes ─────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════
+   MODULE 2 — Nomes
+══════════════════════════════════════════════════════════ */
 function ModuloNomes({ onAdd, precos, setPrecos }) {
   const [desc, setDesc] = useState('')
   const [C, setC]       = useState('')
-  const [qtd, setQtd]   = useState(1)
+  const [qtd, setQtd]   = useState('1')
 
   const c = parseFloat(C) || 0
   const q = Math.max(1, parseInt(qtd) || 1)
   const hasData = c > 0
-
-  const compM    = c / 100
-  const custo    = compM * precos.nomes
+  const compM = c / 100
+  const custo = compM * precos.nomes
   const subtotal = custo * q
 
-  const handleAdd = () => {
-    if (!hasData) return
-    onAdd({
-      type: 'nomes', emoji: '✂️',
-      name: desc || `Nome ${c}cm`,
-      sub: `${c} cm · ×${q}`,
-      price: subtotal,
-    })
-  }
-
   return (
-    <div className="card card-pad">
-      <ModuleHeader emoji="✂️" title="Nomes — Corte Linear" desc="Cálculo por comprimento total (m)" />
-      <div style={{ marginBottom: 'var(--space-4)' }}>
-        <PrecoInput label="Preço Material / m" id="n_pm" value={precos.nomes} onChange={v => setPrecos(p => ({ ...p, nomes: v }))} />
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px', gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
-        <div className="form-group">
-          <label className="form-label">Comprimento total — C (cm)</label>
-          <input type="number" className="form-input" placeholder="85" min="0" step="0.1"
-            value={C} onChange={e => setC(e.target.value)} />
-          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)', marginTop: 4, display: 'block' }}>Soma linear das letras</span>
+    <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+      <div style={{
+        padding: '16px 20px', borderBottom: '1px solid var(--color-divider)',
+        display: 'flex', alignItems: 'center', gap: 12,
+      }}>
+        <div style={{
+          width: 38, height: 38, borderRadius: 'var(--radius-md)',
+          background: 'color-mix(in oklab, var(--color-blue) 14%, var(--color-surface-offset))',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0,
+        }}>✂️</div>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>Nomes — Corte Linear</div>
+          <div style={{ fontSize: 11, color: 'var(--color-text-faint)' }}>Comprimento total em metros</div>
         </div>
-        <div className="form-group">
-          <label className="form-label">Qtd</label>
-          <input type="number" className="form-input" min="1" step="1"
-            value={qtd} onChange={e => setQtd(e.target.value)} />
+        <div style={{ marginLeft: 'auto' }}>
+          <PrecoField label="R$/metro" value={precos.nomes} onChange={v => setPrecos(p => ({ ...p, nomes: v }))} />
         </div>
       </div>
-      <div className="form-group" style={{ marginBottom: 'var(--space-4)' }}>
-        <label className="form-label">Descrição / Nome</label>
-        <input type="text" className="form-input" placeholder="Ex: FAMÍLIA SILVA"
-          value={desc} onChange={e => setDesc(e.target.value)} />
+
+      <div style={{ padding: '20px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px', gap: 10, marginBottom: 20 }}>
+          <BigInput label="Comprimento total" value={C} onChange={setC} unit="cm" placeholder="85" hint="Soma linear das letras" />
+          <BigInput label="Qtd" value={qtd} onChange={setQtd} unit="×" placeholder="1" step="1" />
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <SectionLabel>Descrição (opcional)</SectionLabel>
+          <input
+            type="text" value={desc} onChange={e => setDesc(e.target.value)}
+            placeholder="Ex: FAMÍLIA SILVA"
+            style={{
+              width: '100%', background: 'var(--color-surface-offset)',
+              border: '1.5px solid var(--color-border)', borderRadius: 'var(--radius-md)',
+              padding: '9px 12px', fontSize: 'var(--text-sm)', color: 'var(--color-text)', outline: 'none',
+            }}
+            onFocus={e => e.target.style.borderColor = 'var(--color-primary)'}
+            onBlur={e => e.target.style.borderColor = 'var(--color-border)'}
+          />
+        </div>
+
+        <div style={{
+          background: 'var(--color-surface-offset)', border: '1px solid var(--color-divider)',
+          borderRadius: 'var(--radius-lg)', padding: '14px 16px', marginBottom: 16,
+        }}>
+          <Row label="Comprimento" value={hasData ? fmtN(compM, 3) + ' m' : '—'} faint />
+          <Row label={`${fmtN(compM, 3)}m × R$${precos.nomes}/m`} value={hasData ? fmt(custo) : '—'} accent />
+          <Divider />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+            <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)' }}>
+              Subtotal {q > 1 ? `× ${q}` : ''}
+            </span>
+            <span style={{
+              fontSize: 'var(--text-xl)', fontWeight: 800,
+              color: hasData ? 'var(--color-primary)' : 'var(--color-text-faint)',
+              fontFamily: 'monospace', letterSpacing: '-0.02em',
+            }}>{hasData ? fmt(subtotal) : 'R$ —'}</span>
+          </div>
+        </div>
+
+        <button
+          onClick={() => {
+            if (!hasData) return
+            onAdd({ type: 'nomes', emoji: '✂️', name: desc || `Nome ${c}cm`, sub: `${c}cm · ×${q}`, price: subtotal })
+          }}
+          disabled={!hasData}
+          className="btn btn-primary"
+          style={{ width: '100%', justifyContent: 'center', opacity: hasData ? 1 : 0.45 }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+          Adicionar à OS
+        </button>
       </div>
-      <div style={{ background: 'var(--color-surface-offset)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4)', marginBottom: 'var(--space-5)' }}>
-        <CalcRow label="Comprimento (m)"   value={hasData ? fmtN(compM, 3) + ' m' : '—'} />
-        <CalcRow label="Custo linear"      value={hasData ? fmt(custo)          : '—'} />
-        <div style={{ height: 1, background: 'var(--color-border)', margin: '6px 0' }} />
-        <CalcRow label={`Subtotal × ${q}`} value={hasData ? fmt(subtotal) : '—'} total />
-      </div>
-      <AddButton onClick={handleAdd} />
     </div>
   )
 }
 
-/* ── Module 3: 3D ────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════
+   MODULE 3 — Peças 3D
+══════════════════════════════════════════════════════════ */
 function Modulo3D({ onAdd, precos, setPrecos }) {
   const [desc, setDesc] = useState('')
   const [L, setL]       = useState('')
   const [A, setA]       = useState('')
-  const [qtd, setQtd]   = useState(1)
+  const [qtd, setQtd]   = useState('1')
 
   const l = parseFloat(L) || 0
   const a = parseFloat(A) || 0
   const q = Math.max(1, parseInt(qtd) || 1)
   const hasData = l > 0 || a > 0
-
-  const ref       = Math.max(l, a)
-  const refWinner = ref === l && l > 0 ? 'Largura (L)' : 'Altura (A)'
-  const refM      = ref / 100
-  const custo     = refM * precos.trid
-  const subtotal  = custo * q
-
-  const handleAdd = () => {
-    if (!hasData) return
-    onAdd({
-      type: '3d', emoji: '🖨',
-      name: desc || `Peça 3D ${l}×${a}cm`,
-      sub: `Ref=${ref}cm (${refWinner}) · ×${q}`,
-      price: subtotal,
-    })
-  }
+  const ref = Math.max(l, a)
+  const refWinner = ref === l && l > 0 ? 'Largura' : 'Altura'
+  const refM = ref / 100
+  const custo = refM * precos.trid
+  const subtotal = custo * q
 
   return (
-    <div className="card card-pad">
-      <ModuleHeader emoji="🖨" title="Peças 3D — Maior Dimensão" desc="Custo pelo maior eixo: Ref = max(L, A)" />
-      <div style={{ marginBottom: 'var(--space-4)' }}>
-        <PrecoInput label="Preço 3D / m" id="t_pm" value={precos.trid} onChange={v => setPrecos(p => ({ ...p, trid: v }))} />
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px,1fr))', gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
-        <div className="form-group">
-          <label className="form-label">Largura — L (cm)</label>
-          <input type="number" className="form-input" placeholder="40" min="0" step="0.1"
-            value={L} onChange={e => setL(e.target.value)} />
-        </div>
-        <div className="form-group">
-          <label className="form-label">Altura — A (cm)</label>
-          <input type="number" className="form-input" placeholder="60" min="0" step="0.1"
-            value={A} onChange={e => setA(e.target.value)} />
-        </div>
-        <div className="form-group" style={{ maxWidth: 90 }}>
-          <label className="form-label">Qtd</label>
-          <input type="number" className="form-input" min="1" step="1"
-            value={qtd} onChange={e => setQtd(e.target.value)} />
-        </div>
-      </div>
-      <div className="form-group" style={{ marginBottom: 'var(--space-4)' }}>
-        <label className="form-label">Descrição da Peça</label>
-        <input type="text" className="form-input" placeholder="Ex: Totem decorativo"
-          value={desc} onChange={e => setDesc(e.target.value)} />
-      </div>
-      {hasData && (
+    <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+      <div style={{
+        padding: '16px 20px', borderBottom: '1px solid var(--color-divider)',
+        display: 'flex', alignItems: 'center', gap: 12,
+      }}>
         <div style={{
-          display: 'inline-flex', alignItems: 'center', gap: 8,
-          background: HL.orange,
-          color: 'var(--color-orange)',
-          borderRadius: 'var(--radius-sm)', padding: '4px 12px',
-          fontSize: 'var(--text-xs)', fontWeight: 700, marginBottom: 'var(--space-3)',
-        }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M9 19V6l12-3v13M9 19c0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2 2 .9 2 2zm12-3c0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2 2 .9 2 2z"/>
-          </svg>
-          Ref = {fmtN(ref, 1)} cm — {refWinner} é o maior lado
+          width: 38, height: 38, borderRadius: 'var(--radius-md)',
+          background: 'color-mix(in oklab, var(--color-purple) 14%, var(--color-surface-offset))',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0,
+        }}>🖨</div>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>Peças 3D</div>
+          <div style={{ fontSize: 11, color: 'var(--color-text-faint)' }}>Custo pelo maior eixo</div>
         </div>
-      )}
-      <div style={{ background: 'var(--color-surface-offset)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4)', marginBottom: 'var(--space-5)' }}>
-        <CalcRow label="Referência (maior lado)" value={hasData ? fmtN(ref, 1) + ' cm'  : '—'} />
-        <CalcRow label="Ref (m)"                 value={hasData ? fmtN(refM, 3) + ' m'  : '—'} />
-        <CalcRow label="Custo 3D"                value={hasData ? fmt(custo)             : '—'} />
-        <div style={{ height: 1, background: 'var(--color-border)', margin: '6px 0' }} />
-        <CalcRow label={`Subtotal × ${q}`}       value={hasData ? fmt(subtotal) : '—'} total />
+        <div style={{ marginLeft: 'auto' }}>
+          <PrecoField label="R$/metro" value={precos.trid} onChange={v => setPrecos(p => ({ ...p, trid: v }))} />
+        </div>
       </div>
-      <AddButton onClick={handleAdd} />
+
+      <div style={{ padding: '20px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 20 }}>
+          <BigInput label="Largura" value={L} onChange={setL} unit="cm" placeholder="40" />
+          <BigInput label="Altura" value={A} onChange={setA} unit="cm" placeholder="60" />
+          <BigInput label="Qtd" value={qtd} onChange={setQtd} unit="×" placeholder="1" step="1" />
+        </div>
+
+        {hasData && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            background: 'color-mix(in oklab, var(--color-purple) 10%, var(--color-surface))',
+            border: '1px solid color-mix(in oklab, var(--color-purple) 30%, var(--color-border))',
+            borderRadius: 'var(--radius-md)', padding: '8px 12px',
+            marginBottom: 14, fontSize: 'var(--text-xs)', color: 'var(--color-purple)', fontWeight: 600,
+          }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>
+            </svg>
+            Referência = {fmtN(ref, 1)} cm — {refWinner} é o maior lado
+          </div>
+        )}
+
+        <div style={{ marginBottom: 16 }}>
+          <SectionLabel>Descrição (opcional)</SectionLabel>
+          <input
+            type="text" value={desc} onChange={e => setDesc(e.target.value)}
+            placeholder="Ex: Totem decorativo"
+            style={{
+              width: '100%', background: 'var(--color-surface-offset)',
+              border: '1.5px solid var(--color-border)', borderRadius: 'var(--radius-md)',
+              padding: '9px 12px', fontSize: 'var(--text-sm)', color: 'var(--color-text)', outline: 'none',
+            }}
+            onFocus={e => e.target.style.borderColor = 'var(--color-primary)'}
+            onBlur={e => e.target.style.borderColor = 'var(--color-border)'}
+          />
+        </div>
+
+        <div style={{
+          background: 'var(--color-surface-offset)', border: '1px solid var(--color-divider)',
+          borderRadius: 'var(--radius-lg)', padding: '14px 16px', marginBottom: 16,
+        }}>
+          <Row label="Maior lado (ref)" value={hasData ? fmtN(ref, 1) + ' cm' : '—'} faint />
+          <Row label={`${fmtN(refM, 3)}m × R$${precos.trid}/m`} value={hasData ? fmt(custo) : '—'} accent />
+          <Divider />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+            <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)' }}>
+              Subtotal {q > 1 ? `× ${q}` : ''}
+            </span>
+            <span style={{
+              fontSize: 'var(--text-xl)', fontWeight: 800,
+              color: hasData ? 'var(--color-primary)' : 'var(--color-text-faint)',
+              fontFamily: 'monospace', letterSpacing: '-0.02em',
+            }}>{hasData ? fmt(subtotal) : 'R$ —'}</span>
+          </div>
+        </div>
+
+        <button
+          onClick={() => {
+            if (!hasData) return
+            onAdd({ type: '3d', emoji: '🖨', name: desc || `Peça 3D ${l}×${a}cm`, sub: `Ref=${ref}cm (${refWinner}) · ×${q}`, price: subtotal })
+          }}
+          disabled={!hasData}
+          className="btn btn-primary"
+          style={{ width: '100%', justifyContent: 'center', opacity: hasData ? 1 : 0.45 }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+          Adicionar à OS
+        </button>
+      </div>
     </div>
   )
 }
@@ -469,23 +684,16 @@ function ConfirmDialog({ message, onConfirm, onCancel }) {
       position: 'fixed', inset: 0, zIndex: 1000,
       background: 'oklch(from var(--color-bg) l c h / 0.75)',
       backdropFilter: 'blur(4px)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: 'var(--space-4)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-4)',
     }}>
       <div style={{
-        background: 'var(--color-surface)',
-        border: '1px solid var(--color-border)',
-        borderRadius: 'var(--radius-xl)',
-        boxShadow: 'var(--shadow-lg)',
-        padding: 'var(--space-6)',
-        maxWidth: 360, width: '100%',
-        textAlign: 'center',
+        background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+        borderRadius: 'var(--radius-xl)', boxShadow: 'var(--shadow-lg)',
+        padding: 'var(--space-6)', maxWidth: 360, width: '100%', textAlign: 'center',
       }}>
         <div style={{ fontSize: 28, marginBottom: 'var(--space-3)' }}>🗑️</div>
         <div style={{ fontWeight: 700, marginBottom: 'var(--space-2)' }}>Limpar OS?</div>
-        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-5)' }}>
-          {message}
-        </div>
+        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-5)' }}>{message}</div>
         <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
           <button className="btn btn-ghost" style={{ flex: 1, justifyContent: 'center' }} onClick={onCancel}>Cancelar</button>
           <button className="btn btn-primary" style={{ flex: 1, justifyContent: 'center', background: 'var(--color-error)' }} onClick={onConfirm}>Limpar</button>
@@ -506,36 +714,23 @@ function ModalConverterOS({ open, onClose, osItems, total, pagamento, observacoe
   const [saving, setSaving] = useState(false)
   const [clientes, setClientes] = useState([])
   const [buscaCliente, setBuscaCliente] = useState('')
-
   const [form, setForm] = useState({
     clientenome: '', clientetelefone: '', clientecpf: '', clienteid: null,
-    servico: servico || TIPO_OPTS[0],
-    valortotal: total ? total.toFixed(2) : '',
-    valorentrada: '',
-    prazoentrega: '',
-    prioridade: 'Normal',
-    pagamento: pagamento || 'Pix',
-    observacoes: observacoes || '',
-    status: 'Recebido',
+    servico: servico || TIPO_OPTS[0], valortotal: total ? total.toFixed(2) : '',
+    valorentrada: '', prazoentrega: '', prioridade: 'Normal',
+    pagamento: pagamento || 'Pix', observacoes: observacoes || '', status: 'Recebido',
   })
-
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   React.useEffect(() => {
     if (!open) return
     setForm({
       clientenome: '', clientetelefone: '', clientecpf: '', clienteid: null,
-      servico: servico || TIPO_OPTS[0],
-      valortotal: total ? total.toFixed(2) : '',
-      valorentrada: '',
-      prazoentrega: '',
-      prioridade: 'Normal',
-      pagamento: pagamento || 'Pix',
-      observacoes: observacoes || '',
-      status: 'Recebido',
+      servico: servico || TIPO_OPTS[0], valortotal: total ? total.toFixed(2) : '',
+      valorentrada: '', prazoentrega: '', prioridade: 'Normal',
+      pagamento: pagamento || 'Pix', observacoes: observacoes || '', status: 'Recebido',
     })
-    setBuscaCliente('')
-    setClientes([])
+    setBuscaCliente(''); setClientes([])
   }, [open, total, pagamento, observacoes, servico])
 
   React.useEffect(() => {
@@ -544,12 +739,9 @@ function ModalConverterOS({ open, onClose, osItems, total, pagamento, observacoe
   }, [buscaCliente])
 
   const selecionarCliente = c => {
-    set('clienteid', c.id)
-    set('clientenome', c.name)
-    set('clientetelefone', c.phone || '')
-    set('clientecpf', c.cpf || '')
-    setBuscaCliente(c.name)
-    setClientes([])
+    set('clienteid', c.id); set('clientenome', c.name)
+    set('clientetelefone', c.phone || ''); set('clientecpf', c.cpf || '')
+    setBuscaCliente(c.name); setClientes([])
   }
 
   const ensureCliente = async (nome, telefone, cpf) => {
@@ -570,45 +762,32 @@ function ModalConverterOS({ open, onClose, osItems, total, pagamento, observacoe
 
   const salvar = async () => {
     if (!form.clientenome.trim()) return toast.error('Nome do cliente obrigatório')
-    const totalN   = Number(form.valortotal)
-    const entradaN = form.valorentrada === '' ? 0 : Number(form.valorentrada)
-    if (isNaN(totalN) || totalN <= 0)  return toast.error('Valor total deve ser maior que zero')
+    const totalN = Number(form.valortotal), entradaN = form.valorentrada === '' ? 0 : Number(form.valorentrada)
+    if (isNaN(totalN) || totalN <= 0) return toast.error('Valor total deve ser maior que zero')
     if (isNaN(entradaN) || entradaN < 0) return toast.error('Entrada não pode ser negativa')
-    if (entradaN > totalN)              return toast.error('Entrada não pode ser maior que o total')
-
+    if (entradaN > totalN) return toast.error('Entrada não pode ser maior que o total')
     setSaving(true)
     try {
       let clienteid = form.clienteid
       if (!clienteid) clienteid = await ensureCliente(form.clientenome, form.clientetelefone, form.clientecpf)
-
-      const payload = {
-        clienteid:       clienteid || null,
-        clientenome:     form.clientenome.trim(),
-        clientetelefone: form.clientetelefone || null,
-        clientecpf:      form.clientecpf || null,
-        servico:         form.servico,
-        descricao:       descricaoItens || null,
-        valortotal:      totalN,
-        valorentrada:    entradaN,
-        prazoentrega:    form.prazoentrega || null,
-        prioridade:      form.prioridade,
-        pagamento:       form.pagamento,
-        observacoes:     form.observacoes || null,
-        status:          form.status,
-      }
-
-      await api.post('/ordens', payload)
+      await api.post('/ordens', {
+        clienteid: clienteid || null, clientenome: form.clientenome.trim(),
+        clientetelefone: form.clientetelefone || null, clientecpf: form.clientecpf || null,
+        servico: form.servico, descricao: descricaoItens || null,
+        valortotal: totalN, valorentrada: entradaN,
+        prazoentrega: form.prazoentrega || null, prioridade: form.prioridade,
+        pagamento: form.pagamento, observacoes: form.observacoes || null, status: form.status,
+      })
       toast.success('OS criada com sucesso!')
-      onClose()
-      navigate('/ordens')
+      onClose(); navigate('/ordens')
     } catch (e) {
       toast.error(e.response?.data?.error || 'Erro ao criar OS')
     } finally { setSaving(false) }
   }
 
-  const totalN    = Number(form.valortotal) || 0
-  const entradaN  = Number(form.valorentrada) || 0
-  const restante  = Math.max(0, totalN - entradaN)
+  const totalN = Number(form.valortotal) || 0
+  const entradaN = Number(form.valorentrada) || 0
+  const restante = Math.max(0, totalN - entradaN)
 
   if (!open) return null
 
@@ -621,7 +800,6 @@ function ModalConverterOS({ open, onClose, osItems, total, pagamento, observacoe
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
         </div>
-
         <div className="modal-body">
           <div style={{
             background: 'var(--color-surface-offset)', borderRadius: 'var(--radius-lg)',
@@ -645,14 +823,8 @@ function ModalConverterOS({ open, onClose, osItems, total, pagamento, observacoe
 
           <div style={{ position: 'relative' }}>
             <div className="form-group">
-              <label className="form-label">
-                Cliente <span style={{ color: 'var(--color-error)' }}>*</span>
-                <span style={{ marginLeft: 8, fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 400 }}>
-                  — se não cadastrado, será registrado automaticamente
-                </span>
-              </label>
-              <input className="form-input"
-                placeholder="Nome do cliente"
+              <label className="form-label">Cliente <span style={{ color: 'var(--color-error)' }}>*</span></label>
+              <input className="form-input" placeholder="Nome do cliente"
                 value={buscaCliente || form.clientenome}
                 onChange={e => { setBuscaCliente(e.target.value); set('clientenome', e.target.value); set('clienteid', null) }}
               />
@@ -700,21 +872,15 @@ function ModalConverterOS({ open, onClose, osItems, total, pagamento, observacoe
 
           <div className="form-grid-2">
             <div className="form-group">
-              <label className="form-label">
-                Valor Total (R$) <span style={{ color: 'var(--color-error)' }}>*</span>
-              </label>
+              <label className="form-label">Valor Total (R$) <span style={{ color: 'var(--color-error)' }}>*</span></label>
               <input className="form-input" type="number" step="0.01" min="0"
-                value={form.valortotal}
-                onChange={e => set('valortotal', e.target.value)}
+                value={form.valortotal} onChange={e => set('valortotal', e.target.value)}
                 style={{ fontFamily: 'monospace', fontWeight: 700 }}
               />
             </div>
             <div className="form-group">
-              <label className="form-label">
-                Entrada (R$)
-                <span style={{ marginLeft: 6, fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 400 }}>opcional</span>
-              </label>
-              <input className="form-input" type="number" step="0.01" min="0" placeholder="0,00 (sem entrada)"
+              <label className="form-label">Entrada (R$) <span style={{ color: 'var(--color-text-faint)', fontSize: 'var(--text-xs)', fontWeight: 400 }}>opcional</span></label>
+              <input className="form-input" type="number" step="0.01" min="0" placeholder="0,00"
                 value={form.valorentrada} onChange={e => set('valorentrada', e.target.value)}/>
             </div>
           </div>
@@ -723,10 +889,10 @@ function ModalConverterOS({ open, onClose, osItems, total, pagamento, observacoe
             <div style={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
               padding: 'var(--space-3) var(--space-4)',
-              background: restante > 0 ? 'var(--color-warning-hl, var(--color-warning-highlight))' : 'var(--color-success-highlight)',
+              background: restante > 0 ? 'var(--color-warning-highlight)' : 'var(--color-success-highlight)',
               borderRadius: 'var(--radius-md)', fontSize: 'var(--text-xs)',
             }}>
-              <span style={{ color: 'var(--color-text-muted)' }}>Restante a receber após entrada:</span>
+              <span style={{ color: 'var(--color-text-muted)' }}>Restante após entrada:</span>
               <span style={{ fontFamily: 'monospace', fontWeight: 800, color: restante > 0 ? 'var(--color-warning)' : 'var(--color-success)' }}>
                 {restante > 0 ? fmt(restante) : '✓ Quitado na entrada'}
               </span>
@@ -753,16 +919,12 @@ function ModalConverterOS({ open, onClose, osItems, total, pagamento, observacoe
               placeholder="Visível apenas internamente..."/>
           </div>
         </div>
-
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
           <button className="btn btn-primary" onClick={salvar} disabled={saving}>
             {saving
               ? <><div className="spinner" style={{ width: 14, height: 14 }}/>Criando OS...</>
-              : <>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg>
-                  Criar OS
-                </>
+              : <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg>Criar OS</>
             }
           </button>
         </div>
@@ -786,11 +948,10 @@ function OSCart({ items, onRemove, onClear, onPrint, onConverterOS }) {
     <div className="card" style={{
       position: 'sticky', top: 'var(--space-6)',
       display: 'flex', flexDirection: 'column',
-      maxHeight: 'calc(100dvh - 80px)', overflow: 'hidden',
+      maxHeight: 'calc(100dvh - 80px)', overflow: 'hidden', padding: 0,
     }}>
       <div style={{
-        padding: 'var(--space-4) var(--space-5)',
-        borderBottom: '1px solid var(--color-border)',
+        padding: '16px 20px', borderBottom: '1px solid var(--color-border)',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontWeight: 700 }}>
@@ -801,11 +962,8 @@ function OSCart({ items, onRemove, onClear, onPrint, onConverterOS }) {
         </div>
         <span style={{
           background: 'var(--color-surface-dynamic)', color: 'var(--color-text-muted)',
-          fontSize: 11, padding: '2px 8px', borderRadius: 'var(--radius-full)',
-          fontWeight: 600,
-        }}>
-          {items.length} {items.length === 1 ? 'item' : 'itens'}
-        </span>
+          fontSize: 11, padding: '2px 8px', borderRadius: 'var(--radius-full)', fontWeight: 600,
+        }}>{items.length} {items.length === 1 ? 'item' : 'itens'}</span>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--space-3)' }}>
@@ -827,10 +985,8 @@ function OSCart({ items, onRemove, onClear, onPrint, onConverterOS }) {
             {items.map(item => (
               <div key={item.id} style={{
                 display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)',
-                padding: 'var(--space-3)',
-                background: 'var(--color-surface-offset)',
-                borderRadius: 'var(--radius-lg)',
-                border: '1px solid var(--color-divider)',
+                padding: 'var(--space-3)', background: 'var(--color-surface-offset)',
+                borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-divider)',
               }}>
                 <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, marginTop: 5, background: dotColor[item.type] }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -842,21 +998,15 @@ function OSCart({ items, onRemove, onClear, onPrint, onConverterOS }) {
                 <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 'var(--text-xs)', whiteSpace: 'nowrap' }}>
                   {fmt(item.price)}
                 </span>
-                <button
-                  onClick={() => onRemove(item.id)}
-                  aria-label="Remover item"
+                <button onClick={() => onRemove(item.id)} aria-label="Remover item"
                   style={{
                     color: 'var(--color-text-faint)', width: 20, height: 20, flexShrink: 0,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     borderRadius: 'var(--radius-sm)', cursor: 'pointer', background: 'none', border: 'none',
-                    transition: 'color var(--transition-interactive)',
                   }}
                   onMouseEnter={e => { e.currentTarget.style.color = 'var(--color-error)' }}
-                  onMouseLeave={e => { e.currentTarget.style.color = 'var(--color-text-faint)' }}
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <path d="M18 6 6 18M6 6l12 12"/>
-                  </svg>
+                  onMouseLeave={e => { e.currentTarget.style.color = 'var(--color-text-faint)' }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
                 </button>
               </div>
             ))}
@@ -865,11 +1015,7 @@ function OSCart({ items, onRemove, onClear, onPrint, onConverterOS }) {
       </div>
 
       {items.length > 0 && (
-        <div style={{
-          padding: 'var(--space-3) var(--space-4)',
-          borderTop: '1px solid var(--color-divider)',
-          display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', flexShrink: 0,
-        }}>
+        <div style={{ padding: 'var(--space-3) var(--space-4)', borderTop: '1px solid var(--color-divider)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', flexShrink: 0 }}>
           {Object.entries(totals).filter(([, v]) => v > 0).map(([type, val]) => (
             <div key={type} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 'var(--text-xs)' }}>
               <span style={{ background: tagBg[type], color: tagColor[type], borderRadius: 'var(--radius-sm)', padding: '2px 8px', fontWeight: 700, fontSize: 11 }}>
@@ -881,33 +1027,23 @@ function OSCart({ items, onRemove, onClear, onPrint, onConverterOS }) {
         </div>
       )}
 
-      <div style={{ padding: 'var(--space-4) var(--space-5)', borderTop: '1px solid var(--color-border)', flexShrink: 0 }}>
-        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
+      <div style={{ padding: '16px 20px', borderTop: '1px solid var(--color-border)', flexShrink: 0 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--color-text-faint)', marginBottom: 4 }}>
           Valor Final da OS
         </div>
         <div style={{
-          fontFamily: 'monospace', fontWeight: 800,
-          fontSize: 'var(--text-xl)', color: 'var(--color-primary)',
-          letterSpacing: '-0.02em', marginBottom: 'var(--space-4)',
+          fontFamily: 'monospace', fontWeight: 800, fontSize: 'var(--text-xl)',
+          color: 'var(--color-primary)', letterSpacing: '-0.02em', marginBottom: 'var(--space-4)',
           fontVariantNumeric: 'tabular-nums',
-        }}>
-          {fmt(final)}
-        </div>
+        }}>{fmt(final)}</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
           <button className="btn btn-ghost" style={{ justifyContent: 'center' }} onClick={onPrint}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="6 9 6 2 18 2 18 9"/>
-              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
-              <rect x="6" y="14" width="12" height="8"/>
+              <polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>
             </svg>
             Imprimir Orçamento
           </button>
-          <button
-            className="btn btn-primary"
-            style={{ justifyContent: 'center' }}
-            onClick={onConverterOS}
-            disabled={items.length === 0}
-          >
+          <button className="btn btn-primary" style={{ justifyContent: 'center' }} onClick={onConverterOS} disabled={items.length === 0}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/>
             </svg>
@@ -915,8 +1051,7 @@ function OSCart({ items, onRemove, onClear, onPrint, onConverterOS }) {
           </button>
           <button className="btn btn-ghost btn-sm" style={{ justifyContent: 'center' }} onClick={onClear}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="3 6 5 6 21 6"/>
-              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
             </svg>
             Limpar OS
           </button>
@@ -931,35 +1066,14 @@ function buildPrintHtml(osItems, fmtFn) {
   const totals = { quadros: 0, nomes: 0, '3d': 0 }
   osItems.forEach(i => { totals[i.type] = (totals[i.type] || 0) + i.price })
   const final = Object.values(totals).reduce((s, v) => s + v, 0)
-  const now   = new Date().toLocaleString('pt-BR')
-  const rows  = osItems.map(i =>
-    `<tr><td>${i.emoji} ${i.name}</td><td>${i.sub}</td><td class="val">${fmtFn(i.price)}</td></tr>`
-  ).join('')
-  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
-<title>Orçamento OS</title>
-<style>
-  body { font-family: Arial, sans-serif; padding: 32px; color: #111; max-width: 700px; margin: 0 auto; }
-  h1 { font-size: 22px; margin-bottom: 4px; }
-  .sub { color: #666; font-size: 13px; margin-bottom: 24px; }
-  table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
-  th { background: #f0f0f0; padding: 8px 12px; text-align: left; font-size: 13px; }
-  td { padding: 8px 12px; border-bottom: 1px solid #eee; font-size: 13px; }
-  .val { text-align: right; font-family: monospace; font-weight: 700; }
-  .total { font-size: 22px; font-weight: 800; text-align: right; margin-top: 16px; color: #01696f; }
-  .meta { color: #999; font-size: 11px; margin-top: 32px; }
-  @media print { body { padding: 0; } }
-</style></head>
-<body>
-  <h1>Orçamento — Ordem de Serviço</h1>
-  <div class="sub">Emitido em ${now}</div>
-  <table>
-    <thead><tr><th>Item</th><th>Detalhes</th><th style="text-align:right">Valor</th></tr></thead>
-    <tbody>${rows}</tbody>
-  </table>
-  <div class="total">Total: ${fmtFn(final)}</div>
-  <div class="meta">Arte & Molduras — Sistema de Orçamento</div>
-  <script>window.onload = () => { window.print() }<\/script>
-</body></html>`
+  const now = new Date().toLocaleString('pt-BR')
+  const rows = osItems.map(i => `<tr><td>${i.emoji} ${i.name}</td><td>${i.sub}</td><td class="val">${fmtFn(i.price)}</td></tr>`).join('')
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Orçamento OS</title>
+<style>body{font-family:Arial,sans-serif;padding:32px;color:#111;max-width:700px;margin:0 auto}h1{font-size:22px;margin-bottom:4px}.sub{color:#666;font-size:13px;margin-bottom:24px}table{width:100%;border-collapse:collapse;margin-bottom:24px}th{background:#f0f0f0;padding:8px 12px;text-align:left;font-size:13px}td{padding:8px 12px;border-bottom:1px solid #eee;font-size:13px}.val{text-align:right;font-family:monospace;font-weight:700}.total{font-size:22px;font-weight:800;text-align:right;margin-top:16px;color:#01696f}.meta{color:#999;font-size:11px;margin-top:32px}@media print{body{padding:0}}</style></head>
+<body><h1>Orçamento — Ordem de Serviço</h1><div class="sub">Emitido em ${now}</div>
+<table><thead><tr><th>Item</th><th>Detalhes</th><th style="text-align:right">Valor</th></tr></thead><tbody>${rows}</tbody></table>
+<div class="total">Total: ${fmtFn(final)}</div><div class="meta">Arte &amp; Molduras — Sistema de Orçamento</div>
+<script>window.onload=()=>{window.print()}<\/script></body></html>`
 }
 
 /* ── Main Page ───────────────────────────────────────────── */
@@ -967,32 +1081,21 @@ export default function Orcamento() {
   const [osItems, setOsItems]           = useState([])
   const [confirmClear, setConfirmClear] = useState(false)
   const [modalOS, setModalOS]           = useState(false)
+  const [precos, setPrecos]             = useState({ moldura: 60, nomes: 35, trid: 80 })
 
-  const [precos, setPrecos] = useState({ moldura: 60, nomes: 35, trid: 80 })
-
-  const addItem = useCallback(item => {
-    setOsItems(prev => [...prev, { ...item, id: uid() }])
-  }, [])
-
+  const addItem = useCallback(item => setOsItems(prev => [...prev, { ...item, id: uid() }]), [])
   const removeItem = id => setOsItems(prev => prev.filter(i => i.id !== id))
-
-  const clearOS = () => setConfirmClear(true)
-  const confirmClearOS = () => { setOsItems([]); setConfirmClear(false) }
 
   const printOS = () => {
     if (osItems.length === 0) return
     const html = buildPrintHtml(osItems, fmt)
     try {
       const w = window.open('', '_blank', 'width=750,height=900')
-      if (w) { w.document.write(html); w.document.close() }
-      else throw new Error('popup bloqueado')
+      if (w) { w.document.write(html); w.document.close() } else throw new Error()
     } catch {
       const blob = new Blob([html], { type: 'text/html' })
-      const url  = URL.createObjectURL(blob)
-      const a    = document.createElement('a')
-      a.href     = url
-      a.download = `orcamento-os-${Date.now()}.html`
-      a.click()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a'); a.href = url; a.download = `orcamento-${Date.now()}.html`; a.click()
       setTimeout(() => URL.revokeObjectURL(url), 5000)
     }
   }
@@ -1006,19 +1109,14 @@ export default function Orcamento() {
       {confirmClear && (
         <ConfirmDialog
           message="Todos os itens da OS serão removidos. Esta ação não pode ser desfeita."
-          onConfirm={confirmClearOS}
+          onConfirm={() => { setOsItems([]); setConfirmClear(false) }}
           onCancel={() => setConfirmClear(false)}
         />
       )}
-
       <ModalConverterOS
-        open={modalOS}
-        onClose={() => setModalOS(false)}
-        osItems={osItems}
-        total={totalItens}
-        pagamento="Pix"
-        observacoes=""
-        servico="Quadro"
+        open={modalOS} onClose={() => setModalOS(false)}
+        osItems={osItems} total={totalItens}
+        pagamento="Pix" observacoes="" servico="Quadro"
       />
 
       <div className="page-header">
@@ -1032,21 +1130,17 @@ export default function Orcamento() {
 
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))',
-        gap: 'var(--space-6)',
-        alignItems: 'start',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 360px), 1fr))',
+        gap: 'var(--space-6)', alignItems: 'start',
       }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)', minWidth: 0 }}>
           <ModuloQuadros onAdd={addItem} precos={precos} setPrecos={setPrecos} />
           <ModuloNomes   onAdd={addItem} precos={precos} setPrecos={setPrecos} />
           <Modulo3D      onAdd={addItem} precos={precos} setPrecos={setPrecos} />
         </div>
-
         <div style={{ minWidth: 0 }}>
-          <OSCart
-            items={osItems}
-            onRemove={removeItem}
-            onClear={clearOS}
+          <OSCart items={osItems} onRemove={removeItem}
+            onClear={() => setConfirmClear(true)}
             onPrint={printOS}
             onConverterOS={() => {
               if (osItems.length === 0) return toast.error('Adicione ao menos um item ao orçamento')
