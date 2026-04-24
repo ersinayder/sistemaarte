@@ -1,16 +1,23 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import ReactDOM from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { toast } from 'react-hot-toast'
 import api from '../services/api'
 
 const fmt  = v => 'R$ ' + (v || 0).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.')
 const fmtN = (v, d = 2) => (v || 0).toFixed(d)
+const fmtBRL = v => v != null ? Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}) : ''
 
 const HL = {
   orange: 'color-mix(in oklab, var(--color-orange) 12%, var(--color-surface))',
   blue:   'color-mix(in oklab, var(--color-blue)   12%, var(--color-surface))',
   purple: 'color-mix(in oklab, var(--color-purple)  12%, var(--color-surface))',
 }
+
+const TIPO_OPTS      = ['Quadro','Caixas','Corte a Laser','Diversos']
+const STATUS_OPTS    = ['Aguardando','Em Produção','Pronto','Entregue','Cancelado']
+const PRIORIDADE_OPTS = ['Normal','Urgente']
 
 function SectionLabel({ children }) {
   return (
@@ -435,6 +442,330 @@ function TotalsPanel({ items }) {
   )
 }
 
+/* ══ ProdutoInput — busca produtos cadastrados ou avulso ══ */
+function ProdutoInput({ produtos, onAdd }) {
+  const [query, setQuery] = useState('')
+  const [open, setOpen]   = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [])
+
+  const sugestoes = useMemo(() => {
+    if (!query.trim()) return produtos.slice(0, 8)
+    return produtos.filter(p => p.nome.toLowerCase().includes(query.toLowerCase()))
+  }, [query, produtos])
+
+  const handleSelect = (p) => {
+    onAdd({ produto_id: p.id, nome: p.nome, quantidade: 1, preco_unitario: p.preco || 0, avulso: false })
+    setQuery(''); setOpen(false)
+  }
+
+  const handleAvulso = () => {
+    if (!query.trim()) return
+    onAdd({ produto_id: null, nome: query.trim(), quantidade: 1, preco_unitario: 0, avulso: true })
+    setQuery(''); setOpen(false)
+  }
+
+  const semResultado = query.trim().length > 0 && sugestoes.length === 0
+  const temSugestoes = sugestoes.length > 0
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <div style={{ position: 'relative' }}>
+        <svg style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:'var(--color-text-faint)', pointerEvents:'none' }}
+          width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+        </svg>
+        <input
+          className="form-input"
+          style={{ paddingLeft: 32 }}
+          placeholder="Buscar produto cadastrado ou digitar novo nome…"
+          value={query}
+          onChange={e => { setQuery(e.target.value); setOpen(true) }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={e => {
+            if (e.key === 'Escape') setOpen(false)
+            if (e.key === 'Enter') { e.preventDefault(); if (semResultado) handleAvulso(); else if (sugestoes.length === 1) handleSelect(sugestoes[0]) }
+          }}
+        />
+      </div>
+      {open && (temSugestoes || semResultado) && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
+          background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+          borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-md)',
+          zIndex: 200, maxHeight: 220, overflowY: 'auto'
+        }}>
+          {temSugestoes && sugestoes.map(p => (
+            <div key={p.id}
+              style={{ padding: 'var(--space-2) var(--space-3)', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 'var(--text-sm)' }}
+              onMouseDown={() => handleSelect(p)}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--color-surface-offset)'}
+              onMouseLeave={e => e.currentTarget.style.background = ''}
+            >
+              <span style={{ fontWeight: 500 }}>{p.nome}</span>
+              <span style={{ fontFamily: 'monospace', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>{fmtBRL(p.preco)}</span>
+            </div>
+          ))}
+          {semResultado && (
+            <div
+              style={{ padding: 'var(--space-2) var(--space-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontSize: 'var(--text-sm)', color: 'var(--color-primary)', borderTop: temSugestoes ? '1px solid var(--color-divider)' : 'none' }}
+              onMouseDown={handleAvulso}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--color-surface-offset)'}
+              onMouseLeave={e => e.currentTarget.style.background = ''}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
+              Adicionar <strong style={{ marginLeft: 2 }}>"{query}"</strong> como item avulso
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ══ Modal Nova OS (reutilizado do Ordens.jsx) ══ */
+function NovaOSModal({ produtosIniciais, clienteInicial, clienteIdInicial, clientes, todosProdutos, onClose, onSaved }) {
+  const blankForm = {
+    cliente_id: clienteIdInicial || '',
+    clientenome: clienteInicial || '',
+    servico: TIPO_OPTS[0],
+    valortotal: '',
+    valorentrada: '',
+    observacoes: '',
+    prazoentrega: '',
+    prioridade: 'Normal',
+    status: 'Aguardando',
+    produtos: produtosIniciais || [],
+  }
+
+  const [form, setForm]               = useState(blankForm)
+  const [saving, setSaving]           = useState(false)
+  const [clienteSearch, setClienteSearch] = useState(clienteInicial || '')
+  const [clienteOpen, setClienteOpen] = useState(false)
+  const clienteRef = useRef(null)
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  useEffect(() => {
+    const total = (produtosIniciais || []).reduce((acc, p) => acc + (Number(p.quantidade||1) * Number(p.preco_unitario||0)), 0)
+    if (total > 0) setForm(f => ({ ...f, valortotal: total.toFixed(2) }))
+  }, [])
+
+  useEffect(() => {
+    const h = (e) => { if (clienteRef.current && !clienteRef.current.contains(e.target)) setClienteOpen(false) }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [])
+
+  const recalcTotal = (prods) => {
+    if (!prods || prods.length === 0) { setForm(f => ({ ...f, valortotal: '' })); return }
+    const t = prods.reduce((acc, p) => acc + (Number(p.quantidade||1) * Number(p.preco_unitario||0)), 0)
+    setForm(f => ({ ...f, valortotal: t.toFixed(2) }))
+  }
+
+  const addProduto = (prod) => {
+    const novos = [...(form.produtos||[]), { ...prod }]
+    set('produtos', novos); recalcTotal(novos)
+  }
+
+  const removeProduto = (idx) => {
+    const novos = form.produtos.filter((_,i) => i !== idx)
+    set('produtos', novos); recalcTotal(novos)
+  }
+
+  const updateProd = (idx, campo, valor) => {
+    const novos = form.produtos.map((p,i) => i===idx ? {...p, [campo]: valor} : p)
+    set('produtos', novos); recalcTotal(novos)
+  }
+
+  const handleSave = async () => {
+    if (!form.cliente_id && !form.clientenome.trim()) { toast.error('Selecione um cliente'); return }
+    if (!form.valortotal) { toast.error('Valor total é obrigatório'); return }
+    const total   = Number(form.valortotal)
+    const entrada = form.valorentrada === '' ? 0 : Number(form.valorentrada)
+    if (isNaN(total) || total < 0) { toast.error('Valor total inválido'); return }
+    if (isNaN(entrada) || entrada < 0) { toast.error('Entrada inválida'); return }
+    if (entrada > total) { toast.error('Entrada não pode ser maior que o total'); return }
+    setSaving(true)
+    try {
+      await api.post('/ordens', {
+        cliente_id:   form.cliente_id || null,
+        clientenome:  form.clientenome,
+        servico:      form.servico,
+        descricao:    '',
+        observacoes:  form.observacoes,
+        prazoentrega: form.prazoentrega || null,
+        prioridade:   form.prioridade,
+        status:       form.status,
+        valortotal:   total,
+        valorentrada: entrada,
+        produtos:     form.produtos,
+      })
+      toast.success('Ordem de serviço criada!')
+      onSaved()
+    } catch(e) {
+      toast.error(e?.response?.data?.error || 'Erro ao salvar OS')
+    } finally { setSaving(false) }
+  }
+
+  const total        = Number(form.valortotal)  || 0
+  const entrada      = Number(form.valorentrada) || 0
+  const restantePrev = total - entrada
+
+  const cliFiltered = useMemo(() =>
+    clientes.filter(c => !clienteSearch || (c.name||c.nome||'').toLowerCase().includes(clienteSearch.toLowerCase())).slice(0,10)
+  , [clientes, clienteSearch])
+
+  const produtosSugestoes = useMemo(() =>
+    todosProdutos.filter(p => !(form.produtos||[]).find(fp => fp.produto_id && fp.produto_id === p.id))
+  , [todosProdutos, form.produtos])
+
+  return ReactDOM.createPortal(
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth:640, maxHeight:'92vh', overflowY:'auto' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header" style={{ position:'sticky', top:0, background:'var(--color-surface)', zIndex:1, borderBottom:'1px solid var(--color-divider)' }}>
+          <h2 className="modal-title">Nova Ordem de Serviço</h2>
+          <button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          <div className="form-grid">
+            <div className="form-group" style={{ gridColumn:'1/-1', position:'relative' }} ref={clienteRef}>
+              <label className="form-label">Cliente <span style={{color:'var(--color-error)'}}>*</span></label>
+              <input
+                className="form-input"
+                placeholder="Digite para buscar cliente…"
+                value={clienteSearch}
+                onChange={e => { setClienteSearch(e.target.value); set('cliente_id',''); set('clientenome', e.target.value); setClienteOpen(true) }}
+                onFocus={() => setClienteOpen(true)}
+              />
+              {clienteOpen && cliFiltered.length > 0 && (
+                <div style={{ position:'absolute', top:'100%', left:0, right:0, background:'var(--color-surface)', border:'1px solid var(--color-border)', borderRadius:'var(--radius-md)', boxShadow:'var(--shadow-md)', zIndex:100, maxHeight:200, overflowY:'auto' }}>
+                  {cliFiltered.map(c => (
+                    <div key={c.id} style={{ padding:'var(--space-2) var(--space-3)', cursor:'pointer', fontSize:'var(--text-sm)' }}
+                      onMouseDown={() => { set('cliente_id', c.id); set('clientenome', c.name||c.nome); setClienteSearch(c.name||c.nome); setClienteOpen(false) }}
+                      onMouseEnter={e => e.currentTarget.style.background='var(--color-surface-offset)'}
+                      onMouseLeave={e => e.currentTarget.style.background=''}>
+                      <span style={{ fontWeight:600 }}>{c.name||c.nome}</span>
+                      {(c.phone||c.telefone) && <span style={{ marginLeft:8, fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>{c.phone||c.telefone}</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Tipo de Serviço</label>
+              <select className="form-input" value={form.servico} onChange={e=>set('servico',e.target.value)}>
+                {TIPO_OPTS.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Prioridade</label>
+              <select className="form-input" value={form.prioridade} onChange={e=>set('prioridade',e.target.value)}>
+                {PRIORIDADE_OPTS.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+
+            <div className="form-group" style={{ gridColumn:'1/-1' }}>
+              <label className="form-label">Produtos</label>
+              <ProdutoInput produtos={produtosSugestoes} onAdd={addProduto} />
+              {form.produtos && form.produtos.length > 0 && (
+                <div style={{ marginTop:'var(--space-2)', display:'flex', flexDirection:'column', gap:'var(--space-1)' }}>
+                  {form.produtos.map((p, i) => (
+                    <div key={i} style={{ display:'flex', alignItems:'center', gap:'var(--space-2)', padding:'var(--space-2) var(--space-3)', background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)', fontSize:'var(--text-xs)' }}>
+                      <span style={{ flex:1, fontWeight:500, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                        {p.nome}
+                        {p.avulso && <span style={{ marginLeft:6, fontSize:9, color:'var(--color-text-faint)', fontWeight:400, background:'var(--color-surface-dynamic)', borderRadius:'var(--radius-full)', padding:'1px 5px' }}>avulso</span>}
+                      </span>
+                      <input type="number" step="0.01" min="0" className="form-input"
+                        style={{ width:90, fontFamily:'monospace', textAlign:'right', fontSize:'var(--text-xs)', padding:'2px 6px' }}
+                        placeholder="R$ 0,00"
+                        value={p.preco_unitario || ''}
+                        onChange={e => updateProd(i, 'preco_unitario', parseFloat(e.target.value)||0)}
+                        onWheel={e => e.currentTarget.blur()}
+                        title="Preço unitário"
+                      />
+                      <input type="number" min="1" className="form-input"
+                        style={{ width:52, textAlign:'center', fontSize:'var(--text-xs)', padding:'2px 4px' }}
+                        value={p.quantidade}
+                        onChange={e => updateProd(i, 'quantidade', Number(e.target.value)||1)}
+                        onWheel={e => e.currentTarget.blur()}
+                        title="Quantidade"
+                      />
+                      <span style={{ fontFamily:'monospace', color:'var(--color-text-muted)', minWidth:72, textAlign:'right', fontWeight:600 }}>
+                        {(Number(p.quantidade) * Number(p.preco_unitario||0)).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
+                      </span>
+                      <button className="btn btn-ghost btn-xs" style={{ color:'var(--color-error)', padding:2, flexShrink:0 }} onClick={() => removeProduto(i)}>✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="form-group" style={{ gridColumn:'1/-1' }}>
+              <label className="form-label">Observações internas</label>
+              <textarea className="form-input" rows={2} value={form.observacoes} onChange={e=>set('observacoes',e.target.value)} placeholder="Notas para a equipe da oficina…" />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Prazo de Entrega</label>
+              <input className="form-input" type="date" value={form.prazoentrega} onChange={e=>set('prazoentrega',e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Status</label>
+              <select className="form-input" value={form.status} onChange={e=>set('status',e.target.value)}>
+                {STATUS_OPTS.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">
+                Valor Total (R$) <span style={{color:'var(--color-error)'}}>*</span>
+                <span style={{marginLeft:6,fontSize:'var(--text-xs)',color:'var(--color-text-muted)',fontWeight:400}}>— calculado pelos produtos, editável</span>
+              </label>
+              <input className="form-input" type="number" step="0.01" min="0"
+                value={form.valortotal} onChange={e=>set('valortotal',e.target.value)}
+                onWheel={e=>e.currentTarget.blur()} style={{ fontFamily:'monospace', fontWeight:700 }}
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">
+                Entrada (R$)
+                <span style={{marginLeft:6,fontSize:'var(--text-xs)',color:'var(--color-text-muted)',fontWeight:400}}>opcional</span>
+              </label>
+              <input className="form-input" type="number" step="0.01" min="0" placeholder="0,00 (sem entrada)"
+                value={form.valorentrada} onChange={e=>set('valorentrada',e.target.value)} onWheel={e=>e.currentTarget.blur()}/>
+            </div>
+          </div>
+
+          {total > 0 && (
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center',
+              padding:'var(--space-3) var(--space-4)',
+              background: restantePrev > 0 ? 'var(--color-warning-highlight)' : 'var(--color-primary-highlight)',
+              borderRadius:'var(--radius-md)', fontSize:'var(--text-xs)', marginTop:'var(--space-3)'
+            }}>
+              <span style={{color:'var(--color-text-muted)'}}>Restante a receber após entrada:</span>
+              <strong style={{fontFamily:'monospace',color: restantePrev > 0 ? 'var(--color-warning)' : 'var(--color-success)'}}>{fmtBRL(restantePrev)}</strong>
+            </div>
+          )}
+        </div>
+        <div className="modal-footer" style={{ position:'sticky', bottom:0, background:'var(--color-surface)', borderTop:'1px solid var(--color-divider)' }}>
+          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
+            {saving ? 'Salvando…' : 'Criar OS'}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
 export default function Orcamento() {
   const { user }   = useAuth()
   const navigate   = useNavigate()
@@ -442,19 +773,20 @@ export default function Orcamento() {
   const [items, setItems]                     = useState([])
   const [cliente, setCliente]                 = useState('')
   const [clientes, setClientes]               = useState([])
+  const [todosProdutos, setTodosProdutos]     = useState([])
   const [clienteId, setClienteId]             = useState(null)
   const [showClienteList, setShowClienteList] = useState(false)
   const [showConfirm, setShowConfirm]         = useState(false)
-  const [saving, setSaving]                   = useState(false)
+  const [showNovaOS, setShowNovaOS]           = useState(false)
   const [activeTab, setActiveTab]             = useState('quadros')
   const [precos, setPrecos]                   = useState({ moldura: 60, nomes: 35, trid: 80 })
   const clienteRef = useRef(null)
 
   useEffect(() => {
     api.get('/clientes').then(r => setClientes(r.data)).catch(() => {})
+    api.get('/produtos').then(r => setTodosProdutos(r.data)).catch(() => {})
   }, [])
 
-  // Fecha dropdown ao clicar fora do card de cliente
   useEffect(() => {
     function handleMouseDown(e) {
       if (clienteRef.current && !clienteRef.current.contains(e.target)) {
@@ -468,29 +800,16 @@ export default function Orcamento() {
   const addItem    = useCallback((item) => setItems(prev => [...prev, item]), [])
   const removeItem = useCallback((idx)  => setItems(prev => prev.filter((_, i) => i !== idx)), [])
 
-  const handleSave = async () => {
-    if (!items.length) return
-    setSaving(true)
-    try {
-      const totals = { quadros: 0, nomes: 0, '3d': 0 }
-      items.forEach(it => { if (totals[it.type] !== undefined) totals[it.type] += it.price })
-      const total = items.reduce((s, it) => s + it.price, 0)
-      await api.post('/orcamentos', {
-        cliente_id: clienteId || null,
-        cliente_nome: cliente || 'Cliente não informado',
-        itens: items,
-        custo_total: total,
-        preco_sugerido: total,
-        totais_por_tipo: totals,
-      })
-      setItems([]); setCliente(''); setClienteId(null)
-      alert('Orçamento salvo com sucesso!')
-    } catch {
-      alert('Erro ao salvar orçamento')
-    } finally {
-      setSaving(false)
-    }
-  }
+  // Converte itens do orçamento em produtos avulsos para o modal de OS
+  const produtosParaOS = useMemo(() =>
+    items.map(it => ({
+      produto_id: null,
+      nome: it.name + (it.sub ? ` (${it.sub})` : ''),
+      quantidade: 1,
+      preco_unitario: it.price,
+      avulso: true,
+    }))
+  , [items])
 
   const TAB_OPTS = [
     { id: 'quadros', label: '🖼 Molduras' },
@@ -498,11 +817,10 @@ export default function Orcamento() {
     { id: '3d',      label: '🖨 3D'      },
   ]
 
-  // Filtra a partir do 1º caractere digitado
   const filteredClientes = clientes.filter(c =>
     cliente.length >= 1 &&
-    c.nome != null &&
-    c.nome.toLowerCase().includes(cliente.toLowerCase())
+    (c.nome || c.name) != null &&
+    (c.nome || c.name).toLowerCase().includes(cliente.toLowerCase())
   )
 
   return (
@@ -512,6 +830,24 @@ export default function Orcamento() {
           message="Todos os itens serão removidos."
           onConfirm={() => { setItems([]); setShowConfirm(false) }}
           onCancel={() => setShowConfirm(false)}
+        />
+      )}
+
+      {showNovaOS && (
+        <NovaOSModal
+          produtosIniciais={produtosParaOS}
+          clienteInicial={cliente}
+          clienteIdInicial={clienteId}
+          clientes={clientes}
+          todosProdutos={todosProdutos}
+          onClose={() => setShowNovaOS(false)}
+          onSaved={() => {
+            setShowNovaOS(false)
+            setItems([])
+            setCliente('')
+            setClienteId(null)
+            navigate('/ordens')
+          }}
         />
       )}
 
@@ -528,8 +864,9 @@ export default function Orcamento() {
             </button>
           )}
           {items.length > 0 && (
-            <button className="btn btn-secondary btn-sm" onClick={handleSave} disabled={saving}>
-              {saving ? 'Salvando…' : '💾 Salvar OS'}
+            <button className="btn btn-primary btn-sm" onClick={() => setShowNovaOS(true)}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
+              Criar OS
             </button>
           )}
         </div>
@@ -583,9 +920,9 @@ export default function Orcamento() {
                   <div
                     key={c.id}
                     onMouseDown={e => {
-                      // onMouseDown previne o blur do input antes do click registrar
                       e.preventDefault()
-                      setCliente(c.nome)
+                      const nome = c.nome || c.name
+                      setCliente(nome)
                       setClienteId(c.id)
                       setShowClienteList(false)
                     }}
@@ -593,8 +930,8 @@ export default function Orcamento() {
                     onMouseEnter={e => e.currentTarget.style.background = 'var(--color-surface-offset)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   >
-                    <span style={{ fontWeight: 600 }}>{c.nome}</span>
-                    {c.telefone && <span style={{ marginLeft: 8, fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)' }}>{c.telefone}</span>}
+                    <span style={{ fontWeight: 600 }}>{c.nome || c.name}</span>
+                    {(c.telefone || c.phone) && <span style={{ marginLeft: 8, fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)' }}>{c.telefone || c.phone}</span>}
                   </div>
                 ))}
               </div>
