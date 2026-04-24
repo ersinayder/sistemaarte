@@ -292,7 +292,45 @@ function Modulo3D({ onAdd, precos, setPrecos }) {
         </div>
       </div>
       <div style={{ padding: '14px 16px' }}>
+        {/* Dados da peça */}
         <div style={{ marginBottom: 12 }}>
+          <SectionLabel>Dados da peça</SectionLabel>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px', gap: 8, marginTop: 6 }}>
+            <BigInput label="Peso"  value={peso}  onChange={setPeso}  unit="g" placeholder="130" />
+            <BigInput label="Tempo" value={tempo} onChange={setTempo} unit="h" placeholder="4" />
+            <BigInput label="Qtd"   value={qtd}   onChange={setQtd}   unit="×" placeholder="1" step="1" />
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <SectionLabel>Descrição (opcional)</SectionLabel>
+          <input type="text" value={desc} onChange={e => setDesc(e.target.value)} placeholder="Ex: Totem decorativo"
+            style={{ width: '100%', background: 'var(--color-surface-offset)', border: '1.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '8px 10px', fontSize: 'var(--text-sm)', color: 'var(--color-text)', outline: 'none' }}
+            onFocus={e => e.target.style.borderColor = 'var(--color-primary)'}
+            onBlur={e =>  e.target.style.borderColor = 'var(--color-border)'}
+          />
+        </div>
+
+        <div style={{ background: 'var(--color-surface-offset)', border: '1px solid var(--color-divider)', borderRadius: 'var(--radius-lg)', padding: '12px 14px', marginBottom: 12 }}>
+          <Row label={`Filamento (${p}g ÷ 1000 × R$${cfg.filKg}/kg)`}             value={hasData ? fmt(custoFilamento) : '—'} faint />
+          <Row label={`Energia (${cfg.consumoW}W × ${cfg.taxaEnergia}kWh × ${h}h)`} value={hasData ? fmt(custoEnergia)   : '—'} faint />
+          <Divider />
+          <Row label="Custo total unitário" value={hasData ? fmt(custoTotal) : '—'} accent />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }}>
+            <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)' }}>Subtotal {q > 1 ? `× ${q}` : ''}</span>
+            <span style={{ fontSize: 'var(--text-xl)', fontWeight: 800, color: hasData ? 'var(--color-primary)' : 'var(--color-text-faint)', fontFamily: 'monospace', letterSpacing: '-0.02em' }}>{hasData ? fmt(subtotal) : 'R$ —'}</span>
+          </div>
+        </div>
+
+        {/* Botão principal */}
+        <button onClick={() => { if (!hasData) return; onAdd({ type: '3d', emoji: '🖨', name: desc || `Peça 3D ${p}g/${h}h`, sub: `${p}g · ${h}h · ×${q}`, price: subtotal }) }}
+          disabled={!hasData} className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', opacity: hasData ? 1 : 0.45, marginBottom: 14 }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
+          Adicionar à OS
+        </button>
+
+        {/* Configurações fixas — abaixo do botão */}
+        <div style={{ borderTop: '1px solid var(--color-divider)', paddingTop: 12 }}>
           <SectionLabel>Configurações fixas</SectionLabel>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginTop: 6 }}>
             {[
@@ -309,37 +347,6 @@ function Modulo3D({ onAdd, precos, setPrecos }) {
             ))}
           </div>
         </div>
-        <div style={{ marginBottom: 12 }}>
-          <SectionLabel>Dados da peça</SectionLabel>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px', gap: 8, marginTop: 6 }}>
-            <BigInput label="Peso"  value={peso}  onChange={setPeso}  unit="g" placeholder="130" />
-            <BigInput label="Tempo" value={tempo} onChange={setTempo} unit="h" placeholder="4" />
-            <BigInput label="Qtd"   value={qtd}   onChange={setQtd}   unit="×" placeholder="1" step="1" />
-          </div>
-        </div>
-        <div style={{ marginBottom: 12 }}>
-          <SectionLabel>Descrição (opcional)</SectionLabel>
-          <input type="text" value={desc} onChange={e => setDesc(e.target.value)} placeholder="Ex: Totem decorativo"
-            style={{ width: '100%', background: 'var(--color-surface-offset)', border: '1.5px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '8px 10px', fontSize: 'var(--text-sm)', color: 'var(--color-text)', outline: 'none' }}
-            onFocus={e => e.target.style.borderColor = 'var(--color-primary)'}
-            onBlur={e =>  e.target.style.borderColor = 'var(--color-border)'}
-          />
-        </div>
-        <div style={{ background: 'var(--color-surface-offset)', border: '1px solid var(--color-divider)', borderRadius: 'var(--radius-lg)', padding: '12px 14px', marginBottom: 12 }}>
-          <Row label={`Filamento (${p}g ÷ 1000 × R$${cfg.filKg}/kg)`}             value={hasData ? fmt(custoFilamento) : '—'} faint />
-          <Row label={`Energia (${cfg.consumoW}W × ${cfg.taxaEnergia}kWh × ${h}h)`} value={hasData ? fmt(custoEnergia)   : '—'} faint />
-          <Divider />
-          <Row label="Custo total unitário" value={hasData ? fmt(custoTotal) : '—'} accent />
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }}>
-            <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)' }}>Subtotal {q > 1 ? `× ${q}` : ''}</span>
-            <span style={{ fontSize: 'var(--text-xl)', fontWeight: 800, color: hasData ? 'var(--color-primary)' : 'var(--color-text-faint)', fontFamily: 'monospace', letterSpacing: '-0.02em' }}>{hasData ? fmt(subtotal) : 'R$ —'}</span>
-          </div>
-        </div>
-        <button onClick={() => { if (!hasData) return; onAdd({ type: '3d', emoji: '🖨', name: desc || `Peça 3D ${p}g/${h}h`, sub: `${p}g · ${h}h · ×${q}`, price: subtotal }) }}
-          disabled={!hasData} className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', opacity: hasData ? 1 : 0.45 }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
-          Adicionar à OS
-        </button>
       </div>
     </div>
   )
@@ -394,11 +401,13 @@ function ItemList({ items, onRemove }) {
   )
 }
 
-function TotalsPanel({ items, lucro, setLucro }) {
+/* Resumo sem campo de lucro — usa lucro fixo 300% */
+function TotalsPanel({ items }) {
+  const LUCRO_FIXO = 300
   const totals = { quadros: 0, nomes: 0, '3d': 0 }
   items.forEach(it => { if (totals[it.type] !== undefined) totals[it.type] += it.price })
   const custoTotal    = items.reduce((s, it) => s + it.price, 0)
-  const precoSugerido = custoTotal * (1 + (parseFloat(lucro) || 0) / 100)
+  const precoSugerido = custoTotal * (1 + LUCRO_FIXO / 100)
 
   const tagBg    = { quadros: HL.orange, nomes: HL.blue, '3d': HL.purple }
   const tagColor = { quadros: 'var(--color-orange)', nomes: 'var(--color-blue)', '3d': 'var(--color-purple)' }
@@ -416,17 +425,6 @@ function TotalsPanel({ items, lucro, setLucro }) {
         <>
           <Divider />
           <Row label="Custo total" value={fmt(custoTotal)} />
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>% de lucro</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <input type="number" value={lucro} onChange={e => setLucro(e.target.value)} step="5"
-                style={{ width: 60, background: 'var(--color-surface-offset)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: '3px 6px', fontSize: 'var(--text-sm)', fontWeight: 700, textAlign: 'right', outline: 'none', fontVariantNumeric: 'tabular-nums' }}
-                onFocus={e => e.target.style.borderColor = 'var(--color-primary)'}
-                onBlur={e  => e.target.style.borderColor = 'var(--color-border)'}
-              />
-              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)' }}>%</span>
-            </div>
-          </div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'color-mix(in oklab, var(--color-primary) 10%, var(--color-surface))', border: '1.5px solid color-mix(in oklab, var(--color-primary) 35%, var(--color-border))', borderRadius: 'var(--radius-lg)' }}>
             <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-primary)' }}>Preço sugerido</span>
             <span style={{ fontSize: 'var(--text-xl)', fontWeight: 800, color: 'var(--color-primary)', fontFamily: 'monospace', letterSpacing: '-0.02em' }}>{fmt(precoSugerido)}</span>
@@ -445,7 +443,6 @@ export default function Orcamento() {
   const navigate   = useNavigate()
 
   const [items, setItems]                     = useState([])
-  const [lucro, setLucro]                     = useState('300')
   const [cliente, setCliente]                 = useState('')
   const [clientes, setClientes]               = useState([])
   const [clienteId, setClienteId]             = useState(null)
@@ -467,16 +464,17 @@ export default function Orcamento() {
     if (!items.length) return
     setSaving(true)
     try {
+      const LUCRO_FIXO = 300
       const totals = { quadros: 0, nomes: 0, '3d': 0 }
       items.forEach(it => { if (totals[it.type] !== undefined) totals[it.type] += it.price })
       const custoTotal    = items.reduce((s, it) => s + it.price, 0)
-      const precoSugerido = custoTotal * (1 + (parseFloat(lucro) || 0) / 100)
+      const precoSugerido = custoTotal * (1 + LUCRO_FIXO / 100)
       await api.post('/orcamentos', {
         cliente_id: clienteId || null,
         cliente_nome: cliente || 'Cliente não informado',
         itens: items, custo_total: custoTotal,
         preco_sugerido: precoSugerido,
-        lucro_pct: parseFloat(lucro) || 0,
+        lucro_pct: LUCRO_FIXO,
         totais_por_tipo: totals,
       })
       setItems([]); setCliente(''); setClienteId(null)
@@ -530,7 +528,6 @@ export default function Orcamento() {
         </div>
       </div>
 
-      {/* Layout principal: coluna esquerda (tabs+módulos) | coluna direita (cliente+itens+resumo) */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 12, alignItems: 'start' }}>
 
         {/* COLUNA ESQUERDA — tabs + módulo ativo */}
@@ -594,7 +591,7 @@ export default function Orcamento() {
           {items.length > 0 && (
             <div className="card card-pad" style={{ padding: '12px 14px' }}>
               <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)', marginBottom: 10 }}>Resumo</div>
-              <TotalsPanel items={items} lucro={lucro} setLucro={setLucro} />
+              <TotalsPanel items={items} />
             </div>
           )}
         </div>
