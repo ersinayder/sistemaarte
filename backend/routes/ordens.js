@@ -87,7 +87,6 @@ router.get("/", auth(), (req, res, next) => {
         p.push(status);
       }
       if (vencidas == "1") {
-        // C-1: usa 'Cancelado' (valor gravado pelo ordensRules), mantém 'Cancelada' como fallback de dados legados
         sql += " AND o.prazoentrega < ? AND o.status NOT IN ('Pronto','Entregue','Cancelado','Cancelada')";
         p.push(hoje());
       }
@@ -197,7 +196,7 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
 
     if (req.user.role === "oficina") {
       if (!status) return res.status(400).json({ error: "Informe o status" });
-      const erroStatus = validarStatus(status);
+      const erroStatus = validarStatus(status, old.status);
       if (erroStatus) return res.status(400).json({ error: erroStatus });
 
       transaction(() => {
@@ -216,7 +215,6 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
     const erroEntrada = validarEntradaOS(total, entrada);
     if (erroEntrada) return res.status(400).json({ error: erroEntrada });
 
-    // prazo vazio ('') nao sobrescreve prazo anterior valido
     const novoPrazo = (prazoentrega !== undefined && prazoentrega !== '')
       ? prazoentrega
       : (prazoentrega === '' ? null : old.prazoentrega);
@@ -227,6 +225,11 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
     const novoCliente = clientenome || old.clientenome;
     const novoServico = servico || old.servico;
     const novoPagamento = pagamento || old.pagamento || "Pix";
+
+    if (status && status !== old.status) {
+      const erroStatus = validarStatus(status, old.status);
+      if (erroStatus) return res.status(400).json({ error: erroStatus });
+    }
 
     let novoCid = clienteid !== undefined ? (clienteid || null) : old.clienteid;
     if (!novoCid && novoCliente) {
@@ -278,11 +281,11 @@ router.patch("/:id/status", auth(["admin","caixa","oficina"]), (req, res, next) 
     const { status, obs } = req.body ?? {};
     if (!status) return res.status(400).json({ error: "status obrigatorio" });
 
-    const erroStatus = validarStatus(status);
-    if (erroStatus) return res.status(400).json({ error: erroStatus });
-
     const old = getOne("SELECT status FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);
     if (!old) return res.status(404).json({ error: "Nao encontrado" });
+
+    const erroStatus = validarStatus(status, old.status);
+    if (erroStatus) return res.status(400).json({ error: erroStatus });
 
     transaction(() => {
       run("UPDATE ordens SET status=?,updatedat=datetime('now','localtime') WHERE id=?", [status, req.params.id]);
