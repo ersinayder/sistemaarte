@@ -270,17 +270,18 @@ function Modulo3D({ onAdd, precos, setPrecos }) {
   const [tempo, setTempo] = useState('')
   const [qtd, setQtd]     = useState('1')
 
-  const cfg    = precos.trid3d || { filKg: 100, taxaEnergia: 1.191, consumoW: 120 }
+  const cfg    = precos.trid3d || { filKg: 100, taxaEnergia: 1.191, consumoW: 120, lucroPct: 300 }
   const setCfg = (field, val) => setPrecos(p => ({ ...p, trid3d: { ...(p.trid3d || cfg), [field]: val } }))
 
   const p = parseFloat(peso) || 0
   const h = parseFloat(tempo) || 0
   const q = Math.max(1, parseInt(qtd) || 1)
-  const hasData = p > 0 || h > 0
+  const hasData        = p > 0 || h > 0
   const custoFilamento = (p / 1000) * cfg.filKg
   const custoEnergia   = (cfg.consumoW / 1000) * cfg.taxaEnergia * h
-  const custoTotal     = custoFilamento + custoEnergia
-  const subtotal       = custoTotal * q
+  const custoUnitario  = custoFilamento + custoEnergia
+  const precoUnitario  = custoUnitario * (1 + (cfg.lucroPct || 300) / 100)
+  const subtotal       = precoUnitario * q
 
   return (
     <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -312,10 +313,12 @@ function Modulo3D({ onAdd, precos, setPrecos }) {
         </div>
 
         <div style={{ background: 'var(--color-surface-offset)', border: '1px solid var(--color-divider)', borderRadius: 'var(--radius-lg)', padding: '12px 14px', marginBottom: 12 }}>
-          <Row label={`Filamento (${p}g ÷ 1000 × R$${cfg.filKg}/kg)`}             value={hasData ? fmt(custoFilamento) : '—'} faint />
+          <Row label={`Filamento (${p}g ÷ 1000 × R$${cfg.filKg}/kg)`}              value={hasData ? fmt(custoFilamento) : '—'} faint />
           <Row label={`Energia (${cfg.consumoW}W × ${cfg.taxaEnergia}kWh × ${h}h)`} value={hasData ? fmt(custoEnergia)   : '—'} faint />
           <Divider />
-          <Row label="Custo total unitário" value={hasData ? fmt(custoTotal) : '—'} accent />
+          <Row label="Custo unitário"                    value={hasData ? fmt(custoUnitario) : '—'} faint />
+          <Row label={`Lucro ${cfg.lucroPct || 300}%`}  value={hasData ? fmt(precoUnitario - custoUnitario) : '—'} faint />
+          <Row label="Preço unitário"                    value={hasData ? fmt(precoUnitario) : '—'} accent />
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }}>
             <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)' }}>Subtotal {q > 1 ? `× ${q}` : ''}</span>
             <span style={{ fontSize: 'var(--text-xl)', fontWeight: 800, color: hasData ? 'var(--color-primary)' : 'var(--color-text-faint)', fontFamily: 'monospace', letterSpacing: '-0.02em' }}>{hasData ? fmt(subtotal) : 'R$ —'}</span>
@@ -332,11 +335,12 @@ function Modulo3D({ onAdd, precos, setPrecos }) {
         {/* Configurações fixas — abaixo do botão */}
         <div style={{ borderTop: '1px solid var(--color-divider)', paddingTop: 12 }}>
           <SectionLabel>Configurações fixas</SectionLabel>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginTop: 6 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8, marginTop: 6 }}>
             {[
-              { label: 'Filamento R$/kg', field: 'filKg', val: cfg.filKg, step: '1' },
+              { label: 'Filamento R$/kg', field: 'filKg',       val: cfg.filKg,       step: '1' },
               { label: 'Taxa energia Kw/h', field: 'taxaEnergia', val: cfg.taxaEnergia, step: '0.001' },
-              { label: 'Consumo (W)', field: 'consumoW', val: cfg.consumoW, step: '1' },
+              { label: 'Consumo (W)',      field: 'consumoW',    val: cfg.consumoW,    step: '1' },
+              { label: '% de Lucro',       field: 'lucroPct',    val: cfg.lucroPct ?? 300, step: '1' },
             ].map(({ label, field, val, step }) => (
               <div key={field} style={{ background: 'var(--color-surface-offset)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '8px 10px' }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-text-faint)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>{label}</div>
@@ -401,13 +405,11 @@ function ItemList({ items, onRemove }) {
   )
 }
 
-/* Resumo sem campo de lucro — usa lucro fixo 300% */
+/* Resumo — itens 3D já chegam com markup embutido, demais tipos sem alteração */
 function TotalsPanel({ items }) {
-  const LUCRO_FIXO = 300
   const totals = { quadros: 0, nomes: 0, '3d': 0 }
   items.forEach(it => { if (totals[it.type] !== undefined) totals[it.type] += it.price })
-  const custoTotal    = items.reduce((s, it) => s + it.price, 0)
-  const precoSugerido = custoTotal * (1 + LUCRO_FIXO / 100)
+  const total = items.reduce((s, it) => s + it.price, 0)
 
   const tagBg    = { quadros: HL.orange, nomes: HL.blue, '3d': HL.purple }
   const tagColor = { quadros: 'var(--color-orange)', nomes: 'var(--color-blue)', '3d': 'var(--color-purple)' }
@@ -424,10 +426,9 @@ function TotalsPanel({ items }) {
       {items.length > 0 && (
         <>
           <Divider />
-          <Row label="Custo total" value={fmt(custoTotal)} />
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'color-mix(in oklab, var(--color-primary) 10%, var(--color-surface))', border: '1.5px solid color-mix(in oklab, var(--color-primary) 35%, var(--color-border))', borderRadius: 'var(--radius-lg)' }}>
-            <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-primary)' }}>Preço sugerido</span>
-            <span style={{ fontSize: 'var(--text-xl)', fontWeight: 800, color: 'var(--color-primary)', fontFamily: 'monospace', letterSpacing: '-0.02em' }}>{fmt(precoSugerido)}</span>
+            <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-primary)' }}>Total</span>
+            <span style={{ fontSize: 'var(--text-xl)', fontWeight: 800, color: 'var(--color-primary)', fontFamily: 'monospace', letterSpacing: '-0.02em' }}>{fmt(total)}</span>
           </div>
         </>
       )}
@@ -464,17 +465,15 @@ export default function Orcamento() {
     if (!items.length) return
     setSaving(true)
     try {
-      const LUCRO_FIXO = 300
       const totals = { quadros: 0, nomes: 0, '3d': 0 }
       items.forEach(it => { if (totals[it.type] !== undefined) totals[it.type] += it.price })
-      const custoTotal    = items.reduce((s, it) => s + it.price, 0)
-      const precoSugerido = custoTotal * (1 + LUCRO_FIXO / 100)
+      const total = items.reduce((s, it) => s + it.price, 0)
       await api.post('/orcamentos', {
         cliente_id: clienteId || null,
         cliente_nome: cliente || 'Cliente não informado',
-        itens: items, custo_total: custoTotal,
-        preco_sugerido: precoSugerido,
-        lucro_pct: LUCRO_FIXO,
+        itens: items,
+        custo_total: total,
+        preco_sugerido: total,
         totais_por_tipo: totals,
       })
       setItems([]); setCliente(''); setClienteId(null)
