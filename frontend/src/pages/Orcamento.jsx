@@ -293,7 +293,6 @@ function Modulo3D({ onAdd, precos, setPrecos }) {
         </div>
       </div>
       <div style={{ padding: '14px 16px' }}>
-        {/* Dados da peça */}
         <div style={{ marginBottom: 12 }}>
           <SectionLabel>Dados da peça</SectionLabel>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px', gap: 8, marginTop: 6 }}>
@@ -325,14 +324,12 @@ function Modulo3D({ onAdd, precos, setPrecos }) {
           </div>
         </div>
 
-        {/* Botão principal */}
         <button onClick={() => { if (!hasData) return; onAdd({ type: '3d', emoji: '🖨', name: desc || `Peça 3D ${p}g/${h}h`, sub: `${p}g · ${h}h · ×${q}`, price: subtotal }) }}
           disabled={!hasData} className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', opacity: hasData ? 1 : 0.45, marginBottom: 14 }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
           Adicionar à OS
         </button>
 
-        {/* Configurações fixas — abaixo do botão */}
         <div style={{ borderTop: '1px solid var(--color-divider)', paddingTop: 12 }}>
           <SectionLabel>Configurações fixas</SectionLabel>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8, marginTop: 6 }}>
@@ -405,7 +402,6 @@ function ItemList({ items, onRemove }) {
   )
 }
 
-/* Resumo — itens 3D já chegam com markup embutido, demais tipos sem alteração */
 function TotalsPanel({ items }) {
   const totals = { quadros: 0, nomes: 0, '3d': 0 }
   items.forEach(it => { if (totals[it.type] !== undefined) totals[it.type] += it.price })
@@ -458,6 +454,17 @@ export default function Orcamento() {
     api.get('/clientes').then(r => setClientes(r.data)).catch(() => {})
   }, [])
 
+  // Fecha dropdown ao clicar fora do card de cliente
+  useEffect(() => {
+    function handleMouseDown(e) {
+      if (clienteRef.current && !clienteRef.current.contains(e.target)) {
+        setShowClienteList(false)
+      }
+    }
+    document.addEventListener('mousedown', handleMouseDown)
+    return () => document.removeEventListener('mousedown', handleMouseDown)
+  }, [])
+
   const addItem    = useCallback((item) => setItems(prev => [...prev, item]), [])
   const removeItem = useCallback((idx)  => setItems(prev => prev.filter((_, i) => i !== idx)), [])
 
@@ -491,8 +498,9 @@ export default function Orcamento() {
     { id: '3d',      label: '🖨 3D'      },
   ]
 
+  // Filtra a partir do 1º caractere digitado
   const filteredClientes = clientes.filter(c =>
-    cliente.length > 1 &&
+    cliente.length >= 1 &&
     c.nome != null &&
     c.nome.toLowerCase().includes(cliente.toLowerCase())
   )
@@ -555,21 +563,39 @@ export default function Orcamento() {
           <div className="card card-pad" style={{ position: 'relative', padding: '12px 14px' }} ref={clienteRef}>
             <SectionLabel>Cliente</SectionLabel>
             <input
-              type="text" value={cliente}
+              type="text"
+              value={cliente}
               onChange={e => { setCliente(e.target.value); setClienteId(null); setShowClienteList(true) }}
               onFocus={() => setShowClienteList(true)}
               placeholder="Nome do cliente (opcional)"
-              className="form-input" style={{ marginTop: 4 }}
+              className="form-input"
+              style={{ marginTop: 4 }}
+              autoComplete="off"
             />
             {showClienteList && filteredClientes.length > 0 && (
-              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200, background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-md)', maxHeight: 200, overflowY: 'auto', marginTop: 2 }}>
+              <div style={{
+                position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200,
+                background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+                borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-md)',
+                maxHeight: 200, overflowY: 'auto', marginTop: 2,
+              }}>
                 {filteredClientes.map(c => (
-                  <div key={c.id}
-                    onClick={() => { setCliente(c.nome); setClienteId(c.id); setShowClienteList(false) }}
+                  <div
+                    key={c.id}
+                    onMouseDown={e => {
+                      // onMouseDown previne o blur do input antes do click registrar
+                      e.preventDefault()
+                      setCliente(c.nome)
+                      setClienteId(c.id)
+                      setShowClienteList(false)
+                    }}
                     style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 'var(--text-sm)', borderBottom: '1px solid var(--color-divider)' }}
                     onMouseEnter={e => e.currentTarget.style.background = 'var(--color-surface-offset)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                  >{c.nome}</div>
+                  >
+                    <span style={{ fontWeight: 600 }}>{c.nome}</span>
+                    {c.telefone && <span style={{ marginLeft: 8, fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)' }}>{c.telefone}</span>}
+                  </div>
                 ))}
               </div>
             )}
