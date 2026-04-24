@@ -200,7 +200,7 @@ function ModuloQuadros({ onAdd, precos, setPrecos }) {
             if (!hasData || !calc) return
             const vidroLabel = { sem: '', minimo: ' + Vidro liso', completo: ' + Vidro antirreflexo' }[vidro]
             const impLabel = impressao ? ' + Impressão' : ''
-            onAdd({ type: 'quadros', emoji: '🖼', name: desc || `Quadro ${L}×${A}cm`, sub: `${L}×${A}cm${vidroLabel}${impLabel} · ×${q}`, price: subtotal })
+            onAdd({ type: 'quadros', emoji: '🖼', name: desc || `Quadro ${L}×${A}cm`, sub: `${L}×${A}cm${vidroLabel}${impLabel} · ×${q}`, price: parseFloat(subtotal.toFixed(2)) })
           }}
           disabled={!hasData || !calc}
           className="btn btn-primary"
@@ -260,7 +260,7 @@ function ModuloNomes({ onAdd, precos, setPrecos }) {
             <span style={{ fontSize: 'var(--text-xl)', fontWeight: 800, color: hasData ? 'var(--color-primary)' : 'var(--color-text-faint)', fontFamily: 'monospace', letterSpacing: '-0.02em' }}>{hasData ? fmt(subtotal) : 'R$ —'}</span>
           </div>
         </div>
-        <button onClick={() => { if (!hasData) return; onAdd({ type: 'nomes', emoji: '✂️', name: desc || `Nome ${c}cm`, sub: `${c}cm · ×${q}`, price: subtotal }) }}
+        <button onClick={() => { if (!hasData) return; onAdd({ type: 'nomes', emoji: '✂️', name: desc || `Nome ${c}cm`, sub: `${c}cm · ×${q}`, price: parseFloat(subtotal.toFixed(2)) }) }}
           disabled={!hasData} className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', opacity: hasData ? 1 : 0.45 }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
           Adicionar à OS
@@ -331,7 +331,7 @@ function Modulo3D({ onAdd, precos, setPrecos }) {
           </div>
         </div>
 
-        <button onClick={() => { if (!hasData) return; onAdd({ type: '3d', emoji: '🖨', name: desc || `Peça 3D ${p}g/${h}h`, sub: `${p}g · ${h}h · ×${q}`, price: subtotal }) }}
+        <button onClick={() => { if (!hasData) return; onAdd({ type: '3d', emoji: '🖨', name: desc || `Peça 3D ${p}g/${h}h`, sub: `${p}g · ${h}h · ×${q}`, price: parseFloat(subtotal.toFixed(2)) }) }}
           disabled={!hasData} className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', opacity: hasData ? 1 : 0.45, marginBottom: 14 }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
           Adicionar à OS
@@ -553,7 +553,7 @@ function NovaOSModal({ produtosIniciais, clienteInicial, clienteIdInicial, clien
 
   useEffect(() => {
     const total = (produtosIniciais || []).reduce((acc, p) => acc + (Number(p.quantidade||1) * Number(p.preco_unitario||0)), 0)
-    if (total > 0) setForm(f => ({ ...f, valortotal: total.toFixed(2) }))
+    if (total > 0) setForm(f => ({ ...f, valortotal: parseFloat(total.toFixed(2)).toString() }))
   }, [])
 
   useEffect(() => {
@@ -565,7 +565,7 @@ function NovaOSModal({ produtosIniciais, clienteInicial, clienteIdInicial, clien
   const recalcTotal = (prods) => {
     if (!prods || prods.length === 0) { setForm(f => ({ ...f, valortotal: '' })); return }
     const t = prods.reduce((acc, p) => acc + (Number(p.quantidade||1) * Number(p.preco_unitario||0)), 0)
-    setForm(f => ({ ...f, valortotal: t.toFixed(2) }))
+    setForm(f => ({ ...f, valortotal: parseFloat(t.toFixed(2)).toString() }))
   }
 
   const addProduto = (prod) => {
@@ -602,9 +602,12 @@ function NovaOSModal({ produtosIniciais, clienteInicial, clienteIdInicial, clien
         prazoentrega: form.prazoentrega || null,
         prioridade:   form.prioridade,
         status:       form.status,
-        valortotal:   total,
-        valorentrada: entrada,
-        produtos:     form.produtos,
+        valortotal:   parseFloat(total.toFixed(2)),
+        valorentrada: parseFloat(entrada.toFixed(2)),
+        produtos:     form.produtos.map(p => ({
+          ...p,
+          preco_unitario: parseFloat(Number(p.preco_unitario).toFixed(2)),
+        })),
       })
       toast.success('Ordem de serviço criada!')
       onSaved()
@@ -685,7 +688,7 @@ function NovaOSModal({ produtosIniciais, clienteInicial, clienteIdInicial, clien
                       <input type="number" step="0.01" min="0" className="form-input"
                         style={{ width:90, fontFamily:'monospace', textAlign:'right', fontSize:'var(--text-xs)', padding:'2px 6px' }}
                         placeholder="R$ 0,00"
-                        value={p.preco_unitario || ''}
+                        value={parseFloat(Number(p.preco_unitario).toFixed(2)) || ''}
                         onChange={e => updateProd(i, 'preco_unitario', parseFloat(e.target.value)||0)}
                         onWheel={e => e.currentTarget.blur()}
                         title="Preço unitário"
@@ -698,7 +701,7 @@ function NovaOSModal({ produtosIniciais, clienteInicial, clienteIdInicial, clien
                         title="Quantidade"
                       />
                       <span style={{ fontFamily:'monospace', color:'var(--color-text-muted)', minWidth:72, textAlign:'right', fontWeight:600 }}>
-                        {(Number(p.quantidade) * Number(p.preco_unitario||0)).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
+                        {(Number(p.quantidade) * parseFloat(Number(p.preco_unitario||0).toFixed(2))).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
                       </span>
                       <button className="btn btn-ghost btn-xs" style={{ color:'var(--color-error)', padding:2, flexShrink:0 }} onClick={() => removeProduto(i)}>✕</button>
                     </div>
@@ -800,13 +803,13 @@ export default function Orcamento() {
   const addItem    = useCallback((item) => setItems(prev => [...prev, item]), [])
   const removeItem = useCallback((idx)  => setItems(prev => prev.filter((_, i) => i !== idx)), [])
 
-  // Converte itens do orçamento em produtos avulsos para o modal de OS
+  // Converte itens do orçamento em produtos avulsos — preco_unitario arredondado para 2 casas
   const produtosParaOS = useMemo(() =>
     items.map(it => ({
       produto_id: null,
       nome: it.name + (it.sub ? ` (${it.sub})` : ''),
       quantidade: 1,
-      preco_unitario: it.price,
+      preco_unitario: parseFloat(it.price.toFixed(2)),
       avulso: true,
     }))
   , [items])
