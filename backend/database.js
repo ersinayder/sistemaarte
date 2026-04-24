@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS produtos (
   estoque     REAL DEFAULT 0,
   estoquemin  REAL DEFAULT 0,
   descricao   TEXT DEFAULT '',
+  deletedat   TEXT DEFAULT NULL,
   createdat   TEXT DEFAULT (datetime('now','localtime')),
   updatedat   TEXT DEFAULT (datetime('now','localtime'))
 );
@@ -129,6 +130,8 @@ function initDB() {
     // C4: soft-delete auditavel em lancamentos
     "ALTER TABLE lancamentos ADD COLUMN deletedat TEXT DEFAULT NULL",
     "ALTER TABLE lancamentos ADD COLUMN deletedpor INTEGER DEFAULT NULL",
+    // fix: soft-delete em produtos (coluna ausente em bancos pre-existentes)
+    "ALTER TABLE produtos ADD COLUMN deletedat TEXT DEFAULT NULL",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {}
