@@ -75,19 +75,11 @@ function Modal({ open, onClose, onSaved, editData }) {
             <label className="form-label">Nome <span style={{color:'var(--color-error)'}}>*</span></label>
             <input className="form-input" value={form.nome} onChange={e=>set('nome',e.target.value)} autoFocus placeholder="Ex: Moldura Alumínio 2cm"/>
           </div>
-          <div className="form-grid-2">
-            <div className="form-group">
-              <label className="form-label">Categoria</label>
-              <select className="form-input" value={form.categoria} onChange={e=>set('categoria',e.target.value)}>
-                {CATEGORIAS.map(c=><option key={c}>{c}</option>)}
-              </select>
-            </div>
-            <div className="form-group">
-              <label className="form-label">Unidade</label>
-              <select className="form-input" value={form.unidade} onChange={e=>set('unidade',e.target.value)}>
-                {UNIDADES.map(u=><option key={u}>{u}</option>)}
-              </select>
-            </div>
+          <div className="form-group">
+            <label className="form-label">Categoria</label>
+            <select className="form-input" value={form.categoria} onChange={e=>set('categoria',e.target.value)}>
+              {CATEGORIAS.map(c=><option key={c}>{c}</option>)}
+            </select>
           </div>
           <div className="form-grid-2">
             <div className="form-group">
