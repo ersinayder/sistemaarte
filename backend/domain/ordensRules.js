@@ -6,6 +6,7 @@ const TRANSICOES_VALIDAS = {
   'Pronto':      ['Entregue', 'Em Produção', 'Cancelado'],
   'Entregue':    [],
   'Cancelado':   [],
+  'Cancelada':   [], // alias legado
 };
 
 function validarEntradaOS(total, entrada) {
