@@ -1,4 +1,4 @@
-const STATUSES_VALIDOS = ['Aguardando', 'Em Produção', 'Pronto', 'Entregue', 'Cancelado'];
+const STATUSES_VALIDOS = ['Aguardando', 'Em Produção', 'Pronto', 'Entregue', 'Cancelado', 'Cancelada'];
 
 const TRANSICOES_VALIDAS = {
   'Aguardando':  ['Em Produção', 'Cancelado'],
@@ -50,4 +50,4 @@ function descricaoRestanteOS(numero, cliente, servico) {
   return `Restante ${numero} – ${cliente}${servico ? ' / ' + servico : ''}`;
 }
 
-module.exports = { validarEntradaOS, validarStatus, validarPrazo, descricaoEntradaOS, descricaoRestanteOS, STATUSES_VALIDOS };
+module.exports = { validarEntradaOS, validarStatus, validarPrazo, descricaoEntradaOS, descricaoRestanteOS, STATUSES_VALIDOS, TRANSICOES_VALIDAS };
