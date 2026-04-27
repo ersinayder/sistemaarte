@@ -79,12 +79,12 @@ router.put('/:id', auth(['admin','caixa']), (req, res, next) => {
   } catch(e) { next(e); }
 });
 
-// DELETE /api/produtos/:id  →  soft-delete (preserva histórico de OS)
+// DELETE /api/produtos/:id  →  soft-delete com registro de quem deletou
 router.delete('/:id', auth(['admin']), (req, res, next) => {
   try {
     const result = run(
-      `UPDATE produtos SET deletedat=datetime('now','localtime') WHERE id=? AND deletedat IS NULL`,
-      [req.params.id]
+      `UPDATE produtos SET deletedat=datetime('now','localtime'), deletedpor=? WHERE id=? AND deletedat IS NULL`,
+      [req.user.id, req.params.id]
     );
     if (result.changes === 0) return res.status(404).json({ error: 'Nao encontrado' });
     res.json({ ok: true });

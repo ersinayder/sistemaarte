@@ -36,8 +36,8 @@ router.get("/cnpj/:cnpj", auth(), async (req, res) => {
       const d = await fetchJson(`https://receitaws.com.br/v1/cnpj/${digits}`, 6000);
       if (d.status === "ERROR") throw new Error(d.message || "não encontrado");
       return res.json({ ...d, fonte: "receitaws" });
-    } catch(e2) {
-      return res.status(500).json({ error: `CNPJ não encontrado: ${e2.message}` });
+    } catch {
+      return res.status(500).json({ error: "Não foi possível consultar o CNPJ. Tente novamente." });
     }
   }
 });
