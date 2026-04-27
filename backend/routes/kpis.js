@@ -1,15 +1,10 @@
 const router   = require("express").Router();
 const { getAll, getOne } = require("../database");
 const { auth } = require("../middlewares/auth");
-
-const HOJE = () => {
-  const d = new Date();
-  d.setHours(d.getHours() - 3); // ajuste UTC-3 (Brasília)
-  return d.toISOString().slice(0, 10);
-};
+const { hoje } = require("../utils/dates");
 
 function calcKpis() {
-  const hoje = HOJE();
+  const hj = hoje();
 
   const abertas = getOne(
     `SELECT COUNT(*) AS n FROM ordens
@@ -36,7 +31,7 @@ function calcKpis() {
      WHERE status NOT IN ('Entregue','Cancelado','Cancelada')
        AND prazoentrega IS NOT NULL AND prazoentrega < ?
        AND deletedat IS NULL`,
-    [hoje]
+    [hj]
   )?.n ?? 0;
 
   const entreguesHoje = getOne(
@@ -44,7 +39,7 @@ function calcKpis() {
      WHERE status = 'Entregue'
        AND date(updatedat) = ?
        AND deletedat IS NULL`,
-    [hoje]
+    [hj]
   )?.n ?? 0;
 
   const faturamentoHoje = getOne(
@@ -55,13 +50,13 @@ function calcKpis() {
        AND l.deletedat IS NULL
        AND (l.ordemid IS NULL OR
          (SELECT deletedat FROM ordens WHERE id=l.ordemid) IS NULL)`,
-    [hoje]
+    [hj]
   )?.total ?? 0;
 
   const abertasHoje = getOne(
     `SELECT COUNT(*) AS n FROM ordens
      WHERE date(createdat) = ? AND deletedat IS NULL`,
-    [hoje]
+    [hj]
   )?.n ?? 0;
 
   return {
@@ -87,6 +82,10 @@ router.get("/", auth(), (req, res, next) => {
 });
 
 // SSE – stream contínuo a cada 15 s com limite de conexões
+// S-3: heartbeat a cada 30 s + timeout de inatividade de 5 min previnem vazamento
+const SSE_INTERVAL_MS    = 15000;
+const SSE_HEARTBEAT_MS   = 30000;
+const SSE_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 let activeSSE = 0;
 const MAX_SSE = 10;
 
@@ -102,22 +101,42 @@ router.get("/stream", auth(), (req, res) => {
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
 
+  let closed = false;
+
+  const cleanup = () => {
+    if (closed) return;
+    closed = true;
+    clearInterval(dataTimer);
+    clearInterval(heartbeatTimer);
+    clearTimeout(idleTimer);
+    activeSSE--;
+  };
+
+  const resetIdle = () => {
+    clearTimeout(idleTimer);
+    // eslint-disable-next-line no-use-before-define
+    idleTimer = setTimeout(() => { res.end(); cleanup(); }, SSE_IDLE_TIMEOUT_MS);
+  };
+
   const send = () => {
+    if (closed) return;
     try {
       const data = JSON.stringify(calcKpis());
       res.write(`data: ${data}\n\n`);
+      resetIdle();
     } catch (e) {
       console.error("[SSE kpis]", e.message);
     }
   };
 
   send();
-  const timer = setInterval(send, 15000);
+  const dataTimer      = setInterval(send, SSE_INTERVAL_MS);
+  const heartbeatTimer = setInterval(() => {
+    if (!closed) res.write(": ping\n\n");
+  }, SSE_HEARTBEAT_MS);
+  let idleTimer        = setTimeout(() => { res.end(); cleanup(); }, SSE_IDLE_TIMEOUT_MS);
 
-  req.on("close", () => {
-    clearInterval(timer);
-    activeSSE--;
-  });
+  req.on("close", cleanup);
 });
 
 module.exports = router;
