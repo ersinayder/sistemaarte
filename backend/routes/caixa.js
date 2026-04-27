@@ -68,7 +68,10 @@ router.put("/:id", auth(["admin","caixa"]), (req, res, next) => {
       const ordem = getOne("SELECT id,numero,clientenome,servico,valortotal FROM ordens WHERE id=? AND deletedat IS NULL", [novoOrdemId]);
       if (!ordem) return res.status(404).json({ error: "OS vinculada nao encontrada." });
       const recebido = getOne(
-        "SELECT COALESCE(SUM(valor),0) AS total FROM lancamentos WHERE ordemid=? AND pago=1 AND valor>0 AND id!=? AND deletedat IS NULL",
+        `SELECT COALESCE(SUM(l.valor),0) AS total
+         FROM lancamentos l
+         WHERE l.ordemid=? AND l.pago=1 AND l.valor>0 AND l.id!=? AND l.deletedat IS NULL
+           AND (l.ordemid IS NULL OR (SELECT deletedat FROM ordens WHERE id=l.ordemid) IS NULL)`,
         [novoOrdemId, req.params.id]
       );
       const saldo = Math.max(0, toNumber(ordem.valortotal) - toNumber(recebido?.total));
