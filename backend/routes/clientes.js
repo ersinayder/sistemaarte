@@ -31,7 +31,7 @@ router.get("/:id", auth(), (req, res, next) => {
     if (!c) return res.status(404).json({ error: "Cliente nao encontrado" });
 
     const ordens = getAll(
-      "SELECT id, numero, status, servico, valortotal, createdat, prazoentrega FROM ordens WHERE clienteid=? ORDER BY createdat DESC",
+      "SELECT id, numero, status, servico, valortotal, createdat, prazoentrega FROM ordens WHERE clienteid=? AND deletedat IS NULL ORDER BY createdat DESC",
       [id]
     );
 
@@ -39,7 +39,7 @@ router.get("/:id", auth(), (req, res, next) => {
     const ticketMedio = ordens.length ? total / ordens.length : 0;
 
     const hoje = new Date().toISOString().slice(0, 10);
-    const statusAberto = ['Recebido', 'Em Produção', 'Pronto'];
+    const statusAberto = ['Aguardando', 'Em Produção', 'Pronto'];
     const osEmAberto = ordens.filter(o => statusAberto.includes(o.status)).length;
 
     const osVencidas = ordens.filter(o =>
@@ -73,7 +73,7 @@ router.get("/:id", auth(), (req, res, next) => {
 router.get("/:id/ordens", auth(), (req, res, next) => {
   try {
     res.json(getAll(
-      "SELECT * FROM ordens WHERE clienteid=? ORDER BY createdat DESC",
+      "SELECT * FROM ordens WHERE clienteid=? AND deletedat IS NULL ORDER BY createdat DESC",
       [req.params.id]
     ));
   } catch(e) { next(e); }
@@ -117,7 +117,10 @@ router.delete("/:id", auth(["admin"]), (req, res, next) => {
     if (osAtivas?.n > 0)
       return res.status(400).json({ error: `Cliente possui ${osAtivas.n} OS(s) ativas. Finalize-as antes de excluir.` });
 
-    run("UPDATE clientes SET deletedat=datetime('now','localtime') WHERE id=?", [req.params.id]);
+    run(
+      "UPDATE clientes SET deletedat=datetime('now','localtime'), deletedpor=? WHERE id=?",
+      [req.user.id, req.params.id]
+    );
     res.json({ ok: true, nome: c.name });
   } catch(e) { next(e); }
 });
