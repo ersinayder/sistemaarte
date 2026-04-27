@@ -31,11 +31,12 @@ router.get("/resumo", auth(), (req, res, next) => {
       [mes]
     )?.c ?? 0;
 
-    const porPag = { Pix:0, Dinheiro:0, Credito:0, Debito:0, Link:0 };
+    // I-4: dinâmico — captura qualquer forma de pagamento presente no banco
+    const porPag = {};
     getAll(
       `SELECT l.pagamento, SUM(l.valor) AS v FROM lancamentos l WHERE strftime('%Y-%m',l.data)=? AND ${FILTRO_ATIVO} GROUP BY l.pagamento`,
       [mes]
-    ).forEach(r => { if (porPag[r.pagamento] !== undefined) porPag[r.pagamento] = r.v; });
+    ).forEach(r => { porPag[r.pagamento] = r.v; });
 
     const porTipo = {};
     getAll(
