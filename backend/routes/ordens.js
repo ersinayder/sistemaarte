@@ -29,7 +29,7 @@ function nextNumero() {
   const row = getOne(
     "UPDATE sequencias SET ultimo=ultimo+1 WHERE nome='os' RETURNING ultimo"
   );
-  if (!row) throw new Error("Falha ao gerar número da OS: sequência 'os' não encontrada.");
+  if (!row) throw new Error("Falha ao gerar n\u00famero da OS: sequ\u00eancia 'os' n\u00e3o encontrada.");
   return `OS-${String(row.ultimo).padStart(4, "0")}`;
 }
 
@@ -216,11 +216,14 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
     const erroEntrada = validarEntradaOS(total, entrada);
     if (erroEntrada) return res.status(400).json({ error: erroEntrada });
 
+    // S-2: validar prazo sempre que novoPrazo for n\u00e3o-nulo, independente de mudan\u00e7a
     const novoPrazo = (prazoentrega !== undefined && prazoentrega !== '')
       ? prazoentrega
       : (prazoentrega === '' ? null : old.prazoentrega);
-    const erroPrazo = validarPrazo(novoPrazo !== old.prazoentrega ? novoPrazo : null);
-    if (erroPrazo) return res.status(400).json({ error: erroPrazo });
+    if (novoPrazo !== null) {
+      const erroPrazo = validarPrazo(novoPrazo);
+      if (erroPrazo) return res.status(400).json({ error: erroPrazo });
+    }
 
     const ns = status || old.status;
     const novoCliente = clientenome || old.clientenome;
