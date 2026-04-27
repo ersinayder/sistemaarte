@@ -52,7 +52,9 @@ function calcKpis() {
      FROM lancamentos l
      WHERE l.pago = 1 AND l.valor > 0
        AND date(l.data) = ?
-       AND l.deletedat IS NULL`,
+       AND l.deletedat IS NULL
+       AND (l.ordemid IS NULL OR
+         (SELECT deletedat FROM ordens WHERE id=l.ordemid) IS NULL)`,
     [hoje]
   )?.total ?? 0;
 
