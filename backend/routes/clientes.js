@@ -4,9 +4,10 @@ const { auth } = require("../middlewares/auth");
 
 const SEL_CLIENTE = `
   SELECT c.*,
-    (SELECT COUNT(*) FROM ordens WHERE clienteid=c.id) AS totalordens,
-    (SELECT COALESCE(SUM(valortotal),0) FROM ordens WHERE clienteid=c.id) AS gastototal
+    (SELECT COUNT(*) FROM ordens WHERE clienteid=c.id AND deletedat IS NULL) AS totalordens,
+    (SELECT COALESCE(SUM(valortotal),0) FROM ordens WHERE clienteid=c.id AND deletedat IS NULL) AS gastototal
   FROM clientes c
+  WHERE c.deletedat IS NULL
 `;
 
 router.get("/", auth(), (req, res, next) => {
@@ -15,21 +16,20 @@ router.get("/", auth(), (req, res, next) => {
     if (q) {
       const lk = `%${q}%`;
       return res.json(getAll(
-        SEL_CLIENTE + " WHERE c.name LIKE ? OR c.phone LIKE ? OR c.cpf LIKE ? OR c.ie LIKE ? OR c.cidade LIKE ? ORDER BY c.name LIMIT 20",
+        SEL_CLIENTE + " AND (c.name LIKE ? OR c.phone LIKE ? OR c.cpf LIKE ? OR c.ie LIKE ? OR c.cidade LIKE ?) ORDER BY c.name LIMIT 20",
         [lk,lk,lk,lk,lk]
       ));
     }
-    res.json(getAll(SEL_CLIENTE + " ORDER BY c.name"));
+    res.json(getAll(SEL_CLIENTE + " ORDER BY c.name LIMIT 100"));
   } catch(e) { next(e); }
 });
 
 router.get("/:id", auth(), (req, res, next) => {
   try {
     const id = req.params.id;
-    const c = getOne("SELECT * FROM clientes WHERE id=?", [id]);
+    const c = getOne("SELECT * FROM clientes WHERE id=? AND deletedat IS NULL", [id]);
     if (!c) return res.status(404).json({ error: "Cliente nao encontrado" });
 
-    // Busca ordens sem datafinalizado (campo inexistente) — usa prazoentrega
     const ordens = getAll(
       "SELECT id, numero, status, servico, valortotal, createdat, prazoentrega FROM ordens WHERE clienteid=? ORDER BY createdat DESC",
       [id]
@@ -42,7 +42,6 @@ router.get("/:id", auth(), (req, res, next) => {
     const statusAberto = ['Recebido', 'Em Produção', 'Pronto'];
     const osEmAberto = ordens.filter(o => statusAberto.includes(o.status)).length;
 
-    // Corrigido: era o.datafinalizado (campo inexistente) → o.prazoentrega
     const osVencidas = ordens.filter(o =>
       statusAberto.includes(o.status) &&
       o.prazoentrega &&
@@ -96,7 +95,7 @@ router.put("/:id", auth(["admin","caixa"]), (req, res, next) => {
   try {
     const { name, phone, email, cpf, ie, address, cidade, uf, cep, notes } = req.body ?? {};
     if (!name) return res.status(400).json({ error: "Nome obrigatorio" });
-    if (!getOne("SELECT id FROM clientes WHERE id=?", [req.params.id]))
+    if (!getOne("SELECT id FROM clientes WHERE id=? AND deletedat IS NULL", [req.params.id]))
       return res.status(404).json({ error: "Cliente nao encontrado" });
     run(
       "UPDATE clientes SET name=?,phone=?,email=?,cpf=?,ie=?,address=?,cidade=?,uf=?,cep=?,notes=? WHERE id=?",
@@ -108,12 +107,17 @@ router.put("/:id", auth(["admin","caixa"]), (req, res, next) => {
 
 router.delete("/:id", auth(["admin"]), (req, res, next) => {
   try {
-    const c = getOne("SELECT id,name FROM clientes WHERE id=?", [req.params.id]);
+    const c = getOne("SELECT id,name FROM clientes WHERE id=? AND deletedat IS NULL", [req.params.id]);
     if (!c) return res.status(404).json({ error: "Cliente nao encontrado" });
-    transaction(() => {
-      run("UPDATE ordens SET clienteid=NULL WHERE clienteid=?", [req.params.id]);
-      run("DELETE FROM clientes WHERE id=?", [req.params.id]);
-    });
+
+    const osAtivas = getOne(
+      "SELECT COUNT(*) AS n FROM ordens WHERE clienteid=? AND status NOT IN ('Entregue','Cancelado','Cancelada') AND deletedat IS NULL",
+      [req.params.id]
+    );
+    if (osAtivas?.n > 0)
+      return res.status(400).json({ error: `Cliente possui ${osAtivas.n} OS(s) ativas. Finalize-as antes de excluir.` });
+
+    run("UPDATE clientes SET deletedat=datetime('now','localtime') WHERE id=?", [req.params.id]);
     res.json({ ok: true, nome: c.name });
   } catch(e) { next(e); }
 });
