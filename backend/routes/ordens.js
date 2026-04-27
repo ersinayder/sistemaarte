@@ -6,6 +6,7 @@ const { hoje } = require("../utils/dates");
 const { validarEntradaOS, validarStatus, validarPrazo, descricaoEntradaOS } = require("../domain/ordensRules");
 const { descricaoRestanteOS } = require("../domain/ordensRules");
 const { sendWhatsApp, sendWhatsAppConfirmacao } = require("../utils/whatsapp");
+const { getResumoFinanceiroOS } = require('../domain/financeiroRules');
 
 const SEL_ORDEM = `
   SELECT o.*,
@@ -287,9 +288,7 @@ router.patch("/:id/status", auth(["admin","caixa","oficina"]), (req, res, next) 
     const erroStatus = validarStatus(status, old.status);
     if (erroStatus) return res.status(400).json({ error: erroStatus });
 
-    // fix: bloqueia entrega com saldo aberto
     if (status === 'Entregue') {
-      const { getResumoFinanceiroOS } = require('../domain/financeiroRules');
       const resumo = getResumoFinanceiroOS(req.params.id);
       if (resumo && resumo.saldo > 0.01) {
         return res.status(400).json({
