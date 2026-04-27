@@ -15,6 +15,16 @@ const SEL_ORDEM = `
   LEFT JOIN users u ON u.id = o.criadopor
 `;
 
+function esc(s) {
+  if (s == null) return "—";
+  return String(s)
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;")
+    .replace(/'/g,"&#x27;");
+}
+
 function fmt(val) {
   if (val == null) return "—";
   const n = Number(val);
@@ -62,9 +72,9 @@ router.get("/:id/pdf", auth(), (req, res) => {
     const logsHtml = logs.map(l => `
       <tr>
         <td>${fmtDate(l.createdat)} ${(l.createdat || "").slice(11, 16)}</td>
-        <td><span class="badge" style="background:${statusColor(l.statusnovo)}">${l.statusnovo || "—"}</span></td>
-        <td>${l.usuario || "—"}</td>
-        <td>${l.obs || ""}</td>
+        <td><span class="badge" style="background:${statusColor(l.statusnovo)}">${esc(l.statusnovo)}</span></td>
+        <td>${esc(l.usuario)}</td>
+        <td>${esc(l.obs)}</td>
       </tr>`).join("");
 
     const html = `<!DOCTYPE html>
@@ -72,10 +82,9 @@ router.get("/:id/pdf", auth(), (req, res) => {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>OS ${os.numero}</title>
+<title>OS ${esc(os.numero)}</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
   :root {
     --primary: #1a1a2e;
@@ -89,7 +98,7 @@ router.get("/:id/pdf", auth(), (req, res) => {
   }
 
   body {
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: system-ui, 'Segoe UI', Arial, sans-serif;
     font-size: 13px;
     color: var(--ink);
     background: #fff;
@@ -104,14 +113,14 @@ router.get("/:id/pdf", auth(), (req, res) => {
     flex-direction: column;
     align-items: center;
     margin-bottom: 0;
-    gap: 0;          /* controlado via margin-bottom individual */
+    gap: 0;
   }
   .brand-logo {
     height: 120px;
     width: auto;
     object-fit: contain;
     display: block;
-    margin-bottom: 28px; /* espaço generoso logo → titulo */
+    margin-bottom: 28px;
   }
   .doc-title {
     font-size: 20px;
@@ -129,7 +138,6 @@ router.get("/:id/pdf", auth(), (req, res) => {
     margin: 0;
   }
 
-  /* infos da OS abaixo da linha */
   .os-meta {
     display: flex;
     gap: 28px;
@@ -159,7 +167,6 @@ router.get("/:id/pdf", auth(), (req, res) => {
     color: var(--ink);
   }
 
-  /* ── Status pill ── */
   .status-bar {
     display: flex;
     align-items: center;
@@ -185,7 +192,6 @@ router.get("/:id/pdf", auth(), (req, res) => {
     color: var(--muted);
   }
 
-  /* ── Seções ── */
   .section { margin-bottom: 12px; }
   .section-title {
     font-size: 10px;
@@ -198,7 +204,6 @@ router.get("/:id/pdf", auth(), (req, res) => {
     border-bottom: 1px solid var(--border);
   }
 
-  /* ── Grid de campos ── */
   .grid   { display: grid; grid-template-columns: 1fr 1fr;       gap: 8px 24px; }
   .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr;  gap: 8px 24px; }
   .field label {
@@ -217,7 +222,6 @@ router.get("/:id/pdf", auth(), (req, res) => {
     word-break: break-word;
   }
 
-  /* ── Descricao / obs ── */
   .text-block {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -230,7 +234,6 @@ router.get("/:id/pdf", auth(), (req, res) => {
     min-height: 36px;
   }
 
-  /* ── Financeiro ── */
   .financeiro {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -259,7 +262,6 @@ router.get("/:id/pdf", auth(), (req, res) => {
   .fin-label { color: inherit; }
   .amount { font-weight: 600; font-variant-numeric: tabular-nums; }
 
-  /* ── Historico (visivel na tela, oculto na impressao) ── */
   .historico-section { margin-bottom: 12px; }
   table { width: 100%; border-collapse: collapse; font-size: 12px; }
   th {
@@ -284,7 +286,6 @@ router.get("/:id/pdf", auth(), (req, res) => {
     color: #fff;
   }
 
-  /* ── Assinatura ── */
   .assinatura {
     display: flex;
     gap: 40px;
@@ -296,7 +297,6 @@ router.get("/:id/pdf", auth(), (req, res) => {
   .ass-linha { border-bottom: 1px solid var(--ink); height: 32px; margin-bottom: 6px; }
   .ass-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; }
 
-  /* ── Footer ── */
   .footer {
     margin-top: 16px;
     text-align: center;
@@ -304,7 +304,6 @@ router.get("/:id/pdf", auth(), (req, res) => {
     color: var(--muted);
   }
 
-  /* ── Print ── */
   @media print {
     body { padding: 0; max-width: none; }
     .no-print { display: none !important; }
@@ -312,7 +311,6 @@ router.get("/:id/pdf", auth(), (req, res) => {
     @page { margin: 14mm 14mm; }
   }
 
-  /* ── Botao imprimir ── */
   .btn-print {
     display: inline-flex;
     align-items: center;
@@ -349,11 +347,11 @@ router.get("/:id/pdf", auth(), (req, res) => {
   <hr class="header-divider" />
 </div>
 
-<!-- Infos da OS abaixo da linha preta -->
+<!-- Infos da OS -->
 <div class="os-meta">
   <div class="os-meta-item">
     <span class="os-meta-label">N&uacute;mero</span>
-    <span class="os-meta-value">${os.numero}</span>
+    <span class="os-meta-value">${esc(os.numero)}</span>
   </div>
   <div class="os-meta-item">
     <span class="os-meta-label">Abertura</span>
@@ -368,18 +366,18 @@ router.get("/:id/pdf", auth(), (req, res) => {
 
 <!-- Status -->
 <div class="status-bar">
-  <span class="status-pill" style="background:${statusColor(os.status)}">${os.status || "—"}</span>
-  <span class="prioridade-pill">${os.prioridade || "Normal"}</span>
-  ${os.criadopornome ? `<span style="font-size:11px;color:#6b7280">por ${os.criadopornome}</span>` : ""}
+  <span class="status-pill" style="background:${statusColor(os.status)}">${esc(os.status)}</span>
+  <span class="prioridade-pill">${esc(os.prioridade) || "Normal"}</span>
+  ${os.criadopornome ? `<span style="font-size:11px;color:#6b7280">por ${esc(os.criadopornome)}</span>` : ""}
 </div>
 
 <!-- Cliente -->
 <div class="section">
   <div class="section-title">Cliente</div>
   <div class="grid">
-    <div class="field"><label>Nome</label><span>${os.clientenome || "—"}</span></div>
-    <div class="field"><label>Telefone</label><span>${os.clientetelefone || "—"}</span></div>
-    ${os.clientecpf ? `<div class="field"><label>CPF</label><span>${os.clientecpf}</span></div>` : ""}
+    <div class="field"><label>Nome</label><span>${esc(os.clientenome)}</span></div>
+    <div class="field"><label>Telefone</label><span>${esc(os.clientetelefone) || "—"}</span></div>
+    ${os.clientecpf ? `<div class="field"><label>CPF</label><span>${esc(os.clientecpf)}</span></div>` : ""}
   </div>
 </div>
 
@@ -387,22 +385,22 @@ router.get("/:id/pdf", auth(), (req, res) => {
 <div class="section">
   <div class="section-title">Servi&ccedil;o</div>
   <div class="grid-3">
-    <div class="field"><label>Tipo</label><span>${os.servico || "—"}</span></div>
-    <div class="field"><label>Pagamento</label><span>${os.pagamento || "—"}</span></div>
-    <div class="field"><label>Respons&aacute;vel</label><span>${os.criadopornome || "—"}</span></div>
+    <div class="field"><label>Tipo</label><span>${esc(os.servico)}</span></div>
+    <div class="field"><label>Pagamento</label><span>${esc(os.pagamento)}</span></div>
+    <div class="field"><label>Respons&aacute;vel</label><span>${esc(os.criadopornome)}</span></div>
   </div>
 </div>
 
 ${os.descricao ? `
 <div class="section">
   <div class="section-title">Descri&ccedil;&atilde;o</div>
-  <div class="text-block">${os.descricao.replace(/</g,"&lt;").replace(/>/g,"&gt;")}</div>
+  <div class="text-block">${esc(os.descricao)}</div>
 </div>` : ""}
 
 ${os.observacoes ? `
 <div class="section">
   <div class="section-title">Observa&ccedil;&otilde;es</div>
-  <div class="text-block">${os.observacoes.replace(/</g,"&lt;").replace(/>/g,"&gt;")}</div>
+  <div class="text-block">${esc(os.observacoes)}</div>
 </div>` : ""}
 
 <!-- Financeiro -->
@@ -428,7 +426,6 @@ ${os.observacoes ? `
   </div>
 </div>
 
-<!-- Historico de status (visivel na tela, oculto na impressao) -->
 ${logs.length > 0 ? `
 <div class="historico-section">
   <div class="section-title">Hist&oacute;rico de Status</div>
@@ -458,7 +455,7 @@ ${logs.length > 0 ? `
 </div>
 
 <div class="footer">
-  Gerado em ${new Date().toLocaleString("pt-BR")} &nbsp;|&nbsp; ${os.numero}
+  Gerado em ${new Date().toLocaleString("pt-BR")} &nbsp;|&nbsp; ${esc(os.numero)}
 </div>
 
 </body>
