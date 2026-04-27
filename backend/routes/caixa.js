@@ -9,7 +9,11 @@ const { descricaoRestanteOS } = require("../domain/ordensRules");
 router.get("/", auth(), (req, res, next) => {
   try {
     const { data, mes } = req.query;
-    let sql = "SELECT l.*, o.numero AS ordemnumero FROM lancamentos l LEFT JOIN ordens o ON o.id=l.ordemid WHERE l.deletedat IS NULL";
+    let sql = `SELECT l.*, o.numero AS ordemnumero
+               FROM lancamentos l
+               LEFT JOIN ordens o ON o.id=l.ordemid
+               WHERE l.deletedat IS NULL
+               AND (l.ordemid IS NULL OR o.deletedat IS NULL)`;
     const p = [];
     if (data) { sql += " AND l.data=?"; p.push(data); }
     if (mes)  { sql += " AND strftime('%Y-%m',l.data)=?"; p.push(mes); }
