@@ -4,8 +4,6 @@ const { auth } = require("../middlewares/auth");
 const { hoje } = require("../utils/dates");
 const { toNumber } = require("../utils/numbers");
 
-// Filtro reutilizavel: exclui lancamentos soft-deleted e lancamentos
-// vinculados a OS que foram soft-deleted.
 const FILTRO_ATIVO = `
   l.deletedat IS NULL
   AND (l.ordemid IS NULL OR (SELECT deletedat FROM ordens WHERE id=l.ordemid) IS NULL)
@@ -50,7 +48,6 @@ router.get("/resumo", auth(), (req, res, next) => {
       [mes]
     );
 
-    // C-1: usar 'Cancelado' (valor gravado pelo ordensRules)
     const ordensabertas  = getOne("SELECT COUNT(*) AS c FROM ordens WHERE status NOT IN ('Entregue','Cancelado','Cancelada') AND deletedat IS NULL")?.c ?? 0;
     const ordensvencidas = getOne("SELECT COUNT(*) AS c FROM ordens WHERE prazoentrega<? AND status NOT IN ('Entregue','Cancelado','Cancelada') AND deletedat IS NULL", [hj])?.c ?? 0;
 
@@ -101,6 +98,7 @@ router.get("/producao", auth(["admin"]), (req, res, next) => {
       JOIN ordens o ON o.id = s1.ordemid AND o.deletedat IS NULL
       LEFT JOIN users u ON u.id = s1.usuarioid
       WHERE strftime('%Y-%m', s1.createdat) = ?
+        AND s1.statusnovo NOT IN ('Aguardando', 'Excluida')
       ORDER BY s1.createdat DESC
     `, [mes]);
 
