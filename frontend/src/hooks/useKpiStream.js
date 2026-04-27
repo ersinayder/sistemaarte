@@ -4,12 +4,11 @@ import api from '../services/api'
 const BASE = import.meta.env.VITE_API_URL || ''
 
 export function useKpiStream() {
-  const [kpis, setKpis]       = useState(null)
-  const [online, setOnline]   = useState(false)
-  const esRef                 = useRef(null)
-  const timerRef              = useRef(null)
+  const [kpis, setKpis]     = useState(null)
+  const [online, setOnline] = useState(false)
+  const esRef               = useRef(null)
+  const timerRef            = useRef(null)
 
-  // Polling fallback — usado se SSE falhar
   const startPolling = () => {
     if (timerRef.current) return
     timerRef.current = setInterval(async () => {
@@ -25,11 +24,9 @@ export function useKpiStream() {
   }
 
   useEffect(() => {
-    // Primeira carga REST (imediata, sem depender de SSE)
+    // Primeira carga REST imediata
     api.get('/kpis').then(r => setKpis(r.data)).catch(() => {})
 
-    // Tenta SSE — precisa do cookie de auth, então usa credenciais
-    // EventSource nativo não suporta credentials, usamos fetch SSE
     let active = true
     const ctrl = new AbortController()
 
@@ -40,6 +37,15 @@ export function useKpiStream() {
           signal: ctrl.signal,
           headers: { Accept: 'text/event-stream' }
         })
+
+        // 401/403 = token expirado ou sem permissão
+        // Não reconecta — o polling REST vai continuar e o interceptor
+        // do axios já redireciona para login quando necessário.
+        if (resp.status === 401 || resp.status === 403) {
+          setOnline(false)
+          startPolling()
+          return // para a reconexão SSE definitivamente nesta sessão
+        }
 
         if (!resp.ok || !resp.body) throw new Error('SSE indisponível')
 
@@ -67,10 +73,9 @@ export function useKpiStream() {
         }
       } catch (err) {
         if (!active) return
-        // SSE falhou — cai para polling
+        // Erro de rede / servidor reiniciando — cai para polling e tenta SSE em 30s
         setOnline(false)
         startPolling()
-        // Tenta reconectar SSE em 30s
         setTimeout(() => { if (active) connectSSE() }, 30000)
       }
     }
