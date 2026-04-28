@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { on } from '../services/eventBus';
 
 const COLUNAS = [
   { status:'Aguardando',   label:'Aguardando',   color:'#6b7280', bg:'rgba(107,114,128,0.08)' },
@@ -54,20 +55,13 @@ function normalizarStatus(status) {
   return NORMALIZAR_STATUS[status] ?? 'Aguardando';
 }
 
-/**
- * Retorna o início da semana corrente (segunda-feira) em formato YYYY-MM-DD (UTC-3).
- * A coluna Entregue exibe apenas OS entregues a partir dessa data.
- * Todo domingo à meia-noite a semana vira e a coluna zera automaticamente.
- */
 function inicioSemanaAtual() {
   const agora = new Date();
-  // Ajusta para UTC-3
   agora.setHours(agora.getHours() - 3);
-  const diaSemana = agora.getUTCDay(); // 0=dom, 1=seg, ..., 6=sab
-  // Quantos dias retroceder para chegar na última segunda-feira
+  const diaSemana = agora.getUTCDay();
   const diasParaSeg = diaSemana === 0 ? 6 : diaSemana - 1;
   agora.setUTCDate(agora.getUTCDate() - diasParaSeg);
-  return agora.toISOString().slice(0, 10); // YYYY-MM-DD
+  return agora.toISOString().slice(0, 10);
 }
 
 export default function Oficina() {
@@ -83,15 +77,13 @@ export default function Oficina() {
   const [dragOver,         setDragOver]         = useState(null);
   const [filterServico,    setFilterServico]    = useState('');
   const [filterPrioridade, setFilterPrioridade] = useState('');
-  // IDs de OS recém-entregues nesta sessão — ficam visíveis com fade-out antes de entrar no filtro semanal
   const [recentEntregues,  setRecentEntregues]  = useState(new Set());
-  // Semana corrente: OS entregues a partir desta data aparecem na coluna
   const [inicioSemana,     setInicioSemana]     = useState(inicioSemanaAtual);
   const semanaRef = useRef(inicioSemana);
 
   const today = new Date().toISOString().split('T')[0];
 
-  // Verifica a cada minuto se virou domingo/semana nova
+  // Zera coluna Entregue todo domingo
   useEffect(() => {
     const id = setInterval(() => {
       const nova = inicioSemanaAtual();
@@ -105,7 +97,6 @@ export default function Oficina() {
     return () => clearInterval(id);
   }, []);
 
-  // Carga normal — 4 status (inclui Entregue para mostrar as da semana)
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -149,25 +140,33 @@ export default function Oficina() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Recarrega quando o Caixa registra um lançamento (mesma aba, SPA)
+  useEffect(() => {
+    const off = on('lancamento:salvo', () => load());
+    return off;
+  }, [load]);
+
+  // Recarrega quando o usuário volta para esta aba/página (ex: veio do Caixa)
+  useEffect(() => {
+    const handler = () => { if (document.visibilityState === 'visible') load(); };
+    document.addEventListener('visibilitychange', handler);
+    return () => document.removeEventListener('visibilitychange', handler);
+  }, [load]);
+
   const byStatus = (s) => ordens.filter(o => {
     if (o.status !== s) return false;
     if (filterServico    && o.servico    !== filterServico)    return false;
     if (filterPrioridade && o.prioridade !== filterPrioridade) return false;
-
-    // Coluna Entregue: mostra apenas OS entregues nesta semana (seg → dom)
-    // Exceção: OS recém-entregues nesta sessão ficam visíveis imediatamente
     if (s === 'Entregue') {
       if (recentEntregues.has(o.id)) return true;
       const entregueEm = o.entregueem || o.updatedat || o.criadoem;
       if (!entregueEm) return false;
       return entregueEm.slice(0, 10) >= inicioSemana;
     }
-
     return true;
   });
 
   const mudarStatus = async (id, novoStatus) => {
-    // Marca como recém-entregue antes da chamada para não sumir do board
     if (novoStatus === 'Entregue') {
       setRecentEntregues(prev => new Set([...prev, id]));
     }
@@ -176,7 +175,6 @@ export default function Oficina() {
       toast.success(`Status → ${novoStatus}`);
       load();
     } catch (err) {
-      // Reverte o marcador se a chamada falhou
       if (novoStatus === 'Entregue') {
         setRecentEntregues(prev => { const n = new Set(prev); n.delete(id); return n; });
       }
@@ -200,16 +198,14 @@ export default function Oficina() {
 
   const tiposServico = [...new Set(ordens.map(o => o.servico).filter(Boolean))];
 
-  // Label da coluna Entregue com indicador da semana
   const labelEntregue = (() => {
-    const [ano, mes, dia] = inicioSemana.split('-');
+    const [, mes, dia] = inicioSemana.split('-');
     return `Entregue (desde ${dia}/${mes})`;
   })();
 
   return (
     <div style={{ height:'calc(100vh - 60px - var(--space-12))', display:'flex', flexDirection:'column', minHeight:0 }}>
 
-      {/* Header */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'var(--space-4)', flexShrink:0 }}>
         <div>
           <h1 style={{ fontSize:'var(--text-xl)', fontWeight:800, margin:0 }}>Fila da Oficina</h1>
@@ -270,7 +266,6 @@ export default function Oficina() {
         </div>
       </div>
 
-      {/* Board / Lista */}
       {(loading || recovering) ? (
         <div style={{ display:'flex', alignItems:'center', justifyContent:'center', flex:1, color:'var(--color-text-muted)', gap:'var(--space-2)' }}>
           <svg className="spin" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -338,7 +333,6 @@ export default function Oficina() {
                           animation: isRecent ? 'slideInEntregue 0.4s ease' : 'none',
                           boxShadow:'var(--shadow-sm)' }}
                       >
-                        {/* Badge entregue */}
                         {o.status === 'Entregue' && (
                           <div style={{ marginBottom:'var(--space-1)' }}>
                             <span style={{ fontSize:9, fontWeight:700, color:'#2563eb',
@@ -397,9 +391,15 @@ export default function Oficina() {
                           </div>
                         )}
 
-                        {saldo > 0 && o.status !== 'Entregue' && (
+                        {/* Saldo: para OS não-entregues mostra saldo financeiro; para entregues mostra valor total */}
+                        {o.status !== 'Entregue' && saldo > 0 && (
                           <div style={{ fontSize:10, color:'var(--color-text-muted)', marginBottom:'var(--space-2)' }}>
                             Saldo <strong style={{ color:'var(--color-warning)' }}>{fmt(saldo)}</strong>
+                          </div>
+                        )}
+                        {o.status === 'Entregue' && (
+                          <div style={{ fontSize:10, color:'var(--color-text-muted)', marginBottom:'var(--space-2)' }}>
+                            Total <strong style={{ color:'var(--color-text)' }}>{fmt(o.valortotal||o.valor)}</strong>
                           </div>
                         )}
 
@@ -469,7 +469,6 @@ export default function Oficina() {
         </div>
       )}
 
-      {/* Keyframe para entry animation do card entregue */}
       <style>{`
         @keyframes slideInEntregue {
           from { opacity: 0; transform: translateY(-8px) scale(0.97); }

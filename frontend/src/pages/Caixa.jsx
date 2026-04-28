@@ -4,6 +4,7 @@ import { toast } from 'react-hot-toast';
 import { useParams } from 'react-router-dom';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { emit } from '../services/eventBus';
 
 const TIPO_OPT = ['Entrada','Saída'];
 const PAGAMENTO_OPT = ['Dinheiro','Pix','Cartão de Débito','Cartão de Crédito','Transferência','Outros'];
@@ -94,7 +95,6 @@ export default function Caixa() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { setCurrentPage(1); }, [search, date]);
 
-  // Se vier /caixa/:id, abre o lançamento correspondente para edição após carregar
   useEffect(() => {
     if (paramId && lancamentos.length > 0) {
       const found = lancamentos.find(l => String(l.id) === String(paramId));
@@ -121,7 +121,6 @@ export default function Caixa() {
   };
   const closeForm = () => { setShowForm(false); setEditData(null); setForm(blankForm); };
 
-  // Selecionar OS: move campo para antes do pagamento e auto-preenche descrição
   const handleOrdemChange = (val) => {
     set('ordem_id', val);
     if (val) {
@@ -162,6 +161,8 @@ export default function Caixa() {
         await api.post('/caixa', payload);
         toast.success('Lançamento registrado');
       }
+      // Notifica a Oficina (e qualquer outro listener) que o saldo de uma OS pode ter mudado
+      emit('lancamento:salvo', { ordemid: form.ordem_id || null });
       closeForm(); load();
     } catch(e) { toast.error(e?.response?.data?.error || 'Erro ao salvar'); }
     finally { setSaving(false); }
@@ -172,6 +173,7 @@ export default function Caixa() {
     try {
       await api.delete(`/caixa/${id}`);
       toast.success('Lançamento removido');
+      emit('lancamento:salvo', { deleted: true });
       setConfirmDel(null); load();
     } catch(e) { toast.error(e?.response?.data?.error || 'Erro ao remover'); }
     finally { setDeleting(null); }
@@ -215,7 +217,6 @@ export default function Caixa() {
 
   const isToday = date === today;
 
-  // OS selecionada no form
   const osSelecionada = form.ordem_id
     ? ordensPendentes.find(o => String(o.id) === String(form.ordem_id))
     : null;
@@ -407,7 +408,6 @@ export default function Caixa() {
             </div>
             <div className="modal-body">
               <div className="form-grid">
-                {/* Tipo */}
                 <div className="form-group">
                   <label className="form-label">Tipo</label>
                   <select className="form-input" value={form.tipo}
@@ -415,14 +415,12 @@ export default function Caixa() {
                     {TIPO_OPT.map(t=><option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
-                {/* Categoria */}
                 <div className="form-group">
                   <label className="form-label">Categoria</label>
                   <select className="form-input" value={form.categoria} onChange={e=>set('categoria',e.target.value)}>
                     {(CATEG_OPT[form.tipo]||[]).map(c=><option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
-                {/* OS — ANTES da forma de pagamento */}
                 {form.tipo==='Entrada' && (
                   <div className="form-group" style={{ gridColumn:'1/-1' }}>
                     <label className="form-label">
@@ -447,24 +445,20 @@ export default function Caixa() {
                     )}
                   </div>
                 )}
-                {/* Forma de pagamento — DEPOIS da OS */}
                 <div className="form-group" style={{ gridColumn:'1/-1' }}>
                   <label className="form-label">Forma de Pagamento <span style={{color:'var(--color-error)'}}>*</span></label>
                   <select className="form-input" value={form.pagamento} onChange={e=>set('pagamento',e.target.value)}>
                     {PAGAMENTO_OPT.map(p=><option key={p} value={p}>{p}</option>)}
                   </select>
                 </div>
-                {/* Descrição */}
                 <div className="form-group" style={{ gridColumn:'1/-1' }}>
                   <label className="form-label">Descrição</label>
                   <input className="form-input" value={form.descricao} onChange={e=>set('descricao',e.target.value)} placeholder="Ex: Pagamento OS-0042, Conta de luz…" />
                 </div>
-                {/* Valor */}
                 <div className="form-group">
                   <label className="form-label">Valor (R$) <span style={{color:'var(--color-error)'}}>*</span></label>
                   <input className="form-input" type="number" step="0.01" min="0" value={form.valor} onChange={e=>set('valor',e.target.value)} onWheel={e=>e.currentTarget.blur()} style={{ fontFamily:'monospace', fontWeight:700 }} />
                 </div>
-                {/* Data */}
                 <div className="form-group">
                   <label className="form-label">Data</label>
                   <input className="form-input" type="date" value={form.data} onChange={e=>set('data',e.target.value)} />
