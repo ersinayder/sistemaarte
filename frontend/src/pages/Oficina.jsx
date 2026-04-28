@@ -14,7 +14,6 @@ const COLUNAS = [
 const STATUS_VALIDOS   = new Set(['Aguardando', 'Em Produção', 'Pronto', 'Entregue']);
 const STATUS_EXCLUIDOS = new Set(['Entregue', 'Cancelado']);
 
-// Mapa de normalização: status alternativos → status canônico do board
 const NORMALIZAR_STATUS = {
   'recebido':     'Aguardando',
   'Recebido':     'Aguardando',
@@ -71,7 +70,6 @@ export default function Oficina() {
 
   const today = new Date().toISOString().split('T')[0];
 
-  // Carga normal — 3 status ativos
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -89,24 +87,18 @@ export default function Oficina() {
     }
   }, []);
 
-  // Recuperação — busca TUDO, normaliza status, exclui Entregue/Cancelado
   const recover = useCallback(async () => {
     setRecovering(true);
     try {
       const { data } = await api.get('/ordens');
-
       const ativas = data
         .filter(o => !STATUS_EXCLUIDOS.has(o.status))
         .map(o => ({ ...o, status: normalizarStatus(o.status) }));
-
       ativas.sort((a, b) => new Date(a.criadoem) - new Date(b.criadoem));
       setOrdens(ativas);
-
-      // Conta quantas tiveram status normalizado
       const normalizadas = data.filter(
         o => !STATUS_EXCLUIDOS.has(o.status) && !STATUS_VALIDOS.has(o.status)
       ).length;
-
       toast.success(
         `Recuperação concluída — ${ativas.length} OS carregada${ativas.length !== 1 ? 's' : ''}` +
         (normalizadas > 0 ? ` (${normalizadas} status corrigido${normalizadas !== 1 ? 's' : ''})` : ''),
@@ -133,7 +125,11 @@ export default function Oficina() {
       await api.patch(`/ordens/${id}/status`, { status: novoStatus });
       toast.success(`Status → ${novoStatus}`);
       load();
-    } catch { toast.error('Erro ao atualizar status'); }
+    } catch (err) {
+      // Exibe a mensagem real do backend (ex: saldo em aberto, transição inválida)
+      const msg = err.response?.data?.error || 'Erro ao atualizar status';
+      toast.error(msg, { duration: 6000 });
+    }
   };
 
   const handleDragStart = (id) => setDraggingId(id);
