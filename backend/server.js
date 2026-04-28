@@ -9,11 +9,12 @@ const fs           = require("fs");
 const { initDB, backup }     = require("./database");
 const { auth }               = require("./middlewares/auth");
 const { errorHandler }       = require("./middlewares/errorHandler");
+const { hoje }               = require("./utils/dates");
 
 const IS_PROD = process.env.NODE_ENV === "production";
 
 if (IS_PROD && !process.env.CORS_ORIGINS) {
-  throw new Error("[Config] CORS_ORIGINS deve ser definido em produção!");
+  throw new Error("[Config] CORS_ORIGINS deve ser definido em produ\u00e7\u00e3o!");
 }
 
 const allowedOrigins = process.env.CORS_ORIGINS
@@ -35,7 +36,7 @@ const globalLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => req.path.startsWith('/kpis/stream'),
-  message: { error: "Muitas requisições. Tente novamente em instantes." },
+  message: { error: "Muitas requisi\u00e7\u00f5es. Tente novamente em instantes." },
 });
 app.use("/api", globalLimiter);
 
@@ -54,21 +55,20 @@ app.use("/api/kpis",       require("./routes/kpis"));
 
 app.get("/api/health", (_req, res) => res.json({ ok: true, ts: Date.now() }));
 
-// Backup automático diário — verifica a cada 5min para não perder a janela das 2h
+// Backup automático diário — verifica a cada 5min; usa hoje() BRT para evitar mismatch UTC
 let _backupDate = "";
 setInterval(() => {
-  const now   = new Date();
-  const hoje  = now.toISOString().slice(0, 10);
-  const h     = now.getHours();
-  if (h >= 2 && _backupDate !== hoje) {
-    _backupDate = hoje;
+  const hj = hoje(); // BRT correto via utils/dates
+  const h  = new Date(Date.now() - 3 * 60 * 60 * 1000).getHours(); // hora BRT
+  if (h >= 2 && _backupDate !== hj) {
+    _backupDate = hj;
     backup()
       .then(() => console.log("[Backup] Concluido:", new Date().toISOString()))
       .catch(err => console.error("[Backup] FALHOU:", err.message));
   }
 }, 5 * 60 * 1000);
 
-// ── Servir SPA ────────────────────────────────────────────────────────────────────────────────────
+// ── Servir SPA ─────────────────────────────────────────────────────────────────────────────────────
 const DIST = path.join(__dirname, "..", "frontend", "dist");
 if (fs.existsSync(DIST)) {
   app.use(express.static(DIST));
@@ -87,8 +87,8 @@ app.use(errorHandler);
 
 initDB();
 app.listen(PORT, "0.0.0.0", () => {
-  console.log("\n╔══════════════════════════════════════╗");
-  console.log(`║  Sistema Oficina — Servidor OK       ║`);
-  console.log(`║  http://0.0.0.0:${PORT}                 ║`);
-  console.log("╚══════════════════════════════════════╝\n");
+  console.log("\n\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557");
+  console.log(`\u2551  Sistema Oficina \u2014 Servidor OK       \u2551`);
+  console.log(`\u2551  http://0.0.0.0:${PORT}                 \u2551`);
+  console.log("\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d\n");
 });

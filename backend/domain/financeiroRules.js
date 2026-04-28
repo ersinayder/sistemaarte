@@ -3,7 +3,8 @@ const { toNumber } = require("../utils/numbers");
 
 /**
  * Calcula o resumo financeiro de uma OS.
- * Ignora OS soft-deleted (deletedat IS NULL) e lançamentos soft-deleted.
+ * Ignora OS soft-deleted (deletedat IS NULL) e lan\u00e7amentos soft-deleted.
+ * Saldo arredondado para 2 casas para evitar imprecis\u00e3o de ponto flutuante.
  * @returns {{ ordem, recebido, saldo }|null}
  */
 function getResumoFinanceiroOS(ordemId) {
@@ -23,7 +24,10 @@ function getResumoFinanceiroOS(ordemId) {
   const recebidoTotal = toNumber(recebido?.total, 0);
   const total         = toNumber(ordem.valortotal, 0);
 
-  return { ordem, recebido: recebidoTotal, saldo: Math.max(0, total - recebidoTotal) };
+  // I-4: round para 2 casas evita 100.00 - 100.00 = 0.00000000001
+  const saldo = Math.max(0, Math.round((total - recebidoTotal) * 100) / 100);
+
+  return { ordem, recebido: recebidoTotal, saldo };
 }
 
 module.exports = { getResumoFinanceiroOS };

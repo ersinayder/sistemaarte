@@ -16,7 +16,7 @@ const SEL_ORDEM = `
 `;
 
 function esc(s) {
-  if (s == null) return "—";
+  if (s == null) return "\u2014";
   return String(s)
     .replace(/&/g,"&amp;")
     .replace(/</g,"&lt;")
@@ -26,23 +26,29 @@ function esc(s) {
 }
 
 function fmt(val) {
-  if (val == null) return "—";
+  if (val == null) return "\u2014";
   const n = Number(val);
   return isNaN(n) ? val : n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
 function fmtDate(str) {
-  if (!str) return "—";
+  if (!str) return "\u2014";
   const d = str.slice(0, 10);
   const [y, m, day] = d.split("-");
   return `${day}/${m}/${y}`;
+}
+
+// I-2: hora BRT correta no rodapé do PDF
+function geradoEm() {
+  return new Date(Date.now() - 3 * 60 * 60 * 1000)
+    .toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
 }
 
 function statusColor(s) {
   const map = {
     "Aguardando":    "#f59e0b",
     "Em Producao":   "#3b82f6",
-    "Em Produção":   "#3b82f6",
+    "Em Produ\u00e7\u00e3o":   "#3b82f6",
     "Pronto":        "#10b981",
     "Entregue":      "#6366f1",
     "Cancelado":     "#ef4444",
@@ -107,7 +113,6 @@ router.get("/:id/pdf", auth(), (req, res) => {
     margin: 0 auto;
   }
 
-  /* ── Header ── */
   .header {
     display: flex;
     flex-direction: column;
@@ -340,14 +345,12 @@ router.get("/:id/pdf", auth(), (req, res) => {
   Imprimir / Salvar PDF
 </button>
 
-<!-- Header -->
 <div class="header">
   <img src="/logo preta.png" alt="Arte &amp; Molduras" class="brand-logo" />
   <div class="doc-title">Ordem de Servi&ccedil;o</div>
   <hr class="header-divider" />
 </div>
 
-<!-- Infos da OS -->
 <div class="os-meta">
   <div class="os-meta-item">
     <span class="os-meta-label">N&uacute;mero</span>
@@ -364,24 +367,21 @@ router.get("/:id/pdf", auth(), (req, res) => {
   </div>` : ""}
 </div>
 
-<!-- Status -->
 <div class="status-bar">
   <span class="status-pill" style="background:${statusColor(os.status)}">${esc(os.status)}</span>
   <span class="prioridade-pill">${esc(os.prioridade) || "Normal"}</span>
   ${os.criadopornome ? `<span style="font-size:11px;color:#6b7280">por ${esc(os.criadopornome)}</span>` : ""}
 </div>
 
-<!-- Cliente -->
 <div class="section">
   <div class="section-title">Cliente</div>
   <div class="grid">
     <div class="field"><label>Nome</label><span>${esc(os.clientenome)}</span></div>
-    <div class="field"><label>Telefone</label><span>${esc(os.clientetelefone) || "—"}</span></div>
+    <div class="field"><label>Telefone</label><span>${esc(os.clientetelefone) || "\u2014"}</span></div>
     ${os.clientecpf ? `<div class="field"><label>CPF</label><span>${esc(os.clientecpf)}</span></div>` : ""}
   </div>
 </div>
 
-<!-- Servico -->
 <div class="section">
   <div class="section-title">Servi&ccedil;o</div>
   <div class="grid-3">
@@ -403,7 +403,6 @@ ${os.observacoes ? `
   <div class="text-block">${esc(os.observacoes)}</div>
 </div>` : ""}
 
-<!-- Financeiro -->
 <div class="section">
   <div class="section-title">Financeiro</div>
   <div class="financeiro">
@@ -442,7 +441,6 @@ ${logs.length > 0 ? `
   </table>
 </div>` : ""}
 
-<!-- Assinatura -->
 <div class="assinatura">
   <div class="ass-campo">
     <div class="ass-linha"></div>
@@ -455,7 +453,7 @@ ${logs.length > 0 ? `
 </div>
 
 <div class="footer">
-  Gerado em ${new Date().toLocaleString("pt-BR")} &nbsp;|&nbsp; ${esc(os.numero)}
+  Gerado em ${geradoEm()} &nbsp;|&nbsp; ${esc(os.numero)}
 </div>
 
 </body>
