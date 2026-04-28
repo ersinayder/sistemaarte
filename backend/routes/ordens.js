@@ -3,8 +3,10 @@ const { getAll, getOne, run, runInsert, transaction } = require("../database");
 const { auth } = require("../middlewares/auth");
 const { toNumber } = require("../utils/numbers");
 const { hoje } = require("../utils/dates");
-const { validarEntradaOS, validarStatus, validarPrazo, descricaoEntradaOS } = require("../domain/ordensRules");
-const { descricaoRestanteOS } = require("../domain/ordensRules");
+const {
+  validarEntradaOS, validarStatus, validarPrazo,
+  descricaoEntradaOS, descricaoRestanteOS
+} = require("../domain/ordensRules");
 const { sendWhatsApp, sendWhatsAppConfirmacao } = require("../utils/whatsapp");
 const { getResumoFinanceiroOS } = require('../domain/financeiroRules');
 
@@ -63,13 +65,14 @@ function resolveClienteData(clienteid, clientenome, telefoneFornecido, cpfFornec
   return { telefone, cpf };
 }
 
+// S-1: SELECT simples sem os subqueries pesados de saldo — WhatsApp só precisa dos dados básicos
 function maybeNotifyPronto(ordemId, statusAnterior, statusNovo) {
-  if (statusAnterior === statusNovo) return;
-  if (statusNovo !== 'Pronto') return;
-
-  const os = getOne(SEL_ORDEM + " WHERE o.id=?", [ordemId]);
+  if (statusAnterior === statusNovo || statusNovo !== 'Pronto') return;
+  const os = getOne(
+    `SELECT o.*, u.name AS criadopornome FROM ordens o LEFT JOIN users u ON u.id=o.criadopor WHERE o.id=?`,
+    [ordemId]
+  );
   if (!os) return;
-
   sendWhatsApp(os).catch(err => console.error('[WhatsApp] erro inesperado:', err.message));
 }
 
@@ -200,10 +203,14 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
       const erroStatus = validarStatus(status, old.status);
       if (erroStatus) return res.status(400).json({ error: erroStatus });
 
+      // I-3: re-lê o status atual DENTRO da transação para evitar race condition no log
       transaction(() => {
+        const current = getOne("SELECT status FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);
+        if (!current) throw new Error("OS nao encontrada");
         run("UPDATE ordens SET status=?,updatedat=datetime('now','localtime') WHERE id=?", [status, req.params.id]);
-        if (status !== old.status)
-          runInsert("INSERT INTO statuslog (ordemid,statusanterior,statusnovo,usuarioid) VALUES (?,?,?,?)", [req.params.id, old.status, status, req.user.id]);
+        if (status !== current.status)
+          runInsert("INSERT INTO statuslog (ordemid,statusanterior,statusnovo,usuarioid) VALUES (?,?,?,?)",
+            [req.params.id, current.status, status, req.user.id]);
       });
 
       maybeNotifyPronto(req.params.id, old.status, status);
@@ -216,7 +223,7 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
     const erroEntrada = validarEntradaOS(total, entrada);
     if (erroEntrada) return res.status(400).json({ error: erroEntrada });
 
-    // S-2: validar prazo sempre que novoPrazo for n\u00e3o-nulo, independente de mudan\u00e7a
+    // S-2: validar prazo sempre que novoPrazo for nao-nulo, independente de mudanca
     const novoPrazo = (prazoentrega !== undefined && prazoentrega !== '')
       ? prazoentrega
       : (prazoentrega === '' ? null : old.prazoentrega);
