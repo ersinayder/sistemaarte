@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS clientes (
   uf        TEXT,
   cep       TEXT,
   notes     TEXT,
+  deletedat  TEXT    DEFAULT NULL,
+  deletedpor INTEGER DEFAULT NULL,
   createdat TEXT DEFAULT (datetime('now','localtime'))
 );
 CREATE TABLE IF NOT EXISTS ordens (
@@ -88,6 +90,7 @@ CREATE TABLE IF NOT EXISTS produtos (
   estoquemin  REAL DEFAULT 0,
   descricao   TEXT DEFAULT '',
   deletedat   TEXT DEFAULT NULL,
+  deletedpor  INTEGER DEFAULT NULL,
   createdat   TEXT DEFAULT (datetime('now','localtime')),
   updatedat   TEXT DEFAULT (datetime('now','localtime'))
 );
@@ -125,6 +128,9 @@ function initDB() {
     "ALTER TABLE clientes ADD COLUMN uf TEXT",
     "ALTER TABLE clientes ADD COLUMN cep TEXT",
     "ALTER TABLE clientes ADD COLUMN notes TEXT",
+    // fix: soft-delete auditavel em clientes (colunas ausentes em bancos pre-existentes)
+    "ALTER TABLE clientes ADD COLUMN deletedat TEXT DEFAULT NULL",
+    "ALTER TABLE clientes ADD COLUMN deletedpor INTEGER DEFAULT NULL",
     "ALTER TABLE lancamentos ADD COLUMN origem TEXT DEFAULT NULL",
     "ALTER TABLE lancamentos ADD COLUMN pago INTEGER DEFAULT 1",
     // C4: soft-delete auditavel em lancamentos
@@ -132,6 +138,7 @@ function initDB() {
     "ALTER TABLE lancamentos ADD COLUMN deletedpor INTEGER DEFAULT NULL",
     // fix: soft-delete em produtos (coluna ausente em bancos pre-existentes)
     "ALTER TABLE produtos ADD COLUMN deletedat TEXT DEFAULT NULL",
+    "ALTER TABLE produtos ADD COLUMN deletedpor INTEGER DEFAULT NULL",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {}
