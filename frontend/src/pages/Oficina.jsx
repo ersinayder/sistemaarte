@@ -83,7 +83,6 @@ export default function Oficina() {
 
   const today = new Date().toISOString().split('T')[0];
 
-  // Zera coluna Entregue todo domingo
   useEffect(() => {
     const id = setInterval(() => {
       const nova = inicioSemanaAtual();
@@ -140,13 +139,11 @@ export default function Oficina() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Recarrega quando o Caixa registra um lançamento (mesma aba, SPA)
   useEffect(() => {
     const off = on('lancamento:salvo', () => load());
     return off;
   }, [load]);
 
-  // Recarrega quando o usuário volta para esta aba/página (ex: veio do Caixa)
   useEffect(() => {
     const handler = () => { if (document.visibilityState === 'visible') load(); };
     document.addEventListener('visibilitychange', handler);
@@ -312,8 +309,8 @@ export default function Oficina() {
                 : byStatus(col.status).map(o => {
                     const vencida    = o.prazoentrega && o.prazoentrega < today && o.status !== 'Entregue';
                     const ehHoje     = o.prazoentrega === today;
-                    // FIX: usa saldoaberto calculado pelo banco (inclui todos os lançamentos do Caixa)
                     const saldo      = Number(o.saldoaberto ?? 0);
+                    const quitado    = saldo <= 0.009;
                     const diasCriado = Math.floor((Date.now() - new Date(o.criadoem)) / 86400000);
                     const next       = STATUSNEXT[o.status];
                     const isRecent   = recentEntregues.has(o.id);
@@ -392,10 +389,13 @@ export default function Oficina() {
                           </div>
                         )}
 
-                        {/* Saldo: usa saldoaberto da API (calculado pelo banco, inclui lançamentos do Caixa) */}
-                        {o.status !== 'Entregue' && saldo > 0.009 && (
+                        {/* Financeiro: quitado = verde, saldo pendente = laranja */}
+                        {o.status !== 'Entregue' && (
                           <div style={{ fontSize:10, color:'var(--color-text-muted)', marginBottom:'var(--space-2)' }}>
-                            Saldo <strong style={{ color:'var(--color-warning)' }}>{fmt(saldo)}</strong>
+                            {quitado
+                              ? <strong style={{ color:'#059669' }}>✓ Quitado</strong>
+                              : <>Saldo <strong style={{ color:'var(--color-warning)' }}>{fmt(saldo)}</strong></>
+                            }
                           </div>
                         )}
                         {o.status === 'Entregue' && (
