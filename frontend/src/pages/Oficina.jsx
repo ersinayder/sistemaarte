@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import api from '../services/api';
@@ -12,7 +12,7 @@ const COLUNAS = [
 ];
 
 const STATUS_VALIDOS   = new Set(['Aguardando', 'Em Produção', 'Pronto', 'Entregue']);
-const STATUS_EXCLUIDOS = new Set(['Entregue', 'Cancelado']);
+const STATUS_EXCLUIDOS = new Set(['Cancelado']);
 
 const NORMALIZAR_STATUS = {
   'recebido':     'Aguardando',
@@ -54,6 +54,22 @@ function normalizarStatus(status) {
   return NORMALIZAR_STATUS[status] ?? 'Aguardando';
 }
 
+/**
+ * Retorna o início da semana corrente (segunda-feira) em formato YYYY-MM-DD (UTC-3).
+ * A coluna Entregue exibe apenas OS entregues a partir dessa data.
+ * Todo domingo à meia-noite a semana vira e a coluna zera automaticamente.
+ */
+function inicioSemanaAtual() {
+  const agora = new Date();
+  // Ajusta para UTC-3
+  agora.setHours(agora.getHours() - 3);
+  const diaSemana = agora.getUTCDay(); // 0=dom, 1=seg, ..., 6=sab
+  // Quantos dias retroceder para chegar na última segunda-feira
+  const diasParaSeg = diaSemana === 0 ? 6 : diaSemana - 1;
+  agora.setUTCDate(agora.getUTCDate() - diasParaSeg);
+  return agora.toISOString().slice(0, 10); // YYYY-MM-DD
+}
+
 export default function Oficina() {
   const navigate = useNavigate();
   const { user }  = useAuth();
@@ -67,13 +83,33 @@ export default function Oficina() {
   const [dragOver,         setDragOver]         = useState(null);
   const [filterServico,    setFilterServico]    = useState('');
   const [filterPrioridade, setFilterPrioridade] = useState('');
+  // IDs de OS recém-entregues nesta sessão — ficam visíveis com fade-out antes de entrar no filtro semanal
+  const [recentEntregues,  setRecentEntregues]  = useState(new Set());
+  // Semana corrente: OS entregues a partir desta data aparecem na coluna
+  const [inicioSemana,     setInicioSemana]     = useState(inicioSemanaAtual);
+  const semanaRef = useRef(inicioSemana);
 
   const today = new Date().toISOString().split('T')[0];
 
+  // Verifica a cada minuto se virou domingo/semana nova
+  useEffect(() => {
+    const id = setInterval(() => {
+      const nova = inicioSemanaAtual();
+      if (nova !== semanaRef.current) {
+        semanaRef.current = nova;
+        setInicioSemana(nova);
+        setRecentEntregues(new Set());
+        toast('Semana nova — coluna Entregue zerada 🗓', { icon: '🔄', duration: 4000 });
+      }
+    }, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Carga normal — 4 status (inclui Entregue para mostrar as da semana)
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const statuses = ['Aguardando', 'Em Produção', 'Pronto'];
+      const statuses = ['Aguardando', 'Em Produção', 'Pronto', 'Entregue'];
       const results  = await Promise.all(
         statuses.map(s => api.get(`/ordens?status=${encodeURIComponent(s)}`))
       );
@@ -117,16 +153,33 @@ export default function Oficina() {
     if (o.status !== s) return false;
     if (filterServico    && o.servico    !== filterServico)    return false;
     if (filterPrioridade && o.prioridade !== filterPrioridade) return false;
+
+    // Coluna Entregue: mostra apenas OS entregues nesta semana (seg → dom)
+    // Exceção: OS recém-entregues nesta sessão ficam visíveis imediatamente
+    if (s === 'Entregue') {
+      if (recentEntregues.has(o.id)) return true;
+      const entregueEm = o.entregueem || o.updatedat || o.criadoem;
+      if (!entregueEm) return false;
+      return entregueEm.slice(0, 10) >= inicioSemana;
+    }
+
     return true;
   });
 
   const mudarStatus = async (id, novoStatus) => {
+    // Marca como recém-entregue antes da chamada para não sumir do board
+    if (novoStatus === 'Entregue') {
+      setRecentEntregues(prev => new Set([...prev, id]));
+    }
     try {
       await api.patch(`/ordens/${id}/status`, { status: novoStatus });
       toast.success(`Status → ${novoStatus}`);
       load();
     } catch (err) {
-      // Exibe a mensagem real do backend (ex: saldo em aberto, transição inválida)
+      // Reverte o marcador se a chamada falhou
+      if (novoStatus === 'Entregue') {
+        setRecentEntregues(prev => { const n = new Set(prev); n.delete(id); return n; });
+      }
       const msg = err.response?.data?.error || 'Erro ao atualizar status';
       toast.error(msg, { duration: 6000 });
     }
@@ -147,6 +200,12 @@ export default function Oficina() {
 
   const tiposServico = [...new Set(ordens.map(o => o.servico).filter(Boolean))];
 
+  // Label da coluna Entregue com indicador da semana
+  const labelEntregue = (() => {
+    const [ano, mes, dia] = inicioSemana.split('-');
+    return `Entregue (desde ${dia}/${mes})`;
+  })();
+
   return (
     <div style={{ height:'calc(100vh - 60px - var(--space-12))', display:'flex', flexDirection:'column', minHeight:0 }}>
 
@@ -155,7 +214,7 @@ export default function Oficina() {
         <div>
           <h1 style={{ fontSize:'var(--text-xl)', fontWeight:800, margin:0 }}>Fila da Oficina</h1>
           <p style={{ margin:0, fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>
-            {ordens.length} ordem{ordens.length !== 1 ? 's' : ''} ativa{ordens.length !== 1 ? 's' : ''}
+            {ordens.filter(o => o.status !== 'Entregue').length} ordem{ordens.filter(o => o.status !== 'Entregue').length !== 1 ? 's' : ''} ativa{ordens.filter(o => o.status !== 'Entregue').length !== 1 ? 's' : ''}
           </p>
         </div>
 
@@ -221,7 +280,10 @@ export default function Oficina() {
         </div>
       ) : view === 'kanban' ? (
         <div style={{ display:'flex', gap:'var(--space-4)', flex:1, overflowX:'auto', overflowY:'auto', minHeight:0, paddingBottom:'var(--space-2)' }}>
-          {COLUNAS.map(col => (
+          {COLUNAS.map(col => {
+            const isEntregue = col.status === 'Entregue';
+            const colLabel   = isEntregue ? labelEntregue : col.label;
+            return (
             <div key={col.status}
               onDragOver={e => { e.preventDefault(); setDragOver(col.status); }}
               onDrop={e => { e.preventDefault(); handleDrop(col.status); }}
@@ -235,7 +297,7 @@ export default function Oficina() {
                 borderRadius:'var(--radius-lg)', border:`1px solid ${col.color}40` }}>
                 <div style={{ display:'flex', alignItems:'center', gap:'var(--space-2)' }}>
                   <div style={{ width:8, height:8, borderRadius:'50%', background:col.color }}/>
-                  <span style={{ fontWeight:700, fontSize:'var(--text-xs)', color:col.color }}>{col.label}</span>
+                  <span style={{ fontWeight:700, fontSize:'var(--text-xs)', color:col.color }}>{colLabel}</span>
                 </div>
                 <span style={{ background:col.color, color:'white', width:22, height:22, borderRadius:'50%',
                   display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:800 }}>
@@ -247,27 +309,45 @@ export default function Oficina() {
                 ? <div style={{ border:'2px dashed var(--color-border)', borderRadius:'var(--radius-lg)',
                     padding:'var(--space-8) var(--space-4)', textAlign:'center',
                     color:'var(--color-text-faint)', fontSize:'var(--text-xs)',
-                    minHeight:80, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                    {canEdit ? 'Arraste uma OS aqui' : 'Nenhuma OS'}
+                    minHeight:80, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'var(--space-1)' }}>
+                    {isEntregue
+                      ? <><span>Nenhuma entrega esta semana</span><span style={{ fontSize:9, opacity:0.7 }}>Zera todo domingo</span></>
+                      : canEdit ? 'Arraste uma OS aqui' : 'Nenhuma OS'}
                   </div>
                 : byStatus(col.status).map(o => {
-                    const vencida    = o.prazoentrega && o.prazoentrega < today && !STATUS_EXCLUIDOS.has(o.status);
+                    const vencida    = o.prazoentrega && o.prazoentrega < today && o.status !== 'Entregue';
                     const ehHoje     = o.prazoentrega === today;
                     const saldo      = (o.valortotal||o.valor||0) - (o.valorentrada||o.entrada||0);
                     const diasCriado = Math.floor((Date.now() - new Date(o.criadoem)) / 86400000);
                     const next       = STATUSNEXT[o.status];
+                    const isRecent   = recentEntregues.has(o.id);
                     return (
                       <div key={o.id}
-                        draggable={canEdit}
+                        draggable={canEdit && o.status !== 'Entregue'}
                         onDragStart={() => handleDragStart(o.id)}
                         onDragEnd={handleDragEnd}
-                        style={{ background:'var(--color-surface)',
-                          border:`1px solid ${vencida?'var(--color-error)':'var(--color-border)'}`,
+                        style={{ background: o.status === 'Entregue' ? 'var(--color-surface-offset)' : 'var(--color-surface)',
+                          border:`1px solid ${
+                            o.status === 'Entregue' ? 'rgba(37,99,235,0.20)'
+                            : vencida ? 'var(--color-error)' : 'var(--color-border)'
+                          }`,
                           borderRadius:'var(--radius-lg)', padding:'var(--space-3)',
-                          cursor: canEdit?'grab':'default',
-                          opacity: draggingId===o.id ? 0.5 : 1,
-                          transition:'all 0.2s ease', boxShadow:'var(--shadow-sm)' }}
+                          cursor: canEdit && o.status !== 'Entregue' ? 'grab' : 'default',
+                          opacity: draggingId===o.id ? 0.5 : o.status === 'Entregue' ? 0.75 : 1,
+                          transition:'all 0.4s ease',
+                          animation: isRecent ? 'slideInEntregue 0.4s ease' : 'none',
+                          boxShadow:'var(--shadow-sm)' }}
                       >
+                        {/* Badge entregue */}
+                        {o.status === 'Entregue' && (
+                          <div style={{ marginBottom:'var(--space-1)' }}>
+                            <span style={{ fontSize:9, fontWeight:700, color:'#2563eb',
+                              background:'rgba(37,99,235,0.10)', borderRadius:'var(--radius-full)', padding:'1px 6px', letterSpacing:'0.03em' }}>
+                              ✓ ENTREGUE
+                            </span>
+                          </div>
+                        )}
+
                         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'var(--space-2)' }}>
                           <div style={{ display:'flex', alignItems:'center', gap:'var(--space-2)' }}>
                             <div style={{ width:28, height:28, borderRadius:'var(--radius-md)',
@@ -284,7 +364,7 @@ export default function Oficina() {
                           </div>
                         </div>
 
-                        {o.prioridade==='Urgente' && (
+                        {o.prioridade==='Urgente' && o.status !== 'Entregue' && (
                           <div style={{ marginBottom:'var(--space-1)' }}>
                             <span style={{ fontSize:10, fontWeight:700, color:'var(--color-error)',
                               background:'rgba(161,44,123,0.10)', borderRadius:'var(--radius-full)', padding:'1px 6px' }}>
@@ -306,7 +386,7 @@ export default function Oficina() {
                           </div>
                         )}
 
-                        {o.prazoentrega && (
+                        {o.prazoentrega && o.status !== 'Entregue' && (
                           <div style={{ display:'flex', alignItems:'center', gap:4, marginBottom:'var(--space-2)', fontSize:10,
                             color: vencida?'var(--color-error)':ehHoje?'#d19900':'var(--color-text-muted)',
                             fontWeight: vencida||ehHoje?700:400 }}>
@@ -317,7 +397,7 @@ export default function Oficina() {
                           </div>
                         )}
 
-                        {saldo > 0 && (
+                        {saldo > 0 && o.status !== 'Entregue' && (
                           <div style={{ fontSize:10, color:'var(--color-text-muted)', marginBottom:'var(--space-2)' }}>
                             Saldo <strong style={{ color:'var(--color-warning)' }}>{fmt(saldo)}</strong>
                           </div>
@@ -326,7 +406,7 @@ export default function Oficina() {
                         <div style={{ display:'flex', gap:'var(--space-1)', marginTop:'var(--space-2)', borderTop:'1px solid var(--color-divider)', paddingTop:'var(--space-2)' }}>
                           <button className="btn btn-ghost btn-xs" style={{ flex:1, justifyContent:'center', fontSize:10 }}
                             onClick={() => navigate(`/ordens/${o.id}`)}>Detalhes</button>
-                          {canEdit && next && (
+                          {canEdit && next && o.status !== 'Entregue' && (
                             <button className="btn btn-primary btn-xs" style={{ flex:1, justifyContent:'center', fontSize:10 }}
                               onClick={() => mudarStatus(o.id, next)}>
                               {next==='Em Produção'?'Produzir':next==='Pronto'?'Concluir':'Entregar'}
@@ -338,7 +418,8 @@ export default function Oficina() {
                   })
               }
             </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <div className="card" style={{ overflow:'hidden', flex:1 }}>
@@ -350,10 +431,16 @@ export default function Oficina() {
               <tbody>
                 {ordens.length===0
                   ? <tr><td colSpan={7} style={{ textAlign:'center', padding:'var(--space-8)', color:'var(--color-text-muted)' }}>Nenhuma ordem na fila</td></tr>
-                  : ordens.map(o => {
-                    const vencida = o.prazoentrega && o.prazoentrega < today;
+                  : ordens.filter(o => {
+                      if (o.status !== 'Entregue') return true;
+                      const entregueEm = o.entregueem || o.updatedat || o.criadoem;
+                      return entregueEm && entregueEm.slice(0,10) >= inicioSemana;
+                    }).map(o => {
+                    const vencida = o.prazoentrega && o.prazoentrega < today && o.status !== 'Entregue';
                     return (
-                      <tr key={o.id} style={{ cursor:'pointer' }} onClick={() => navigate(`/ordens/${o.id}`)}>
+                      <tr key={o.id} style={{ cursor:'pointer', opacity: o.status==='Entregue' ? 0.7 : 1 }}
+                        onClick={() => navigate(`/ordens/${o.id}`)}
+                      >
                         <td style={{ fontWeight:700, color:'var(--color-primary)', fontSize:'var(--text-xs)' }}>{o.numero}</td>
                         <td style={{ fontWeight:600 }}>{o.clientenome}</td>
                         <td><span className={`badge badge-${TIPOBADGE[o.servico]||'diversos'}`} style={{ fontSize:10 }}>{o.servico}</span></td>
@@ -362,7 +449,10 @@ export default function Oficina() {
                           {o.prazoentrega?fmtD(o.prazoentrega):'—'}
                         </td>
                         <td>
-                          <span className={`badge badge-${o.status==='Em Produção'?'warning':o.status==='Pronto'?'success':'primary'}`} style={{ fontSize:10 }}>
+                          <span className={`badge badge-${
+                            o.status==='Em Produção'?'warning':o.status==='Pronto'?'success':
+                            o.status==='Entregue'?'primary':'secondary'
+                          }`} style={{ fontSize:10 }}>
                             {o.status}
                           </span>
                         </td>
@@ -378,6 +468,14 @@ export default function Oficina() {
           </div>
         </div>
       )}
+
+      {/* Keyframe para entry animation do card entregue */}
+      <style>{`
+        @keyframes slideInEntregue {
+          from { opacity: 0; transform: translateY(-8px) scale(0.97); }
+          to   { opacity: 0.75; transform: translateY(0) scale(1); }
+        }
+      `}</style>
     </div>
   );
 }
