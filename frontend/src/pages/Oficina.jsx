@@ -312,7 +312,8 @@ export default function Oficina() {
                 : byStatus(col.status).map(o => {
                     const vencida    = o.prazoentrega && o.prazoentrega < today && o.status !== 'Entregue';
                     const ehHoje     = o.prazoentrega === today;
-                    const saldo      = (o.valortotal||o.valor||0) - (o.valorentrada||o.entrada||0);
+                    // FIX: usa saldoaberto calculado pelo banco (inclui todos os lançamentos do Caixa)
+                    const saldo      = Number(o.saldoaberto ?? 0);
                     const diasCriado = Math.floor((Date.now() - new Date(o.criadoem)) / 86400000);
                     const next       = STATUSNEXT[o.status];
                     const isRecent   = recentEntregues.has(o.id);
@@ -391,8 +392,8 @@ export default function Oficina() {
                           </div>
                         )}
 
-                        {/* Saldo: para OS não-entregues mostra saldo financeiro; para entregues mostra valor total */}
-                        {o.status !== 'Entregue' && saldo > 0 && (
+                        {/* Saldo: usa saldoaberto da API (calculado pelo banco, inclui lançamentos do Caixa) */}
+                        {o.status !== 'Entregue' && saldo > 0.009 && (
                           <div style={{ fontSize:10, color:'var(--color-text-muted)', marginBottom:'var(--space-2)' }}>
                             Saldo <strong style={{ color:'var(--color-warning)' }}>{fmt(saldo)}</strong>
                           </div>
