@@ -17,16 +17,20 @@ api.interceptors.response.use(
   (err) => {
     const status  = err.response?.status;
     const message = err.response?.data?.error || err.response?.data?.message;
+    const url     = err.config?.url || "";
 
-    // 401 — sessao expirada, redireciona para login
+    // 401 — sessão expirada
+    // Ignora a rota de handshake (/auth/me) — o AuthContext trata setUser(null)
+    // e o AppRoutes redireciona via React Router sem reload duro.
     if (status === 401) {
-      if (!window.location.pathname.includes("/login")) {
+      const isHandshake = url.includes("/auth/me") || url.includes("/auth/login");
+      if (!isHandshake && !window.location.pathname.includes("/login")) {
         window.location.href = "/login";
       }
       return Promise.reject(err);
     }
 
-    // 403 — sem permissao
+    // 403 — sem permissão
     if (status === 403) {
       toast.error(
         message || "Você não tem permissão para executar esta ação.",
@@ -36,11 +40,16 @@ api.interceptors.response.use(
     }
 
     // 5xx — erro no servidor
+    // Suprime o toast genérico em chamadas de inicialização (auth/me, clientes seed)
+    // para evitar toasts falsos no carregamento inicial com sessão expirada.
     if (status >= 500) {
-      toast.error(
-        message || "Erro interno do servidor. Tente novamente em instantes.",
-        { id: TOAST_5XX, duration: 5000 }
-      );
+      const isSilent = url.includes("/auth/me");
+      if (!isSilent) {
+        toast.error(
+          message || "Erro interno do servidor. Tente novamente em instantes.",
+          { id: TOAST_5XX, duration: 5000 }
+        );
+      }
       return Promise.reject(err);
     }
 
