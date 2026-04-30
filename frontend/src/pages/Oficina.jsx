@@ -307,7 +307,8 @@ export default function Oficina() {
                       : canEdit ? 'Arraste uma OS aqui' : 'Nenhuma OS'}
                   </div>
                 : byStatus(col.status).map(o => {
-                    const vencida    = o.prazoentrega && o.prazoentrega < today && o.status !== 'Entregue';
+                    // vencida = prazo no passado, excluindo Pronto e Entregue (já concluídas)
+                    const vencida    = o.prazoentrega && o.prazoentrega < today && o.status !== 'Pronto' && o.status !== 'Entregue';
                     const ehHoje     = o.prazoentrega === today;
                     const saldo      = Number(o.saldoaberto ?? 0);
                     const quitado    = saldo <= 0.009;
@@ -437,7 +438,8 @@ export default function Oficina() {
                       const entregueEm = o.entregueem || o.updatedat || o.criadoem;
                       return entregueEm && entregueEm.slice(0,10) >= inicioSemana;
                     }).map(o => {
-                    const vencida = o.prazoentrega && o.prazoentrega < today && o.status !== 'Entregue';
+                    // vencida = prazo no passado, excluindo Pronto e Entregue
+                    const vencida = o.prazoentrega && o.prazoentrega < today && o.status !== 'Pronto' && o.status !== 'Entregue';
                     return (
                       <tr key={o.id} style={{ cursor:'pointer', opacity: o.status==='Entregue' ? 0.7 : 1 }}
                         onClick={() => navigate(`/ordens/${o.id}`)}
