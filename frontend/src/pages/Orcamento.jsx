@@ -81,23 +81,46 @@ function PrecoField({ label, value, onChange }) {
   )
 }
 
+// ── Base de cálculo alinhada com a planilha ──────────────────────────────────
+// B9  VALOR MOLDURA  = IF(OR(L>=1m; A>=1m); ((L+A)*2 + 1.5)*preço; ((L+A)*2 + 1)*preço)
+// B10 VALOR VIDRO    = IF(AND(sem; L<1; A<1); 0.5*preço;
+//                       IF(sem; 0; IF(liso; área*300; área*400)))
+// B11 VALOR FUNDO    = área * 80
+// B12 VALOR IMPRESSÃO= IF(impressão; área*150; 0)
 function calcQuadros({ L, A, precoMoldura, vidro, impressao }) {
   if (!L || !A) return null
   const l = parseFloat(L), a = parseFloat(A)
   if (!l || !a) return null
-  const metrosTotal  = ((l + a) * 2 / 100) * 1.15
+
+  const lm     = l / 100        // largura em metros
+  const am     = a / 100        // altura em metros
+  const areaM2 = lm * am
+
+  // VALOR MOLDURA — perímetro + margem de corte (1m peças pequenas, 1.5m peças grandes)
+  const waste        = (lm >= 1 || am >= 1) ? 1.5 : 1
+  const metrosTotal  = (lm + am) * 2 + waste
   const custoMoldura = metrosTotal * precoMoldura
-  const areaM2       = (l / 100) * (a / 100)
+
+  // VALOR VIDRO
   let custoVidro = 0
-  const VIDRO_PRECO_M2 = 55, MIN_VIDRO_M2 = 0.25
-  if (vidro !== 'sem') {
-    const areaEfetiva = Math.max(areaM2, MIN_VIDRO_M2)
-    custoVidro = areaEfetiva * VIDRO_PRECO_M2 * (vidro === 'minimo' ? 0.5 : 1)
+  if (vidro === 'sem') {
+    // mínimo cobrado para peças pequenas (ambos os lados < 1m)
+    if (lm < 1 && am < 1) custoVidro = 0.5 * precoMoldura
+  } else if (vidro === 'minimo') {   // Liso
+    custoVidro = areaM2 * 300
+  } else {                           // Antirreflexo
+    custoVidro = areaM2 * 400
   }
-  let custoImpressao = 0
-  if (impressao) custoImpressao = areaM2 * 150
-  const custoTotal = custoMoldura + custoVidro + custoImpressao
-  return { metrosTotal, custoMoldura, areaM2, custoVidro, custoImpressao, custoTotal }
+
+  // VALOR FUNDO
+  const custoFundo = areaM2 * 80
+
+  // VALOR IMPRESSÃO
+  const custoImpressao = impressao ? areaM2 * 150 : 0
+
+  const custoTotal = custoMoldura + custoVidro + custoFundo + custoImpressao
+
+  return { metrosTotal, custoMoldura, areaM2, custoVidro, custoFundo, custoImpressao, custoTotal }
 }
 
 /* ══ MODULE 1 — Quadros ══ */
@@ -119,6 +142,12 @@ function ModuloQuadros({ onAdd, precos, setPrecos }) {
     { value: 'minimo', label: 'Liso' },
     { value: 'completo', label: 'Antirreflexo' },
   ]
+
+  // label descritivo do vidro para a linha do breakdown
+  const vidroLabel = () => {
+    if (vidro === 'sem') return calc && calc.custoVidro > 0 ? 'Vidro (mínimo peça pequena)' : null
+    return vidro === 'minimo' ? 'Vidro liso (área × R$300/m²)' : 'Vidro antirreflexo (área × R$400/m²)'
+  }
 
   return (
     <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -185,9 +214,10 @@ function ModuloQuadros({ onAdd, precos, setPrecos }) {
 
         <div style={{ background: 'var(--color-surface-offset)', border: '1px solid var(--color-divider)', borderRadius: 'var(--radius-lg)', padding: '12px 14px', marginBottom: 12 }}>
           <Row label={`Área (${L||0}×${A||0} cm)`} value={calc ? fmtN(calc.areaM2, 4) + ' m²' : '—'} faint />
-          <Row label={hasData ? `${fmtN(calc.metrosTotal,3)}m × R$${precos.moldura}/m` : 'Moldura'} value={calc ? fmt(calc.custoMoldura) : '—'} faint />
-          {vidro !== 'sem' && <Row label="Vidro"     value={calc ? fmt(calc.custoVidro)     : '—'} faint />}
-          {impressao        && <Row label="Impressão" value={calc ? fmt(calc.custoImpressao) : '—'} faint />}
+          <Row label={calc ? `Moldura: ${fmtN(calc.metrosTotal,3)}m × R$${precos.moldura}/m` : 'Moldura'} value={calc ? fmt(calc.custoMoldura) : '—'} faint />
+          <Row label="Fundo (área × R$80/m²)" value={calc ? fmt(calc.custoFundo) : '—'} faint />
+          {calc && calc.custoVidro > 0 && vidroLabel() && <Row label={vidroLabel()} value={fmt(calc.custoVidro)} faint />}
+          {impressao && <Row label="Impressão (área × R$150/m²)" value={calc ? fmt(calc.custoImpressao) : '—'} faint />}
           <Divider />
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
             <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)' }}>Subtotal {q > 1 ? `× ${q}` : ''}</span>
@@ -198,9 +228,9 @@ function ModuloQuadros({ onAdd, precos, setPrecos }) {
         <button
           onClick={() => {
             if (!hasData || !calc) return
-            const vidroLabel = { sem: '', minimo: ' + Vidro liso', completo: ' + Vidro antirreflexo' }[vidro]
+            const vidroLbl = { sem: '', minimo: ' + Vidro liso', completo: ' + Vidro antirreflexo' }[vidro]
             const impLabel = impressao ? ' + Impressão' : ''
-            onAdd({ type: 'quadros', emoji: '🖼', name: desc || `Quadro ${L}×${A}cm`, sub: `${L}×${A}cm${vidroLabel}${impLabel} · ×${q}`, price: parseFloat(subtotal.toFixed(2)) })
+            onAdd({ type: 'quadros', emoji: '🖼', name: desc || `Quadro ${L}×${A}cm`, sub: `${L}×${A}cm${vidroLbl}${impLabel} · ×${q}`, price: parseFloat(subtotal.toFixed(2)) })
           }}
           disabled={!hasData || !calc}
           className="btn btn-primary"
