@@ -17,6 +17,10 @@ function getToday() {
   return new Date().toISOString().split('T')[0];
 }
 
+function getMesAtual() {
+  return new Date().toISOString().slice(0, 7); // 'YYYY-MM'
+}
+
 function shiftDay(dateStr, delta) {
   const d = new Date(dateStr + 'T12:00:00');
   d.setDate(d.getDate() + delta);
@@ -66,6 +70,7 @@ export default function Caixa() {
   const canEdit  = user?.role !== 'viewer';
 
   const today = getToday();
+  const mesAtual = getMesAtual();
   const blankForm = { tipo:'Entrada', categoria:'Pagamento OS', pagamento:'Pix', descricao:'', valor:'', data:today, ordem_id:'' };
 
   const [lancamentos,   setLancamentos]   = useState([]);
@@ -161,7 +166,6 @@ export default function Caixa() {
         await api.post('/caixa', payload);
         toast.success('Lançamento registrado');
       }
-      // Notifica a Oficina (e qualquer outro listener) que o saldo de uma OS pode ter mudado
       emit('lancamento:salvo', { ordemid: form.ordem_id || null });
       closeForm(); load();
     } catch(e) { toast.error(e?.response?.data?.error || 'Erro ao salvar'); }
@@ -211,9 +215,17 @@ export default function Caixa() {
   const diaSaida   = filtered.filter(l => l.tipo==='Saída').reduce((s,l)   => s+Number(l.valor||0), 0);
   const diaSaldo   = diaEntrada - diaSaida;
 
-  const totalEntrada = lancamentos.filter(l => l.tipo==='Entrada').reduce((s,l) => s+Number(l.valor||0), 0);
-  const totalSaida   = lancamentos.filter(l => l.tipo==='Saída').reduce((s,l)   => s+Number(l.valor||0), 0);
-  const saldoFinal   = totalEntrada - totalSaida;
+  // Saldo mensal: apenas lançamentos do mês atual (YYYY-MM)
+  const lancamentosMes = useMemo(() =>
+    lancamentos.filter(l => l.data?.slice(0,7) === mesAtual),
+    [lancamentos, mesAtual]
+  );
+  const mesEntrada = lancamentosMes.filter(l => l.tipo==='Entrada').reduce((s,l) => s+Number(l.valor||0), 0);
+  const mesSaida   = lancamentosMes.filter(l => l.tipo==='Saída').reduce((s,l)   => s+Number(l.valor||0), 0);
+  const saldoMes   = mesEntrada - mesSaida;
+
+  // Label do mês atual em português
+  const labelMes = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 
   const isToday = date === today;
 
@@ -286,14 +298,15 @@ export default function Caixa() {
         ))}
       </div>
 
-      {/* Busca */}
+      {/* Busca + Saldo mensal */}
       <div style={{ display:'flex', gap:'var(--space-2)', marginBottom:'var(--space-3)', flexShrink:0 }}>
         <div style={{ position:'relative', flex:1 }}>
           <svg style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:'var(--color-text-faint)' }} width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
           <input className="form-input" style={{ paddingLeft:34 }} placeholder="Buscar por descrição, categoria, OS…" value={search} onChange={e => setSearch(e.target.value)} />
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:'var(--space-2)', padding:'0 var(--space-3)', background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)', fontSize:'var(--text-xs)', color:'var(--color-text-muted)', whiteSpace:'nowrap', flexShrink:0 }}>
-          Saldo total: <strong style={{ fontFamily:'monospace', color: saldoFinal>=0 ? 'var(--color-success)' : 'var(--color-error)', marginLeft:'var(--space-1)' }}>{fmt(saldoFinal)}</strong>
+          <span style={{ textTransform:'capitalize' }}>{labelMes}:</span>
+          <strong style={{ fontFamily:'monospace', color: saldoMes>=0 ? 'var(--color-success)' : 'var(--color-error)', marginLeft:'var(--space-1)' }}>{fmt(saldoMes)}</strong>
         </div>
       </div>
 
