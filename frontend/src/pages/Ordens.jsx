@@ -9,6 +9,8 @@ const TIPO_OPTS = ['Quadro','Caixas','Corte a Laser','Diversos'];
 const STATUS_OPTS = ['Aguardando','Em Produção','Pronto','Entregue','Cancelado'];
 const PRIORIDADE_OPTS = ['Normal','Urgente'];
 
+const toDateInputValue = () => new Date().toISOString().slice(0, 10);
+
 const saldoAberto = (o) =>
   Number(o?.saldoaberto ?? o?.valorrestante ?? (Number(o?.valor||o?.valortotal||0) - Number(o?.entrada||o?.valorentrada||0))) || 0;
 
@@ -274,7 +276,7 @@ export default function Ordens() {
   const blankForm = {
     cliente_id:'', clientenome:'', servico:TIPO_OPTS[0], valortotal:"", valorentrada:"",
     observacoes:'', prazoentrega:'', prioridade:'Normal',
-    status:'Aguardando', produtos:[]
+    status:'Aguardando', produtos:[], dataEntrada: toDateInputValue(),
   };
 
   const [ordens,        setOrdens]       = useState([]);
@@ -343,6 +345,7 @@ export default function Ordens() {
       valortotal:   String(o.valortotal  ?? o.valor   ?? ""),
       valorentrada: String(o.valorentrada ?? o.entrada ?? ""),
       produtos:     o.produtos || [],
+      dataEntrada:  toDateInputValue(), // edição não altera data histórica
     });
     setShowForm(true);
   };
@@ -395,6 +398,7 @@ export default function Ordens() {
         valortotal:   total,
         valorentrada: entrada,
         produtos:     form.produtos,
+        dataEntrada:  form.dataEntrada || toDateInputValue(),
       };
       if (editData) {
         await api.put(`/ordens/${editData.id}`, payload);
@@ -480,6 +484,8 @@ export default function Ordens() {
   const totalAberto   = ordens.filter(o => !['Entregue','Cancelado'].includes(o.status)).length;
   const totalReceitas = ordens.reduce((s,o) => s + Number(o.valortotal||o.valor||0), 0);
   const totalSaldo    = ordens.reduce((s,o) => s + saldoAberto(o), 0);
+
+  const isRetroativo = !editData && form.dataEntrada && form.dataEntrada !== toDateInputValue();
 
   return (
     <div style={{ height:'calc(100vh - 60px - var(--space-12))', display:'flex', flexDirection:'column', minHeight:0 }}>
@@ -635,6 +641,34 @@ export default function Ordens() {
             </div>
             <div className="modal-body">
               <div className="form-grid">
+
+                {/* Data de lançamento — só exibe ao criar nova OS */}
+                {!editData && (
+                  <div className="form-group" style={{ gridColumn:'1/-1' }}>
+                    <label className="form-label" style={{ display:'flex', alignItems:'center', gap:'var(--space-2)' }}>
+                      Data de lançamento
+                      {isRetroativo && (
+                        <span style={{ fontSize:'var(--text-xs)', color:'var(--color-warning)', fontWeight:600,
+                          background:'var(--color-warning-highlight)', borderRadius:'var(--radius-full)',
+                          padding:'1px 8px' }}>
+                          ⚠ lançamento retroativo
+                        </span>
+                      )}
+                    </label>
+                    <input
+                      className="form-input"
+                      type="date"
+                      value={form.dataEntrada}
+                      max={toDateInputValue()}
+                      onChange={e => set('dataEntrada', e.target.value)}
+                      style={{ fontFamily:'monospace' }}
+                    />
+                    <span style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginTop:'var(--space-1)', display:'block' }}>
+                      Padrão: hoje. Altere para lançar OS de datas anteriores.
+                    </span>
+                  </div>
+                )}
+
                 <div className="form-group" style={{ gridColumn:'1/-1', position:'relative' }} ref={clienteRef}>
                   <label className="form-label">Cliente <span style={{color:"var(--color-error)"}}>*</span></label>
                   <input

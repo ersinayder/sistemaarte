@@ -75,6 +75,12 @@ function maybeNotifyPronto(ordemId, statusAnterior, statusNovo) {
   sendWhatsApp(os).catch(err => console.error('[WhatsApp] erro inesperado:', err.message));
 }
 
+// valida formato YYYY-MM-DD simples
+function isValidDate(d) {
+  if (!d || typeof d !== 'string') return false;
+  return /^\d{4}-\d{2}-\d{2}$/.test(d);
+}
+
 // GET /api/ordens
 router.get("/", auth(), (req, res, next) => {
   try {
@@ -126,7 +132,7 @@ router.post("/", auth(["admin","caixa"]), (req, res, next) => {
   const {
     clienteid, clientenome, clientetelefone, clientecpf,
     servico, descricao, valortotal, valorentrada,
-    prazoentrega, prioridade, pagamento, observacoes
+    prazoentrega, prioridade, pagamento, observacoes, dataEntrada
   } = req.body ?? {};
 
   if (!clientenome || !servico || valortotal == null)
@@ -140,6 +146,11 @@ router.post("/", auth(["admin","caixa"]), (req, res, next) => {
 
   const erroPrazo = validarPrazo(prazoentrega);
   if (erroPrazo) return res.status(400).json({ error: erroPrazo });
+
+  // Data de lançamento: usa a fornecida (retroativo) ou hoje
+  const dataLanc = (dataEntrada && isValidDate(dataEntrada)) ? dataEntrada : hoje();
+  // createdat da OS: datetime no formato SQLite a partir da data de lançamento
+  const createdatOS = `${dataLanc} 00:00:00`;
 
   let cidResolvido = clienteid || null;
   if (!cidResolvido && clientenome) {
@@ -156,9 +167,9 @@ router.post("/", auth(["admin","caixa"]), (req, res, next) => {
       const numero = nextNumero();
       const id = runInsert(
         `INSERT INTO ordens (numero,clienteid,clientenome,clientetelefone,clientecpf,servico,descricao,
-        valortotal,valorentrada,prazoentrega,prioridade,pagamento,observacoes,status,criadopor) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        valortotal,valorentrada,prazoentrega,prioridade,pagamento,observacoes,status,criadopor,createdat) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [numero, cidResolvido, clientenome, telFinal, cpfFinal, servico, descricao||null, total, entrada,
-         prazoentrega||null, prioridade||"Normal", pagamento||"Pix", observacoes||null, "Aguardando", req.user.id]
+         prazoentrega||null, prioridade||"Normal", pagamento||"Pix", observacoes||null, "Aguardando", req.user.id, createdatOS]
       );
 
       runInsert(
@@ -171,7 +182,7 @@ router.post("/", auth(["admin","caixa"]), (req, res, next) => {
         const desc = descricaoEntradaOS(numero, clientenome, servico, total, entrada);
         runInsert(
           `INSERT INTO lancamentos (data,tipo,descricao,pagamento,valor,pago,ordemid,criadopor,origem) VALUES (?,?,?,?,?,?,?,?,?)`,
-          [hoje(), servico||"Diversos", desc, pagamento||"Pix", entrada, 1, id, req.user.id, "entradaos"]
+          [dataLanc, servico||"Diversos", desc, pagamento||"Pix", entrada, 1, id, req.user.id, "entradaos"]
         );
       }
 
@@ -200,7 +211,6 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
       clientenome, clientetelefone, clientecpf, servico, clienteid
     } = req.body ?? {};
 
-    // Normaliza e valida status
     const statusRaw = req.body?.status;
     const status = statusRaw ? normalizarStatus(statusRaw) : null;
 
@@ -277,15 +287,12 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
 
       if (entradaOS) {
         if (entrada > 0) {
-          // Atualiza lançamento existente
           run("UPDATE lancamentos SET tipo=?,descricao=?,pagamento=?,valor=?,pago=1 WHERE id=?",
             [novoServico||"Diversos", entradaDesc, novoPagamento, entrada, entradaOS.id]);
         } else {
-          // Entrada zerou: soft-delete do lançamento
           run("UPDATE lancamentos SET deletedat=datetime('now','localtime') WHERE id=?", [entradaOS.id]);
         }
       } else if (entrada > 0) {
-        // Não havia lançamento e agora tem entrada: criar
         runInsert(
           `INSERT INTO lancamentos (data,tipo,descricao,pagamento,valor,pago,ordemid,criadopor,origem) VALUES (?,?,?,?,?,?,?,?,?)`,
           [hoje(), novoServico||"Diversos", entradaDesc, novoPagamento, entrada, 1, req.params.id, req.user.id, "entradaos"]
