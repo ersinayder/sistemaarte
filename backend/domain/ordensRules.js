@@ -1,4 +1,4 @@
-const STATUSES_VALIDOS = ['Aguardando', 'Em Produção', 'Pronto', 'Entregue', 'Cancelado', 'Cancelada'];
+const STATUSES_VALIDOS = ['Aguardando', 'Em Produção', 'Pronto', 'Entregue', 'Cancelado'];
 
 const TRANSICOES_VALIDAS = {
   'Aguardando':  ['Em Produção', 'Cancelado'],
@@ -6,12 +6,20 @@ const TRANSICOES_VALIDAS = {
   'Pronto':      ['Entregue', 'Em Produção', 'Cancelado'],
   'Entregue':    [],
   'Cancelado':   [],
-  'Cancelada':   [], // alias legado
 };
 
+/**
+ * Normaliza alias legado antes de validar.
+ * Deve ser chamado no body ANTES de validarStatus().
+ */
+function normalizarStatus(status) {
+  if (status === 'Cancelada') return 'Cancelado';
+  return status;
+}
+
 function validarEntradaOS(total, entrada) {
-  const t = Number(total);
-  const e = Number(entrada ?? 0);
+  const t = Math.round(Number(total) * 100) / 100;
+  const e = Math.round(Number(entrada ?? 0) * 100) / 100;
   if (!Number.isFinite(t) || t <= 0)
     return 'Valor total deve ser maior que zero.';
   if (!Number.isFinite(e) || e < 0)
@@ -50,4 +58,4 @@ function descricaoRestanteOS(numero, cliente, servico) {
   return `Restante ${numero} – ${cliente}${servico ? ' / ' + servico : ''}`;
 }
 
-module.exports = { validarEntradaOS, validarStatus, validarPrazo, descricaoEntradaOS, descricaoRestanteOS, STATUSES_VALIDOS, TRANSICOES_VALIDAS };
+module.exports = { validarEntradaOS, validarStatus, validarPrazo, normalizarStatus, descricaoEntradaOS, descricaoRestanteOS, STATUSES_VALIDOS, TRANSICOES_VALIDAS };

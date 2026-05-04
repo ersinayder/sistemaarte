@@ -1,7 +1,11 @@
-
-/** Retorna a data de hoje no fuso de Brasília (UTC-3) como YYYY-MM-DD */
+/** Retorna a data de hoje no fuso de Brasília (America/Sao_Paulo) como YYYY-MM-DD */
 function hoje() {
-  return new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  return new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date()).split('/').reverse().join('-');
 }
 
 module.exports = { hoje };

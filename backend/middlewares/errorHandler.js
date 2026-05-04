@@ -8,7 +8,6 @@
 
 const IS_DEV = process.env.NODE_ENV !== 'production';
 
-// Mapeia padroes de erro do SQLite para mensagens seguras
 function sanitizarErroSQLite(msg) {
   if (!msg) return null;
 
@@ -20,8 +19,8 @@ function sanitizarErroSQLite(msg) {
   }
 
   if (/NOT NULL constraint failed/i.test(msg)) {
-    const campo = msg.split('.')[1] || 'campo obrigatorio';
-    return `Campo obrigatorio ausente: ${campo}.`;
+    // Nao expoe nome de coluna/tabela ao cliente
+    return 'Campo obrigatorio ausente. Verifique os dados e tente novamente.';
   }
 
   if (/FOREIGN KEY constraint failed/i.test(msg))
@@ -36,26 +35,23 @@ function sanitizarErroSQLite(msg) {
   if (/no such table|no such column/i.test(msg))
     return 'Erro interno de configuracao. Contate o suporte.';
 
-  // Outros erros do SQLite — log interno, mensagem generica ao cliente
   if (/SqliteError|SQLITE_/i.test(msg))
     return 'Erro interno ao processar a operacao.';
 
-  return null; // nao e erro SQLite conhecido
+  return null;
 }
 
 function errorHandler(err, req, res, next) { // eslint-disable-line no-unused-vars
   const status  = err.status || err.statusCode || 500;
   const raw     = err.message || '';
 
-  // Loga sempre no servidor com contexto
   console.error(`[${new Date().toISOString()}] ${req.method} ${req.path} — ${status} — ${raw}`);
   if (IS_DEV && err.stack) console.error(err.stack);
 
   const sanitizado = sanitizarErroSQLite(raw);
 
-  // Em producao: nunca expoe mensagem crua de erro interno
   const mensagem = sanitizado
-    || (status < 500 ? raw : null)  // erros 4xx podem ter msg do proprio codigo
+    || (status < 500 ? raw : null)
     || 'Erro interno do servidor.';
 
   res.status(status).json({ error: mensagem });
