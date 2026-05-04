@@ -18,7 +18,7 @@ function getToday() {
 }
 
 function getMesAtual() {
-  return new Date().toISOString().slice(0, 7); // 'YYYY-MM'
+  return new Date().toISOString().slice(0, 7);
 }
 
 function shiftDay(dateStr, delta) {
@@ -215,7 +215,7 @@ export default function Caixa() {
   const diaSaida   = filtered.filter(l => l.tipo==='Saída').reduce((s,l)   => s+Number(l.valor||0), 0);
   const diaSaldo   = diaEntrada - diaSaida;
 
-  // Saldo mensal: apenas lançamentos do mês atual (YYYY-MM)
+  // Lançamentos do mês atual
   const lancamentosMes = useMemo(() =>
     lancamentos.filter(l => l.data?.slice(0,7) === mesAtual),
     [lancamentos, mesAtual]
@@ -224,7 +224,25 @@ export default function Caixa() {
   const mesSaida   = lancamentosMes.filter(l => l.tipo==='Saída').reduce((s,l)   => s+Number(l.valor||0), 0);
   const saldoMes   = mesEntrada - mesSaida;
 
-  // Label do mês atual em português
+  // Categorias dinâmicas do mês (agrupa o que realmente existe nos lançamentos)
+  const categMesEntrada = useMemo(() => {
+    const map = {};
+    lancamentosMes.filter(l => l.tipo==='Entrada').forEach(l => {
+      const c = l.categoria || 'Outros';
+      map[c] = (map[c] || 0) + Number(l.valor || 0);
+    });
+    return Object.entries(map).sort((a,b) => b[1]-a[1]);
+  }, [lancamentosMes]);
+
+  const categMesSaida = useMemo(() => {
+    const map = {};
+    lancamentosMes.filter(l => l.tipo==='Saída').forEach(l => {
+      const c = l.categoria || 'Outros';
+      map[c] = (map[c] || 0) + Number(l.valor || 0);
+    });
+    return Object.entries(map).sort((a,b) => b[1]-a[1]);
+  }, [lancamentosMes]);
+
   const labelMes = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 
   const isToday = date === today;
@@ -381,33 +399,34 @@ export default function Caixa() {
         )}
       </div>
 
-      {!loading && lancamentos.length > 0 && (
+      {/* Por Categoria — mês atual, categorias dinâmicas */}
+      {!loading && lancamentosMes.length > 0 && (
         <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:'var(--space-3)', marginTop:'var(--space-3)', flexShrink:0 }}>
           <div className="card" style={{ padding:'var(--space-3) var(--space-4)' }}>
-            <h3 style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:'var(--space-2)', fontWeight:500 }}>Por Categoria — Entradas</h3>
-            {CATEG_OPT['Entrada'].map(cat => {
-              const tot = filtered.filter(l => l.tipo==='Entrada' && l.categoria===cat).reduce((s,l)=>s+Number(l.valor||0),0);
-              if (!tot) return null;
-              return (
-                <div key={cat} style={{ display:'flex', justifyContent:'space-between', fontSize:'var(--text-xs)', marginBottom:'var(--space-1)' }}>
-                  <span style={{ color:'var(--color-text-muted)' }}>{cat}</span>
-                  <strong style={{ fontFamily:'monospace', color:'var(--color-success)' }}>{fmt(tot)}</strong>
-                </div>
-              );
-            })}
+            <h3 style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:'var(--space-2)', fontWeight:500 }}>
+              Por Categoria — Entradas ({new Date().toLocaleDateString('pt-BR',{month:'short', year:'numeric'})})
+            </h3>
+            {categMesEntrada.length === 0 ? (
+              <span style={{ fontSize:'var(--text-xs)', color:'var(--color-text-faint)' }}>Sem entradas no mês</span>
+            ) : categMesEntrada.map(([cat, tot]) => (
+              <div key={cat} style={{ display:'flex', justifyContent:'space-between', fontSize:'var(--text-xs)', marginBottom:'var(--space-1)' }}>
+                <span style={{ color:'var(--color-text-muted)' }}>{cat}</span>
+                <strong style={{ fontFamily:'monospace', color:'var(--color-success)' }}>{fmt(tot)}</strong>
+              </div>
+            ))}
           </div>
           <div className="card" style={{ padding:'var(--space-3) var(--space-4)' }}>
-            <h3 style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:'var(--space-2)', fontWeight:500 }}>Por Categoria — Saídas</h3>
-            {CATEG_OPT['Saída'].map(cat => {
-              const tot = filtered.filter(l => l.tipo==='Saída' && l.categoria===cat).reduce((s,l)=>s+Number(l.valor||0),0);
-              if (!tot) return null;
-              return (
-                <div key={cat} style={{ display:'flex', justifyContent:'space-between', fontSize:'var(--text-xs)', marginBottom:'var(--space-1)' }}>
-                  <span style={{ color:'var(--color-text-muted)' }}>{cat}</span>
-                  <strong style={{ fontFamily:'monospace', color:'var(--color-error)' }}>{fmt(tot)}</strong>
-                </div>
-              );
-            })}
+            <h3 style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:'var(--space-2)', fontWeight:500 }}>
+              Por Categoria — Saídas ({new Date().toLocaleDateString('pt-BR',{month:'short', year:'numeric'})})
+            </h3>
+            {categMesSaida.length === 0 ? (
+              <span style={{ fontSize:'var(--text-xs)', color:'var(--color-text-faint)' }}>Sem saídas no mês</span>
+            ) : categMesSaida.map(([cat, tot]) => (
+              <div key={cat} style={{ display:'flex', justifyContent:'space-between', fontSize:'var(--text-xs)', marginBottom:'var(--space-1)' }}>
+                <span style={{ color:'var(--color-text-muted)' }}>{cat}</span>
+                <strong style={{ fontFamily:'monospace', color:'var(--color-error)' }}>{fmt(tot)}</strong>
+              </div>
+            ))}
           </div>
         </div>
       )}
