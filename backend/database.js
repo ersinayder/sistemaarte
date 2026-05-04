@@ -59,7 +59,8 @@ CREATE TABLE IF NOT EXISTS ordens (
 CREATE TABLE IF NOT EXISTS lancamentos (
   id        INTEGER PRIMARY KEY AUTOINCREMENT,
   data      TEXT NOT NULL,
-  tipo      TEXT NOT NULL DEFAULT 'Diversos',
+  tipo      TEXT NOT NULL DEFAULT 'Entrada',
+  categoria TEXT DEFAULT NULL,
   descricao TEXT NOT NULL,
   pagamento TEXT NOT NULL,
   valor     REAL NOT NULL,
@@ -136,6 +137,8 @@ function initDB() {
     "ALTER TABLE lancamentos ADD COLUMN deletedpor INTEGER DEFAULT NULL",
     "ALTER TABLE produtos ADD COLUMN deletedat TEXT DEFAULT NULL",
     "ALTER TABLE produtos ADD COLUMN deletedpor INTEGER DEFAULT NULL",
+    // v2: coluna categoria para classificar lancamentos por tipo de servico
+    "ALTER TABLE lancamentos ADD COLUMN categoria TEXT DEFAULT NULL",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {}
@@ -145,6 +148,16 @@ function initDB() {
   try {
     db.prepare("UPDATE ordens SET status='Aguardando' WHERE status='Recebido'").run();
     db.prepare("UPDATE ordens SET status='Cancelado' WHERE status='Cancelada'").run();
+  } catch (_) {}
+
+  // Corrigir lancamentos de entradaos que tenham tipo diferente de 'Entrada'
+  // (bug pre-2026-05-04: tipo era preenchido com o servico da OS)
+  try {
+    const fixed = db.prepare(
+      "UPDATE lancamentos SET categoria=tipo, tipo='Entrada' WHERE origem='entradaos' AND tipo != 'Entrada' AND deletedat IS NULL"
+    ).run();
+    if (fixed.changes > 0)
+      console.log(`[DB] Corrigidos ${fixed.changes} lancamento(s) entradaos com tipo invalido.`);
   } catch (_) {}
 
   // Seed sequencias com o maior numero de OS ja existente
