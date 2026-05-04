@@ -178,11 +178,13 @@ router.post("/", auth(["admin","caixa"]), (req, res, next) => {
       );
 
       // Só cria lançamento se entrada > 0
+      // tipo='Entrada' para que o Caixa classifique corretamente como receita positiva
+      // categoria=servico para manter rastreabilidade do tipo de serviço
       if (entrada > 0) {
         const desc = descricaoEntradaOS(numero, clientenome, servico, total, entrada);
         runInsert(
-          `INSERT INTO lancamentos (data,tipo,descricao,pagamento,valor,pago,ordemid,criadopor,origem) VALUES (?,?,?,?,?,?,?,?,?)`,
-          [dataLanc, servico||"Diversos", desc, pagamento||"Pix", entrada, 1, id, req.user.id, "entradaos"]
+          `INSERT INTO lancamentos (data,tipo,categoria,descricao,pagamento,valor,pago,ordemid,criadopor,origem) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+          [dataLanc, "Entrada", servico||"Diversos", desc, pagamento||"Pix", entrada, 1, id, req.user.id, "entradaos"]
         );
       }
 
@@ -287,15 +289,16 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
 
       if (entradaOS) {
         if (entrada > 0) {
-          run("UPDATE lancamentos SET tipo=?,descricao=?,pagamento=?,valor=?,pago=1 WHERE id=?",
+          // tipo='Entrada' fixo; categoria=servico para rastreabilidade
+          run("UPDATE lancamentos SET tipo='Entrada',categoria=?,descricao=?,pagamento=?,valor=?,pago=1 WHERE id=?",
             [novoServico||"Diversos", entradaDesc, novoPagamento, entrada, entradaOS.id]);
         } else {
           run("UPDATE lancamentos SET deletedat=datetime('now','localtime') WHERE id=?", [entradaOS.id]);
         }
       } else if (entrada > 0) {
         runInsert(
-          `INSERT INTO lancamentos (data,tipo,descricao,pagamento,valor,pago,ordemid,criadopor,origem) VALUES (?,?,?,?,?,?,?,?,?)`,
-          [hoje(), novoServico||"Diversos", entradaDesc, novoPagamento, entrada, 1, req.params.id, req.user.id, "entradaos"]
+          `INSERT INTO lancamentos (data,tipo,categoria,descricao,pagamento,valor,pago,ordemid,criadopor,origem) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+          [hoje(), "Entrada", novoServico||"Diversos", entradaDesc, novoPagamento, entrada, 1, req.params.id, req.user.id, "entradaos"]
         );
       }
     });
