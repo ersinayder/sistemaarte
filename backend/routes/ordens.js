@@ -4,7 +4,7 @@ const { auth } = require("../middlewares/auth");
 const { toNumber } = require("../utils/numbers");
 const { hoje } = require("../utils/dates");
 const {
-  validarEntradaOS, validarStatus, validarPrazo,
+  validarEntradaOS, validarStatus, validarPrazo, normalizarStatus,
   descricaoEntradaOS, descricaoRestanteOS
 } = require("../domain/ordensRules");
 const { sendWhatsApp, sendWhatsAppConfirmacao } = require("../utils/whatsapp");
@@ -20,8 +20,8 @@ const SEL_ORDEM = `
     o.prazoentrega AS prazo,
     o.observacoes AS obs,
     o.createdat AS criadoem,
-    COALESCE((SELECT SUM(l.valor) FROM lancamentos l WHERE l.ordemid=o.id AND l.pago=1 AND l.valor>0 AND l.deletedat IS NULL),0) AS valorrecebido,
-    CAST(o.valortotal - COALESCE((SELECT SUM(l.valor) FROM lancamentos l WHERE l.ordemid=o.id AND l.pago=1 AND l.valor>0 AND l.deletedat IS NULL),0) AS REAL) AS saldoaberto
+    COALESCE((SELECT SUM(l.valor) FROM lancamentos l WHERE l.ordemid=o.id AND l.pago=1 AND l.deletedat IS NULL),0) AS valorrecebido,
+    CAST(o.valortotal - COALESCE((SELECT SUM(l.valor) FROM lancamentos l WHERE l.ordemid=o.id AND l.pago=1 AND l.deletedat IS NULL),0) AS REAL) AS saldoaberto
   FROM ordens o
   LEFT JOIN users u ON u.id=o.criadopor
 `;
@@ -31,13 +31,13 @@ function nextNumero() {
   const row = getOne(
     "UPDATE sequencias SET ultimo=ultimo+1 WHERE nome='os' RETURNING ultimo"
   );
-  if (!row) throw new Error("Falha ao gerar n\u00famero da OS: sequ\u00eancia 'os' n\u00e3o encontrada.");
+  if (!row) throw new Error("Falha ao gerar número da OS: sequência 'os' não encontrada.");
   return `OS-${String(row.ultimo).padStart(4, "0")}`;
 }
 
 function getEntradaOS(ordemId) {
   return getOne(
-    "SELECT * FROM lancamentos WHERE ordemid=? AND origem='entradaos' ORDER BY id DESC LIMIT 1",
+    "SELECT * FROM lancamentos WHERE ordemid=? AND origem='entradaos' AND deletedat IS NULL ORDER BY id DESC LIMIT 1",
     [ordemId]
   );
 }
@@ -65,7 +65,6 @@ function resolveClienteData(clienteid, clientenome, telefoneFornecido, cpfFornec
   return { telefone, cpf };
 }
 
-// S-1: SELECT simples sem os subqueries pesados de saldo — WhatsApp só precisa dos dados básicos
 function maybeNotifyPronto(ordemId, statusAnterior, statusNovo) {
   if (statusAnterior === statusNovo || statusNovo !== 'Pronto') return;
   const os = getOne(
@@ -91,7 +90,7 @@ router.get("/", auth(), (req, res, next) => {
         p.push(status);
       }
       if (vencidas == "1") {
-        sql += " AND o.prazoentrega < ? AND o.status NOT IN ('Pronto','Entregue','Cancelado','Cancelada')";
+        sql += " AND o.prazoentrega < ? AND o.status NOT IN ('Pronto','Entregue','Cancelado')";
         p.push(hoje());
       }
     }
@@ -167,11 +166,14 @@ router.post("/", auth(["admin","caixa"]), (req, res, next) => {
         [id, null, "Aguardando", req.user.id, "Ordem criada"]
       );
 
-      const desc = descricaoEntradaOS(numero, clientenome, servico, total, entrada);
-      runInsert(
-        `INSERT INTO lancamentos (data,tipo,descricao,pagamento,valor,pago,ordemid,criadopor,origem) VALUES (?,?,?,?,?,?,?,?,?)`,
-        [hoje(), servico||"Diversos", desc, pagamento||"Pix", entrada, 1, id, req.user.id, "entradaos"]
-      );
+      // Só cria lançamento se entrada > 0
+      if (entrada > 0) {
+        const desc = descricaoEntradaOS(numero, clientenome, servico, total, entrada);
+        runInsert(
+          `INSERT INTO lancamentos (data,tipo,descricao,pagamento,valor,pago,ordemid,criadopor,origem) VALUES (?,?,?,?,?,?,?,?,?)`,
+          [hoje(), servico||"Diversos", desc, pagamento||"Pix", entrada, 1, id, req.user.id, "entradaos"]
+        );
+      }
 
       return { id, numero };
     });
@@ -193,17 +195,20 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
     if (!old) return res.status(404).json({ error: "Nao encontrado ou OS cancelada" });
 
     const {
-      status, descricao, valortotal, valorentrada,
+      descricao, valortotal, valorentrada,
       prazoentrega, prioridade, pagamento, observacoes,
       clientenome, clientetelefone, clientecpf, servico, clienteid
     } = req.body ?? {};
+
+    // Normaliza e valida status
+    const statusRaw = req.body?.status;
+    const status = statusRaw ? normalizarStatus(statusRaw) : null;
 
     if (req.user.role === "oficina") {
       if (!status) return res.status(400).json({ error: "Informe o status" });
       const erroStatus = validarStatus(status, old.status);
       if (erroStatus) return res.status(400).json({ error: erroStatus });
 
-      // I-3: re-lê o status atual DENTRO da transação para evitar race condition no log
       transaction(() => {
         const current = getOne("SELECT status FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);
         if (!current) throw new Error("OS nao encontrada");
@@ -223,7 +228,6 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
     const erroEntrada = validarEntradaOS(total, entrada);
     if (erroEntrada) return res.status(400).json({ error: erroEntrada });
 
-    // S-2: validar prazo sempre que novoPrazo for nao-nulo, independente de mudanca
     const novoPrazo = (prazoentrega !== undefined && prazoentrega !== '')
       ? prazoentrega
       : (prazoentrega === '' ? null : old.prazoentrega);
@@ -272,8 +276,16 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
       const entradaDesc = descricaoEntradaOS(old.numero, novoCliente, novoServico, total, entrada);
 
       if (entradaOS) {
-        run("UPDATE lancamentos SET tipo=?,descricao=?,pagamento=?,valor=?,pago=1 WHERE id=?", [novoServico||"Diversos", entradaDesc, novoPagamento, entrada, entradaOS.id]);
-      } else {
+        if (entrada > 0) {
+          // Atualiza lançamento existente
+          run("UPDATE lancamentos SET tipo=?,descricao=?,pagamento=?,valor=?,pago=1 WHERE id=?",
+            [novoServico||"Diversos", entradaDesc, novoPagamento, entrada, entradaOS.id]);
+        } else {
+          // Entrada zerou: soft-delete do lançamento
+          run("UPDATE lancamentos SET deletedat=datetime('now','localtime') WHERE id=?", [entradaOS.id]);
+        }
+      } else if (entrada > 0) {
+        // Não havia lançamento e agora tem entrada: criar
         runInsert(
           `INSERT INTO lancamentos (data,tipo,descricao,pagamento,valor,pago,ordemid,criadopor,origem) VALUES (?,?,?,?,?,?,?,?,?)`,
           [hoje(), novoServico||"Diversos", entradaDesc, novoPagamento, entrada, 1, req.params.id, req.user.id, "entradaos"]
@@ -289,7 +301,8 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
 // PATCH /api/ordens/:id/status
 router.patch("/:id/status", auth(["admin","caixa","oficina"]), (req, res, next) => {
   try {
-    const { status, obs } = req.body ?? {};
+    const { obs } = req.body ?? {};
+    const status = normalizarStatus(req.body?.status);
     if (!status) return res.status(400).json({ error: "status obrigatorio" });
 
     const old = getOne("SELECT status FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);

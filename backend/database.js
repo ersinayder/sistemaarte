@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS ordens (
   descricao         TEXT,
   valortotal        REAL NOT NULL DEFAULT 0,
   valorentrada      REAL DEFAULT 0,
-  status            TEXT NOT NULL DEFAULT 'Recebido',
+  status            TEXT NOT NULL DEFAULT 'Aguardando',
   prioridade        TEXT DEFAULT 'Normal',
   prazoentrega      TEXT,
   pagamento         TEXT DEFAULT 'Pix',
@@ -128,15 +128,12 @@ function initDB() {
     "ALTER TABLE clientes ADD COLUMN uf TEXT",
     "ALTER TABLE clientes ADD COLUMN cep TEXT",
     "ALTER TABLE clientes ADD COLUMN notes TEXT",
-    // fix: soft-delete auditavel em clientes (colunas ausentes em bancos pre-existentes)
     "ALTER TABLE clientes ADD COLUMN deletedat TEXT DEFAULT NULL",
     "ALTER TABLE clientes ADD COLUMN deletedpor INTEGER DEFAULT NULL",
     "ALTER TABLE lancamentos ADD COLUMN origem TEXT DEFAULT NULL",
     "ALTER TABLE lancamentos ADD COLUMN pago INTEGER DEFAULT 1",
-    // C4: soft-delete auditavel em lancamentos
     "ALTER TABLE lancamentos ADD COLUMN deletedat TEXT DEFAULT NULL",
     "ALTER TABLE lancamentos ADD COLUMN deletedpor INTEGER DEFAULT NULL",
-    // fix: soft-delete em produtos (coluna ausente em bancos pre-existentes)
     "ALTER TABLE produtos ADD COLUMN deletedat TEXT DEFAULT NULL",
     "ALTER TABLE produtos ADD COLUMN deletedpor INTEGER DEFAULT NULL",
   ];
@@ -144,7 +141,13 @@ function initDB() {
     try { db.exec(sql); } catch (_) {}
   }
 
-  // Seed sequencias com o maior numero de OS ja existente (seguro para bancos pre-existentes)
+  // Normalizar status legados
+  try {
+    db.prepare("UPDATE ordens SET status='Aguardando' WHERE status='Recebido'").run();
+    db.prepare("UPDATE ordens SET status='Cancelado' WHERE status='Cancelada'").run();
+  } catch (_) {}
+
+  // Seed sequencias com o maior numero de OS ja existente
   db.prepare("INSERT OR IGNORE INTO sequencias (nome, ultimo) VALUES ('os', 0)").run();
   const maxOS = db.prepare("SELECT MAX(CAST(SUBSTR(numero,4) AS INTEGER)) AS maxn FROM ordens").get();
   const maxN  = maxOS?.maxn ?? 0;
