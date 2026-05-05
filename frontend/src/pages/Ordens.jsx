@@ -8,6 +8,7 @@ import { useAuth } from '../context/AuthContext';
 const TIPO_OPTS = ['Quadro','Caixas','Corte a Laser','Diversos'];
 const STATUS_OPTS = ['Aguardando','Em Produção','Pronto','Entregue','Cancelado'];
 const PRIORIDADE_OPTS = ['Normal','Urgente'];
+const PAGAMENTO_OPTS = ['Dinheiro','PIX','Cartão de Débito','Cartão de Crédito','Transferência','Cheque','Outro'];
 
 const toDateInputValue = () => new Date().toISOString().slice(0, 10);
 
@@ -275,7 +276,7 @@ export default function Ordens() {
 
   const blankForm = {
     cliente_id:'', clientenome:'', servico:TIPO_OPTS[0], valortotal:"", valorentrada:"",
-    observacoes:'', prazoentrega:'', prioridade:'Normal',
+    formapagamentoentrada:'', observacoes:'', prazoentrega:'', prioridade:'Normal',
     status:'Aguardando', produtos:[], dataEntrada: toDateInputValue(),
   };
 
@@ -335,17 +336,18 @@ export default function Ordens() {
     const cli = clientes.find(c => c.id === (o.cliente_id || o.clienteid));
     setClienteSearch(cli?.name || o.clientenome || '');
     setForm({
-      cliente_id:   o.cliente_id || o.clienteid || '',
-      clientenome:  o.clientenome || '',
-      servico:      o.servico || TIPO_OPTS[0],
-      observacoes:  o.observacoes || '',
-      prazoentrega: o.prazoentrega || '',
-      prioridade:   o.prioridade || 'Normal',
-      status:       o.status || 'Aguardando',
-      valortotal:   String(o.valortotal  ?? o.valor   ?? ""),
-      valorentrada: String(o.valorentrada ?? o.entrada ?? ""),
-      produtos:     o.produtos || [],
-      dataEntrada:  toDateInputValue(), // edição não altera data histórica
+      cliente_id:               o.cliente_id || o.clienteid || '',
+      clientenome:              o.clientenome || '',
+      servico:                  o.servico || TIPO_OPTS[0],
+      observacoes:              o.observacoes || '',
+      prazoentrega:             o.prazoentrega || '',
+      prioridade:               o.prioridade || 'Normal',
+      status:                   o.status || 'Aguardando',
+      valortotal:               String(o.valortotal  ?? o.valor   ?? ""),
+      valorentrada:             String(o.valorentrada ?? o.entrada ?? ""),
+      formapagamentoentrada:    o.formapagamentoentrada || '',
+      produtos:                 o.produtos || [],
+      dataEntrada:              toDateInputValue(),
     });
     setShowForm(true);
   };
@@ -387,18 +389,19 @@ export default function Ordens() {
     setSaving(true);
     try {
       const payload = {
-        cliente_id:   form.cliente_id || null,
-        clientenome:  form.clientenome,
-        servico:      form.servico,
-        descricao:    '',
-        observacoes:  form.observacoes,
-        prazoentrega: form.prazoentrega || null,
-        prioridade:   form.prioridade,
-        status:       form.status,
-        valortotal:   total,
-        valorentrada: entrada,
-        produtos:     form.produtos,
-        dataEntrada:  form.dataEntrada || toDateInputValue(),
+        cliente_id:            form.cliente_id || null,
+        clientenome:           form.clientenome,
+        servico:               form.servico,
+        descricao:             '',
+        observacoes:           form.observacoes,
+        prazoentrega:          form.prazoentrega || null,
+        prioridade:            form.prioridade,
+        status:                editData ? form.status : 'Aguardando',
+        valortotal:            total,
+        valorentrada:          entrada,
+        formapagamentoentrada: form.formapagamentoentrada || null,
+        produtos:              form.produtos,
+        dataEntrada:           form.dataEntrada || toDateInputValue(),
       };
       if (editData) {
         await api.put(`/ordens/${editData.id}`, payload);
@@ -757,12 +760,33 @@ export default function Ordens() {
                   <label className="form-label">Prazo de Entrega</label>
                   <input className="form-input" type="date" value={form.prazoentrega} onChange={e=>set('prazoentrega',e.target.value)} />
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Status</label>
-                  <select className="form-input" value={form.status} onChange={e=>set('status',e.target.value)}>
-                    {STATUS_OPTS.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
+
+                {/* Campo Status — só exibe na edição; nova OS é sempre Aguardando */}
+                {editData && (
+                  <div className="form-group">
+                    <label className="form-label">Status</label>
+                    <select className="form-input" value={form.status} onChange={e=>set('status',e.target.value)}>
+                      {STATUS_OPTS.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                )}
+
+                {/* Na nova OS, ocupa a segunda coluna do grid no lugar do Status */}
+                {!editData && (
+                  <div className="form-group">
+                    <label className="form-label" style={{ display:'flex', alignItems:'center', gap:'var(--space-1)' }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color:'var(--color-primary)', flexShrink:0 }}>
+                        <rect x="2" y="5" width="20" height="14" rx="2"/>
+                        <path d="M2 10h20"/>
+                      </svg>
+                      Forma de Pagamento da Entrada
+                    </label>
+                    <select className="form-input" value={form.formapagamentoentrada} onChange={e=>set('formapagamentoentrada',e.target.value)}>
+                      <option value="">— Selecionar —</option>
+                      {PAGAMENTO_OPTS.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  </div>
+                )}
 
                 <div className="form-group">
                   <label className="form-label">
@@ -782,6 +806,23 @@ export default function Ordens() {
                   <input className="form-input" type="number" step="0.01" min="0" placeholder="0,00 (sem entrada)"
                     value={form.valorentrada} onChange={e=>set("valorentrada",e.target.value)} onWheel={e=>e.currentTarget.blur()}/>
                 </div>
+
+                {/* Na edição, forma de pagamento da entrada fica na linha dos valores */}
+                {editData && (
+                  <div className="form-group" style={{ gridColumn:'1/-1' }}>
+                    <label className="form-label" style={{ display:'flex', alignItems:'center', gap:'var(--space-1)' }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color:'var(--color-primary)', flexShrink:0 }}>
+                        <rect x="2" y="5" width="20" height="14" rx="2"/>
+                        <path d="M2 10h20"/>
+                      </svg>
+                      Forma de Pagamento da Entrada
+                    </label>
+                    <select className="form-input" value={form.formapagamentoentrada} onChange={e=>set('formapagamentoentrada',e.target.value)}>
+                      <option value="">— Selecionar —</option>
+                      {PAGAMENTO_OPTS.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  </div>
+                )}
               </div>
 
               {total > 0 && (
