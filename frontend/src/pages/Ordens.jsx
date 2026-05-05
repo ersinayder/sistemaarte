@@ -66,7 +66,7 @@ function ProdutoInput({ produtos, onAdd }) {
 }
 
 // ------- Helpers -------
-const fmt  = v => `R$ ${Number(v||0).toFixed(2).replace('.',',')}`;
+const fmt  = v => `R$ ${Number(v||0).toFixed(2).replace('.',',')}``;
 const fmtD = d => { if (!d) return '—'; const [y,m,dia]=d.split('-'); return `${dia}/${m}/${y}`; };
 
 const statusColor = s => ({
@@ -90,7 +90,7 @@ function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEd
     servico:'Quadro', descricao:'',
     valortotal:'', valorentrada:'', pagamento:'Pix',
     formapagamentoentrada:'', observacoes:'', prazoentrega:'', prioridade:'Normal',
-    status:'Aguardando', produtos:[], dataEntrada: toDateInputValue(),
+    status:'Aguardando', produtos:[], dataEntrada: toDateInputValue(), dataRecebimento: toDateInputValue(),
   });
   const [saving, setSaving] = useState(false);
   const [clienteQuery, setClienteQuery] = useState('');
@@ -118,6 +118,7 @@ function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEd
         status: o.status || 'Aguardando',
         produtos: o.produtos || [],
         dataEntrada: o.dataEntrada || toDateInputValue(),
+        dataRecebimento: o.dataRecebimento || o.datarecebimento || toDateInputValue(),
       });
       setClienteQuery(o.clientenome || '');
     }
@@ -160,6 +161,7 @@ function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEd
         clienteid: form.clienteid || null,
         produtos: form.produtos,
         dataEntrada: form.dataEntrada,
+        dataRecebimento: form.dataRecebimento,
       };
       if (isNew) {
         const { data } = await api.post('/ordens', payload);
@@ -287,22 +289,29 @@ function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEd
               </div>
             </div>
 
-            {/* Prazo + Status */}
+            {/* Data Recebimento + Prazo de Entrega */}
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'var(--space-3)' }}>
+              <div>
+                <label className="form-label">Data de Recebimento</label>
+                <input className="form-input" type="date" value={form.dataRecebimento}
+                  onChange={e=>set('dataRecebimento',e.target.value)} />
+              </div>
               <div>
                 <label className="form-label">Prazo de Entrega</label>
                 <input className="form-input" type="date" value={form.prazoentrega}
                   onChange={e=>set('prazoentrega',e.target.value)} />
               </div>
-              {!isNew && canEdit && (
-                <div>
-                  <label className="form-label">Status</label>
-                  <select className="form-input" value={form.status} onChange={e=>set('status',e.target.value)}>
-                    {STATUS_OPTS.map(s=><option key={s}>{s}</option>)}
-                  </select>
-                </div>
-              )}
             </div>
+
+            {/* Status (edição) */}
+            {!isNew && canEdit && (
+              <div>
+                <label className="form-label">Status</label>
+                <select className="form-input" value={form.status} onChange={e=>set('status',e.target.value)}>
+                  {STATUS_OPTS.map(s=><option key={s}>{s}</option>)}
+                </select>
+              </div>
+            )}
 
             {/* Observações */}
             <div>
@@ -439,6 +448,7 @@ export default function Ordens() {
         ...o,
         produtos: o.itens || o.produtos || [],
         dataEntrada: o.createdat ? o.createdat.slice(0,10) : toDateInputValue(),
+        dataRecebimento: o.dataRecebimento || o.datarecebimento || (o.createdat ? o.createdat.slice(0,10) : toDateInputValue()),
       });
       setShowModal(true);
     } catch { toast.error('Erro ao carregar OS'); }
@@ -525,7 +535,7 @@ export default function Ordens() {
         </div>
       </div>
 
-      {/* KPIs — linha compacta */}
+      {/* KPIs */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)',
         gap:'var(--space-2)', padding:'var(--space-2) var(--space-6)',
         borderBottom:'1px solid var(--color-border)', flexShrink:0 }}>
@@ -552,7 +562,7 @@ export default function Ordens() {
         ))}
       </div>
 
-      {/* Filtros + Busca — barra inline compacta */}
+      {/* Filtros */}
       <div style={{ padding:'var(--space-2) var(--space-6)', display:'flex', gap:'var(--space-2)',
         alignItems:'center', borderBottom:'1px solid var(--color-border)', flexShrink:0,
         background:'var(--color-surface)' }}>
@@ -581,31 +591,10 @@ export default function Ordens() {
         <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'var(--text-xs)' }}>
           <thead style={{ position:'sticky', top:0, zIndex:10, background:'var(--color-surface-offset)' }}>
             <tr style={{ borderBottom:'1px solid var(--color-border)' }}>
-              <th style={{ padding:'var(--space-2) var(--space-3)', textAlign:'left', fontWeight:700, color:'var(--color-text-muted)', whiteSpace:'nowrap' }}>
-                <span style={{ display:'flex', alignItems:'center', gap:4 }}>Nº
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M7 15l5 5 5-5M7 9l5-5 5 5"/></svg>
-                </span>
-              </th>
-              <th style={{ padding:'var(--space-2) var(--space-3)', textAlign:'left', fontWeight:700, color:'var(--color-text-muted)' }}>
-                <span style={{ display:'flex', alignItems:'center', gap:4 }}>Cliente
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M7 15l5 5 5-5M7 9l5-5 5 5"/></svg>
-                </span>
-              </th>
-              <th style={{ padding:'var(--space-2) var(--space-3)', textAlign:'left', fontWeight:700, color:'var(--color-text-muted)' }}>Tipo</th>
-              <th style={{ padding:'var(--space-2) var(--space-3)', textAlign:'left', fontWeight:700, color:'var(--color-text-muted)' }}>Descrição / Obs.</th>
-              <th style={{ padding:'var(--space-2) var(--space-3)', textAlign:'left', fontWeight:700, color:'var(--color-text-muted)', whiteSpace:'nowrap' }}>
-                <span style={{ display:'flex', alignItems:'center', gap:4 }}>Prazo
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M7 15l5 5 5-5M7 9l5-5 5 5"/></svg>
-                </span>
-              </th>
-              <th style={{ padding:'var(--space-2) var(--space-3)', textAlign:'left', fontWeight:700, color:'var(--color-text-muted)' }}>Status</th>
-              <th style={{ padding:'var(--space-2) var(--space-3)', textAlign:'right', fontWeight:700, color:'var(--color-text-muted)', whiteSpace:'nowrap' }}>
-                <span style={{ display:'flex', alignItems:'center', justifyContent:'flex-end', gap:4 }}>Valor
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M7 15l5 5 5-5M7 9l5-5 5 5"/></svg>
-                </span>
-              </th>
-              <th style={{ padding:'var(--space-2) var(--space-3)', textAlign:'right', fontWeight:700, color:'var(--color-text-muted)' }}>Restante</th>
-              <th style={{ padding:'var(--space-2) var(--space-3)', width:60 }}></th>
+              {['Nº','Cliente','Tipo','Descrição / Obs.','Prazo','Status','Valor','Restante',''].map((h,i) => (
+                <th key={i} style={{ padding:'var(--space-2) var(--space-3)', textAlign: i>=6&&i<8?'right':'left',
+                  fontWeight:700, color:'var(--color-text-muted)', whiteSpace:'nowrap' }}>{h}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -655,8 +644,7 @@ export default function Ordens() {
                       {canEdit && (
                         <button onClick={e=>{e.stopPropagation();openEdit(o.id);}}
                           style={{ color:'var(--color-text-muted)', padding:4, borderRadius:'var(--radius-sm)',
-                            background:'none', border:'none', cursor:'pointer' }}
-                          title="Editar">
+                            background:'none', border:'none', cursor:'pointer' }} title="Editar">
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                             <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
@@ -666,8 +654,7 @@ export default function Ordens() {
                       {canEdit && (
                         <button onClick={e=>handleDelete(o.id,e)}
                           style={{ color:'var(--color-error)', padding:4, borderRadius:'var(--radius-sm)',
-                            background:'none', border:'none', cursor:'pointer' }}
-                          title="Remover">
+                            background:'none', border:'none', cursor:'pointer' }} title="Remover">
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>
                           </svg>
@@ -687,33 +674,24 @@ export default function Ordens() {
         <div style={{ padding:'var(--space-2) var(--space-6)', borderTop:'1px solid var(--color-border)',
           display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0,
           background:'var(--color-surface)', fontSize:'var(--text-xs)' }}>
-          <span style={{ color:'var(--color-text-muted)' }}>
-            Pagina {page} de {totalPages}
-          </span>
+          <span style={{ color:'var(--color-text-muted)' }}>Pagina {page} de {totalPages}</span>
           <div style={{ display:'flex', gap:'var(--space-2)' }}>
             <button className="btn btn-secondary" onClick={()=>setPage(p=>Math.max(1,p-1))}
-              disabled={page===1} style={{ fontSize:'var(--text-xs)', padding:'var(--space-1) var(--space-3)' }}>
-              ← Anterior
-            </button>
+              disabled={page===1} style={{ fontSize:'var(--text-xs)', padding:'var(--space-1) var(--space-3)' }}>← Anterior</button>
             {Array.from({length:totalPages},(_,i)=>i+1).map(n=>(
               <button key={n} onClick={()=>setPage(n)}
                 style={{ fontSize:'var(--text-xs)', padding:'var(--space-1) var(--space-3)',
                   background: n===page ? 'var(--color-primary)' : 'transparent',
                   color: n===page ? '#fff' : 'var(--color-text-muted)',
                   border:'1px solid var(--color-border)', borderRadius:'var(--radius-md)',
-                  cursor:'pointer', fontWeight: n===page ? 700 : 400 }}>
-                {n}
-              </button>
+                  cursor:'pointer', fontWeight: n===page ? 700 : 400 }}>{n}</button>
             ))}
             <button className="btn btn-secondary" onClick={()=>setPage(p=>Math.min(totalPages,p+1))}
-              disabled={page===totalPages} style={{ fontSize:'var(--text-xs)', padding:'var(--space-1) var(--space-3)' }}>
-              Próximo →
-            </button>
+              disabled={page===totalPages} style={{ fontSize:'var(--text-xs)', padding:'var(--space-1) var(--space-3)' }}>Próximo →</button>
           </div>
         </div>
       )}
 
-      {/* Modal */}
       {showModal && (
         <ModalOS
           os={modalOS}
