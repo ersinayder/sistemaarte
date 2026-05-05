@@ -440,7 +440,6 @@ export default function Ordens() {
 
   const totalOrdens   = ordens.length;
   const totalAberto   = ordens.filter(o => !['Entregue','Cancelado'].includes(o.status)).length;
-  const totalReceitas = ordens.reduce((s,o) => s + Number(o.valortotal||o.valor||0), 0);
   const totalSaldo    = ordens.reduce((s,o) => s + saldoAberto(o), 0);
   const isRetroativo  = !editData && form.dataEntrada && form.dataEntrada !== toDateInputValue();
 
@@ -480,12 +479,11 @@ export default function Ordens() {
         </div>
       </div>
 
-      {/* KPIs */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'var(--space-3)', marginBottom:'var(--space-4)', flexShrink:0 }}>
+      {/* KPIs — 3 cards (receita total removida) */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:'var(--space-3)', marginBottom:'var(--space-4)', flexShrink:0 }}>
         {[
           { label:'Total OS', value:totalOrdens, icon:'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2', color:'var(--color-primary)' },
           { label:'Em Aberto', value:totalAberto, icon:'M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0z', color:'var(--color-warning)' },
-          { label:'Receita Total', value:fmt(totalReceitas), icon:'M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6', color:'var(--color-success)' },
           { label:'Saldo a Receber', value:fmt(totalSaldo), icon:'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 0 0 3-3V8a3 3 0 0 0-3-3H6a3 3 0 0 0-3 3v8a3 3 0 0 0 3 3z', color:'var(--color-error)' },
         ].map(k => (
           <div key={k.label} className="card" style={{ padding:'var(--space-3) var(--space-4)', display:'flex', alignItems:'center', gap:'var(--space-3)' }}>
@@ -540,7 +538,7 @@ export default function Ordens() {
                     <th style={{ cursor:'pointer' }} onClick={() => toggleSort('numero')}>Nº <SortIcon f="numero"/></th>
                     <th style={{ cursor:'pointer' }} onClick={() => toggleSort('clientenome')}>Cliente <SortIcon f="clientenome"/></th>
                     <th>Tipo</th>
-                    <th>Descrição</th>
+                    <th>Descrição / Obs.</th>
                     <th style={{ cursor:'pointer' }} onClick={() => toggleSort('prazoentrega')}>Prazo <SortIcon f="prazoentrega"/></th>
                     <th>Status</th>
                     <th style={{ cursor:'pointer', textAlign:'right' }} onClick={() => toggleSort('valortotal')}>Valor <SortIcon f="valortotal"/></th>
@@ -561,7 +559,14 @@ export default function Ordens() {
                           {o.prioridade==='Urgente' && <span style={{ marginLeft:4, fontSize:9, fontWeight:700, color:'var(--color-error)', background:'rgba(161,44,123,0.10)', borderRadius:'var(--radius-full)', padding:'1px 5px' }}>URGENTE</span>}
                         </td>
                         <td><span className={`badge badge-${tipoBadge(o.servico)}`} style={{ fontSize:10 }}>{o.servico}</span></td>
-                        <td style={{ maxWidth:180, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>{o.descricao||'—'}</td>
+                        <td style={{ maxWidth:220, fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>
+                          {o.descricao && o.descricao.trim()
+                            ? <span style={{ display:'block', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{o.descricao}</span>
+                            : o.observacoes && o.observacoes.trim()
+                              ? <span style={{ display:'block', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontStyle:'italic' }} title={o.observacoes}>📝 {o.observacoes}</span>
+                              : <span style={{ color:'var(--color-text-faint)' }}>—</span>
+                          }
+                        </td>
                         <td style={{ fontSize:'var(--text-xs)', color: vencida?'var(--color-error)':'var(--color-text-muted)', fontWeight: vencida?700:400 }}>{fmtD(o.prazoentrega)}</td>
                         <td><span className={`badge badge-${statusColor(o.status)}`} style={{ fontSize:10 }}>{o.status}</span></td>
                         <td style={{ textAlign:'right', fontFamily:'monospace', fontSize:'var(--text-xs)' }}>{fmt(o.valortotal||o.valor)}</td>
@@ -594,6 +599,32 @@ export default function Ordens() {
       </div>
 
       {showLixeira && <LixeiraModal onClose={() => { setShowLixeira(false); load(); }} />}
+
+      {/* ========== MODAL CONFIRMAR EXCLUSÃO ========== */}
+      {confirmDel && ReactDOM.createPortal(
+        <div className="modal-overlay" onClick={() => setConfirmDel(null)}>
+          <div className="modal" style={{ maxWidth:440 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title" style={{ color:'var(--color-error)' }}>Excluir Ordem</h2>
+              <button className="btn btn-ghost btn-sm" onClick={() => setConfirmDel(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <p style={{ margin:0 }}>Tem certeza que deseja excluir a OS <strong>{confirmDel.numero}</strong> de <strong>{confirmDel.clientenome}</strong>?</p>
+              <p style={{ margin:'var(--space-2) 0 0', fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>A ordem será movida para a lixeira e poderá ser restaurada.</p>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={() => setConfirmDel(null)}>Cancelar</button>
+              <button className="btn" style={{ background:'var(--color-error)', color:'#fff' }}
+                disabled={deleting === confirmDel.id} onClick={() => handleDelete(confirmDel.id)}>
+                {deleting === confirmDel.id
+                  ? <svg className="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                  : null} Excluir
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* ========== MODAL NOVA / EDITAR OS ========== */}
       {showForm && ReactDOM.createPortal(
@@ -751,91 +782,49 @@ export default function Ordens() {
 
               {/* ── SEÇÃO: FINANCEIRO ── */}
               <FormSection icon={IconMoney} label="Financeiro">
-                {/* Linha 1: Valor Total + Entrada */}
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'var(--space-3)' }}>
                   <div className="form-group" style={{ margin:0 }}>
-                    <label className="form-label">
-                      Valor Total (R$) <span style={{color:'var(--color-error)'}}>*</span>
-                    </label>
+                    <label className="form-label">Valor Total <span style={{ color:'var(--color-error)' }}>*</span></label>
                     <input className="form-input" type="number" step="0.01" min="0"
                       value={form.valortotal} onChange={e=>set('valortotal',e.target.value)}
-                      onWheel={e=>e.currentTarget.blur()}
-                      style={{ fontFamily:'monospace', fontWeight:700 }}
-                      placeholder="0,00" />
-                    <span style={{ fontSize:'var(--text-xs)', color:'var(--color-text-faint)', marginTop:3, display:'block' }}>
-                      Calculado pelos produtos, editável
-                    </span>
+                      placeholder="0,00" style={{ fontFamily:'monospace' }}
+                      onWheel={e => e.currentTarget.blur()} />
                   </div>
                   <div className="form-group" style={{ margin:0 }}>
-                    <label className="form-label">Entrada (R$) <span style={{fontSize:'var(--text-xs)',color:'var(--color-text-muted)',fontWeight:400}}>opcional</span></label>
+                    <label className="form-label">Entrada</label>
                     <input className="form-input" type="number" step="0.01" min="0"
-                      placeholder="0,00"
                       value={form.valorentrada} onChange={e=>set('valorentrada',e.target.value)}
-                      onWheel={e=>e.currentTarget.blur()}
-                      style={{ fontFamily:'monospace' }} />
+                      placeholder="0,00" style={{ fontFamily:'monospace' }}
+                      onWheel={e => e.currentTarget.blur()} />
                   </div>
-                </div>
-
-                {/* Linha 2: Forma de Pagamento da Entrada — largura total */}
-                <div className="form-group" style={{ marginTop:'var(--space-3)', marginBottom:0 }}>
-                  <label className="form-label">Forma de Pagamento da Entrada</label>
-                  <select className="form-input" value={form.formapagamentoentrada} onChange={e=>set('formapagamentoentrada',e.target.value)}>
-                    <option value="">— Selecionar —</option>
-                    {PAGAMENTO_OPTS.map(p => <option key={p} value={p}>{p}</option>)}
-                  </select>
-                </div>
-
-                {/* Preview restante */}
-                {totalVal > 0 && (
-                  <div style={{
-                    display:'flex', justifyContent:'space-between', alignItems:'center',
-                    padding:'var(--space-3) var(--space-4)', marginTop:'var(--space-3)',
-                    background: restantePrev > 0 ? 'var(--color-warning-highlight)' : 'var(--color-primary-highlight)',
-                    borderRadius:'var(--radius-md)', fontSize:'var(--text-xs)',
-                    border: `1px solid ${restantePrev > 0 ? 'color-mix(in oklch, var(--color-warning) 25%, transparent)' : 'color-mix(in oklch, var(--color-primary) 25%, transparent)'}`
-                  }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:'var(--space-2)', color:'var(--color-text-muted)' }}>
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                      Restante a receber após entrada
-                    </div>
-                    <strong style={{ fontFamily:'monospace', fontSize:'var(--text-sm)',
+                  <div className="form-group" style={{ margin:0 }}>
+                    <label className="form-label">Forma de Pagamento da Entrada</label>
+                    <select className="form-input" value={form.formapagamentoentrada} onChange={e=>set('formapagamentoentrada',e.target.value)}>
+                      <option value="">— selecione —</option>
+                      {PAGAMENTO_OPTS.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  </div>
+                  <div className="form-group" style={{ margin:0, display:'flex', flexDirection:'column', justifyContent:'flex-end' }}>
+                    <label className="form-label">Saldo Restante</label>
+                    <div style={{ padding:'var(--space-2) var(--space-3)', background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)',
+                      fontFamily:'monospace', fontWeight:700, fontSize:'var(--text-sm)',
                       color: restantePrev > 0 ? 'var(--color-warning)' : 'var(--color-success)' }}>
-                      {fmt(restantePrev)}
-                    </strong>
+                      {restantePrev <= 0
+                        ? '✓ Quitado'
+                        : restantePrev.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
+                    </div>
                   </div>
-                )}
+                </div>
               </FormSection>
-
             </div>
 
             {/* Footer */}
             <div className="modal-footer" style={{ position:'sticky', bottom:0, background:'var(--color-surface)', borderTop:'1px solid var(--color-divider)' }}>
               <button className="btn btn-ghost" onClick={closeForm}>Cancelar</button>
               <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
-                {saving ? 'Salvando…' : editData ? 'Salvar alterações' : 'Criar OS'}
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-
-      {/* Modal de confirmação de exclusão */}
-      {confirmDel && ReactDOM.createPortal(
-        <div className="modal-overlay" onClick={() => setConfirmDel(null)}>
-          <div className="modal" style={{ maxWidth:400 }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2 className="modal-title">Excluir Ordem</h2>
-              <button className="btn btn-ghost btn-sm" onClick={() => setConfirmDel(null)}>✕</button>
-            </div>
-            <div className="modal-body">
-              <p>Excluir a OS <strong>{confirmDel.numero}</strong> de <strong>{confirmDel.clientenome}</strong>?</p>
-              <p style={{ marginTop:'var(--space-2)', fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>Esta ação não pode ser desfeita.</p>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-ghost" onClick={() => setConfirmDel(null)}>Cancelar</button>
-              <button className="btn btn-danger" onClick={() => handleDelete(confirmDel.id)} disabled={deleting === confirmDel.id}>
-                {deleting === confirmDel.id ? 'Excluindo…' : 'Excluir'}
+                {saving
+                  ? <><svg className="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Salvando…</>
+                  : editData ? 'Salvar Alterações' : 'Criar Ordem'}
               </button>
             </div>
           </div>
