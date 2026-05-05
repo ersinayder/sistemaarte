@@ -17,6 +17,49 @@ const STATUS_COLOR = { 'Recebido':'var(--color-blue)','Em Produção':'var(--col
 const PAG_BADGE    = { Pix:'pix', Dinheiro:'dinheiro', Credito:'credito', Debito:'debito', Link:'link' }
 const PAG_LABEL    = { Credito:'Crédito', Débito:'Débito', Link:'Link Pag.' }
 
+// Formata telefone para padrão internacional sem símbolos (ex: 5531999999999)
+function formatarTelefoneWpp(tel) {
+  if (!tel) return null
+  const digits = tel.replace(/\D/g, '')
+  if (digits.length === 0) return null
+  // Já tem DDI 55
+  if (digits.startsWith('55') && digits.length >= 12) return digits
+  // Adiciona DDI Brasil
+  return '55' + digits
+}
+
+// Monta a URL wa.me com mensagem pré-definida
+function buildWppUrl(ordem) {
+  const tel = formatarTelefoneWpp(ordem.clientetelefone || ordem.clientecontato)
+  if (!tel) return null
+
+  const prazoFmt = ordem.prazoentrega || ordem.prazo
+    ? fmtD(ordem.prazoentrega || ordem.prazo)
+    : null
+
+  const saldo = Number(ordem.saldoaberto ?? 0)
+
+  let msg = `Olá ${ordem.clientenome || 'cliente'}! 😊\n`
+  msg += `Sua OS *#${ordem.numero}* da Arte e Molduras `
+
+  if (ordem.status === 'Pronto') {
+    msg += `está *pronta* e aguardando retirada! 🎉\n`
+  } else if (ordem.status === 'Em Produção') {
+    msg += `está em *produção*. ⚙️\n`
+  } else if (ordem.status === 'Entregue') {
+    msg += `foi *entregue*. ✅\n`
+  } else {
+    msg += `foi *recebida* e está na fila. 📋\n`
+  }
+
+  if (prazoFmt) msg += `Prazo previsto: *${prazoFmt}*\n`
+  if (saldo > 0.009) msg += `Saldo a pagar: *${fmt(saldo)}*\n`
+
+  msg += `\nQualquer dúvida, é só chamar! 🙏`
+
+  return `https://wa.me/${tel}?text=${encodeURIComponent(msg)}`
+}
+
 function IconWhatsApp() {
   return (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
@@ -40,7 +83,6 @@ export default function OrdemDetalhe({ context }) {
   const [novaObs, setNovaObs]           = useState('')
   const [savingObs, setSavingObs]       = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const [sendingWpp, setSendingWpp]     = useState(false)
 
   useEffect(() => {
     if (confirmDelete) {
@@ -56,7 +98,6 @@ export default function OrdemDetalhe({ context }) {
       const ro = await api.get(`/ordens/${id}`)
       setOrdem(ro.data)
       setHistorico(ro.data.logs || [])
-      // Itens podem vir dentro da resposta da OS ou em campo dedicado
       const itensData = ro.data.itens || ro.data.items || ro.data.produtos || []
       setItens(itensData)
     } catch {
@@ -89,6 +130,16 @@ export default function OrdemDetalhe({ context }) {
     finally { setSavingObs(false) }
   }
 
+  const abrirWhatsApp = () => {
+    if (!ordem) return
+    const url = buildWppUrl(ordem)
+    if (!url) {
+      toast.error('Cliente sem telefone cadastrado.')
+      return
+    }
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
+
   const excluirOS = async () => {
     try {
       await api.delete(`/ordens/${id}`)
@@ -97,25 +148,6 @@ export default function OrdemDetalhe({ context }) {
     } catch(e) {
       toast.error(e.response?.data?.error || 'Erro ao excluir OS')
       setConfirmDelete(false)
-    }
-  }
-
-  const enviarConfirmacaoWpp = async () => {
-    if (!ordem.clientetelefone && !ordem.clientecontato) {
-      toast.error('Cliente sem telefone cadastrado.')
-      return
-    }
-    setSendingWpp(true)
-    try {
-      await api.post(`/ordens/${id}/whatsapp-confirmacao`)
-      toast.success('✅ Confirmação enviada no WhatsApp!')
-    } catch(e) {
-      const err = e.response?.data?.error
-      if (err === 'not_configured') toast.error('WhatsApp não configurado no servidor.')
-      else if (err === 'invalid_phone') toast.error('Telefone do cliente inválido.')
-      else toast.error('Falha ao enviar mensagem.')
-    } finally {
-      setSendingWpp(false)
     }
   }
 
@@ -133,6 +165,7 @@ export default function OrdemDetalhe({ context }) {
   const canCancel  = isCaixa && !isOficinaContext && ordem.status !== 'Cancelado'
   const canSendWpp = (isAdmin || isCaixa) && !isOficinaContext && !['Cancelado'].includes(ordem.status)
   const canDelete  = isAdmin && !isOficinaContext
+  const wppUrl     = buildWppUrl(ordem)
 
   return (
     <div>
@@ -159,23 +192,24 @@ export default function OrdemDetalhe({ context }) {
         <div style={{ flex:1 }}/>
 
         {canSendWpp && (
-          <button
+          <a
+            href={wppUrl || undefined}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={!wppUrl ? (e) => { e.preventDefault(); toast.error('Cliente sem telefone cadastrado.') } : undefined}
             className="btn btn-sm"
-            onClick={enviarConfirmacaoWpp}
-            disabled={sendingWpp}
             style={{
               background:'#25D366', color:'#fff', border:'none',
-              display:'flex', alignItems:'center', gap:'var(--space-2)',
-              opacity: sendingWpp ? 0.7 : 1,
+              display:'inline-flex', alignItems:'center', gap:'var(--space-2)',
+              textDecoration:'none',
+              opacity: wppUrl ? 1 : 0.6,
+              cursor: wppUrl ? 'pointer' : 'not-allowed',
             }}
-            title="Enviar confirmação de pedido via WhatsApp"
+            title={wppUrl ? 'Abrir WhatsApp com mensagem pré-digitada' : 'Cliente sem telefone cadastrado'}
           >
-            {sendingWpp
-              ? <div className="spinner" style={{width:13,height:13,borderColor:'rgba(255,255,255,0.3)',borderTopColor:'#fff'}}/>
-              : <IconWhatsApp />
-            }
-            {sendingWpp ? 'Enviando...' : 'Confirmar Pedido'}
-          </button>
+            <IconWhatsApp />
+            WhatsApp
+          </a>
         )}
 
         <button className="btn btn-ghost btn-sm" onClick={imprimirOS}>
@@ -198,16 +232,8 @@ export default function OrdemDetalhe({ context }) {
 
       {/* Timeline de status */}
       <div className="card card-pad" style={{ marginBottom:'var(--space-4)' }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'var(--space-4)', flexWrap:'wrap', gap:'var(--space-2)' }}>
-          <div style={{ fontWeight:700, fontSize:'var(--text-xs)', color:'var(--color-text-muted)', textTransform:'uppercase', letterSpacing:'0.05em' }}>
-            Progresso
-          </div>
-          {!isOficinaContext && (
-            <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-faint)', display:'flex', alignItems:'center', gap:'var(--space-1)' }}>
-              <IconWhatsApp />
-              <span>WhatsApp automático ao mover para <strong>Pronto</strong></span>
-            </div>
-          )}
+        <div style={{ fontWeight:700, fontSize:'var(--text-xs)', color:'var(--color-text-muted)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:'var(--space-4)' }}>
+          Progresso
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:0, marginBottom:'var(--space-4)', overflowX:'auto', paddingBottom:'var(--space-2)' }}>
           {STATUS_FLOW.map((s, i) => {
@@ -231,16 +257,9 @@ export default function OrdemDetalhe({ context }) {
                       : i+1
                     }
                   </div>
-                  <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:2 }}>
-                    <span style={{ fontSize:'var(--text-xs)', fontWeight: current ? 700 : 400, color: current ? STATUS_COLOR[s] : 'var(--color-text-muted)', textAlign:'center', whiteSpace:'nowrap' }}>
-                      {s}
-                    </span>
-                    {s === 'Pronto' && !isOficinaContext && (
-                      <span style={{ fontSize:9, color:'#25D366', display:'flex', alignItems:'center', gap:2, whiteSpace:'nowrap' }}>
-                        <IconWhatsApp /> auto
-                      </span>
-                    )}
-                  </div>
+                  <span style={{ fontSize:'var(--text-xs)', fontWeight: current ? 700 : 400, color: current ? STATUS_COLOR[s] : 'var(--color-text-muted)', textAlign:'center', whiteSpace:'nowrap' }}>
+                    {s}
+                  </span>
                 </div>
                 {i < STATUS_FLOW.length - 1 && (
                   <div style={{ flex:1, height:2, background: done ? 'var(--color-success)' : 'var(--color-border)', minWidth:24, margin:'0 4px', marginBottom:36 }}/>
@@ -287,6 +306,30 @@ export default function OrdemDetalhe({ context }) {
                 <div style={{ fontWeight:600, fontSize:'var(--text-sm)' }}>{v}</div>
               </div>
             ))}
+            {/* Botão WhatsApp inline no campo Contato */}
+            {(ordem.clientetelefone || ordem.clientecontato) && canSendWpp && (
+              <div style={{ gridColumn:'1 / -1', marginTop:'-var(--space-2)' }}>
+                <a
+                  href={wppUrl || undefined}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display:'inline-flex', alignItems:'center', gap:6,
+                    fontSize:'var(--text-xs)', fontWeight:600,
+                    color:'#25D366', textDecoration:'none',
+                    padding:'4px 10px',
+                    border:'1px solid #25D36644',
+                    borderRadius:'var(--radius-full)',
+                    background:'rgba(37,211,102,0.08)',
+                    transition:'all 0.15s',
+                  }}
+                  title="Abrir WhatsApp com mensagem pré-digitada"
+                >
+                  <IconWhatsApp />
+                  Enviar mensagem
+                </a>
+              </div>
+            )}
             {ordem.descricao && (
               <div style={{ gridColumn:'1 / -1' }}>
                 <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:4 }}>Descrição</div>
