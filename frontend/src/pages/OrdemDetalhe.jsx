@@ -28,17 +28,50 @@ function formatarTelefoneWpp(tel) {
 function buildWppUrl(ordem) {
   const tel = formatarTelefoneWpp(ordem.clientetelefone || ordem.clientecontato)
   if (!tel) return null
-  const prazoFmt = (ordem.prazoentrega || ordem.prazo) ? fmtD(ordem.prazoentrega || ordem.prazo) : null
-  const saldo = Number(ordem.saldoaberto ?? 0)
-  let msg = `Olá ${ordem.clientenome || 'cliente'}! 😊\n`
-  msg += `Sua OS *#${ordem.numero}* da Arte e Molduras `
-  if (ordem.status === 'Pronto')           msg += `está *pronta* e aguardando retirada! 🎉\n`
-  else if (ordem.status === 'Em Produção') msg += `está em *produção*. ⚙️\n`
-  else if (ordem.status === 'Entregue')    msg += `foi *entregue*. ✅\n`
-  else                                     msg += `foi *recebida* e está na fila. 📋\n`
-  if (prazoFmt) msg += `Prazo previsto: *${prazoFmt}*\n`
-  if (saldo > 0.009) msg += `Saldo a pagar: *${fmt(saldo)}*\n`
-  msg += `\nQualquer dúvida, é só chamar! 🙏`
+
+  const nome    = ordem.clientenome   || 'cliente'
+  const numero  = ordem.numero        || '—'
+  const servico = ordem.servico       || ordem.tipo || '—'
+  const total   = Number(ordem.valortotal   || ordem.valor   || 0)
+  const entrada = Number(ordem.valorentrada || ordem.entrada || 0)
+  const saldo   = Number(ordem.saldoaberto  ?? (total - entrada))
+  const status  = ordem.status
+
+  let msg = ''
+
+  if (status === 'Pronto') {
+    // ── Mensagem: OS Pronta ────────────────────────────────────────────────
+    msg += `🎉 *Arte e Molduras — Pedido Pronto!*\n\n`
+    msg += `Olá, *${nome}*! Seu pedido está pronto para retirada. 😊\n\n`
+    msg += `🖼️ *Serviço:* ${servico}\n`
+    msg += `🔖 *OS:* ${numero}\n`
+    if (saldo > 0.009) {
+      msg += `💳 *Saldo na retirada:* ${fmt(saldo)}\n`
+    } else {
+      msg += `✅ *Pagamento:* Quitado\n`
+    }
+    msg += `\nEstamos aguardando você!\n`
+    msg += `_Arte e Molduras_ 🎨`
+
+  } else {
+    // ── Mensagem: Confirmação de Pedido (todos os outros status) ───────────
+    msg += `📋 *Arte e Molduras — Confirmação de Pedido*\n\n`
+    msg += `Olá, *${nome}*! Seu pedido foi registrado com sucesso. 😊\n\n`
+    msg += `🖼️ *Serviço:* ${servico}\n`
+    msg += `🔖 *OS:* ${numero}\n`
+    msg += `💵 *Valor Total:* ${fmt(total)}\n`
+    if (entrada > 0.009) {
+      msg += `✅ *Entrada paga:* ${fmt(entrada)}\n`
+      if (saldo > 0.009) {
+        msg += `💳 *Saldo restante na retirada:* ${fmt(saldo)}\n`
+      } else {
+        msg += `✅ *Pagamento:* Quitado\n`
+      }
+    }
+    msg += `\nEntraremos em contato quando seu pedido estiver pronto!\n`
+    msg += `_Arte e Molduras_ 🎨`
+  }
+
   return `https://wa.me/${tel}?text=${encodeURIComponent(msg)}`
 }
 
@@ -128,10 +161,12 @@ export default function OrdemDetalhe({ context }) {
   const statusIdx = STATUS_FLOW.indexOf(ordem.status)
   const canAdvance = (isCaixa || isOficina || isAdmin) && ordem.status !== 'Entregue' && ordem.status !== 'Cancelado'
   const canCancel  = (isCaixa || isAdmin) && !isOficinaContext && ordem.status !== 'Cancelado'
-  // Botao WPP visivel para admin e caixa em qualquer contexto, e para oficina se tiver telefone
   const canSendWpp = (isAdmin || isCaixa) && !['Cancelado'].includes(ordem.status)
   const canDelete  = isAdmin && !isOficinaContext
   const wppUrl     = buildWppUrl(ordem)
+
+  // Label do botão WPP muda conforme status
+  const wppLabel = ordem.status === 'Pronto' ? 'Avisar Pronto' : 'Confirmar Pedido'
 
   return (
     <div>
@@ -157,7 +192,7 @@ export default function OrdemDetalhe({ context }) {
         )}
         <div style={{ flex:1 }}/>
 
-        {/* Botão WhatsApp — visivel para admin e caixa */}
+        {/* Botão WhatsApp */}
         {canSendWpp && (
           <a
             href={wppUrl || undefined}
@@ -172,10 +207,10 @@ export default function OrdemDetalhe({ context }) {
               opacity: wppUrl ? 1 : 0.55,
               cursor: wppUrl ? 'pointer' : 'not-allowed',
             }}
-            title={wppUrl ? 'Abrir WhatsApp com mensagem pré-digitada' : 'Cliente sem telefone cadastrado'}
+            title={wppUrl ? `Abrir WhatsApp — ${wppLabel}` : 'Cliente sem telefone cadastrado'}
           >
             <IconWhatsApp />
-            WhatsApp
+            {wppLabel}
           </a>
         )}
 
@@ -255,7 +290,7 @@ export default function OrdemDetalhe({ context }) {
         )}
       </div>
 
-      {/* Grid: info + financeiro — responsivo */}
+      {/* Grid: info + financeiro */}
       <div style={{
         display:'grid',
         gridTemplateColumns: isOficinaContext ? '1fr' : 'minmax(0,1fr) minmax(260px,300px)',
@@ -278,7 +313,6 @@ export default function OrdemDetalhe({ context }) {
                 <div style={{ fontWeight:600, fontSize:'var(--text-sm)' }}>{v}</div>
               </div>
             ))}
-            {/* Atalho WhatsApp inline no contato */}
             {(ordem.clientetelefone || ordem.clientecontato) && canSendWpp && (
               <div style={{ gridColumn:'1 / -1' }}>
                 <a
@@ -293,11 +327,10 @@ export default function OrdemDetalhe({ context }) {
                     border:'1px solid #25D36644',
                     borderRadius:'var(--radius-full)',
                     background:'rgba(37,211,102,0.08)',
-                    transition:'all 0.15s',
                   }}
                 >
                   <IconWhatsApp />
-                  Enviar mensagem
+                  {wppLabel}
                 </a>
               </div>
             )}
@@ -320,7 +353,6 @@ export default function OrdemDetalhe({ context }) {
           </div>
         </div>
 
-        {/* Financeiro — oculto no modo oficina */}
         {!isOficinaContext && (
           <div className="card card-pad">
             <div style={{ fontWeight:700, fontSize:'var(--text-sm)', marginBottom:'var(--space-4)' }}>Financeiro</div>
@@ -349,7 +381,7 @@ export default function OrdemDetalhe({ context }) {
         )}
       </div>
 
-      {/* Itens / Produtos da OS */}
+      {/* Itens */}
       {itens.length > 0 && (
         <div className="card card-pad" style={{ marginBottom:'var(--space-4)' }}>
           <div style={{ fontWeight:700, fontSize:'var(--text-sm)', marginBottom:'var(--space-4)', display:'flex', alignItems:'center', gap:'var(--space-2)' }}>
@@ -375,7 +407,6 @@ export default function OrdemDetalhe({ context }) {
               {itens.map((item, idx) => {
                 const nome     = item.nome || item.produto || item.descricao || item.name || `Item ${idx + 1}`
                 const qtd      = Number(item.quantidade || item.qty || item.qtd || 1)
-                // preco_unitario é o campo do banco; fallbacks para outros formatos
                 const preco    = Number(item.preco_unitario ?? item.preco ?? item.precovenda ?? item.valor ?? item.price ?? 0)
                 const subtotal = Number(item.subtotal || item.total || (qtd * preco))
                 return (
@@ -470,7 +501,7 @@ export default function OrdemDetalhe({ context }) {
         </div>
       </div>
 
-      {/* Modal confirmar exclusão */}
+      {/* Modal exclusão */}
       {confirmDelete && !isOficinaContext && ReactDOM.createPortal(
         <div className="modal-overlay" onClick={e => e.target===e.currentTarget && setConfirmDelete(false)}>
           <div className="modal modal-sm">
