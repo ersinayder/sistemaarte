@@ -138,48 +138,67 @@ export default function Oficina() {
     </div>
   );
 
+  const selectStyle = {
+    fontSize: 11,
+    padding: '0 var(--space-2)',
+    height: 28,
+    borderRadius: 'var(--radius-md)',
+    border: '1px solid var(--color-border)',
+    background: 'var(--color-surface-offset)',
+    color: 'var(--color-text)',
+    cursor: 'pointer',
+    outline: 'none',
+  };
+
   return (
     <div style={{ display:'flex', flexDirection:'column', height:'100%', overflow:'hidden' }}>
 
-      {/* Header */}
+      {/* Header compacto */}
       <div style={{
-        padding:'var(--space-4) var(--space-6)',
-        borderBottom:'1px solid var(--color-divider)',
-        display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0,
-        background:'var(--color-surface)'
+        padding: '6px var(--space-4)',
+        borderBottom: '1px solid var(--color-divider)',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        flexShrink: 0,
+        background: 'var(--color-surface)',
+        gap: 'var(--space-3)',
+        minHeight: 44,
       }}>
-        <div>
-          <h1 style={{ fontWeight:800, fontSize:'var(--text-lg)', margin:0, color:'var(--color-text)' }}>Fila da Oficina</h1>
-          <p style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', margin:0, marginTop:2 }}>
+        {/* Título */}
+        <div style={{ flexShrink: 0 }}>
+          <h1 style={{ fontWeight:800, fontSize:'var(--text-sm)', margin:0, color:'var(--color-text)', whiteSpace:'nowrap' }}>Fila da Oficina</h1>
+          <p style={{ fontSize:10, color:'var(--color-text-faint)', margin:0 }}>
             {ordens.filter(o=>o.status!=='Entregue').length} ordens ativas
           </p>
         </div>
-        <div style={{ display:'flex', gap:'var(--space-2)', alignItems:'center', flexWrap:'wrap' }}>
-          <select value={filterTipo} onChange={e=>setFilterTipo(e.target.value)}
-            className="form-input" style={{ fontSize:'var(--text-xs)', padding:'var(--space-1) var(--space-3)', height:32 }}>
+
+        {/* Controles numa só linha */}
+        <div style={{ display:'flex', gap:6, alignItems:'center', flexWrap:'nowrap' }}>
+          <select value={filterTipo} onChange={e=>setFilterTipo(e.target.value)} style={selectStyle}>
             {tiposDisponiveis.map(t => <option key={t} value={t}>{t === 'todos' ? 'Todos os tipos' : t}</option>)}
           </select>
-          <select value={filterPrio} onChange={e=>setFilterPrio(e.target.value)}
-            className="form-input" style={{ fontSize:'var(--text-xs)', padding:'var(--space-1) var(--space-3)', height:32 }}>
-            <option value="todas">Todas prioridades</option>
+
+          <select value={filterPrio} onChange={e=>setFilterPrio(e.target.value)} style={selectStyle}>
+            <option value="todas">Todas prio.</option>
             <option value="Normal">Normal</option>
             <option value="Urgente">Urgente</option>
           </select>
-          <div style={{ display:'flex', border:'1px solid var(--color-border)', borderRadius:'var(--radius-md)', overflow:'hidden' }}>
+
+          <div style={{ display:'flex', border:'1px solid var(--color-border)', borderRadius:'var(--radius-md)', overflow:'hidden', height:28 }}>
             {['kanban','lista'].map(v => (
               <button key={v} onClick={()=>setViewMode(v)}
-                style={{ padding:'var(--space-1) var(--space-3)', fontSize:'var(--text-xs)', fontWeight:600,
+                style={{ padding:'0 10px', fontSize:11, fontWeight:600,
                   background: viewMode===v ? 'var(--color-primary)' : 'transparent',
                   color: viewMode===v ? '#fff' : 'var(--color-text-muted)',
-                  border:'none', cursor:'pointer', transition:'all 0.15s' }}>
+                  border:'none', cursor:'pointer', transition:'all 0.15s', height:28 }}>
                 {v === 'kanban' ? '⊞ Kanban' : '☰ Lista'}
               </button>
             ))}
           </div>
+
           <button onClick={recover}
-            style={{ padding:'var(--space-1) var(--space-3)', fontSize:'var(--text-xs)', fontWeight:600,
+            style={{ padding:'0 10px', fontSize:11, fontWeight:600, height:28,
               background:'transparent', color:'var(--color-text-muted)', border:'1px solid var(--color-border)',
-              borderRadius:'var(--radius-md)', cursor:'pointer' }}>
+              borderRadius:'var(--radius-md)', cursor:'pointer', whiteSpace:'nowrap' }}>
             ↺ Recuperar
           </button>
         </div>
@@ -203,7 +222,7 @@ export default function Oficina() {
                   borderRadius:'var(--radius-lg)',
                   border:'1px solid var(--color-border)',
                   overflow:'hidden',
-                  maxHeight:'calc(100vh - 180px)'
+                  maxHeight:'calc(100vh - 160px)'
                 }}>
 
                 {/* Cabeçalho da coluna */}
