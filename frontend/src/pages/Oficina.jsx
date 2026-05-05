@@ -104,7 +104,13 @@ export default function Oficina() {
         statuses.map(s => api.get(`/ordens?status=${encodeURIComponent(s)}`))
       );
       const all = results.flatMap(r => r.data);
-      all.sort((a, b) => new Date(a.criadoem) - new Date(b.criadoem));
+      // Ordenar por prazo de entrega (sem prazo fica no final)
+      all.sort((a, b) => {
+        if (!a.prazoentrega && !b.prazoentrega) return new Date(a.criadoem) - new Date(b.criadoem);
+        if (!a.prazoentrega) return 1;
+        if (!b.prazoentrega) return -1;
+        return new Date(a.prazoentrega) - new Date(b.prazoentrega);
+      });
       setOrdens(all);
     } catch {
       toast.error('Erro ao carregar fila');
@@ -120,7 +126,12 @@ export default function Oficina() {
       const ativas = data
         .filter(o => !STATUS_EXCLUIDOS.has(o.status))
         .map(o => ({ ...o, status: normalizarStatus(o.status) }));
-      ativas.sort((a, b) => new Date(a.criadoem) - new Date(b.criadoem));
+      ativas.sort((a, b) => {
+        if (!a.prazoentrega && !b.prazoentrega) return new Date(a.criadoem) - new Date(b.criadoem);
+        if (!a.prazoentrega) return 1;
+        if (!b.prazoentrega) return -1;
+        return new Date(a.prazoentrega) - new Date(b.prazoentrega);
+      });
       setOrdens(ativas);
       const normalizadas = data.filter(
         o => !STATUS_EXCLUIDOS.has(o.status) && !STATUS_VALIDOS.has(o.status)
@@ -150,334 +161,299 @@ export default function Oficina() {
     return () => document.removeEventListener('visibilitychange', handler);
   }, [load]);
 
-  const byStatus = (s) => ordens.filter(o => {
-    if (o.status !== s) return false;
+  const onDragStart = (e, id) => {
+    if (!canEdit) return;
+    setDraggingId(id);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const onDragOver = (e, status) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOver(status);
+  };
+
+  const onDrop = async (e, novoStatus) => {
+    e.preventDefault();
+    setDragOver(null);
+    if (!draggingId || !canEdit) return;
+    const ordem = ordens.find(o => o.id === draggingId);
+    if (!ordem || ordem.status === novoStatus) { setDraggingId(null); return; }
+    setOrdens(prev => prev.map(o => o.id === draggingId ? { ...o, status: novoStatus } : o));
+    try {
+      await api.patch(`/ordens/${draggingId}`, { status: novoStatus });
+      if (novoStatus === 'Entregue') {
+        setRecentEntregues(prev => new Set([...prev, draggingId]));
+      }
+    } catch {
+      toast.error('Erro ao mover OS');
+      setOrdens(prev => prev.map(o => o.id === draggingId ? { ...o, status: ordem.status } : o));
+    }
+    setDraggingId(null);
+  };
+
+  const avancarStatus = async (ordem) => {
+    if (!canEdit) return;
+    const proximo = STATUSNEXT[ordem.status];
+    if (!proximo) return;
+    setOrdens(prev => prev.map(o => o.id === ordem.id ? { ...o, status: proximo } : o));
+    try {
+      await api.patch(`/ordens/${ordem.id}`, { status: proximo });
+      if (proximo === 'Entregue') {
+        setRecentEntregues(prev => new Set([...prev, ordem.id]));
+      }
+      toast.success(`OS #${ordem.numero} → ${proximo}`);
+    } catch {
+      toast.error('Erro ao atualizar status');
+      setOrdens(prev => prev.map(o => o.id === ordem.id ? { ...o, status: ordem.status } : o));
+    }
+  };
+
+  const fmtD = d => {
+    if (!d) return '';
+    const [y, m, dia] = d.split('-');
+    return `${dia}/${m}/${y}`;
+  };
+
+  const filtradas = ordens.filter(o => {
     if (filterServico    && o.servico    !== filterServico)    return false;
     if (filterPrioridade && o.prioridade !== filterPrioridade) return false;
-    if (s === 'Entregue') {
-      if (recentEntregues.has(o.id)) return true;
-      const entregueEm = o.entregueem || o.updatedat || o.criadoem;
-      if (!entregueEm) return false;
-      return entregueEm.slice(0, 10) >= inicioSemana;
-    }
     return true;
   });
 
-  const mudarStatus = async (id, novoStatus) => {
-    if (novoStatus === 'Entregue') {
-      setRecentEntregues(prev => new Set([...prev, id]));
-    }
-    try {
-      await api.patch(`/ordens/${id}/status`, { status: novoStatus });
-      toast.success(`Status → ${novoStatus}`);
-      load();
-    } catch (err) {
-      if (novoStatus === 'Entregue') {
-        setRecentEntregues(prev => { const n = new Set(prev); n.delete(id); return n; });
-      }
-      const msg = err.response?.data?.error || 'Erro ao atualizar status';
-      toast.error(msg, { duration: 6000 });
-    }
-  };
+  const porStatus = col => filtradas.filter(o => o.status === col.status);
 
-  const handleDragStart = (id) => setDraggingId(id);
-  const handleDragEnd   = ()   => { setDraggingId(null); setDragOver(null); };
-  const handleDrop      = (status) => {
-    if (!draggingId) return;
-    const ordem = ordens.find(o => o.id === draggingId);
-    if (ordem && ordem.status !== status) mudarStatus(draggingId, status);
-    setDraggingId(null);
-    setDragOver(null);
-  };
+  const TIPO_OPTS       = ['Moldura','Tela','Restauro','Passepartout','Vidro','Diversos'];
+  const PRIORIDADE_OPTS = ['Normal','Urgente'];
 
-  const fmt  = v => v != null ? Number(v).toLocaleString('pt-BR', { style:'currency', currency:'BRL' }) : '—';
-  const fmtD = d => d ? new Date(d+'T00:00:00').toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' }) : null;
-
-  const tiposServico = [...new Set(ordens.map(o => o.servico).filter(Boolean))];
-
-  const labelEntregue = (() => {
-    const [, mes, dia] = inicioSemana.split('-');
-    return `Entregue (desde ${dia}/${mes})`;
-  })();
+  if (loading) return (
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'60vh', gap:'var(--space-3)', color:'var(--color-text-muted)' }}>
+      <svg className="spin" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+      Carregando fila…
+    </div>
+  );
 
   return (
-    <div style={{ height:'calc(100vh - 60px - var(--space-12))', display:'flex', flexDirection:'column', minHeight:0 }}>
-
+    <div style={{ display:'flex', flexDirection:'column', height:'calc(100vh - 60px - var(--space-12))', minHeight:0 }}>
+      {/* Header */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'var(--space-4)', flexShrink:0 }}>
         <div>
-          <h1 style={{ fontSize:'var(--text-xl)', fontWeight:800, margin:0 }}>Fila da Oficina</h1>
+          <h1 style={{ fontSize:'var(--text-xl)', fontWeight:800, margin:0 }}>Fila de Oficina</h1>
           <p style={{ margin:0, fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>
-            {ordens.filter(o => o.status !== 'Entregue').length} ordem{ordens.filter(o => o.status !== 'Entregue').length !== 1 ? 's' : ''} ativa{ordens.filter(o => o.status !== 'Entregue').length !== 1 ? 's' : ''}
+            {filtradas.length} ordem{filtradas.length !== 1 ? 's' : ''} ativa{filtradas.length !== 1 ? 's' : ''}
+            {(filterServico || filterPrioridade) && ' (filtradas)'}
           </p>
         </div>
-
         <div style={{ display:'flex', gap:'var(--space-2)', alignItems:'center' }}>
-          <select className="form-input"
-            style={{ width:'auto', fontSize:'var(--text-xs)', padding:'var(--space-1) var(--space-2)' }}
+          {/* Filtros */}
+          <select className="form-input" style={{ width:'auto', fontSize:'var(--text-xs)' }}
             value={filterServico} onChange={e => setFilterServico(e.target.value)}>
             <option value="">Todos os tipos</option>
-            {tiposServico.map(t => <option key={t} value={t}>{t}</option>)}
+            {TIPO_OPTS.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
-
-          <select className="form-input"
-            style={{ width:'auto', fontSize:'var(--text-xs)', padding:'var(--space-1) var(--space-2)' }}
+          <select className="form-input" style={{ width:'auto', fontSize:'var(--text-xs)' }}
             value={filterPrioridade} onChange={e => setFilterPrioridade(e.target.value)}>
             <option value="">Todas prioridades</option>
-            <option value="Normal">Normal</option>
-            <option value="Urgente">Urgente</option>
+            {PRIORIDADE_OPTS.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
-
-          <div style={{ display:'flex', background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)', padding:2 }}>
-            <button className={`btn btn-xs ${view==='kanban'?'btn-primary':'btn-ghost'}`} onClick={() => setView('kanban')}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="3" y="3" width="7" height="18"/><rect x="14" y="3" width="7" height="11"/>
-              </svg>
-            </button>
-            <button className={`btn btn-xs ${view==='list'?'btn-primary':'btn-ghost'}`} onClick={() => setView('list')}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
-                <line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/>
-                <line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
-              </svg>
-            </button>
+          {/* Toggle view */}
+          <div style={{ display:'flex', border:'1px solid var(--color-border)', borderRadius:'var(--radius-md)', overflow:'hidden' }}>
+            {[{v:'kanban',icon:'M4 5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5zM14 5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1V5z'},
+               {v:'lista', icon:'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2M9 12h6M9 16h4'}]
+              .map(({ v, icon }) => (
+              <button key={v} onClick={() => setView(v)}
+                style={{ padding:'6px 10px', background: view === v ? 'var(--color-surface-offset)' : 'transparent',
+                  border:'none', cursor:'pointer', color: view === v ? 'var(--color-primary)' : 'var(--color-text-muted)',
+                  transition:'all 0.15s' }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d={icon}/></svg>
+              </button>
+            ))}
           </div>
-
-          <button className="btn btn-ghost btn-xs" onClick={load} disabled={loading||recovering} title="Atualizar">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-              style={{ animation: loading ? 'spin 0.8s linear infinite' : 'none' }}>
-              <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
-              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-            </svg>
-          </button>
-
-          <button className="btn btn-secondary btn-xs" onClick={recover}
-            disabled={recovering||loading}
-            title="Recuperar todas as OS ativas — normaliza status inconsistentes"
-            style={{ gap:'var(--space-1)' }}>
+          <button className="btn btn-ghost btn-sm" onClick={recover} disabled={recovering}
+            title="Recuperar todas as ordens (corrige status inválidos)">
             {recovering
-              ? <svg className="spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-              : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+              ? <svg className="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+              : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
             }
-            Recuperar OS
+            Recuperar
           </button>
         </div>
       </div>
 
-      {(loading || recovering) ? (
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', flex:1, color:'var(--color-text-muted)', gap:'var(--space-2)' }}>
-          <svg className="spin" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
-          </svg>
-          {recovering ? 'Recuperando OS…' : 'Carregando fila…'}
-        </div>
-      ) : view === 'kanban' ? (
-        <div style={{ display:'flex', gap:'var(--space-4)', flex:1, overflowX:'auto', overflowY:'auto', minHeight:0, paddingBottom:'var(--space-2)' }}>
+      {/* Kanban */}
+      {view === 'kanban' && (
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'var(--space-3)', flex:1, minHeight:0, overflow:'hidden' }}>
           {COLUNAS.map(col => {
-            const isEntregue = col.status === 'Entregue';
-            const colLabel   = isEntregue ? labelEntregue : col.label;
+            const cards = porStatus(col);
             return (
-            <div key={col.status}
-              onDragOver={e => { e.preventDefault(); setDragOver(col.status); }}
-              onDrop={e => { e.preventDefault(); handleDrop(col.status); }}
-              style={{ display:'flex', flexDirection:'column', gap:'var(--space-3)', minWidth:260, flex:1,
-                background: dragOver===col.status ? col.bg : 'transparent',
-                borderRadius:'var(--radius-xl)', padding:'var(--space-2)',
-                transition:'background 0.2s ease', overflowY:'auto', maxHeight:'calc(100vh - 160px)' }}
-            >
-              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
-                padding:'var(--space-2) var(--space-3)', background:col.bg,
-                borderRadius:'var(--radius-lg)', border:`1px solid ${col.color}40` }}>
-                <div style={{ display:'flex', alignItems:'center', gap:'var(--space-2)' }}>
-                  <div style={{ width:8, height:8, borderRadius:'50%', background:col.color }}/>
-                  <span style={{ fontWeight:700, fontSize:'var(--text-xs)', color:col.color }}>{colLabel}</span>
-                </div>
-                <span style={{ background:col.color, color:'white', width:22, height:22, borderRadius:'50%',
-                  display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:800 }}>
-                  {byStatus(col.status).length}
-                </span>
-              </div>
-
-              {byStatus(col.status).length === 0
-                ? <div style={{ border:'2px dashed var(--color-border)', borderRadius:'var(--radius-lg)',
-                    padding:'var(--space-8) var(--space-4)', textAlign:'center',
-                    color:'var(--color-text-faint)', fontSize:'var(--text-xs)',
-                    minHeight:80, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'var(--space-1)' }}>
-                    {isEntregue
-                      ? <><span>Nenhuma entrega esta semana</span><span style={{ fontSize:9, opacity:0.7 }}>Zera todo domingo</span></>
-                      : canEdit ? 'Arraste uma OS aqui' : 'Nenhuma OS'}
+              <div key={col.status}
+                onDragOver={e => onDragOver(e, col.status)}
+                onDrop={e => onDrop(e, col.status)}
+                onDragLeave={() => setDragOver(null)}
+                style={{ display:'flex', flexDirection:'column', background: dragOver === col.status ? `color-mix(in oklch, ${col.color} 10%, var(--color-surface))` : 'var(--color-surface)',
+                  borderRadius:'var(--radius-lg)', border:`1px solid ${dragOver === col.status ? col.color : 'var(--color-border)'}`,
+                  transition:'all 0.15s', overflow:'hidden' }}>
+                {/* Coluna header */}
+                <div style={{ padding:'var(--space-3) var(--space-4)', borderBottom:'1px solid var(--color-border)',
+                  background: col.bg, flexShrink:0 }}>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                    <span style={{ fontWeight:700, fontSize:'var(--text-sm)', color: col.color }}>{col.label}</span>
+                    <span style={{ fontSize:11, fontWeight:700, background:`color-mix(in oklch, ${col.color} 15%, var(--color-surface))`,
+                      color: col.color, borderRadius:'var(--radius-full)', padding:'1px 8px', minWidth:22, textAlign:'center' }}>
+                      {cards.length}
+                    </span>
                   </div>
-                : byStatus(col.status).map(o => {
+                </div>
+                {/* Cards */}
+                <div style={{ flex:1, overflowY:'auto', padding:'var(--space-2)', display:'flex', flexDirection:'column', gap:'var(--space-2)' }}>
+                  {cards.length === 0 ? (
+                    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+                      flex:1, color:'var(--color-text-faint)', gap:'var(--space-2)', padding:'var(--space-8) var(--space-4)', textAlign:'center', fontSize:'var(--text-xs)' }}>
+                      {col.status === 'Entregue'
+                        ? <><span>Nenhuma entrega esta semana</span><span style={{ fontSize:9, opacity:0.7 }}>Zera todo domingo</span></>
+                        : <span>Nenhuma OS aqui</span>
+                      }
+                    </div>
+                  ) : cards.map(o => {
                     // vencida = prazo no passado, excluindo Pronto e Entregue (já concluídas)
                     const vencida    = o.prazoentrega && o.prazoentrega < today && o.status !== 'Pronto' && o.status !== 'Entregue';
                     const ehHoje     = o.prazoentrega === today;
-                    const saldo      = Number(o.saldoaberto ?? 0);
-                    const quitado    = saldo <= 0.009;
+                    const isUrgente  = o.prioridade === 'Urgente';
                     const diasCriado = Math.floor((Date.now() - new Date(o.criadoem)) / 86400000);
-                    const next       = STATUSNEXT[o.status];
-                    const isRecent   = recentEntregues.has(o.id);
+
                     return (
                       <div key={o.id}
-                        draggable={canEdit && o.status !== 'Entregue'}
-                        onDragStart={() => handleDragStart(o.id)}
-                        onDragEnd={handleDragEnd}
-                        style={{ background: o.status === 'Entregue' ? 'var(--color-surface-offset)' : 'var(--color-surface)',
-                          border:`1px solid ${
-                            o.status === 'Entregue' ? 'rgba(37,99,235,0.20)'
-                            : vencida ? 'var(--color-error)' : 'var(--color-border)'
-                          }`,
-                          borderRadius:'var(--radius-lg)', padding:'var(--space-3)',
-                          cursor: canEdit && o.status !== 'Entregue' ? 'grab' : 'default',
-                          opacity: draggingId===o.id ? 0.5 : o.status === 'Entregue' ? 0.75 : 1,
-                          transition:'all 0.4s ease',
-                          animation: isRecent ? 'slideInEntregue 0.4s ease' : 'none',
-                          boxShadow:'var(--shadow-sm)' }}
+                        draggable={canEdit}
+                        onDragStart={e => onDragStart(e, o.id)}
+                        onDragEnd={() => setDraggingId(null)}
+                        onClick={() => navigate(`/ordens/${o.id}`)}
+                        style={{
+                          background: draggingId === o.id ? 'var(--color-surface-offset)' : 'var(--color-surface-2)',
+                          border: vencida ? '1px solid color-mix(in oklch, var(--color-error) 40%, var(--color-border))'
+                            : isUrgente ? '1px solid color-mix(in oklch, var(--color-warning) 40%, var(--color-border))'
+                            : '1px solid var(--color-border)',
+                          borderRadius:'var(--radius-md)',
+                          padding:'var(--space-3)',
+                          cursor:'pointer',
+                          opacity: draggingId === o.id ? 0.5 : 1,
+                          transition:'all 0.15s',
+                          boxShadow: draggingId !== o.id ? 'var(--shadow-sm)' : 'none',
+                        }}
                       >
-                        {o.status === 'Entregue' && (
-                          <div style={{ marginBottom:'var(--space-1)' }}>
-                            <span style={{ fontSize:9, fontWeight:700, color:'#2563eb',
-                              background:'rgba(37,99,235,0.10)', borderRadius:'var(--radius-full)', padding:'1px 6px', letterSpacing:'0.03em' }}>
-                              ✓ ENTREGUE
-                            </span>
-                          </div>
-                        )}
-
-                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'var(--space-2)' }}>
-                          <div style={{ display:'flex', alignItems:'center', gap:'var(--space-2)' }}>
-                            <div style={{ width:28, height:28, borderRadius:'var(--radius-md)',
-                              background:'rgba(1,105,111,0.10)', display:'flex', alignItems:'center',
-                              justifyContent:'center', flexShrink:0 }}>
-                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" strokeWidth="2">
-                                <path d={TIPOICONE[o.servico]||TIPOICONE['Diversos']}/>
-                              </svg>
-                            </div>
-                            <div style={{ fontWeight:800, fontSize:'var(--text-xs)', color:'var(--color-primary)', lineHeight:1.2 }}>{o.numero}</div>
-                          </div>
-                          <div style={{ fontSize:10, color:'var(--color-text-faint)' }}>
-                            {diasCriado===0?'hoje':`${diasCriado}d`}
-                          </div>
+                        {/* Linha 1: número + badge tipo */}
+                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'var(--space-1)' }}>
+                          <span style={{ fontWeight:800, fontSize:11, color:'var(--color-primary)' }}>#{o.numero}</span>
+                          <span className={`badge badge-${TIPOBADGE[o.servico]||'secondary'}`} style={{ fontSize:9 }}>{o.servico}</span>
                         </div>
-
-                        {o.prioridade==='Urgente' && o.status !== 'Entregue' && (
-                          <div style={{ marginBottom:'var(--space-1)' }}>
-                            <span style={{ fontSize:10, fontWeight:700, color:'var(--color-error)',
-                              background:'rgba(161,44,123,0.10)', borderRadius:'var(--radius-full)', padding:'1px 6px' }}>
-                              ⚡ Urgente
-                            </span>
-                          </div>
-                        )}
-
-                        <div style={{ fontWeight:600, fontSize:'var(--text-sm)', marginBottom:2, lineHeight:1.3 }}>{o.clientenome}</div>
-
-                        <div style={{ display:'flex', alignItems:'center', gap:'var(--space-1)', marginBottom:'var(--space-2)' }}>
-                          <span className={`badge badge-${TIPOBADGE[o.servico]||'diversos'}`} style={{ fontSize:10 }}>{o.servico}</span>
-                          {o.descricao && <span style={{ fontSize:10, color:'var(--color-text-muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:110 }}>{o.descricao}</span>}
+                        {/* Linha 2: cliente */}
+                        <div style={{ fontWeight:600, fontSize:'var(--text-xs)', marginBottom:'var(--space-1)',
+                          overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                          {o.clientenome}
+                          {isUrgente && <span style={{ marginLeft:4, fontSize:8, fontWeight:700, color:'var(--color-error)',
+                            background:'rgba(161,44,123,0.10)', borderRadius:'var(--radius-full)', padding:'1px 4px' }}>URGENTE</span>}
                         </div>
-
-                        {o.observacoes && (
-                          <div style={{ fontSize:10, color:'var(--color-text-muted)', marginBottom:'var(--space-2)', fontStyle:'italic', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                            💬 {o.observacoes}
+                        {/* Linha 3: descrição ou observações */}
+                        {(o.descricao || o.observacoes) && (
+                          <div style={{ fontSize:10, color:'var(--color-text-muted)', marginBottom:'var(--space-1)',
+                            overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+                            fontStyle: !o.descricao && o.observacoes ? 'italic' : 'normal' }}
+                            title={o.descricao || o.observacoes}>
+                            {o.descricao || o.observacoes}
                           </div>
                         )}
-
-                        {o.prazoentrega && o.status !== 'Entregue' && (
-                          <div style={{ display:'flex', alignItems:'center', gap:4, marginBottom:'var(--space-2)', fontSize:10,
-                            color: vencida?'var(--color-error)':ehHoje?'#d19900':'var(--color-text-muted)',
-                            fontWeight: vencida||ehHoje?700:400 }}>
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                              <rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>
-                            </svg>
-                            {vencida?'⚠ Vencido':ehHoje?'Hoje':fmtD(o.prazoentrega)}
+                        {/* Linha 4: prazo + ação */}
+                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:'var(--space-2)' }}>
+                          <div style={{ display:'flex', alignItems:'center', gap:'var(--space-1)' }}>
+                            {o.prazoentrega && o.status !== 'Entregue' && (
+                              <span style={{ fontSize:9, fontWeight:600,
+                                color: vencida ? 'var(--color-error)' : ehHoje ? 'var(--color-warning)' : 'var(--color-text-muted)',
+                                display:'flex', alignItems:'center', gap:2 }}>
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                                {vencida?'⚠ Vencido':ehHoje?'Hoje':fmtD(o.prazoentrega)}
+                              </span>
+                            )}
+                            {diasCriado > 14 && o.status !== 'Entregue' && (
+                              <span style={{ fontSize:9, color:'var(--color-text-faint)' }} title={`Criada há ${diasCriado} dias`}>⏱{diasCriado}d</span>
+                            )}
                           </div>
-                        )}
-
-                        {/* Financeiro: quitado = verde, saldo pendente = laranja */}
-                        {o.status !== 'Entregue' && (
-                          <div style={{ fontSize:10, color:'var(--color-text-muted)', marginBottom:'var(--space-2)' }}>
-                            {quitado
-                              ? <strong style={{ color:'#059669' }}>✓ Quitado</strong>
-                              : <>Saldo <strong style={{ color:'var(--color-warning)' }}>{fmt(saldo)}</strong></>
-                            }
-                          </div>
-                        )}
-                        {o.status === 'Entregue' && (
-                          <div style={{ fontSize:10, color:'var(--color-text-muted)', marginBottom:'var(--space-2)' }}>
-                            Total <strong style={{ color:'var(--color-text)' }}>{fmt(o.valortotal||o.valor)}</strong>
-                          </div>
-                        )}
-
-                        <div style={{ display:'flex', gap:'var(--space-1)', marginTop:'var(--space-2)', borderTop:'1px solid var(--color-divider)', paddingTop:'var(--space-2)' }}>
-                          <button className="btn btn-ghost btn-xs" style={{ flex:1, justifyContent:'center', fontSize:10 }}
-                            onClick={() => navigate(`/ordens/${o.id}`)}>Detalhes</button>
-                          {canEdit && next && o.status !== 'Entregue' && (
-                            <button className="btn btn-primary btn-xs" style={{ flex:1, justifyContent:'center', fontSize:10 }}
-                              onClick={() => mudarStatus(o.id, next)}>
-                              {next==='Em Produção'?'Produzir':next==='Pronto'?'Concluir':'Entregar'}
+                          {canEdit && STATUSNEXT[o.status] && (
+                            <button
+                              onClick={e => { e.stopPropagation(); avancarStatus(o); }}
+                              style={{ fontSize:9, padding:'2px 7px', borderRadius:'var(--radius-full)',
+                                background: col.bg, color: col.color,
+                                border:`1px solid color-mix(in oklch, ${col.color} 30%, transparent)`,
+                                cursor:'pointer', fontWeight:600, whiteSpace:'nowrap',
+                                transition:'all 0.15s' }}
+                              title={`Mover para ${STATUSNEXT[o.status]}`}
+                            >
+                              → {STATUSNEXT[o.status]}
                             </button>
                           )}
                         </div>
                       </div>
                     );
-                  })
-              }
-            </div>
+                  })}
+                </div>
+              </div>
             );
           })}
         </div>
-      ) : (
-        <div className="card" style={{ overflow:'hidden', flex:1 }}>
-          <div style={{ overflowY:'auto', height:'100%' }}>
+      )}
+
+      {/* Lista */}
+      {view === 'lista' && (
+        <div className="card" style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column' }}>
+          <div style={{ overflowY:'auto', flex:1 }}>
             <table className="table">
               <thead>
-                <tr><th>Nº</th><th>Cliente</th><th>Serviço</th><th>Descrição</th><th>Prazo</th><th>Status</th><th>Valor</th></tr>
+                <tr>
+                  <th>Nº</th><th>Cliente</th><th>Tipo</th><th>Prazo</th><th>Status</th><th>Valor</th><th></th>
+                </tr>
               </thead>
               <tbody>
-                {ordens.length===0
-                  ? <tr><td colSpan={7} style={{ textAlign:'center', padding:'var(--space-8)', color:'var(--color-text-muted)' }}>Nenhuma ordem na fila</td></tr>
-                  : ordens.filter(o => {
-                      if (o.status !== 'Entregue') return true;
-                      const entregueEm = o.entregueem || o.updatedat || o.criadoem;
-                      return entregueEm && entregueEm.slice(0,10) >= inicioSemana;
-                    }).map(o => {
-                    // vencida = prazo no passado, excluindo Pronto e Entregue
-                    const vencida = o.prazoentrega && o.prazoentrega < today && o.status !== 'Pronto' && o.status !== 'Entregue';
-                    return (
-                      <tr key={o.id} style={{ cursor:'pointer', opacity: o.status==='Entregue' ? 0.7 : 1 }}
-                        onClick={() => navigate(`/ordens/${o.id}`)}
-                      >
-                        <td style={{ fontWeight:700, color:'var(--color-primary)', fontSize:'var(--text-xs)' }}>{o.numero}</td>
-                        <td style={{ fontWeight:600 }}>{o.clientenome}</td>
-                        <td><span className={`badge badge-${TIPOBADGE[o.servico]||'diversos'}`} style={{ fontSize:10 }}>{o.servico}</span></td>
-                        <td style={{ maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:'var(--text-xs)' }}>{o.descricao}</td>
-                        <td style={{ fontSize:'var(--text-xs)', color:vencida?'var(--color-error)':'var(--color-text-muted)', fontWeight:vencida?700:400 }}>
-                          {o.prazoentrega?fmtD(o.prazoentrega):'—'}
-                        </td>
-                        <td>
-                          <span className={`badge badge-${
-                            o.status==='Em Produção'?'warning':o.status==='Pronto'?'success':
-                            o.status==='Entregue'?'primary':'secondary'
-                          }`} style={{ fontSize:10 }}>
-                            {o.status}
-                          </span>
-                        </td>
-                        <td style={{ textAlign:'right', fontFamily:'monospace', fontSize:'var(--text-xs)' }}>
-                          {fmt(o.valortotal||o.valor)}
-                        </td>
-                      </tr>
-                    );
-                  })
-                }
+                {filtradas.map(o => {
+                  const entregueEm = o.entregueem || o.updatedat || o.criadoem;
+                  const isRecent   = recentEntregues.has(o.id);
+                  // vencida = prazo no passado, excluindo Pronto e Entregue
+                  const vencida = o.prazoentrega && o.prazoentrega < today && o.status !== 'Pronto' && o.status !== 'Entregue';
+                  return (
+                    <tr key={o.id} style={{ cursor:'pointer' }} onClick={() => navigate(`/ordens/${o.id}`)}>
+                      <td style={{ fontWeight:700, color:'var(--color-primary)', fontSize:'var(--text-xs)' }}>{o.numero}</td>
+                      <td style={{ fontWeight:600, fontSize:'var(--text-xs)' }}>
+                        {o.clientenome}
+                        {o.prioridade==='Urgente' && <span style={{ marginLeft:4, fontSize:9, fontWeight:700, color:'var(--color-error)', background:'rgba(161,44,123,0.10)', borderRadius:'var(--radius-full)', padding:'1px 5px' }}>URGENTE</span>}
+                      </td>
+                      <td><span className={`badge badge-${TIPOBADGE[o.servico]||'secondary'}`} style={{ fontSize:9 }}>{o.servico}</span></td>
+                      <td style={{ fontSize:'var(--text-xs)', color: vencida?'var(--color-error)':'var(--color-text-muted)' }}>
+                        {o.prazoentrega?fmtD(o.prazoentrega):'—'}
+                      </td>
+                      <td>
+                        <span style={{ fontSize:10, fontWeight:600, padding:'2px 8px', borderRadius:'var(--radius-full)',
+                          background: COLUNAS.find(c=>c.status===o.status)?.bg||'var(--color-surface-offset)',
+                          color: COLUNAS.find(c=>c.status===o.status)?.color||'var(--color-text-muted)' }}>
+                          {o.status}
+                        </span>
+                      </td>
+                      <td style={{ fontFamily:'monospace', fontSize:'var(--text-xs)', textAlign:'right' }}>
+                        {o.valortotal ? `R$ ${Number(o.valortotal).toLocaleString('pt-BR',{minimumFractionDigits:2})}` : '—'}
+                      </td>
+                      <td style={{ textAlign:'right' }}>
+                        {canEdit && STATUSNEXT[o.status] && (
+                          <button className="btn btn-ghost btn-xs"
+                            onClick={e => { e.stopPropagation(); avancarStatus(o); }}
+                            style={{ fontSize:10, whiteSpace:'nowrap' }}>
+                            → {STATUSNEXT[o.status]}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </div>
       )}
-
-      <style>{`
-        @keyframes slideInEntregue {
-          from { opacity: 0; transform: translateY(-8px) scale(0.97); }
-          to   { opacity: 0.75; transform: translateY(0) scale(1); }
-        }
-      `}</style>
     </div>
   );
 }
