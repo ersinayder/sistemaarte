@@ -494,7 +494,7 @@ export default function Ordens() {
     <div style={{ display:'flex', flexDirection:'column', height:'100%', overflow:'hidden' }}>
 
       {/* Header */}
-      <div style={{ padding:'var(--space-4) var(--space-6)', borderBottom:'1px solid var(--color-border)',
+      <div style={{ padding:'var(--space-3) var(--space-6)', borderBottom:'1px solid var(--color-border)',
         display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0,
         background:'var(--color-surface)' }}>
         <div>
@@ -525,9 +525,9 @@ export default function Ordens() {
         </div>
       </div>
 
-      {/* KPIs */}
+      {/* KPIs — linha compacta */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)',
-        gap:'var(--space-3)', padding:'var(--space-4) var(--space-6)',
+        gap:'var(--space-2)', padding:'var(--space-2) var(--space-6)',
         borderBottom:'1px solid var(--color-border)', flexShrink:0 }}>
         {[
           { label:'Total OS', value:totalOrdens, icon:'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2', color:'var(--color-primary)' },
@@ -535,42 +535,43 @@ export default function Ordens() {
           { label:'Saldo a Receber', value:fmt(totalSaldo), icon:'M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6', color:'var(--color-success)' },
         ].map(k => (
           <div key={k.label} style={{ background:'var(--color-surface)', border:'1px solid var(--color-border)',
-            borderRadius:'var(--radius-lg)', padding:'var(--space-4)', display:'flex', alignItems:'center', gap:'var(--space-3)' }}>
-            <div style={{ width:36, height:36, borderRadius:'var(--radius-md)',
+            borderRadius:'var(--radius-md)', padding:'var(--space-2) var(--space-3)',
+            display:'flex', alignItems:'center', gap:'var(--space-2)' }}>
+            <div style={{ width:28, height:28, borderRadius:'var(--radius-sm)',
               background:`color-mix(in oklch, ${k.color} 12%, var(--color-surface-offset))`,
               display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={k.color} strokeWidth="2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={k.color} strokeWidth="2">
                 <path d={k.icon}/>
               </svg>
             </div>
             <div>
-              <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', fontWeight:500 }}>{k.label}</div>
-              <div style={{ fontWeight:700, fontSize:'var(--text-lg)', color:'var(--color-text)', fontFamily:'monospace' }}>{k.value}</div>
+              <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', fontWeight:500, lineHeight:1.2 }}>{k.label}</div>
+              <div style={{ fontWeight:700, fontSize:'var(--text-base)', color:'var(--color-text)', fontFamily:'monospace', lineHeight:1.2 }}>{k.value}</div>
             </div>
           </div>
         ))}
       </div>
 
-      {/* Filtros + Busca */}
-      <div style={{ padding:'var(--space-3) var(--space-6)', display:'flex', gap:'var(--space-3)',
+      {/* Filtros + Busca — barra inline compacta */}
+      <div style={{ padding:'var(--space-2) var(--space-6)', display:'flex', gap:'var(--space-2)',
         alignItems:'center', borderBottom:'1px solid var(--color-border)', flexShrink:0,
-        background:'var(--color-surface)', flexWrap:'wrap' }}>
-        <div style={{ position:'relative', flex:1, minWidth:200 }}>
-          <svg style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:'var(--color-text-faint)' }}
-            width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        background:'var(--color-surface)' }}>
+        <div style={{ position:'relative', flex:1, minWidth:160 }}>
+          <svg style={{ position:'absolute', left:8, top:'50%', transform:'translateY(-50%)', color:'var(--color-text-faint)', pointerEvents:'none' }}
+            width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
           </svg>
           <input className="form-input" value={busca} onChange={e=>setBusca(e.target.value)}
-            placeholder="Buscar por número, cliente, descrição…"
-            style={{ paddingLeft:30, fontSize:'var(--text-xs)', height:34 }} />
+            placeholder="Buscar…"
+            style={{ paddingLeft:26, fontSize:'var(--text-xs)', height:28, paddingTop:0, paddingBottom:0 }} />
         </div>
         <select className="form-input" value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}
-          style={{ fontSize:'var(--text-xs)', height:34, minWidth:150 }}>
+          style={{ fontSize:'var(--text-xs)', height:28, padding:'0 var(--space-2)', minWidth:130 }}>
           <option value="todos">Todos os status</option>
           {['Aguardando','Em Produção','Pronto','Entregue','Cancelado'].map(s=><option key={s}>{s}</option>)}
         </select>
         <select className="form-input" value={filterTipo} onChange={e=>setFilterTipo(e.target.value)}
-          style={{ fontSize:'var(--text-xs)', height:34, minWidth:150 }}>
+          style={{ fontSize:'var(--text-xs)', height:28, padding:'0 var(--space-2)', minWidth:120 }}>
           {tiposDisponiveis.map(t=><option key={t} value={t}>{t==='todos'?'Todos os tipos':t}</option>)}
         </select>
       </div>
@@ -683,7 +684,7 @@ export default function Ordens() {
 
       {/* Paginação */}
       {totalPages > 1 && (
-        <div style={{ padding:'var(--space-3) var(--space-6)', borderTop:'1px solid var(--color-border)',
+        <div style={{ padding:'var(--space-2) var(--space-6)', borderTop:'1px solid var(--color-border)',
           display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0,
           background:'var(--color-surface)', fontSize:'var(--text-xs)' }}>
           <span style={{ color:'var(--color-text-muted)' }}>
