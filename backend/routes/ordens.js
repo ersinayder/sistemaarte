@@ -75,10 +75,28 @@ function maybeNotifyPronto(ordemId, statusAnterior, statusNovo) {
   sendWhatsApp(os).catch(err => console.error('[WhatsApp] erro inesperado:', err.message));
 }
 
-// valida formato YYYY-MM-DD simples
 function isValidDate(d) {
   if (!d || typeof d !== 'string') return false;
   return /^\d{4}-\d{2}-\d{2}$/.test(d);
+}
+
+// Salva itens de uma OS (apaga os anteriores e reinsere)
+function saveItens(ordemId, produtos) {
+  run("DELETE FROM ordem_itens WHERE ordemid=?", [ordemId]);
+  if (!Array.isArray(produtos) || produtos.length === 0) return;
+  for (const p of produtos) {
+    const nome  = (p.nome || '').trim();
+    if (!nome) continue;
+    const qty   = Number(p.quantidade || 1);
+    const preco = Number(p.preco_unitario || p.preco || 0);
+    const avulso = p.avulso ? 1 : 0;
+    const pidRaw = p.produto_id;
+    const pid   = pidRaw ? Number(pidRaw) : null;
+    runInsert(
+      `INSERT INTO ordem_itens (ordemid, produto_id, nome, quantidade, preco_unitario, avulso) VALUES (?,?,?,?,?,?)`,
+      [ordemId, pid, nome, qty, preco, avulso]
+    );
+  }
 }
 
 // GET /api/ordens
@@ -123,7 +141,12 @@ router.get("/:id", auth(), (req, res, next) => {
       [req.params.id]
     );
 
-    res.json({ ...o, logs });
+    const itens = getAll(
+      "SELECT * FROM ordem_itens WHERE ordemid=? ORDER BY id ASC",
+      [req.params.id]
+    );
+
+    res.json({ ...o, logs, itens });
   } catch(e) { next(e); }
 });
 
@@ -132,7 +155,8 @@ router.post("/", auth(["admin","caixa"]), (req, res, next) => {
   const {
     clienteid, clientenome, clientetelefone, clientecpf,
     servico, descricao, valortotal, valorentrada,
-    prazoentrega, prioridade, pagamento, observacoes, dataEntrada
+    prazoentrega, prioridade, pagamento, observacoes, dataEntrada,
+    produtos,
   } = req.body ?? {};
 
   if (!clientenome || !servico || valortotal == null)
@@ -147,9 +171,7 @@ router.post("/", auth(["admin","caixa"]), (req, res, next) => {
   const erroPrazo = validarPrazo(prazoentrega);
   if (erroPrazo) return res.status(400).json({ error: erroPrazo });
 
-  // Data de lançamento: usa a fornecida (retroativo) ou hoje
   const dataLanc = (dataEntrada && isValidDate(dataEntrada)) ? dataEntrada : hoje();
-  // createdat da OS: datetime no formato SQLite a partir da data de lançamento
   const createdatOS = `${dataLanc} 00:00:00`;
 
   let cidResolvido = clienteid || null;
@@ -177,9 +199,9 @@ router.post("/", auth(["admin","caixa"]), (req, res, next) => {
         [id, null, "Aguardando", req.user.id, "Ordem criada"]
       );
 
-      // Só cria lançamento se entrada > 0
-      // tipo='Entrada' para que o Caixa classifique corretamente como receita positiva
-      // categoria=servico para manter rastreabilidade do tipo de serviço
+      // Salvar itens/produtos
+      saveItens(id, produtos);
+
       if (entrada > 0) {
         const desc = descricaoEntradaOS(numero, clientenome, servico, total, entrada);
         runInsert(
@@ -210,7 +232,8 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
     const {
       descricao, valortotal, valorentrada,
       prazoentrega, prioridade, pagamento, observacoes,
-      clientenome, clientetelefone, clientecpf, servico, clienteid
+      clientenome, clientetelefone, clientecpf, servico, clienteid,
+      produtos,
     } = req.body ?? {};
 
     const statusRaw = req.body?.status;
@@ -228,6 +251,8 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
         if (status !== current.status)
           runInsert("INSERT INTO statuslog (ordemid,statusanterior,statusnovo,usuarioid) VALUES (?,?,?,?)",
             [req.params.id, current.status, status, req.user.id]);
+        // Salvar itens se enviados pelo modo oficina
+        if (Array.isArray(produtos)) saveItens(req.params.id, produtos);
       });
 
       maybeNotifyPronto(req.params.id, old.status, status);
@@ -284,12 +309,14 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
       if (ns !== old.status)
         runInsert("INSERT INTO statuslog (ordemid,statusanterior,statusnovo,usuarioid) VALUES (?,?,?,?)", [req.params.id, old.status, ns, req.user.id]);
 
+      // Atualizar itens
+      if (Array.isArray(produtos)) saveItens(req.params.id, produtos);
+
       const entradaOS = getEntradaOS(req.params.id);
       const entradaDesc = descricaoEntradaOS(old.numero, novoCliente, novoServico, total, entrada);
 
       if (entradaOS) {
         if (entrada > 0) {
-          // tipo='Entrada' fixo; categoria=servico para rastreabilidade
           run("UPDATE lancamentos SET tipo='Entrada',categoria=?,descricao=?,pagamento=?,valor=?,pago=1 WHERE id=?",
             [novoServico||"Diversos", entradaDesc, novoPagamento, entrada, entradaOS.id]);
         } else {
@@ -347,64 +374,4 @@ router.patch("/:id/status", auth(["admin","caixa","oficina"]), (req, res, next) 
 router.post("/:id/whatsapp-confirmacao", auth(["admin","caixa"]), async (req, res, next) => {
   try {
     const os = getOne(SEL_ORDEM + " WHERE o.id=? AND o.deletedat IS NULL", [req.params.id]);
-    if (!os) return res.status(404).json({ error: "OS nao encontrada" });
-
-    if (!os.clientetelefone && !os.clientecontato && os.clienteid) {
-      const cli = getOne("SELECT phone FROM clientes WHERE id=? LIMIT 1", [os.clienteid]);
-      if (cli?.phone) os.clientetelefone = cli.phone;
-    }
-
-    const result = await sendWhatsAppConfirmacao(os);
-    if (result.ok) {
-      res.json({ ok: true, phone: result.phone });
-    } else {
-      res.status(400).json({ ok: false, error: result.error });
-    }
-  } catch(e) { next(e); }
-});
-
-// DELETE /api/ordens/:id
-router.delete("/:id", auth(["admin"]), (req, res, next) => {
-  try {
-    const os = getOne("SELECT id,numero,status FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);
-    if (!os) return res.status(404).json({ error: "OS nao encontrada ou ja excluida." });
-
-    const reason = req.body?.reason || null;
-
-    transaction(() => {
-      run(
-        `UPDATE ordens SET deletedat=datetime('now','localtime'), deletedpor=?, deletedreason=?, updatedat=datetime('now','localtime') WHERE id=?`,
-        [req.user.id, reason, req.params.id]
-      );
-      runInsert(
-        "INSERT INTO statuslog (ordemid,statusanterior,statusnovo,usuarioid,obs) VALUES (?,?,?,?,?)",
-        [req.params.id, os.status || null, "Excluida", req.user.id, reason || "Exclusao pelo administrador"]
-      );
-    });
-
-    res.json({ ok: true, numero: os.numero });
-  } catch(e) { next(e); }
-});
-
-// POST /api/ordens/:id/restaurar
-router.post("/:id/restaurar", auth(["admin"]), (req, res, next) => {
-  try {
-    const os = getOne("SELECT id,numero,status FROM ordens WHERE id=? AND deletedat IS NOT NULL", [req.params.id]);
-    if (!os) return res.status(404).json({ error: "OS nao encontrada na lixeira." });
-
-    transaction(() => {
-      run(
-        `UPDATE ordens SET deletedat=NULL, deletedpor=NULL, deletedreason=NULL, updatedat=datetime('now','localtime') WHERE id=?`,
-        [req.params.id]
-      );
-      runInsert(
-        "INSERT INTO statuslog (ordemid,statusanterior,statusnovo,usuarioid,obs) VALUES (?,?,?,?,?)",
-        [req.params.id, "Excluida", os.status, req.user.id, "OS restaurada da lixeira"]
-      );
-    });
-
-    res.json({ ok: true, numero: os.numero });
-  } catch(e) { next(e); }
-});
-
-module.exports = router;
+    if (!os) ret

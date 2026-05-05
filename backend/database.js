@@ -95,6 +95,17 @@ CREATE TABLE IF NOT EXISTS produtos (
   createdat   TEXT DEFAULT (datetime('now','localtime')),
   updatedat   TEXT DEFAULT (datetime('now','localtime'))
 );
+CREATE TABLE IF NOT EXISTS ordem_itens (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  ordemid         INTEGER NOT NULL,
+  produto_id      INTEGER DEFAULT NULL,
+  nome            TEXT NOT NULL,
+  quantidade      REAL NOT NULL DEFAULT 1,
+  preco_unitario  REAL NOT NULL DEFAULT 0,
+  subtotal        REAL GENERATED ALWAYS AS (quantidade * preco_unitario) STORED,
+  avulso          INTEGER DEFAULT 0,
+  createdat       TEXT DEFAULT (datetime('now','localtime'))
+);
 CREATE TABLE IF NOT EXISTS sequencias (
   nome   TEXT PRIMARY KEY,
   ultimo INTEGER DEFAULT 0
@@ -106,6 +117,7 @@ CREATE INDEX IF NOT EXISTS idx_lancamentos_data  ON lancamentos(data);
 CREATE INDEX IF NOT EXISTS idx_lancamentos_ordemid ON lancamentos(ordemid);
 CREATE INDEX IF NOT EXISTS idx_statuslog_ordemid ON statuslog(ordemid);
 CREATE INDEX IF NOT EXISTS idx_produtos_nome     ON produtos(nome COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS idx_ordem_itens_ordemid ON ordem_itens(ordemid);
 `;
 
 let db;
@@ -151,7 +163,6 @@ function initDB() {
   } catch (_) {}
 
   // Corrigir lancamentos de entradaos que tenham tipo diferente de 'Entrada'
-  // (bug pre-2026-05-04: tipo era preenchido com o servico da OS)
   try {
     const fixed = db.prepare(
       "UPDATE lancamentos SET categoria=tipo, tipo='Entrada' WHERE origem='entradaos' AND tipo != 'Entrada' AND deletedat IS NULL"
@@ -160,7 +171,7 @@ function initDB() {
       console.log(`[DB] Corrigidos ${fixed.changes} lancamento(s) entradaos com tipo invalido.`);
   } catch (_) {}
 
-  // Seed sequencias com o maior numero de OS ja existente
+  // Seed sequencias
   db.prepare("INSERT OR IGNORE INTO sequencias (nome, ultimo) VALUES ('os', 0)").run();
   const maxOS = db.prepare("SELECT MAX(CAST(SUBSTR(numero,4) AS INTEGER)) AS maxn FROM ordens").get();
   const maxN  = maxOS?.maxn ?? 0;
