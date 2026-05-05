@@ -66,7 +66,7 @@ function ProdutoInput({ produtos, onAdd }) {
 }
 
 // ------- Helpers -------
-const fmt  = v => `R$ ${Number(v||0).toFixed(2).replace('.',',')}``;
+const fmt  = v => `R$ ${Number(v||0).toFixed(2).replace('.',',')}`;
 const fmtD = d => { if (!d) return '—'; const [y,m,dia]=d.split('-'); return `${dia}/${m}/${y}`; };
 
 const statusColor = s => ({
