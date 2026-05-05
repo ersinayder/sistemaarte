@@ -104,7 +104,6 @@ export default function Oficina() {
         statuses.map(s => api.get(`/ordens?status=${encodeURIComponent(s)}`))
       );
       const all = results.flatMap(r => r.data);
-      // Ordenar por prazo de entrega (sem prazo fica no final)
       all.sort((a, b) => {
         if (!a.prazoentrega && !b.prazoentrega) return new Date(a.criadoem) - new Date(b.criadoem);
         if (!a.prazoentrega) return 1;
@@ -215,6 +214,8 @@ export default function Oficina() {
     return `${dia}/${m}/${y}`;
   };
 
+  const fmtR = v => `R$ ${Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
   const filtradas = ordens.filter(o => {
     if (filterServico    && o.servico    !== filterServico)    return false;
     if (filterPrioridade && o.prioridade !== filterPrioridade) return false;
@@ -245,7 +246,6 @@ export default function Oficina() {
           </p>
         </div>
         <div style={{ display:'flex', gap:'var(--space-2)', alignItems:'center' }}>
-          {/* Filtros */}
           <select className="form-input" style={{ width:'auto', fontSize:'var(--text-xs)' }}
             value={filterServico} onChange={e => setFilterServico(e.target.value)}>
             <option value="">Todos os tipos</option>
@@ -256,7 +256,6 @@ export default function Oficina() {
             <option value="">Todas prioridades</option>
             {PRIORIDADE_OPTS.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
-          {/* Toggle view */}
           <div style={{ display:'flex', border:'1px solid var(--color-border)', borderRadius:'var(--radius-md)', overflow:'hidden' }}>
             {[{v:'kanban',icon:'M4 5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5zM14 5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1V5z'},
                {v:'lista', icon:'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2M9 12h6M9 16h4'}]
@@ -315,11 +314,13 @@ export default function Oficina() {
                       }
                     </div>
                   ) : cards.map(o => {
-                    // vencida = prazo no passado, excluindo Pronto e Entregue (já concluídas)
-                    const vencida    = o.prazoentrega && o.prazoentrega < today && o.status !== 'Pronto' && o.status !== 'Entregue';
-                    const ehHoje     = o.prazoentrega === today;
-                    const isUrgente  = o.prioridade === 'Urgente';
+                    const vencida   = o.prazoentrega && o.prazoentrega < today && o.status !== 'Pronto' && o.status !== 'Entregue';
+                    const ehHoje    = o.prazoentrega === today;
+                    const isUrgente = o.prioridade === 'Urgente';
                     const diasCriado = Math.floor((Date.now() - new Date(o.criadoem)) / 86400000);
+                    const saldo     = Number(o.saldoaberto ?? 0);
+                    const quitado   = saldo <= 0.009;
+                    const resumo    = o.descricao || o.observacoes || o.obs || null;
 
                     return (
                       <div key={o.id}
@@ -345,31 +346,45 @@ export default function Oficina() {
                           <span style={{ fontWeight:800, fontSize:11, color:'var(--color-primary)' }}>#{o.numero}</span>
                           <span className={`badge badge-${TIPOBADGE[o.servico]||'secondary'}`} style={{ fontSize:9 }}>{o.servico}</span>
                         </div>
+
                         {/* Linha 2: cliente */}
-                        <div style={{ fontWeight:600, fontSize:'var(--text-xs)', marginBottom:'var(--space-1)',
+                        <div style={{ fontWeight:600, fontSize:'var(--text-xs)', marginBottom: resumo ? 'var(--space-1)' : 'var(--space-2)',
                           overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                           {o.clientenome}
                           {isUrgente && <span style={{ marginLeft:4, fontSize:8, fontWeight:700, color:'var(--color-error)',
                             background:'rgba(161,44,123,0.10)', borderRadius:'var(--radius-full)', padding:'1px 4px' }}>URGENTE</span>}
                         </div>
-                        {/* Linha 3: descrição ou observações */}
-                        {(o.descricao || o.observacoes) && (
-                          <div style={{ fontSize:10, color:'var(--color-text-muted)', marginBottom:'var(--space-1)',
+
+                        {/* Linha 3: descrição / observação do pedido */}
+                        {resumo && (
+                          <div style={{ fontSize:10, color:'var(--color-text-muted)', marginBottom:'var(--space-2)',
                             overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
-                            fontStyle: !o.descricao && o.observacoes ? 'italic' : 'normal' }}
-                            title={o.descricao || o.observacoes}>
-                            {o.descricao || o.observacoes}
+                            fontStyle: !o.descricao ? 'italic' : 'normal' }}
+                            title={resumo}>
+                            {resumo}
                           </div>
                         )}
-                        {/* Linha 4: prazo + ação */}
-                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:'var(--space-2)' }}>
-                          <div style={{ display:'flex', alignItems:'center', gap:'var(--space-1)' }}>
+
+                        {/* Linha 4: prazo + saldo + ação */}
+                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                          <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
+                            {/* prazo */}
                             {o.prazoentrega && o.status !== 'Entregue' && (
                               <span style={{ fontSize:9, fontWeight:600,
                                 color: vencida ? 'var(--color-error)' : ehHoje ? 'var(--color-warning)' : 'var(--color-text-muted)',
                                 display:'flex', alignItems:'center', gap:2 }}>
                                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-                                {vencida?'⚠ Vencido':ehHoje?'Hoje':fmtD(o.prazoentrega)}
+                                {vencida ? '⚠ Vencido' : ehHoje ? 'Hoje' : fmtD(o.prazoentrega)}
+                              </span>
+                            )}
+                            {/* saldo / quitado */}
+                            {o.status !== 'Entregue' && (
+                              <span style={{ fontSize:9, fontWeight:600, display:'flex', alignItems:'center', gap:2,
+                                color: quitado ? 'var(--color-success)' : 'var(--color-error)' }}>
+                                {quitado
+                                  ? <><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>Quitado</>
+                                  : <><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Saldo {fmtR(saldo)}</>
+                                }
                               </span>
                             )}
                             {diasCriado > 14 && o.status !== 'Entregue' && (
@@ -383,7 +398,7 @@ export default function Oficina() {
                                 background: col.bg, color: col.color,
                                 border:`1px solid color-mix(in oklch, ${col.color} 30%, transparent)`,
                                 cursor:'pointer', fontWeight:600, whiteSpace:'nowrap',
-                                transition:'all 0.15s' }}
+                                transition:'all 0.15s', flexShrink:0 }}
                               title={`Mover para ${STATUSNEXT[o.status]}`}
                             >
                               → {STATUSNEXT[o.status]}
@@ -407,21 +422,25 @@ export default function Oficina() {
             <table className="table">
               <thead>
                 <tr>
-                  <th>Nº</th><th>Cliente</th><th>Tipo</th><th>Prazo</th><th>Status</th><th>Valor</th><th></th>
+                  <th>Nº</th><th>Cliente</th><th>Tipo</th><th>Prazo</th><th>Status</th><th>Saldo</th><th></th>
                 </tr>
               </thead>
               <tbody>
                 {filtradas.map(o => {
-                  const entregueEm = o.entregueem || o.updatedat || o.criadoem;
-                  const isRecent   = recentEntregues.has(o.id);
-                  // vencida = prazo no passado, excluindo Pronto e Entregue
                   const vencida = o.prazoentrega && o.prazoentrega < today && o.status !== 'Pronto' && o.status !== 'Entregue';
+                  const saldo   = Number(o.saldoaberto ?? 0);
+                  const quitado = saldo <= 0.009;
                   return (
                     <tr key={o.id} style={{ cursor:'pointer' }} onClick={() => navigate(`/ordens/${o.id}`)}>
                       <td style={{ fontWeight:700, color:'var(--color-primary)', fontSize:'var(--text-xs)' }}>{o.numero}</td>
                       <td style={{ fontWeight:600, fontSize:'var(--text-xs)' }}>
-                        {o.clientenome}
-                        {o.prioridade==='Urgente' && <span style={{ marginLeft:4, fontSize:9, fontWeight:700, color:'var(--color-error)', background:'rgba(161,44,123,0.10)', borderRadius:'var(--radius-full)', padding:'1px 5px' }}>URGENTE</span>}
+                        <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:150 }}>{o.clientenome}</div>
+                        {(o.descricao || o.observacoes || o.obs) && (
+                          <div style={{ fontSize:10, color:'var(--color-text-muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:150 }}>
+                            {o.descricao || o.observacoes || o.obs}
+                          </div>
+                        )}
+                        {o.prioridade==='Urgente' && <span style={{ fontSize:9, fontWeight:700, color:'var(--color-error)', background:'rgba(161,44,123,0.10)', borderRadius:'var(--radius-full)', padding:'1px 5px' }}>URGENTE</span>}
                       </td>
                       <td><span className={`badge badge-${TIPOBADGE[o.servico]||'secondary'}`} style={{ fontSize:9 }}>{o.servico}</span></td>
                       <td style={{ fontSize:'var(--text-xs)', color: vencida?'var(--color-error)':'var(--color-text-muted)' }}>
@@ -434,8 +453,9 @@ export default function Oficina() {
                           {o.status}
                         </span>
                       </td>
-                      <td style={{ fontFamily:'monospace', fontSize:'var(--text-xs)', textAlign:'right' }}>
-                        {o.valortotal ? `R$ ${Number(o.valortotal).toLocaleString('pt-BR',{minimumFractionDigits:2})}` : '—'}
+                      <td style={{ fontSize:'var(--text-xs)', fontWeight:600, textAlign:'right',
+                        color: quitado ? 'var(--color-success)' : 'var(--color-error)' }}>
+                        {quitado ? '✓ Quitado' : fmtR(saldo)}
                       </td>
                       <td style={{ textAlign:'right' }}>
                         {canEdit && STATUSNEXT[o.status] && (
