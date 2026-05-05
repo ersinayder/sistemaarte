@@ -17,46 +17,28 @@ const STATUS_COLOR = { 'Recebido':'var(--color-blue)','Em Produção':'var(--col
 const PAG_BADGE    = { Pix:'pix', Dinheiro:'dinheiro', Credito:'credito', Debito:'debito', Link:'link' }
 const PAG_LABEL    = { Credito:'Crédito', Débito:'Débito', Link:'Link Pag.' }
 
-// Formata telefone para padrão internacional sem símbolos (ex: 5531999999999)
 function formatarTelefoneWpp(tel) {
   if (!tel) return null
   const digits = tel.replace(/\D/g, '')
   if (digits.length === 0) return null
-  // Já tem DDI 55
   if (digits.startsWith('55') && digits.length >= 12) return digits
-  // Adiciona DDI Brasil
   return '55' + digits
 }
 
-// Monta a URL wa.me com mensagem pré-definida
 function buildWppUrl(ordem) {
   const tel = formatarTelefoneWpp(ordem.clientetelefone || ordem.clientecontato)
   if (!tel) return null
-
-  const prazoFmt = ordem.prazoentrega || ordem.prazo
-    ? fmtD(ordem.prazoentrega || ordem.prazo)
-    : null
-
+  const prazoFmt = (ordem.prazoentrega || ordem.prazo) ? fmtD(ordem.prazoentrega || ordem.prazo) : null
   const saldo = Number(ordem.saldoaberto ?? 0)
-
   let msg = `Olá ${ordem.clientenome || 'cliente'}! 😊\n`
   msg += `Sua OS *#${ordem.numero}* da Arte e Molduras `
-
-  if (ordem.status === 'Pronto') {
-    msg += `está *pronta* e aguardando retirada! 🎉\n`
-  } else if (ordem.status === 'Em Produção') {
-    msg += `está em *produção*. ⚙️\n`
-  } else if (ordem.status === 'Entregue') {
-    msg += `foi *entregue*. ✅\n`
-  } else {
-    msg += `foi *recebida* e está na fila. 📋\n`
-  }
-
+  if (ordem.status === 'Pronto')           msg += `está *pronta* e aguardando retirada! 🎉\n`
+  else if (ordem.status === 'Em Produção') msg += `está em *produção*. ⚙️\n`
+  else if (ordem.status === 'Entregue')    msg += `foi *entregue*. ✅\n`
+  else                                     msg += `foi *recebida* e está na fila. 📋\n`
   if (prazoFmt) msg += `Prazo previsto: *${prazoFmt}*\n`
   if (saldo > 0.009) msg += `Saldo a pagar: *${fmt(saldo)}*\n`
-
   msg += `\nQualquer dúvida, é só chamar! 🙏`
-
   return `https://wa.me/${tel}?text=${encodeURIComponent(msg)}`
 }
 
@@ -76,20 +58,16 @@ export default function OrdemDetalhe({ context }) {
   const isOficinaContext = context === 'oficina' || isOficina
   const backPath = isOficinaContext ? '/oficina' : '/ordens'
 
-  const [ordem, setOrdem]               = useState(null)
-  const [itens, setItens]               = useState([])
-  const [historico, setHistorico]       = useState([])
-  const [loading, setLoading]           = useState(true)
-  const [novaObs, setNovaObs]           = useState('')
-  const [savingObs, setSavingObs]       = useState(false)
+  const [ordem, setOrdem]                 = useState(null)
+  const [itens, setItens]                 = useState([])
+  const [historico, setHistorico]         = useState([])
+  const [loading, setLoading]             = useState(true)
+  const [novaObs, setNovaObs]             = useState('')
+  const [savingObs, setSavingObs]         = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   useEffect(() => {
-    if (confirmDelete) {
-      document.body.style.overflow = 'hidden'
-    } else {
-      document.body.style.overflow = ''
-    }
+    document.body.style.overflow = confirmDelete ? 'hidden' : ''
     return () => { document.body.style.overflow = '' }
   }, [confirmDelete])
 
@@ -98,8 +76,7 @@ export default function OrdemDetalhe({ context }) {
       const ro = await api.get(`/ordens/${id}`)
       setOrdem(ro.data)
       setHistorico(ro.data.logs || [])
-      const itensData = ro.data.itens || ro.data.items || ro.data.produtos || []
-      setItens(itensData)
+      setItens(ro.data.itens || ro.data.items || ro.data.produtos || [])
     } catch {
       toast.error('Erro ao carregar OS')
       navigate(backPath)
@@ -130,16 +107,6 @@ export default function OrdemDetalhe({ context }) {
     finally { setSavingObs(false) }
   }
 
-  const abrirWhatsApp = () => {
-    if (!ordem) return
-    const url = buildWppUrl(ordem)
-    if (!url) {
-      toast.error('Cliente sem telefone cadastrado.')
-      return
-    }
-    window.open(url, '_blank', 'noopener,noreferrer')
-  }
-
   const excluirOS = async () => {
     try {
       await api.delete(`/ordens/${id}`)
@@ -151,19 +118,18 @@ export default function OrdemDetalhe({ context }) {
     }
   }
 
-  const imprimirOS = () => {
-    window.open(`/api/ordens/${id}/pdf`, '_blank', 'noopener,noreferrer')
-  }
+  const imprimirOS = () => window.open(`/api/ordens/${id}/pdf`, '_blank', 'noopener,noreferrer')
 
   if (loading) return <div className="loading-center"><div className="spinner"/></div>
   if (!ordem)  return null
 
-  const saldoOS    = Number(ordem.saldoaberto ?? 0)
-  const vencida    = ordem.prazo && ordem.prazo < today() && !['Entregue','Cancelado','Pronto'].includes(ordem.status)
-  const statusIdx  = STATUS_FLOW.indexOf(ordem.status)
-  const canAdvance = (isCaixa || isOficina) && ordem.status !== 'Entregue' && ordem.status !== 'Cancelado'
-  const canCancel  = isCaixa && !isOficinaContext && ordem.status !== 'Cancelado'
-  const canSendWpp = (isAdmin || isCaixa) && !isOficinaContext && !['Cancelado'].includes(ordem.status)
+  const saldoOS   = Number(ordem.saldoaberto ?? 0)
+  const vencida   = ordem.prazo && ordem.prazo < today() && !['Entregue','Cancelado','Pronto'].includes(ordem.status)
+  const statusIdx = STATUS_FLOW.indexOf(ordem.status)
+  const canAdvance = (isCaixa || isOficina || isAdmin) && ordem.status !== 'Entregue' && ordem.status !== 'Cancelado'
+  const canCancel  = (isCaixa || isAdmin) && !isOficinaContext && ordem.status !== 'Cancelado'
+  // Botao WPP visivel para admin e caixa em qualquer contexto, e para oficina se tiver telefone
+  const canSendWpp = (isAdmin || isCaixa) && !['Cancelado'].includes(ordem.status)
   const canDelete  = isAdmin && !isOficinaContext
   const wppUrl     = buildWppUrl(ordem)
 
@@ -191,6 +157,7 @@ export default function OrdemDetalhe({ context }) {
         )}
         <div style={{ flex:1 }}/>
 
+        {/* Botão WhatsApp — visivel para admin e caixa */}
         {canSendWpp && (
           <a
             href={wppUrl || undefined}
@@ -202,7 +169,7 @@ export default function OrdemDetalhe({ context }) {
               background:'#25D366', color:'#fff', border:'none',
               display:'inline-flex', alignItems:'center', gap:'var(--space-2)',
               textDecoration:'none',
-              opacity: wppUrl ? 1 : 0.6,
+              opacity: wppUrl ? 1 : 0.55,
               cursor: wppUrl ? 'pointer' : 'not-allowed',
             }}
             title={wppUrl ? 'Abrir WhatsApp com mensagem pré-digitada' : 'Cliente sem telefone cadastrado'}
@@ -288,16 +255,21 @@ export default function OrdemDetalhe({ context }) {
         )}
       </div>
 
-      {/* Grid: info + financeiro */}
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 300px', gap:'var(--space-4)', marginBottom:'var(--space-4)' }}>
+      {/* Grid: info + financeiro — responsivo */}
+      <div style={{
+        display:'grid',
+        gridTemplateColumns: isOficinaContext ? '1fr' : 'minmax(0,1fr) minmax(260px,300px)',
+        gap:'var(--space-4)',
+        marginBottom:'var(--space-4)'
+      }}>
         <div className="card card-pad">
           <div style={{ fontWeight:700, fontSize:'var(--text-sm)', marginBottom:'var(--space-4)' }}>Detalhes da OS</div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'var(--space-3)' }}>
             {[
-              ['Cliente',    ordem.clientenome     || '—'],
-              ['Contato',    ordem.clientetelefone || ordem.clientecontato || '—'],
-              ['Tipo',       ordem.servico         || ordem.tipo || '—'],
-              ['Prioridade', ordem.prioridade       || '—'],
+              ['Cliente',    ordem.clientenome                              || '—'],
+              ['Contato',    ordem.clientetelefone || ordem.clientecontato  || '—'],
+              ['Tipo',       ordem.servico         || ordem.tipo            || '—'],
+              ['Prioridade', ordem.prioridade                               || '—'],
               ['Prazo',      fmtD(ordem.prazoentrega || ordem.prazo)],
               ['Criada em',  fmtDT(ordem.createdat  || ordem.criadoem)],
             ].map(([l,v]) => (
@@ -306,9 +278,9 @@ export default function OrdemDetalhe({ context }) {
                 <div style={{ fontWeight:600, fontSize:'var(--text-sm)' }}>{v}</div>
               </div>
             ))}
-            {/* Botão WhatsApp inline no campo Contato */}
+            {/* Atalho WhatsApp inline no contato */}
             {(ordem.clientetelefone || ordem.clientecontato) && canSendWpp && (
-              <div style={{ gridColumn:'1 / -1', marginTop:'-var(--space-2)' }}>
+              <div style={{ gridColumn:'1 / -1' }}>
                 <a
                   href={wppUrl || undefined}
                   target="_blank"
@@ -323,7 +295,6 @@ export default function OrdemDetalhe({ context }) {
                     background:'rgba(37,211,102,0.08)',
                     transition:'all 0.15s',
                   }}
-                  title="Abrir WhatsApp com mensagem pré-digitada"
                 >
                   <IconWhatsApp />
                   Enviar mensagem
@@ -349,7 +320,7 @@ export default function OrdemDetalhe({ context }) {
           </div>
         </div>
 
-        {/* Financeiro */}
+        {/* Financeiro — oculto no modo oficina */}
         {!isOficinaContext && (
           <div className="card card-pad">
             <div style={{ fontWeight:700, fontSize:'var(--text-sm)', marginBottom:'var(--space-4)' }}>Financeiro</div>
@@ -402,10 +373,11 @@ export default function OrdemDetalhe({ context }) {
             </thead>
             <tbody>
               {itens.map((item, idx) => {
-                const nome      = item.nome || item.produto || item.descricao || item.name || `Item ${idx + 1}`
-                const qtd       = Number(item.quantidade || item.qty || item.qtd || 1)
-                const preco     = Number(item.preco || item.precovenda || item.valor || item.price || 0)
-                const subtotal  = Number(item.subtotal || item.total || (qtd * preco))
+                const nome     = item.nome || item.produto || item.descricao || item.name || `Item ${idx + 1}`
+                const qtd      = Number(item.quantidade || item.qty || item.qtd || 1)
+                // preco_unitario é o campo do banco; fallbacks para outros formatos
+                const preco    = Number(item.preco_unitario ?? item.preco ?? item.precovenda ?? item.valor ?? item.price ?? 0)
+                const subtotal = Number(item.subtotal || item.total || (qtd * preco))
                 return (
                   <tr key={item.id || idx}>
                     <td style={{ color:'var(--color-text-faint)', fontSize:'var(--text-xs)', fontWeight:600 }}>{idx + 1}</td>
@@ -432,8 +404,8 @@ export default function OrdemDetalhe({ context }) {
                   </td>
                   <td style={{ textAlign:'right', fontFamily:'monospace', fontWeight:800, fontSize:'var(--text-base)', paddingTop:'var(--space-3)', borderTop:'2px solid var(--color-border)', color:'var(--color-primary)' }}>
                     {fmt(itens.reduce((acc, item) => {
-                      const qtd = Number(item.quantidade || item.qty || item.qtd || 1)
-                      const preco = Number(item.preco || item.precovenda || item.valor || item.price || 0)
+                      const qtd   = Number(item.quantidade || item.qty || item.qtd || 1)
+                      const preco = Number(item.preco_unitario ?? item.preco ?? item.precovenda ?? item.valor ?? item.price ?? 0)
                       return acc + Number(item.subtotal || item.total || (qtd * preco))
                     }, 0))}
                   </td>
@@ -500,10 +472,7 @@ export default function OrdemDetalhe({ context }) {
 
       {/* Modal confirmar exclusão */}
       {confirmDelete && !isOficinaContext && ReactDOM.createPortal(
-        <div
-          className="modal-overlay"
-          onClick={e => e.target===e.currentTarget && setConfirmDelete(false)}
-        >
+        <div className="modal-overlay" onClick={e => e.target===e.currentTarget && setConfirmDelete(false)}>
           <div className="modal modal-sm">
             <div className="modal-header">
               <span className="modal-title" style={{ color:'var(--color-error)' }}>Excluir OS {ordem.numero}?</span>
