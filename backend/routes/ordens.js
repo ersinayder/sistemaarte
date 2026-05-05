@@ -31,7 +31,7 @@ function nextNumero() {
   const row = getOne(
     "UPDATE sequencias SET ultimo=ultimo+1 WHERE nome='os' RETURNING ultimo"
   );
-  if (!row) throw new Error("Falha ao gerar número da OS: sequência 'os' não encontrada.");
+  if (!row) throw new Error("Falha ao gerar numero da OS.");
   return `OS-${String(row.ultimo).padStart(4, "0")}`;
 }
 
@@ -45,7 +45,6 @@ function getEntradaOS(ordemId) {
 function resolveClienteData(clienteid, clientenome, telefoneFornecido, cpfFornecido) {
   let telefone = telefoneFornecido || null;
   let cpf = cpfFornecido || null;
-
   if (clienteid && (!telefone || !cpf)) {
     const cli = getOne("SELECT phone, cpf FROM clientes WHERE id=? LIMIT 1", [clienteid]);
     if (cli) {
@@ -53,7 +52,6 @@ function resolveClienteData(clienteid, clientenome, telefoneFornecido, cpfFornec
       if (!cpf && cli.cpf) cpf = cli.cpf;
     }
   }
-
   if (!telefone && clientenome) {
     const cli = getOne("SELECT phone, cpf FROM clientes WHERE name=? LIMIT 1", [clientenome]);
     if (cli) {
@@ -61,7 +59,6 @@ function resolveClienteData(clienteid, clientenome, telefoneFornecido, cpfFornec
       if (!cpf && cli.cpf) cpf = cli.cpf;
     }
   }
-
   return { telefone, cpf };
 }
 
@@ -80,18 +77,16 @@ function isValidDate(d) {
   return /^\d{4}-\d{2}-\d{2}$/.test(d);
 }
 
-// Salva itens de uma OS (apaga os anteriores e reinsere)
 function saveItens(ordemId, produtos) {
   run("DELETE FROM ordem_itens WHERE ordemid=?", [ordemId]);
   if (!Array.isArray(produtos) || produtos.length === 0) return;
   for (const p of produtos) {
-    const nome  = (p.nome || '').trim();
+    const nome = (p.nome || '').trim();
     if (!nome) continue;
     const qty   = Number(p.quantidade || 1);
     const preco = Number(p.preco_unitario || p.preco || 0);
     const avulso = p.avulso ? 1 : 0;
-    const pidRaw = p.produto_id;
-    const pid   = pidRaw ? Number(pidRaw) : null;
+    const pid = p.produto_id ? Number(p.produto_id) : null;
     runInsert(
       `INSERT INTO ordem_itens (ordemid, produto_id, nome, quantidade, preco_unitario, avulso) VALUES (?,?,?,?,?,?)`,
       [ordemId, pid, nome, qty, preco, avulso]
@@ -104,27 +99,20 @@ router.get("/", auth(), (req, res, next) => {
   try {
     const { status, q, vencidas, lixeira } = req.query;
     const isLixeira = lixeira === "1" && req.user.role === "admin";
-
     let sql = SEL_ORDEM + (isLixeira ? " WHERE o.deletedat IS NOT NULL" : " WHERE o.deletedat IS NULL");
     const p = [];
-
     if (!isLixeira) {
-      if (status && status !== "todos") {
-        sql += " AND o.status=?";
-        p.push(status);
-      }
+      if (status && status !== "todos") { sql += " AND o.status=?"; p.push(status); }
       if (vencidas == "1") {
         sql += " AND o.prazoentrega < ? AND o.status NOT IN ('Pronto','Entregue','Cancelado')";
         p.push(hoje());
       }
     }
-
     if (q) {
       sql += " AND (o.numero LIKE ? OR o.clientenome LIKE ? OR o.servico LIKE ?)";
-      const search = `%${q}%`;
-      p.push(search, search, search);
+      const s = `%${q}%`;
+      p.push(s, s, s);
     }
-
     sql += " ORDER BY o.id DESC";
     res.json(getAll(sql, p));
   } catch(e) { next(e); }
@@ -135,17 +123,14 @@ router.get("/:id", auth(), (req, res, next) => {
   try {
     const o = getOne(SEL_ORDEM + " WHERE o.id=?", [req.params.id]);
     if (!o) return res.status(404).json({ error: "Nao encontrado" });
-
     const logs = getAll(
       "SELECT sl.*, u.name AS usuarionome FROM statuslog sl LEFT JOIN users u ON u.id=sl.usuarioid WHERE sl.ordemid=? ORDER BY sl.createdat ASC",
       [req.params.id]
     );
-
     const itens = getAll(
       "SELECT * FROM ordem_itens WHERE ordemid=? ORDER BY id ASC",
       [req.params.id]
     );
-
     res.json({ ...o, logs, itens });
   } catch(e) { next(e); }
 });
@@ -193,15 +178,11 @@ router.post("/", auth(["admin","caixa"]), (req, res, next) => {
         [numero, cidResolvido, clientenome, telFinal, cpfFinal, servico, descricao||null, total, entrada,
          prazoentrega||null, prioridade||"Normal", pagamento||"Pix", observacoes||null, "Aguardando", req.user.id, createdatOS]
       );
-
       runInsert(
         "INSERT INTO statuslog (ordemid,statusanterior,statusnovo,usuarioid,obs) VALUES (?,?,?,?,?)",
         [id, null, "Aguardando", req.user.id, "Ordem criada"]
       );
-
-      // Salvar itens/produtos
       saveItens(id, produtos);
-
       if (entrada > 0) {
         const desc = descricaoEntradaOS(numero, clientenome, servico, total, entrada);
         runInsert(
@@ -209,16 +190,13 @@ router.post("/", auth(["admin","caixa"]), (req, res, next) => {
           [dataLanc, "Entrada", servico||"Diversos", desc, pagamento||"Pix", entrada, 1, id, req.user.id, "entradaos"]
         );
       }
-
       return { id, numero };
     });
-
     res.json(result);
   } catch(e) {
     console.error("[POST /api/ordens]", e.message);
-    if (e.message?.includes("UNIQUE")) {
+    if (e.message?.includes("UNIQUE"))
       return res.status(409).json({ error: "Conflito ao gerar numero da OS. Tente novamente." });
-    }
     next(e);
   }
 });
@@ -243,7 +221,6 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
       if (!status) return res.status(400).json({ error: "Informe o status" });
       const erroStatus = validarStatus(status, old.status);
       if (erroStatus) return res.status(400).json({ error: erroStatus });
-
       transaction(() => {
         const current = getOne("SELECT status FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);
         if (!current) throw new Error("OS nao encontrada");
@@ -251,10 +228,8 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
         if (status !== current.status)
           runInsert("INSERT INTO statuslog (ordemid,statusanterior,statusnovo,usuarioid) VALUES (?,?,?,?)",
             [req.params.id, current.status, status, req.user.id]);
-        // Salvar itens se enviados pelo modo oficina
         if (Array.isArray(produtos)) saveItens(req.params.id, produtos);
       });
-
       maybeNotifyPronto(req.params.id, old.status, status);
       return res.json({ ok: true });
     }
@@ -291,10 +266,7 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
 
     const telInput = clientetelefone !== undefined ? clientetelefone : old.clientetelefone;
     const cpfInput = clientecpf !== undefined ? clientecpf : old.clientecpf;
-
-    const { telefone: telFinal, cpf: cpfFinal } = resolveClienteData(
-      novoCid, novoCliente, telInput, cpfInput
-    );
+    const { telefone: telFinal, cpf: cpfFinal } = resolveClienteData(novoCid, novoCliente, telInput, cpfInput);
 
     transaction(() => {
       run(
@@ -305,16 +277,12 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
          total, entrada, novoPrazo, prioridade||old.prioridade, novoPagamento,
          observacoes !== undefined ? observacoes : old.observacoes, ns, req.params.id]
       );
-
       if (ns !== old.status)
-        runInsert("INSERT INTO statuslog (ordemid,statusanterior,statusnovo,usuarioid) VALUES (?,?,?,?)", [req.params.id, old.status, ns, req.user.id]);
-
-      // Atualizar itens
+        runInsert("INSERT INTO statuslog (ordemid,statusanterior,statusnovo,usuarioid) VALUES (?,?,?,?)",
+          [req.params.id, old.status, ns, req.user.id]);
       if (Array.isArray(produtos)) saveItens(req.params.id, produtos);
-
       const entradaOS = getEntradaOS(req.params.id);
       const entradaDesc = descricaoEntradaOS(old.numero, novoCliente, novoServico, total, entrada);
-
       if (entradaOS) {
         if (entrada > 0) {
           run("UPDATE lancamentos SET tipo='Entrada',categoria=?,descricao=?,pagamento=?,valor=?,pago=1 WHERE id=?",
@@ -341,22 +309,15 @@ router.patch("/:id/status", auth(["admin","caixa","oficina"]), (req, res, next) 
     const { obs } = req.body ?? {};
     const status = normalizarStatus(req.body?.status);
     if (!status) return res.status(400).json({ error: "status obrigatorio" });
-
     const old = getOne("SELECT status FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);
     if (!old) return res.status(404).json({ error: "Nao encontrado" });
-
     const erroStatus = validarStatus(status, old.status);
     if (erroStatus) return res.status(400).json({ error: erroStatus });
-
     if (status === 'Entregue') {
       const resumo = getResumoFinanceiroOS(req.params.id);
-      if (resumo && resumo.saldo > 0.01) {
-        return res.status(400).json({
-          error: `OS possui saldo aberto de R$ ${resumo.saldo.toFixed(2)}. Quite antes de entregar.`
-        });
-      }
+      if (resumo && resumo.saldo > 0.01)
+        return res.status(400).json({ error: `OS possui saldo aberto de R$ ${resumo.saldo.toFixed(2)}. Quite antes de entregar.` });
     }
-
     transaction(() => {
       run("UPDATE ordens SET status=?,updatedat=datetime('now','localtime') WHERE id=?", [status, req.params.id]);
       runInsert(
@@ -364,7 +325,6 @@ router.patch("/:id/status", auth(["admin","caixa","oficina"]), (req, res, next) 
         [req.params.id, old.status, status, req.user.id, obs||null]
       );
     });
-
     maybeNotifyPronto(req.params.id, old.status, status);
     res.json({ ok: true });
   } catch(e) { next(e); }
@@ -374,4 +334,34 @@ router.patch("/:id/status", auth(["admin","caixa","oficina"]), (req, res, next) 
 router.post("/:id/whatsapp-confirmacao", auth(["admin","caixa"]), async (req, res, next) => {
   try {
     const os = getOne(SEL_ORDEM + " WHERE o.id=? AND o.deletedat IS NULL", [req.params.id]);
-    if (!os) ret
+    if (!os) return res.status(404).json({ error: "OS nao encontrada" });
+    await sendWhatsAppConfirmacao(os);
+    res.json({ ok: true });
+  } catch(e) { next(e); }
+});
+
+// DELETE /api/ordens/:id
+router.delete("/:id", auth(["admin"]), (req, res, next) => {
+  try {
+    const { reason } = req.body ?? {};
+    const old = getOne("SELECT id FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);
+    if (!old) return res.status(404).json({ error: "Nao encontrado" });
+    run(
+      "UPDATE ordens SET deletedat=datetime('now','localtime'),deletedpor=?,deletedreason=? WHERE id=?",
+      [req.user.id, reason||null, req.params.id]
+    );
+    res.json({ ok: true });
+  } catch(e) { next(e); }
+});
+
+// POST /api/ordens/:id/restore
+router.post("/:id/restore", auth(["admin"]), (req, res, next) => {
+  try {
+    const old = getOne("SELECT id FROM ordens WHERE id=? AND deletedat IS NOT NULL", [req.params.id]);
+    if (!old) return res.status(404).json({ error: "Nao encontrado na lixeira" });
+    run("UPDATE ordens SET deletedat=NULL,deletedpor=NULL,deletedreason=NULL WHERE id=?", [req.params.id]);
+    res.json({ ok: true });
+  } catch(e) { next(e); }
+});
+
+module.exports = router;
