@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../context/AuthContext';
 
 const COLUNAS = [
   { status: 'Aguardando',   label: 'Aguardando',   bg:'var(--color-surface-offset)', color:'var(--color-text-muted)' },
@@ -151,19 +151,16 @@ export default function Oficina() {
           </p>
         </div>
         <div style={{ display:'flex', gap:'var(--space-2)', alignItems:'center', flexWrap:'wrap' }}>
-          {/* Filtro tipo */}
           <select value={filterTipo} onChange={e=>setFilterTipo(e.target.value)}
             className="form-input" style={{ fontSize:'var(--text-xs)', padding:'var(--space-1) var(--space-3)', height:32 }}>
             {tiposDisponiveis.map(t => <option key={t} value={t}>{t === 'todos' ? 'Todos os tipos' : t}</option>)}
           </select>
-          {/* Filtro prioridade */}
           <select value={filterPrio} onChange={e=>setFilterPrio(e.target.value)}
             className="form-input" style={{ fontSize:'var(--text-xs)', padding:'var(--space-1) var(--space-3)', height:32 }}>
             <option value="todas">Todas prioridades</option>
             <option value="Normal">Normal</option>
             <option value="Urgente">Urgente</option>
           </select>
-          {/* View toggle */}
           <div style={{ display:'flex', border:'1px solid var(--color-border)', borderRadius:'var(--radius-md)', overflow:'hidden' }}>
             {['kanban','lista'].map(v => (
               <button key={v} onClick={()=>setViewMode(v)}
@@ -175,7 +172,6 @@ export default function Oficina() {
               </button>
             ))}
           </div>
-          {/* Recuperar */}
           <button onClick={recover}
             style={{ padding:'var(--space-1) var(--space-3)', fontSize:'var(--text-xs)', fontWeight:600,
               background:'transparent', color:'var(--color-text-muted)', border:'1px solid var(--color-border)',
@@ -187,7 +183,6 @@ export default function Oficina() {
 
       {/* Conteúdo */}
       {viewMode === 'kanban' ? (
-        /* ===== KANBAN ===== */
         <div style={{ display:'flex', gap:'var(--space-4)', padding:'var(--space-4)', flex:1,
           overflow:'auto', alignItems:'flex-start' }}>
           {COLUNAS.map(col => {
@@ -200,7 +195,6 @@ export default function Oficina() {
                   background:'var(--color-surface)', borderRadius:'var(--radius-lg)',
                   border:'1px solid var(--color-border)', overflow:'hidden',
                   maxHeight:'calc(100vh - 180px)' }}>
-                {/* Cabeçalho coluna */}
                 <div style={{ padding:'var(--space-3) var(--space-4)',
                   borderBottom:'1px solid var(--color-border)', flexShrink:0,
                   display:'flex', alignItems:'center', justifyContent:'space-between',
@@ -215,7 +209,6 @@ export default function Oficina() {
                   </span>
                 </div>
 
-                {/* Cards */}
                 <div style={{ flex:1, overflowY:'auto', padding:'var(--space-2)', display:'flex',
                   flexDirection:'column', gap:'var(--space-2)' }}>
                   {cards.length === 0 ? (
@@ -253,13 +246,11 @@ export default function Oficina() {
                           boxShadow: draggingId !== o.id ? 'var(--shadow-sm)' : 'none',
                         }}
                       >
-                        {/* Linha 1: número + badge tipo */}
                         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'var(--space-1)' }}>
                           <span style={{ fontWeight:800, fontSize:11, color:'var(--color-primary)' }}>#{o.numero}</span>
                           <span className={`badge badge-${TIPOBADGE[o.servico]||'secondary'}`} style={{ fontSize:9 }}>{o.servico}</span>
                         </div>
 
-                        {/* Linha 2: cliente */}
                         <div style={{ fontWeight:600, fontSize:'var(--text-xs)', marginBottom: resumo ? 'var(--space-1)' : 'var(--space-2)',
                           overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                           {o.clientenome}
@@ -267,7 +258,6 @@ export default function Oficina() {
                             background:'rgba(161,44,123,0.10)', borderRadius:'var(--radius-full)', padding:'1px 4px' }}>URGENTE</span>}
                         </div>
 
-                        {/* Linha 3: produtos / observação do pedido */}
                         {resumo && (
                           <div style={{ fontSize:10, color:'var(--color-text-muted)', marginBottom:'var(--space-2)',
                             overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
@@ -278,10 +268,8 @@ export default function Oficina() {
                           </div>
                         )}
 
-                        {/* Linha 4: prazo + saldo + ação */}
                         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                           <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
-                            {/* prazo */}
                             {o.prazoentrega && o.status !== 'Entregue' && (
                               <span style={{ fontSize:9, fontWeight:600,
                                 color: vencida ? 'var(--color-error)' : ehHoje ? 'var(--color-warning)' : 'var(--color-text-muted)',
@@ -290,7 +278,6 @@ export default function Oficina() {
                                 {vencida ? '⚠ Vencido' : ehHoje ? 'Hoje' : fmtD(o.prazoentrega)}
                               </span>
                             )}
-                            {/* saldo / quitado */}
                             {o.status !== 'Entregue' && (
                               <span style={{ fontSize:9, fontWeight:600, display:'flex', alignItems:'center', gap:2,
                                 color: quitado ? 'var(--color-success)' : 'var(--color-error)' }}>
@@ -325,15 +312,18 @@ export default function Oficina() {
           })}
         </div>
       ) : (
-        /* ===== LISTA ===== */
         <div style={{ flex:1, overflow:'auto', padding:'var(--space-4)' }}>
           <div className="card" style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column' }}>
             <table style={{ width:'100%', borderCollapse:'collapse' }}>
               <thead>
                 <tr style={{ borderBottom:'1px solid var(--color-border)', background:'var(--color-surface-offset)' }}>
-                  <th style={{ padding:'var(--space-2) var(--space-3)', textAlign:'left', fontSize:'var(--text-xs)', fontWeight:700, color:'var(--color-text-muted)' }}>
-                    <th>No</th><th>Cliente</th><th>Tipo</th><th>Produto / Obs</th><th>Prazo</th><th>Status</th><th>Saldo</th>
-                  </th>
+                  <th style={{ padding:'var(--space-2) var(--space-3)', textAlign:'left', fontSize:'var(--text-xs)', fontWeight:700, color:'var(--color-text-muted)' }}>No</th>
+                  <th style={{ padding:'var(--space-2) var(--space-3)', textAlign:'left', fontSize:'var(--text-xs)', fontWeight:700, color:'var(--color-text-muted)' }}>Cliente</th>
+                  <th style={{ padding:'var(--space-2) var(--space-3)', textAlign:'left', fontSize:'var(--text-xs)', fontWeight:700, color:'var(--color-text-muted)' }}>Tipo</th>
+                  <th style={{ padding:'var(--space-2) var(--space-3)', textAlign:'left', fontSize:'var(--text-xs)', fontWeight:700, color:'var(--color-text-muted)' }}>Produto / Obs</th>
+                  <th style={{ padding:'var(--space-2) var(--space-3)', textAlign:'left', fontSize:'var(--text-xs)', fontWeight:700, color:'var(--color-text-muted)' }}>Prazo</th>
+                  <th style={{ padding:'var(--space-2) var(--space-3)', textAlign:'left', fontSize:'var(--text-xs)', fontWeight:700, color:'var(--color-text-muted)' }}>Status</th>
+                  <th style={{ padding:'var(--space-2) var(--space-3)', textAlign:'left', fontSize:'var(--text-xs)', fontWeight:700, color:'var(--color-text-muted)' }}>Saldo</th>
                 </tr>
               </thead>
               <tbody>
