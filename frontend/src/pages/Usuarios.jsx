@@ -29,7 +29,7 @@ function ModalUsuario({ open, onClose, onSaved, editData }) {
   useEffect(() => {
     if (!open) return
     setForm(editData
-      ? { name:editData.name||'', username:editData.username||'', password:'', role:editData.role||'caixa', ativo:editData.ativo!==false }
+      ? { name:editData.name||'', username:editData.username||'', password:'', role:editData.role||'caixa', ativo:editData.active!==0 }
       : { name:'', username:'', password:'', role:'caixa', ativo:true })
   }, [open, editData])
 
@@ -38,7 +38,8 @@ function ModalUsuario({ open, onClose, onSaved, editData }) {
     if (!editData && !form.password) { toast.error('Senha é obrigatória para novo usuário'); return }
     setSaving(true)
     try {
-      const payload = { ...form }
+      const { ativo, ...rest } = form
+      const payload = { ...rest, active: ativo ? 1 : 0 }
       if (editData && !form.password) delete payload.password
       if (editData) { await api.put(`/users/${editData.id}`, payload); toast.success('Usuário atualizado!') }
       else          { await api.post('/users', payload);               toast.success('Usuário criado!') }
@@ -153,7 +154,7 @@ export default function Usuarios() {
         {loading
           ? [1,2,3].map(i => <div key={i} className="card card-pad skeleton" style={{ height:140 }}/>)
           : users.map(u => (
-          <div key={u.id} className="card card-pad" style={{ opacity: u.ativo===false ? 0.5 : 1 }}>
+          <div key={u.id} className="card card-pad" style={{ opacity: u.active===0 ? 0.5 : 1 }}>
             <div style={{ display:'flex', alignItems:'center', gap:'var(--space-3)', marginBottom:'var(--space-4)' }}>
               <div style={{
                 width:44, height:44, borderRadius:'var(--radius-full)',
@@ -167,7 +168,7 @@ export default function Usuarios() {
                 <div style={{ fontWeight:700, fontSize:'var(--text-sm)' }}>{u.name}</div>
                 <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>@{u.username}</div>
               </div>
-              {u.ativo === false && (
+              {u.active === 0 && (
                 <span className="badge" style={{ background:'var(--color-surface-dynamic)', color:'var(--color-text-faint)', marginLeft:'auto' }}>Inativo</span>
               )}
             </div>
