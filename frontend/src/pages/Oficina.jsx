@@ -23,7 +23,7 @@ const TIPOBADGE = {
   'Diversos': 'secondary',
 };
 
-const fmtR = v => `R$ ${Number(v||0).toFixed(2).replace('.',',')}`;
+const fmtR = v => `R$ ${Number(v||0).toFixed(2).replace('.',',')}` ;
 const fmtD = d => {
   if (!d) return '';
   const [y,m,dia] = d.split('-');
@@ -33,7 +33,9 @@ const fmtD = d => {
 export default function Oficina() {
   const { user } = useAuth();
   const navigate  = useNavigate();
-  const canEdit   = user?.role === 'admin' || user?.role === 'oficina';
+  // admin e caixa podem arrastar e avançar; oficina também arrasta mas não vê valores
+  const canEdit    = user?.role === 'admin' || user?.role === 'oficina' || user?.role === 'caixa';
+  const showValor  = user?.role !== 'oficina';
 
   const [ordens,      setOrdens]      = useState([]);
   const [loading,     setLoading]     = useState(true);
@@ -163,7 +165,6 @@ export default function Oficina() {
         gap: 'var(--space-3)',
         minHeight: 44,
       }}>
-        {/* Título */}
         <div style={{ flexShrink: 0 }}>
           <h1 style={{ fontWeight:800, fontSize:'var(--text-sm)', margin:0, color:'var(--color-text)', whiteSpace:'nowrap' }}>Fila da Oficina</h1>
           <p style={{ fontSize:10, color:'var(--color-text-faint)', margin:0 }}>
@@ -171,7 +172,6 @@ export default function Oficina() {
           </p>
         </div>
 
-        {/* Controles numa só linha */}
         <div style={{ display:'flex', gap:6, alignItems:'center', flexWrap:'nowrap' }}>
           <select value={filterTipo} onChange={e=>setFilterTipo(e.target.value)} style={selectStyle}>
             {tiposDisponiveis.map(t => <option key={t} value={t}>{t === 'todos' ? 'Todos os tipos' : t}</option>)}
@@ -225,7 +225,6 @@ export default function Oficina() {
                   maxHeight:'calc(100vh - 160px)'
                 }}>
 
-                {/* Cabeçalho da coluna */}
                 <div style={{
                   padding:'var(--space-3) var(--space-4)',
                   borderBottom:'1px solid var(--color-divider)',
@@ -248,7 +247,6 @@ export default function Oficina() {
                   </span>
                 </div>
 
-                {/* Cards */}
                 <div style={{ flex:1, overflowY:'auto', padding:'var(--space-2)', display:'flex',
                   flexDirection:'column', gap:'var(--space-2)' }}>
                   {cards.length === 0 ? (
@@ -336,7 +334,7 @@ export default function Oficina() {
                                 {vencida ? '⚠ Vencido' : ehHoje ? '⏰ Hoje' : fmtD(o.prazoentrega)}
                               </span>
                             )}
-                            {o.status !== 'Entregue' && (
+                            {showValor && o.status !== 'Entregue' && (
                               <span style={{
                                 fontSize:9, fontWeight:600,
                                 display:'flex', alignItems:'center', gap:2,
@@ -383,7 +381,7 @@ export default function Oficina() {
             <table style={{ width:'100%', borderCollapse:'collapse' }}>
               <thead>
                 <tr style={{ borderBottom:'1px solid var(--color-border)', background:'var(--color-surface-offset)' }}>
-                  {['No','Cliente','Tipo','Produto / Obs','Prazo','Status','Saldo'].map(h => (
+                  {['No','Cliente','Tipo','Produto / Obs','Prazo','Status', ...(showValor ? ['Saldo'] : [])].map(h => (
                     <th key={h} style={{ padding:'var(--space-2) var(--space-3)', textAlign:'left',
                       fontSize:'var(--text-xs)', fontWeight:700, color:'var(--color-text-muted)',
                       textTransform:'uppercase', letterSpacing:'0.05em' }}>{h}</th>
@@ -439,11 +437,13 @@ export default function Oficina() {
                           {o.status}
                         </span>
                       </td>
-                      <td style={{ padding:'var(--space-2) var(--space-3)', fontSize:'var(--text-xs)', fontWeight:700 }}>
-                        <span className={quitado ? 'valor-entrada' : 'urgencia-hoje'}>
-                          {quitado ? 'Quitado' : fmtR(saldo)}
-                        </span>
-                      </td>
+                      {showValor && (
+                        <td style={{ padding:'var(--space-2) var(--space-3)', fontSize:'var(--text-xs)', fontWeight:700 }}>
+                          <span className={quitado ? 'valor-entrada' : 'urgencia-hoje'}>
+                            {quitado ? 'Quitado' : fmtR(saldo)}
+                          </span>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
