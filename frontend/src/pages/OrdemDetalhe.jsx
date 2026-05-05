@@ -30,12 +30,11 @@ export default function OrdemDetalhe({ context }) {
   const navigate = useNavigate()
   const { isCaixa, isAdmin, isOficina } = useAuth()
 
-  // context="oficina" → modo somente-leitura: sem excluir, sem WhatsApp manual,
-  // mas o técnico ainda pode mover o status da OS.
   const isOficinaContext = context === 'oficina' || isOficina
   const backPath = isOficinaContext ? '/oficina' : '/ordens'
 
   const [ordem, setOrdem]               = useState(null)
+  const [itens, setItens]               = useState([])
   const [historico, setHistorico]       = useState([])
   const [loading, setLoading]           = useState(true)
   const [novaObs, setNovaObs]           = useState('')
@@ -57,6 +56,9 @@ export default function OrdemDetalhe({ context }) {
       const ro = await api.get(`/ordens/${id}`)
       setOrdem(ro.data)
       setHistorico(ro.data.logs || [])
+      // Itens podem vir dentro da resposta da OS ou em campo dedicado
+      const itensData = ro.data.itens || ro.data.items || ro.data.produtos || []
+      setItens(itensData)
     } catch {
       toast.error('Erro ao carregar OS')
       navigate(backPath)
@@ -127,7 +129,6 @@ export default function OrdemDetalhe({ context }) {
   const saldoOS    = Number(ordem.saldoaberto ?? 0)
   const vencida    = ordem.prazo && ordem.prazo < today() && !['Entregue','Cancelado','Pronto'].includes(ordem.status)
   const statusIdx  = STATUS_FLOW.indexOf(ordem.status)
-  // Oficina pode mover status, mas não cancelar nem excluir
   const canAdvance = (isCaixa || isOficina) && ordem.status !== 'Entregue' && ordem.status !== 'Cancelado'
   const canCancel  = isCaixa && !isOficinaContext && ordem.status !== 'Cancelado'
   const canSendWpp = (isAdmin || isCaixa) && !isOficinaContext && !['Cancelado'].includes(ordem.status)
@@ -157,7 +158,6 @@ export default function OrdemDetalhe({ context }) {
         )}
         <div style={{ flex:1 }}/>
 
-        {/* Botão confirmação WhatsApp — oculto no contexto oficina */}
         {canSendWpp && (
           <button
             className="btn btn-sm"
@@ -185,7 +185,6 @@ export default function OrdemDetalhe({ context }) {
           Imprimir OS
         </button>
 
-        {/* Excluir — oculto no contexto oficina */}
         {canDelete && (
           <button className="btn btn-sm" onClick={() => setConfirmDelete(true)}
             style={{ color:'var(--color-error)', border:'1px solid var(--color-error)', background:'transparent' }}>
@@ -307,7 +306,7 @@ export default function OrdemDetalhe({ context }) {
           </div>
         </div>
 
-        {/* Financeiro — oculto no contexto oficina */}
+        {/* Financeiro */}
         {!isOficinaContext && (
           <div className="card card-pad">
             <div style={{ fontWeight:700, fontSize:'var(--text-sm)', marginBottom:'var(--space-4)' }}>Financeiro</div>
@@ -336,6 +335,72 @@ export default function OrdemDetalhe({ context }) {
         )}
       </div>
 
+      {/* Itens / Produtos da OS */}
+      {itens.length > 0 && (
+        <div className="card card-pad" style={{ marginBottom:'var(--space-4)' }}>
+          <div style={{ fontWeight:700, fontSize:'var(--text-sm)', marginBottom:'var(--space-4)', display:'flex', alignItems:'center', gap:'var(--space-2)' }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0"/>
+            </svg>
+            Itens do Pedido
+            <span style={{ fontSize:11, fontWeight:700, background:'var(--color-primary-highlight)', color:'var(--color-primary)', borderRadius:'var(--radius-full)', padding:'1px 8px' }}>
+              {itens.length}
+            </span>
+          </div>
+          <table className="table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Produto / Descrição</th>
+                <th style={{ textAlign:'center' }}>Qtd</th>
+                <th style={{ textAlign:'right' }}>Preço Unit.</th>
+                <th style={{ textAlign:'right' }}>Subtotal</th>
+              </tr>
+            </thead>
+            <tbody>
+              {itens.map((item, idx) => {
+                const nome      = item.nome || item.produto || item.descricao || item.name || `Item ${idx + 1}`
+                const qtd       = Number(item.quantidade || item.qty || item.qtd || 1)
+                const preco     = Number(item.preco || item.precovenda || item.valor || item.price || 0)
+                const subtotal  = Number(item.subtotal || item.total || (qtd * preco))
+                return (
+                  <tr key={item.id || idx}>
+                    <td style={{ color:'var(--color-text-faint)', fontSize:'var(--text-xs)', fontWeight:600 }}>{idx + 1}</td>
+                    <td>
+                      <div style={{ fontWeight:600, fontSize:'var(--text-sm)' }}>{nome}</div>
+                      {item.observacao && (
+                        <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginTop:2, fontStyle:'italic' }}>
+                          {item.observacao}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ textAlign:'center', fontFamily:'monospace', fontSize:'var(--text-sm)' }}>{qtd}</td>
+                    <td style={{ textAlign:'right', fontFamily:'monospace', fontSize:'var(--text-sm)' }}>{fmt(preco)}</td>
+                    <td style={{ textAlign:'right', fontFamily:'monospace', fontSize:'var(--text-sm)', fontWeight:700 }}>{fmt(subtotal)}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+            {itens.length > 1 && (
+              <tfoot>
+                <tr>
+                  <td colSpan={4} style={{ textAlign:'right', fontWeight:700, fontSize:'var(--text-sm)', paddingTop:'var(--space-3)', borderTop:'2px solid var(--color-border)', color:'var(--color-text-muted)' }}>
+                    Total dos Itens
+                  </td>
+                  <td style={{ textAlign:'right', fontFamily:'monospace', fontWeight:800, fontSize:'var(--text-base)', paddingTop:'var(--space-3)', borderTop:'2px solid var(--color-border)', color:'var(--color-primary)' }}>
+                    {fmt(itens.reduce((acc, item) => {
+                      const qtd = Number(item.quantidade || item.qty || item.qtd || 1)
+                      const preco = Number(item.preco || item.precovenda || item.valor || item.price || 0)
+                      return acc + Number(item.subtotal || item.total || (qtd * preco))
+                    }, 0))}
+                  </td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      )}
+
       {/* Histórico */}
       <div className="card card-pad">
         <div style={{ fontWeight:700, fontSize:'var(--text-sm)', marginBottom:'var(--space-4)' }}>Histórico de Atividade</div>
@@ -359,9 +424,14 @@ export default function OrdemDetalhe({ context }) {
                 {h.obs
                   ? <span style={{ color:'var(--color-text-muted)' }}>📝 {h.obs}</span>
                   : <span>
-                      Status alterado:
-                      {h.statusanterior && <span style={{ color: STATUS_COLOR[h.statusanterior] || 'inherit' }}> {h.statusanterior}</span>}
-                      <span style={{ color: STATUS_COLOR[h.statusnovo] || 'inherit', fontWeight:700 }}> → {h.statusnovo}</span>
+                      {h.statusanterior
+                        ? <>
+                            Status alterado:
+                            <span style={{ color: STATUS_COLOR[h.statusanterior] || 'inherit' }}> {h.statusanterior}</span>
+                            <span style={{ color: STATUS_COLOR[h.statusnovo] || 'inherit', fontWeight:700 }}> → {h.statusnovo}</span>
+                          </>
+                        : <span style={{ color:'var(--color-text-muted)' }}>Ordem criada</span>
+                      }
                     </span>
                 }
               </div>
@@ -385,7 +455,7 @@ export default function OrdemDetalhe({ context }) {
         </div>
       </div>
 
-      {/* Modal confirmar exclusão — só aparece fora do contexto oficina */}
+      {/* Modal confirmar exclusão */}
       {confirmDelete && !isOficinaContext && ReactDOM.createPortal(
         <div
           className="modal-overlay"
