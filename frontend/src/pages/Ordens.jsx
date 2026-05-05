@@ -81,13 +81,11 @@ function ProdutoInput({ produtos, onAdd }) {
           zIndex: 200, maxHeight: 220, overflowY: 'auto'
         }}>
           {temSugestoes && sugestoes.map(p => (
-            <div
-              key={p.id}
+            <div key={p.id}
               style={{ padding: 'var(--space-2) var(--space-3)', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 'var(--text-sm)' }}
               onMouseDown={() => handleSelect(p)}
               onMouseEnter={e => e.currentTarget.style.background = 'var(--color-surface-offset)'}
-              onMouseLeave={e => e.currentTarget.style.background = ''}
-            >
+              onMouseLeave={e => e.currentTarget.style.background = ''}>
               <span style={{ fontWeight: 500 }}>{p.nome}</span>
               <span style={{ fontFamily: 'monospace', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>{fmt(p.preco)}</span>
             </div>
@@ -97,8 +95,7 @@ function ProdutoInput({ produtos, onAdd }) {
               style={{ padding: 'var(--space-2) var(--space-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontSize: 'var(--text-sm)', color: 'var(--color-primary)', borderTop: temSugestoes ? '1px solid var(--color-divider)' : 'none' }}
               onMouseDown={handleAvulso}
               onMouseEnter={e => e.currentTarget.style.background = 'var(--color-surface-offset)'}
-              onMouseLeave={e => e.currentTarget.style.background = ''}
-            >
+              onMouseLeave={e => e.currentTarget.style.background = ''}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
               Adicionar <strong style={{ marginLeft: 2 }}>"{query}"</strong> como item avulso
             </div>
@@ -157,7 +154,6 @@ function LixeiraModal({ onClose }) {
           </div>
           <button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button>
         </div>
-
         <div style={{ overflowY:'auto', flex:1 }}>
           {loading ? (
             <div style={{ display:'flex', alignItems:'center', justifyContent:'center', padding:'var(--space-12)', color:'var(--color-text-muted)', gap:'var(--space-2)' }}>
@@ -178,15 +174,7 @@ function LixeiraModal({ onClose }) {
           ) : (
             <table className="table">
               <thead>
-                <tr>
-                  <th>Nº</th>
-                  <th>Cliente</th>
-                  <th>Tipo</th>
-                  <th>Valor</th>
-                  <th>Excluída em</th>
-                  <th>Motivo</th>
-                  <th></th>
-                </tr>
+                <tr><th>Nº</th><th>Cliente</th><th>Tipo</th><th>Valor</th><th>Excluída em</th><th>Motivo</th><th></th></tr>
               </thead>
               <tbody>
                 {items.map(o => (
@@ -196,26 +184,14 @@ function LixeiraModal({ onClose }) {
                     <td><span className={`badge badge-${tipoBadge(o.servico)}`} style={{ fontSize:10 }}>{o.servico}</span></td>
                     <td style={{ fontFamily:'monospace', fontSize:'var(--text-xs)' }}>{fmt(o.valortotal || o.valor)}</td>
                     <td style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>{fmtD(o.deletedat)}</td>
-                    <td style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', maxWidth:160, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                      {o.deletedreason || '—'}
-                    </td>
+                    <td style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', maxWidth:160, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{o.deletedreason || '—'}</td>
                     <td>
-                      <button
-                        className="btn btn-ghost btn-xs"
-                        style={{ color:'var(--color-success)', whiteSpace:'nowrap' }}
-                        title="Restaurar OS"
-                        disabled={restoring === o.id}
-                        onClick={() => handleRestore(o)}
-                      >
-                        {restoring === o.id ? (
-                          <svg className="spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-                        ) : (
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-                            <path d="M3 3v5h5"/>
-                          </svg>
-                        )}
-                        Restaurar
+                      <button className="btn btn-ghost btn-xs" style={{ color:'var(--color-success)', whiteSpace:'nowrap' }}
+                        title="Restaurar OS" disabled={restoring === o.id} onClick={() => handleRestore(o)}>
+                        {restoring === o.id
+                          ? <svg className="spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                          : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                        } Restaurar
                       </button>
                     </td>
                   </tr>
@@ -224,7 +200,6 @@ function LixeiraModal({ onClose }) {
             </table>
           )}
         </div>
-
         <div className="modal-footer" style={{ borderTop:'1px solid var(--color-divider)', flexShrink:0 }}>
           <button className="btn btn-ghost" onClick={onClose}>Fechar</button>
         </div>
@@ -240,19 +215,14 @@ function Pagination({ current, total, onChange }) {
   if (total <= 1) return null;
   const pages = [];
   for (let i = 1; i <= total; i++) {
-    if (i === 1 || i === total || (i >= current - 2 && i <= current + 2)) {
-      pages.push(i);
-    } else if (pages[pages.length - 1] !== '...') {
-      pages.push('...');
-    }
+    if (i === 1 || i === total || (i >= current - 2 && i <= current + 2)) pages.push(i);
+    else if (pages[pages.length - 1] !== '...') pages.push('...');
   }
   return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
       padding:'var(--space-3) var(--space-4)', borderTop:'1px solid var(--color-border)',
       flexShrink:0, gap:'var(--space-2)', flexWrap:'wrap', background:'var(--color-surface)' }}>
-      <span style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>
-        Página {current} de {total}
-      </span>
+      <span style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>Página {current} de {total}</span>
       <div style={{ display:'flex', gap:'var(--space-1)', alignItems:'center' }}>
         <button className="btn btn-ghost btn-xs" onClick={() => onChange(current - 1)} disabled={current === 1}>‹ Anterior</button>
         {pages.map((p, i) =>
@@ -268,6 +238,22 @@ function Pagination({ current, total, onChange }) {
 }
 // -------------------------------------------------------
 
+// ------- Seção com título separador -------
+function FormSection({ icon, label, children }) {
+  return (
+    <div style={{ marginBottom:'var(--space-4)' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:'var(--space-2)', marginBottom:'var(--space-3)',
+        paddingBottom:'var(--space-2)', borderBottom:'1px solid var(--color-divider)' }}>
+        <span style={{ color:'var(--color-text-faint)', display:'flex', alignItems:'center' }}>{icon}</span>
+        <span style={{ fontSize:'var(--text-xs)', fontWeight:700, letterSpacing:'0.06em',
+          textTransform:'uppercase', color:'var(--color-text-muted)' }}>{label}</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+// -------------------------------------------------------
+
 export default function Ordens() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -275,7 +261,7 @@ export default function Ordens() {
   const isAdmin  = user?.role === 'admin';
 
   const blankForm = {
-    cliente_id:'', clientenome:'', servico:TIPO_OPTS[0], valortotal:"", valorentrada:"",
+    cliente_id:'', clientenome:'', servico:TIPO_OPTS[0], valortotal:'', valorentrada:'',
     formapagamentoentrada:'', observacoes:'', prazoentrega:'', prioridade:'Normal',
     status:'Aguardando', produtos:[], dataEntrada: toDateInputValue(),
   };
@@ -306,52 +292,43 @@ export default function Ordens() {
     setLoading(true);
     try {
       const [ordRes, cliRes, proRes] = await Promise.all([
-        api.get('/ordens'),
-        api.get('/clientes'),
-        api.get('/produtos'),
+        api.get('/ordens'), api.get('/clientes'), api.get('/produtos'),
       ]);
-      setOrdens(ordRes.data);
-      setClientes(cliRes.data);
-      setTodosProdutos(proRes.data);
+      setOrdens(ordRes.data); setClientes(cliRes.data); setTodosProdutos(proRes.data);
     } catch { toast.error('Erro ao carregar dados'); }
     finally { setLoading(false); }
   }, []);
 
   useEffect(() => { load(); }, [load]);
-
   useEffect(() => {
     const handler = (e) => { if (clienteRef.current && !clienteRef.current.contains(e.target)) setClienteOpen(false); };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
-
   useEffect(() => { setCurrentPage(1); }, [search, filterStatus, filterServico]);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-
   const openNew = () => { setEditData(null); setForm(blankForm); setClienteSearch(''); setShowForm(true); };
-
   const openEdit = (o) => {
     setEditData(o);
     const cli = clientes.find(c => c.id === (o.cliente_id || o.clienteid));
     setClienteSearch(cli?.name || o.clientenome || '');
     setForm({
-      cliente_id:               o.cliente_id || o.clienteid || '',
-      clientenome:              o.clientenome || '',
-      servico:                  o.servico || TIPO_OPTS[0],
-      observacoes:              o.observacoes || '',
-      prazoentrega:             o.prazoentrega || '',
-      prioridade:               o.prioridade || 'Normal',
-      status:                   o.status || 'Aguardando',
-      valortotal:               String(o.valortotal  ?? o.valor   ?? ""),
-      valorentrada:             String(o.valorentrada ?? o.entrada ?? ""),
-      formapagamentoentrada:    o.formapagamentoentrada || '',
-      produtos:                 o.produtos || [],
-      dataEntrada:              toDateInputValue(),
+      cliente_id: o.cliente_id || o.clienteid || '',
+      clientenome: o.clientenome || '',
+      servico: o.servico || TIPO_OPTS[0],
+      observacoes: o.observacoes || '',
+      prazoentrega: o.prazoentrega || '',
+      prioridade: o.prioridade || 'Normal',
+      status: o.status || 'Aguardando',
+      valortotal: String(o.valortotal ?? o.valor ?? ''),
+      valorentrada: String(o.valorentrada ?? o.entrada ?? ''),
+      formapagamentoentrada: o.formapagamentoentrada || '',
+      produtos: o.produtos || [],
+      dataEntrada: toDateInputValue(),
     });
     setShowForm(true);
   };
-
   const closeForm = () => { setShowForm(false); setEditData(null); setForm(blankForm); setClienteSearch(''); };
 
   const recalcTotal = useCallback((prods) => {
@@ -360,48 +337,34 @@ export default function Ordens() {
     setForm(f => ({ ...f, valortotal: novoTotal.toFixed(2) }));
   }, []);
 
-  const addProduto = (prod) => {
-    const novos = [...(form.produtos||[]), { ...prod }];
-    set('produtos', novos);
-    recalcTotal(novos);
-  };
-
-  const removeProduto = (idx) => {
-    const novos = form.produtos.filter((_,i) => i !== idx);
-    set('produtos', novos);
-    recalcTotal(novos);
-  };
-
-  const updateProd = (idx, campo, valor) => {
-    const novos = form.produtos.map((p,i) => i===idx ? {...p, [campo]: valor} : p);
-    set('produtos', novos);
-    recalcTotal(novos);
-  };
+  const addProduto = (prod) => { const novos = [...(form.produtos||[]), {...prod}]; set('produtos', novos); recalcTotal(novos); };
+  const removeProduto = (idx) => { const novos = form.produtos.filter((_,i) => i !== idx); set('produtos', novos); recalcTotal(novos); };
+  const updateProd = (idx, campo, valor) => { const novos = form.produtos.map((p,i) => i===idx ? {...p,[campo]:valor} : p); set('produtos', novos); recalcTotal(novos); };
 
   const handleSave = async () => {
     if (!form.cliente_id && !form.clientenome.trim()) { toast.error('Selecione um cliente'); return; }
     if (!form.valortotal) { toast.error('Valor total é obrigatório'); return; }
     const total   = Number(form.valortotal);
-    const entrada = form.valorentrada === "" ? 0 : Number(form.valorentrada);
-    if (isNaN(total) || total < 0) { toast.error('Valor total inválido'); return; }
+    const entrada = form.valorentrada === '' ? 0 : Number(form.valorentrada);
+    if (isNaN(total)   || total < 0)   { toast.error('Valor total inválido'); return; }
     if (isNaN(entrada) || entrada < 0) { toast.error('Entrada inválida'); return; }
     if (entrada > total) { toast.error('Entrada não pode ser maior que o total'); return; }
     setSaving(true);
     try {
       const payload = {
-        cliente_id:            form.cliente_id || null,
-        clientenome:           form.clientenome,
-        servico:               form.servico,
-        descricao:             '',
-        observacoes:           form.observacoes,
-        prazoentrega:          form.prazoentrega || null,
-        prioridade:            form.prioridade,
-        status:                editData ? form.status : 'Aguardando',
-        valortotal:            total,
-        valorentrada:          entrada,
+        cliente_id: form.cliente_id || null,
+        clientenome: form.clientenome,
+        servico: form.servico,
+        descricao: '',
+        observacoes: form.observacoes,
+        prazoentrega: form.prazoentrega || null,
+        prioridade: form.prioridade,
+        status: editData ? form.status : 'Aguardando',
+        valortotal: total,
+        valorentrada: entrada,
         formapagamentoentrada: form.formapagamentoentrada || null,
-        produtos:              form.produtos,
-        dataEntrada:           form.dataEntrada || toDateInputValue(),
+        produtos: form.produtos,
+        dataEntrada: form.dataEntrada || toDateInputValue(),
       };
       if (editData) {
         await api.put(`/ordens/${editData.id}`, payload);
@@ -410,31 +373,26 @@ export default function Ordens() {
         await api.post('/ordens', payload);
         toast.success('Ordem criada');
       }
-      closeForm();
-      load();
-    } catch(e) {
-      toast.error(e?.response?.data?.error || 'Erro ao salvar');
-    } finally { setSaving(false); }
+      closeForm(); load();
+    } catch(e) { toast.error(e?.response?.data?.error || 'Erro ao salvar'); }
+    finally { setSaving(false); }
   };
 
   const handleDelete = async (id) => {
     setDeleting(id);
     try {
       await api.delete(`/ordens/${id}`);
-      toast.success('Ordem removida');
-      setConfirmDel(null);
-      load();
-    } catch(e) {
-      toast.error(e?.response?.data?.error || 'Erro ao remover');
-    } finally { setDeleting(null); }
+      toast.success('Ordem removida'); setConfirmDel(null); load();
+    } catch(e) { toast.error(e?.response?.data?.error || 'Erro ao remover'); }
+    finally { setDeleting(null); }
   };
 
   const fmt  = v => v != null ? Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}) : '—';
   const fmtD = d => d ? new Date(d+'T00:00:00').toLocaleDateString('pt-BR') : '—';
 
-  const total        = Number(form.valortotal)  || 0;
-  const entrada      = Number(form.valorentrada) || 0;
-  const restantePrev = total - entrada;
+  const totalVal     = Number(form.valortotal)  || 0;
+  const entradaVal   = Number(form.valorentrada) || 0;
+  const restantePrev = totalVal - entradaVal;
 
   const statusColor = (s) => ({
     'Aguardando':'primary','Em Produção':'warning','Pronto':'success','Entregue':'success','Cancelado':'error'
@@ -444,7 +402,6 @@ export default function Ordens() {
     if (sortField === f) setSortDir(d => d==='asc'?'desc':'asc');
     else { setSortField(f); setSortDir('desc'); }
   };
-
   const SortIcon = ({ f }) => sortField !== f
     ? <span style={{color:'var(--color-text-faint)',marginLeft:4}}>⇅</span>
     : <span style={{marginLeft:4}}>{sortDir==='asc'?'↑':'↓'}</span>;
@@ -474,11 +431,9 @@ export default function Ordens() {
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paginated  = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
-
   const cliFiltered = useMemo(() =>
     clientes.filter(c => !clienteSearch || (c.name||'').toLowerCase().includes(clienteSearch.toLowerCase())).slice(0,10)
   , [clientes, clienteSearch]);
-
   const produtosSugestoes = useMemo(() =>
     todosProdutos.filter(p => !(form.produtos||[]).find(fp => fp.produto_id && fp.produto_id === p.id))
   , [todosProdutos, form.produtos]);
@@ -487,11 +442,18 @@ export default function Ordens() {
   const totalAberto   = ordens.filter(o => !['Entregue','Cancelado'].includes(o.status)).length;
   const totalReceitas = ordens.reduce((s,o) => s + Number(o.valortotal||o.valor||0), 0);
   const totalSaldo    = ordens.reduce((s,o) => s + saldoAberto(o), 0);
+  const isRetroativo  = !editData && form.dataEntrada && form.dataEntrada !== toDateInputValue();
 
-  const isRetroativo = !editData && form.dataEntrada && form.dataEntrada !== toDateInputValue();
+  // Ícones reutilizáveis
+  const IconCalendar  = <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>;
+  const IconUser      = <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>;
+  const IconBox       = <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>;
+  const IconMoney     = <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>;
+  const IconNote      = <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>;
 
   return (
     <div style={{ height:'calc(100vh - 60px - var(--space-12))', display:'flex', flexDirection:'column', minHeight:0 }}>
+      {/* Header */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'var(--space-4)', flexShrink:0 }}>
         <div>
           <h1 style={{ fontSize:'var(--text-xl)', fontWeight:800, margin:0 }}>Ordens de Serviço</h1>
@@ -499,17 +461,12 @@ export default function Ordens() {
         </div>
         <div style={{ display:'flex', gap:'var(--space-2)', alignItems:'center' }}>
           {isAdmin && (
-            <button
-              className="btn btn-ghost btn-sm"
+            <button className="btn btn-ghost btn-sm"
               style={{ color:'var(--color-error)', border:'1px solid color-mix(in oklch, var(--color-error) 30%, transparent)' }}
-              title="Ver ordens excluídas"
-              onClick={() => setShowLixeira(true)}
-            >
+              title="Ver ordens excluídas" onClick={() => setShowLixeira(true)}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polyline points="3 6 5 6 21 6"/>
-                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-                <path d="M10 11v6M14 11v6"/>
-                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                <path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
               </svg>
               Lixeira
             </button>
@@ -523,6 +480,7 @@ export default function Ordens() {
         </div>
       </div>
 
+      {/* KPIs */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'var(--space-3)', marginBottom:'var(--space-4)', flexShrink:0 }}>
         {[
           { label:'Total OS', value:totalOrdens, icon:'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2', color:'var(--color-primary)' },
@@ -542,6 +500,7 @@ export default function Ordens() {
         ))}
       </div>
 
+      {/* Filtros */}
       <div style={{ display:'flex', gap:'var(--space-2)', marginBottom:'var(--space-3)', flexShrink:0 }}>
         <div style={{ position:'relative', flex:1 }}>
           <svg style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:'var(--color-text-faint)' }} width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
@@ -557,6 +516,7 @@ export default function Ordens() {
         </select>
       </div>
 
+      {/* Tabela */}
       <div className="card" style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column' }}>
         {loading ? (
           <div style={{ display:'flex', alignItems:'center', justifyContent:'center', flex:1, color:'var(--color-text-muted)', gap:'var(--space-2)' }}>
@@ -591,7 +551,7 @@ export default function Ordens() {
                 <tbody>
                   {paginated.map(o => {
                     const vencida = o.prazoentrega && o.prazoentrega < new Date().toISOString().split('T')[0] && !['Entregue','Cancelado','Pronto'].includes(o.status);
-                    const saldo = saldoAberto(o);
+                    const saldo   = saldoAberto(o);
                     const quitado = saldo <= 0;
                     return (
                       <tr key={o.id} style={{ cursor:'pointer' }} onClick={() => navigate(`/ordens/${o.id}`)}>
@@ -635,45 +595,59 @@ export default function Ordens() {
 
       {showLixeira && <LixeiraModal onClose={() => { setShowLixeira(false); load(); }} />}
 
+      {/* ========== MODAL NOVA / EDITAR OS ========== */}
       {showForm && ReactDOM.createPortal(
         <div className="modal-overlay" onClick={closeForm}>
-          <div className="modal" style={{ maxWidth:640, maxHeight:'92vh', overflowY:'auto' }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header" style={{ position:'sticky', top:0, background:'var(--color-surface)', zIndex:1, borderBottom:'1px solid var(--color-divider)' }}>
-              <h2 className="modal-title">{editData ? `Editar OS ${editData.numero}` : 'Nova Ordem de Serviço'}</h2>
+          <div className="modal" style={{ maxWidth:620, maxHeight:'93vh', overflowY:'auto' }} onClick={e => e.stopPropagation()}>
+
+            {/* Header */}
+            <div className="modal-header" style={{ position:'sticky', top:0, background:'var(--color-surface)', zIndex:10, borderBottom:'1px solid var(--color-divider)' }}>
+              <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
+                <h2 className="modal-title" style={{ margin:0 }}>
+                  {editData ? `Editar OS ${editData.numero}` : 'Nova Ordem de Serviço'}
+                </h2>
+                {!editData && (
+                  <span style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>
+                    Status definido automaticamente como <strong>Aguardando</strong>
+                  </span>
+                )}
+              </div>
               <button className="btn btn-ghost btn-sm" onClick={closeForm}>✕</button>
             </div>
-            <div className="modal-body">
-              <div className="form-grid">
 
-                {/* Data de lançamento — só exibe ao criar nova OS */}
-                {!editData && (
-                  <div className="form-group" style={{ gridColumn:'1/-1' }}>
-                    <label className="form-label" style={{ display:'flex', alignItems:'center', gap:'var(--space-2)' }}>
-                      Data de lançamento
-                      {isRetroativo && (
-                        <span style={{ fontSize:'var(--text-xs)', color:'var(--color-warning)', fontWeight:600,
-                          background:'var(--color-warning-highlight)', borderRadius:'var(--radius-full)',
-                          padding:'1px 8px' }}>
-                          ⚠ lançamento retroativo
-                        </span>
-                      )}
-                    </label>
-                    <input
-                      className="form-input"
-                      type="date"
-                      value={form.dataEntrada}
-                      max={toDateInputValue()}
-                      onChange={e => set('dataEntrada', e.target.value)}
-                      style={{ fontFamily:'monospace' }}
-                    />
-                    <span style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginTop:'var(--space-1)', display:'block' }}>
-                      Padrão: hoje. Altere para lançar OS de datas anteriores.
-                    </span>
+            <div className="modal-body" style={{ display:'flex', flexDirection:'column', gap:'var(--space-1)' }}>
+
+              {/* ── SEÇÃO: DATA ── */}
+              {!editData && (
+                <FormSection icon={IconCalendar} label="Data de Lançamento">
+                  <div style={{ display:'flex', alignItems:'flex-end', gap:'var(--space-3)' }}>
+                    <div style={{ flex:1 }}>
+                      <input
+                        className="form-input"
+                        type="date"
+                        value={form.dataEntrada}
+                        max={toDateInputValue()}
+                        onChange={e => set('dataEntrada', e.target.value)}
+                        style={{ fontFamily:'monospace' }}
+                      />
+                    </div>
+                    {isRetroativo && (
+                      <span style={{ fontSize:'var(--text-xs)', color:'var(--color-warning)', fontWeight:600,
+                        background:'var(--color-warning-highlight)', borderRadius:'var(--radius-full)',
+                        padding:'4px 10px', whiteSpace:'nowrap', marginBottom:1 }}>
+                        ⚠ lançamento retroativo
+                      </span>
+                    )}
                   </div>
-                )}
+                  <p style={{ margin:'var(--space-1) 0 0', fontSize:'var(--text-xs)', color:'var(--color-text-faint)' }}>
+                    Padrão: hoje. Altere para lançar OS de datas anteriores.
+                  </p>
+                </FormSection>
+              )}
 
-                <div className="form-group" style={{ gridColumn:'1/-1', position:'relative' }} ref={clienteRef}>
-                  <label className="form-label">Cliente <span style={{color:"var(--color-error)"}}>*</span></label>
+              {/* ── SEÇÃO: CLIENTE ── */}
+              <FormSection icon={IconUser} label="Cliente">
+                <div style={{ position:'relative' }} ref={clienteRef}>
                   <input
                     className="form-input"
                     placeholder="Digite para buscar cliente…"
@@ -682,9 +656,12 @@ export default function Ordens() {
                     onFocus={() => setClienteOpen(true)}
                   />
                   {clienteOpen && cliFiltered.length > 0 && (
-                    <div style={{ position:'absolute', top:'100%', left:0, right:0, background:'var(--color-surface)', border:'1px solid var(--color-border)', borderRadius:'var(--radius-md)', boxShadow:'var(--shadow-md)', zIndex:100, maxHeight:200, overflowY:'auto' }}>
+                    <div style={{ position:'absolute', top:'calc(100% + 2px)', left:0, right:0,
+                      background:'var(--color-surface)', border:'1px solid var(--color-border)',
+                      borderRadius:'var(--radius-md)', boxShadow:'var(--shadow-md)', zIndex:100, maxHeight:200, overflowY:'auto' }}>
                       {cliFiltered.map(c => (
-                        <div key={c.id} style={{ padding:'var(--space-2) var(--space-3)', cursor:'pointer', fontSize:'var(--text-sm)' }}
+                        <div key={c.id}
+                          style={{ padding:'var(--space-2) var(--space-3)', cursor:'pointer', fontSize:'var(--text-sm)' }}
                           onMouseDown={() => { set('cliente_id', c.id); set('clientenome', c.name); setClienteSearch(c.name); setClienteOpen(false); }}
                           onMouseEnter={e => e.currentTarget.style.background='var(--color-surface-offset)'}
                           onMouseLeave={e => e.currentTarget.style.background=''}>
@@ -695,147 +672,143 @@ export default function Ordens() {
                     </div>
                   )}
                 </div>
+              </FormSection>
 
-                <div className="form-group">
-                  <label className="form-label">Tipo de Serviço</label>
-                  <select className="form-input" value={form.servico} onChange={e=>set('servico',e.target.value)}>
-                    {TIPO_OPTS.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Prioridade</label>
-                  <select className="form-input" value={form.prioridade} onChange={e=>set('prioridade',e.target.value)}>
-                    {PRIORIDADE_OPTS.map(p => <option key={p} value={p}>{p}</option>)}
-                  </select>
-                </div>
-
-                <div className="form-group" style={{ gridColumn:'1/-1' }}>
-                  <label className="form-label">Produtos</label>
-                  <ProdutoInput produtos={produtosSugestoes} onAdd={addProduto} />
-                  {form.produtos && form.produtos.length > 0 && (
-                    <div style={{ marginTop:'var(--space-2)', display:'flex', flexDirection:'column', gap:'var(--space-1)' }}>
-                      {form.produtos.map((p, i) => (
-                        <div key={i} style={{ display:'flex', alignItems:'center', gap:'var(--space-2)', padding:'var(--space-2) var(--space-3)', background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)', fontSize:'var(--text-xs)' }}>
-                          <span style={{ flex:1, fontWeight:500, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                            {p.nome}
-                            {p.avulso && <span style={{ marginLeft:6, fontSize:9, color:'var(--color-text-faint)', fontWeight:400, background:'var(--color-surface-dynamic)', borderRadius:'var(--radius-full)', padding:'1px 5px' }}>avulso</span>}
-                          </span>
-                          {p.avulso ? (
-                            <input type="number" step="0.01" min="0" className="form-input"
-                              style={{ width:90, fontFamily:'monospace', textAlign:'right', fontSize:'var(--text-xs)', padding:'2px 6px' }}
-                              placeholder="R$ 0,00"
-                              value={p.preco_unitario || ''}
-                              onChange={e => updateProd(i, 'preco_unitario', parseFloat(e.target.value)||0)}
-                              onWheel={e => e.currentTarget.blur()}
-                              title="Preço unitário"
-                            />
-                          ) : (
-                            <span style={{ fontFamily:'monospace', color:'var(--color-text-faint)', fontSize:'var(--text-xs)', minWidth:70, textAlign:'right' }}>
-                              {Number(p.preco_unitario).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
-                            </span>
-                          )}
-                          <input type="number" min="1" className="form-input"
-                            style={{ width:52, textAlign:'center', fontSize:'var(--text-xs)', padding:'2px 4px' }}
-                            value={p.quantidade}
-                            onChange={e => updateProd(i, 'quantidade', Number(e.target.value)||1)}
-                            onWheel={e => e.currentTarget.blur()}
-                            title="Quantidade"
-                          />
-                          <span style={{ fontFamily:'monospace', color:'var(--color-text-muted)', minWidth:72, textAlign:'right', fontWeight:600 }}>
-                            {(Number(p.quantidade) * Number(p.preco_unitario||0)).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
-                          </span>
-                          <button className="btn btn-ghost btn-xs" style={{ color:'var(--color-error)', padding:2, flexShrink:0 }} onClick={() => removeProduto(i)}>✕</button>
-                        </div>
-                      ))}
+              {/* ── SEÇÃO: SERVIÇO ── */}
+              <FormSection icon={IconNote} label="Detalhes do Serviço">
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'var(--space-3)' }}>
+                  <div className="form-group" style={{ margin:0 }}>
+                    <label className="form-label">Tipo de Serviço</label>
+                    <select className="form-input" value={form.servico} onChange={e=>set('servico',e.target.value)}>
+                      {TIPO_OPTS.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
+                  <div className="form-group" style={{ margin:0 }}>
+                    <label className="form-label">Prioridade</label>
+                    <select className="form-input" value={form.prioridade} onChange={e=>set('prioridade',e.target.value)}>
+                      {PRIORIDADE_OPTS.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  </div>
+                  <div className="form-group" style={{ margin:0 }}>
+                    <label className="form-label">Prazo de Entrega</label>
+                    <input className="form-input" type="date" value={form.prazoentrega} onChange={e=>set('prazoentrega',e.target.value)} />
+                  </div>
+                  {editData && (
+                    <div className="form-group" style={{ margin:0 }}>
+                      <label className="form-label">Status</label>
+                      <select className="form-input" value={form.status} onChange={e=>set('status',e.target.value)}>
+                        {STATUS_OPTS.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
                     </div>
                   )}
                 </div>
-
-                <div className="form-group" style={{ gridColumn:'1/-1' }}>
+                <div className="form-group" style={{ marginTop:'var(--space-3)', marginBottom:0 }}>
                   <label className="form-label">Observações internas</label>
-                  <textarea className="form-input" rows={2} value={form.observacoes} onChange={e=>set('observacoes',e.target.value)} placeholder="Notas para a equipe da oficina…" />
+                  <textarea className="form-input" rows={2} value={form.observacoes}
+                    onChange={e=>set('observacoes',e.target.value)}
+                    placeholder="Notas para a equipe da oficina…" />
                 </div>
+              </FormSection>
 
-                <div className="form-group">
-                  <label className="form-label">Prazo de Entrega</label>
-                  <input className="form-input" type="date" value={form.prazoentrega} onChange={e=>set('prazoentrega',e.target.value)} />
-                </div>
-
-                {/* Campo Status — só exibe na edição; nova OS é sempre Aguardando */}
-                {editData && (
-                  <div className="form-group">
-                    <label className="form-label">Status</label>
-                    <select className="form-input" value={form.status} onChange={e=>set('status',e.target.value)}>
-                      {STATUS_OPTS.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
+              {/* ── SEÇÃO: PRODUTOS ── */}
+              <FormSection icon={IconBox} label="Produtos / Itens">
+                <ProdutoInput produtos={produtosSugestoes} onAdd={addProduto} />
+                {form.produtos && form.produtos.length > 0 && (
+                  <div style={{ marginTop:'var(--space-2)', display:'flex', flexDirection:'column', gap:'var(--space-1)' }}>
+                    {form.produtos.map((p, i) => (
+                      <div key={i} style={{ display:'flex', alignItems:'center', gap:'var(--space-2)',
+                        padding:'var(--space-2) var(--space-3)', background:'var(--color-surface-offset)',
+                        borderRadius:'var(--radius-md)', fontSize:'var(--text-xs)' }}>
+                        <span style={{ flex:1, fontWeight:500, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                          {p.nome}
+                          {p.avulso && <span style={{ marginLeft:6, fontSize:9, color:'var(--color-text-faint)', fontWeight:400, background:'var(--color-surface-dynamic)', borderRadius:'var(--radius-full)', padding:'1px 5px' }}>avulso</span>}
+                        </span>
+                        {p.avulso ? (
+                          <input type="number" step="0.01" min="0" className="form-input"
+                            style={{ width:90, fontFamily:'monospace', textAlign:'right', fontSize:'var(--text-xs)', padding:'2px 6px' }}
+                            placeholder="R$ 0,00" value={p.preco_unitario || ''}
+                            onChange={e => updateProd(i, 'preco_unitario', parseFloat(e.target.value)||0)}
+                            onWheel={e => e.currentTarget.blur()} title="Preço unitário" />
+                        ) : (
+                          <span style={{ fontFamily:'monospace', color:'var(--color-text-faint)', fontSize:'var(--text-xs)', minWidth:70, textAlign:'right' }}>
+                            {Number(p.preco_unitario).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
+                          </span>
+                        )}
+                        <input type="number" min="1" className="form-input"
+                          style={{ width:52, textAlign:'center', fontSize:'var(--text-xs)', padding:'2px 4px' }}
+                          value={p.quantidade}
+                          onChange={e => updateProd(i, 'quantidade', Number(e.target.value)||1)}
+                          onWheel={e => e.currentTarget.blur()} title="Quantidade" />
+                        <span style={{ fontFamily:'monospace', color:'var(--color-text-muted)', minWidth:72, textAlign:'right', fontWeight:600 }}>
+                          {(Number(p.quantidade) * Number(p.preco_unitario||0)).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
+                        </span>
+                        <button className="btn btn-ghost btn-xs" style={{ color:'var(--color-error)', padding:2, flexShrink:0 }} onClick={() => removeProduto(i)}>✕</button>
+                      </div>
+                    ))}
                   </div>
                 )}
+              </FormSection>
 
-                {/* Na nova OS, ocupa a segunda coluna do grid no lugar do Status */}
-                {!editData && (
-                  <div className="form-group">
-                    <label className="form-label" style={{ display:'flex', alignItems:'center', gap:'var(--space-1)' }}>
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color:'var(--color-primary)', flexShrink:0 }}>
-                        <rect x="2" y="5" width="20" height="14" rx="2"/>
-                        <path d="M2 10h20"/>
-                      </svg>
-                      Forma de Pagamento da Entrada
+              {/* ── SEÇÃO: FINANCEIRO ── */}
+              <FormSection icon={IconMoney} label="Financeiro">
+                {/* Linha 1: Valor Total + Entrada */}
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'var(--space-3)' }}>
+                  <div className="form-group" style={{ margin:0 }}>
+                    <label className="form-label">
+                      Valor Total (R$) <span style={{color:'var(--color-error)'}}>*</span>
                     </label>
-                    <select className="form-input" value={form.formapagamentoentrada} onChange={e=>set('formapagamentoentrada',e.target.value)}>
-                      <option value="">— Selecionar —</option>
-                      {PAGAMENTO_OPTS.map(p => <option key={p} value={p}>{p}</option>)}
-                    </select>
+                    <input className="form-input" type="number" step="0.01" min="0"
+                      value={form.valortotal} onChange={e=>set('valortotal',e.target.value)}
+                      onWheel={e=>e.currentTarget.blur()}
+                      style={{ fontFamily:'monospace', fontWeight:700 }}
+                      placeholder="0,00" />
+                    <span style={{ fontSize:'var(--text-xs)', color:'var(--color-text-faint)', marginTop:3, display:'block' }}>
+                      Calculado pelos produtos, editável
+                    </span>
+                  </div>
+                  <div className="form-group" style={{ margin:0 }}>
+                    <label className="form-label">Entrada (R$) <span style={{fontSize:'var(--text-xs)',color:'var(--color-text-muted)',fontWeight:400}}>opcional</span></label>
+                    <input className="form-input" type="number" step="0.01" min="0"
+                      placeholder="0,00"
+                      value={form.valorentrada} onChange={e=>set('valorentrada',e.target.value)}
+                      onWheel={e=>e.currentTarget.blur()}
+                      style={{ fontFamily:'monospace' }} />
+                  </div>
+                </div>
+
+                {/* Linha 2: Forma de Pagamento da Entrada — largura total */}
+                <div className="form-group" style={{ marginTop:'var(--space-3)', marginBottom:0 }}>
+                  <label className="form-label">Forma de Pagamento da Entrada</label>
+                  <select className="form-input" value={form.formapagamentoentrada} onChange={e=>set('formapagamentoentrada',e.target.value)}>
+                    <option value="">— Selecionar —</option>
+                    {PAGAMENTO_OPTS.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+
+                {/* Preview restante */}
+                {totalVal > 0 && (
+                  <div style={{
+                    display:'flex', justifyContent:'space-between', alignItems:'center',
+                    padding:'var(--space-3) var(--space-4)', marginTop:'var(--space-3)',
+                    background: restantePrev > 0 ? 'var(--color-warning-highlight)' : 'var(--color-primary-highlight)',
+                    borderRadius:'var(--radius-md)', fontSize:'var(--text-xs)',
+                    border: `1px solid ${restantePrev > 0 ? 'color-mix(in oklch, var(--color-warning) 25%, transparent)' : 'color-mix(in oklch, var(--color-primary) 25%, transparent)'}`
+                  }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:'var(--space-2)', color:'var(--color-text-muted)' }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                      Restante a receber após entrada
+                    </div>
+                    <strong style={{ fontFamily:'monospace', fontSize:'var(--text-sm)',
+                      color: restantePrev > 0 ? 'var(--color-warning)' : 'var(--color-success)' }}>
+                      {fmt(restantePrev)}
+                    </strong>
                   </div>
                 )}
+              </FormSection>
 
-                <div className="form-group">
-                  <label className="form-label">
-                    Valor Total (R$) <span style={{color:"var(--color-error)"}}>*</span>
-                    <span style={{marginLeft:6,fontSize:"var(--text-xs)",color:"var(--color-text-muted)",fontWeight:400}}>— calculado pelos produtos, editável</span>
-                  </label>
-                  <input className="form-input" type="number" step="0.01" min="0"
-                    value={form.valortotal} onChange={e=>set("valortotal",e.target.value)}
-                    onWheel={e=>e.currentTarget.blur()} style={{ fontFamily:"monospace", fontWeight:700 }}
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">
-                    Entrada (R$)
-                    <span style={{marginLeft:6,fontSize:"var(--text-xs)",color:"var(--color-text-muted)",fontWeight:400}}>opcional</span>
-                  </label>
-                  <input className="form-input" type="number" step="0.01" min="0" placeholder="0,00 (sem entrada)"
-                    value={form.valorentrada} onChange={e=>set("valorentrada",e.target.value)} onWheel={e=>e.currentTarget.blur()}/>
-                </div>
-
-                {/* Na edição, forma de pagamento da entrada fica na linha dos valores */}
-                {editData && (
-                  <div className="form-group" style={{ gridColumn:'1/-1' }}>
-                    <label className="form-label" style={{ display:'flex', alignItems:'center', gap:'var(--space-1)' }}>
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color:'var(--color-primary)', flexShrink:0 }}>
-                        <rect x="2" y="5" width="20" height="14" rx="2"/>
-                        <path d="M2 10h20"/>
-                      </svg>
-                      Forma de Pagamento da Entrada
-                    </label>
-                    <select className="form-input" value={form.formapagamentoentrada} onChange={e=>set('formapagamentoentrada',e.target.value)}>
-                      <option value="">— Selecionar —</option>
-                      {PAGAMENTO_OPTS.map(p => <option key={p} value={p}>{p}</option>)}
-                    </select>
-                  </div>
-                )}
-              </div>
-
-              {total > 0 && (
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
-                  padding:"var(--space-3) var(--space-4)",
-                  background: restantePrev > 0 ? 'var(--color-warning-highlight)' : 'var(--color-primary-highlight)',
-                  borderRadius:"var(--radius-md)", fontSize:"var(--text-xs)", marginTop:"var(--space-3)"
-                }}>
-                  <span style={{color:"var(--color-text-muted)"}}>Restante a receber após entrada:</span>
-                  <strong style={{fontFamily:"monospace",color: restantePrev > 0 ? "var(--color-warning)" : "var(--color-success)"}}>{fmt(restantePrev)}</strong>
-                </div>
-              )}
             </div>
+
+            {/* Footer */}
             <div className="modal-footer" style={{ position:'sticky', bottom:0, background:'var(--color-surface)', borderTop:'1px solid var(--color-divider)' }}>
               <button className="btn btn-ghost" onClick={closeForm}>Cancelar</button>
               <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
@@ -847,6 +820,7 @@ export default function Ordens() {
         document.body
       )}
 
+      {/* Modal de confirmação de exclusão */}
       {confirmDel && ReactDOM.createPortal(
         <div className="modal-overlay" onClick={() => setConfirmDel(null)}>
           <div className="modal" style={{ maxWidth:400 }} onClick={e => e.stopPropagation()}>
