@@ -1,0 +1,53 @@
+name: CI — Testes
+
+on:
+  push:
+    branches:
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  testes:
+    name: Testes Backend
+    # Roda no runner self-hosted pois better-sqlite3
+    # precisa de binários nativos compilados para Windows
+    runs-on: self-hosted
+
+    env:
+      HOMEPATH: C:\Users\Administrator
+      HOME: C:\Users\Administrator
+      NODE_ENV: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Instalar dependências de teste
+        working-directory: backend
+        run: npm install
+
+      - name: Executar testes
+        working-directory: backend
+        run: npm test
+
+      - name: Resultado
+        if: always()
+        shell: powershell
+        run: |
+          if ($env:JOB_STATUS -eq 'success') {
+            Write-Host "✅ Todos os testes passaram"
+          } else {
+            Write-Host "❌ Testes falharam — bloqueando deploy"
+          }
+        env:
+          JOB_STATUS: ${{ job.status }}
