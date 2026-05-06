@@ -2,12 +2,12 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { criarBancoTeste } from './setup.js'
 
 /**
- * Versão testável de getResumoFinanceiroOS que recebe o db como parâmetro
- * em vez de importar o singleton de produção.
+ * Versao testavel de getResumoFinanceiroOS que recebe o db como parametro
+ * em vez de importar o singleton de producao.
  */
 function getResumoFinanceiroOS(db, ordemId) {
   const ordem = db.prepare(
-    `SELECT id, numero, clientenome, servico, valortotal, valorentrada, pagamento
+    `SELECT id, numero, clientenome, servico, valortotal, valorentrada
        FROM ordens WHERE id=? AND deletedat IS NULL`
   ).get(ordemId)
   if (!ordem) return null
@@ -40,12 +40,12 @@ describe('getResumoFinanceiroOS', () => {
     expect(r.recebido).toBe(0)
   })
 
-  it('🔴 BUG: lancamento pago=0 NAO deve abater saldo', () => {
-    // Simula o bug: lançamento gravado com pago=0
+  it('BUG-FIX: lancamento pago=0 NAO deve abater saldo', () => {
+    // Simula o bug: lancamento gravado com pago=0
     db.prepare(`INSERT INTO caixa (ordemid, valor, tipo, descricao, pago, data)
                 VALUES (1, 300, 'entrada', 'Restante OS-001', 0, '2026-05-06')`).run()
     const r = getResumoFinanceiroOS(db, 1)
-    // saldo deve continuar 500 — lançamento pago=0 é ignorado
+    // saldo deve continuar 500 - lancamento pago=0 e ignorado
     expect(r.saldo).toBe(500)
     expect(r.recebido).toBe(0)
   })
@@ -87,11 +87,6 @@ describe('getResumoFinanceiroOS', () => {
   })
 
   it('imprecisao de ponto flutuante: 100 - 33.33 - 33.33 - 33.34 = 0', () => {
-    for (const v of [33.33, 33.33, 33.34]) {
-      db.prepare(`INSERT INTO caixa (ordemid, valor, tipo, descricao, pago, data)
-                  VALUES (1, ${v}, 'entrada', 'Parcela', 1, '2026-05-06')`).run()
-    }
-    // OS de R$100 para esse teste
     db.prepare(`INSERT INTO ordens (id, numero, clientenome, valortotal, valorentrada, status)
                 VALUES (2, 'OS-002', 'Cliente 2', 100, 0, 'Aguardando')`).run()
     db.prepare(`INSERT INTO caixa (ordemid, valor, tipo, descricao, pago, data)
