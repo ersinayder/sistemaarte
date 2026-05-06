@@ -13,13 +13,42 @@ const CATEG_OPT = {
   Saída:  ['Fornecedor','Despesa Fixa','Despesa Variável','Retirada','Outros'],
 };
 
-function getToday() { return new Date().toISOString().split('T')[0]; }
-function getMesAtual() { return new Date().toISOString().slice(0, 7); }
+// Retorna "YYYY-MM-DD" no fuso local do navegador
+function getToday() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+
+// Normaliza qualquer valor de data para "YYYY-MM-DD" local
+function normalizeDate(val) {
+  if (!val) return '';
+  // Se já é YYYY-MM-DD sem hora, retorna direto
+  if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
+  // Tem hora/timezone — converte para local
+  const d = new Date(val);
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+
+function getMesAtual() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+
 function shiftDay(dateStr, delta) {
   const d = new Date(dateStr + 'T12:00:00');
   d.setDate(d.getDate() + delta);
-  return d.toISOString().split('T')[0];
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
 }
+
 function labelDay(dateStr) {
   const today = getToday();
   const yesterday = shiftDay(today, -1);
@@ -30,7 +59,7 @@ function labelDay(dateStr) {
 
 function gerarPDFFechamento(lancamentos, date, diaEntrada, diaSaida, diaSaldo) {
   const fmtCur = v => Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-  const fmtD   = d => d ? new Date(d+'T12:00:00').toLocaleDateString('pt-BR') : '\u2014';
+  const fmtD   = d => d ? new Date(d+'T12:00:00').toLocaleDateString('pt-BR') : '—';
 
   const entradas = lancamentos.filter(l => l.tipo === 'Entrada');
   const grupos = {};
@@ -44,10 +73,10 @@ function gerarPDFFechamento(lancamentos, date, diaEntrada, diaSaida, diaSaldo) {
 
   const rows = lancamentos.map(l => `
     <tr>
-      <td>${l.tipo==='Entrada'?'\u2191':'\u2193'} ${l.categoria||'\u2014'}</td>
-      <td>${l.descricao||'\u2014'}</td>
-      <td>${l.pagamento||'\u2014'}</td>
-      <td style="text-align:right;color:${l.tipo==='Entrada'?'#166534':'#991b1b'}">${l.tipo==='Entrada'?'+':'\u2212'} ${fmtCur(l.valor)}</td>
+      <td>${l.tipo==='Entrada'?'↑':'↓'} ${l.categoria||'—'}</td>
+      <td>${l.descricao||'—'}</td>
+      <td>${l.pagamento||'—'}</td>
+      <td style="text-align:right;color:${l.tipo==='Entrada'?'#166534':'#991b1b'}">${l.tipo==='Entrada'?'+':'−'} ${fmtCur(l.valor)}</td>
     </tr>
   `).join('');
 
@@ -64,7 +93,7 @@ function gerarPDFFechamento(lancamentos, date, diaEntrada, diaSaida, diaSaldo) {
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<title>Fechamento Di\u00e1rio \u2014 ${fmtD(date)}</title>
+<title>Fechamento Diário — ${fmtD(date)}</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body { font-family: Arial, sans-serif; font-size: 11px; color: #111; padding: 24px; }
@@ -86,11 +115,11 @@ function gerarPDFFechamento(lancamentos, date, diaEntrada, diaSaida, diaSaldo) {
 </head>
 <body>
   <div class="logo">Arte &amp; Molduras</div>
-  <h1>Fechamento de Caixa \u2014 ${fmtD(date)}</h1>
+  <h1>Fechamento de Caixa — ${fmtD(date)}</h1>
   <p style="color:#666;font-size:10px;margin-bottom:16px">Gerado em ${new Date().toLocaleString('pt-BR')}</p>
   <div class="kpis">
     <div class="kpi"><div class="kpi-label">Total Entradas</div><div class="kpi-val green">${fmtCur(diaEntrada)}</div></div>
-    <div class="kpi"><div class="kpi-label">Total Sa\u00eddas</div><div class="kpi-val red">${fmtCur(diaSaida)}</div></div>
+    <div class="kpi"><div class="kpi-label">Total Saídas</div><div class="kpi-val red">${fmtCur(diaSaida)}</div></div>
     <div class="kpi"><div class="kpi-label">Saldo do Dia</div><div class="kpi-val blue">${fmtCur(diaSaldo)}</div></div>
   </div>
   <h2>Entradas por Forma de Pagamento</h2>
@@ -98,13 +127,13 @@ function gerarPDFFechamento(lancamentos, date, diaEntrada, diaSaida, diaSaldo) {
     <thead><tr><th>Forma</th><th style="text-align:right">Total</th></tr></thead>
     <tbody>${gruposRows || '<tr><td colspan="2" style="color:#999">Nenhuma entrada</td></tr>'}</tbody>
   </table>
-  <h2>Lan\u00e7amentos do Dia</h2>
+  <h2>Lançamentos do Dia</h2>
   <table>
-    <thead><tr><th>Tipo / Categoria</th><th>Descri\u00e7\u00e3o</th><th>Pagamento</th><th style="text-align:right">Valor</th></tr></thead>
-    <tbody>${rows || '<tr><td colspan="4" style="color:#999">Sem lan\u00e7amentos</td></tr>'}</tbody>
+    <thead><tr><th>Tipo / Categoria</th><th>Descrição</th><th>Pagamento</th><th style="text-align:right">Valor</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="4" style="color:#999">Sem lançamentos</td></tr>'}</tbody>
   </table>
   <div style="margin-top:24px;padding-top:12px;border-top:2px solid #333;display:flex;justify-content:space-between">
-    <span>Respons\u00e1vel: ___________________________</span>
+    <span>Responsável: ___________________________</span>
     <span>Assinatura: ___________________________</span>
   </div>
 </body>
@@ -164,7 +193,7 @@ export default function Caixa() {
   const [busca,       setBusca]       = useState('');
   const [page,        setPage]        = useState(1);
   const [selectedDay, setSelectedDay] = useState(getToday());
-  const [viewMode,    setViewMode]    = useState('dia'); // 'dia' | 'mes'
+  const [viewMode,    setViewMode]    = useState('dia');
   const PER_PAGE = 20;
 
   const load = useCallback(async () => {
@@ -179,14 +208,13 @@ export default function Caixa() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Filtrar por dia ou mês
   const lancamentosFiltrados = useMemo(() => {
     let items = lancamentos;
     if (viewMode === 'dia') {
-      items = items.filter(l => (l.data||'').slice(0,10) === selectedDay);
+      items = items.filter(l => normalizeDate(l.data) === selectedDay);
     } else {
       const mes = getMesAtual();
-      items = items.filter(l => (l.data||'').slice(0,7) === mes);
+      items = items.filter(l => normalizeDate(l.data).slice(0,7) === mes);
     }
     if (filterTipo !== 'todos') items = items.filter(l => l.tipo === filterTipo);
     if (filterPag  !== 'todos') items = items.filter(l => l.pagamento === filterPag);
@@ -199,19 +227,17 @@ export default function Caixa() {
         (l.os_numero||'').toLowerCase().includes(q)
       );
     }
-    return items.sort((a,b) => new Date(b.data) - new Date(a.data));
+    return items.sort((a,b) => normalizeDate(b.data).localeCompare(normalizeDate(a.data)));
   }, [lancamentos, viewMode, selectedDay, filterTipo, filterPag, filterCat, busca]);
 
-  // KPIs do período selecionado
   const { entrada, saida, saldo } = useMemo(() => {
-    const e = lancamentosFiltrados.filter(l => l.tipo==='Entrada').reduce((s,l) => s+Number(l.valor||0), 0);
+    const e  = lancamentosFiltrados.filter(l => l.tipo==='Entrada').reduce((s,l) => s+Number(l.valor||0), 0);
     const s2 = lancamentosFiltrados.filter(l => l.tipo==='Saída').reduce((s,l) => s+Number(l.valor||0), 0);
     return { entrada: e, saida: s2, saldo: e - s2 };
   }, [lancamentosFiltrados]);
 
-  // KPIs do dia selecionado (para PDF)
   const lancamentosDia = useMemo(() =>
-    lancamentos.filter(l => (l.data||'').slice(0,10) === selectedDay)
+    lancamentos.filter(l => normalizeDate(l.data) === selectedDay)
   , [lancamentos, selectedDay]);
   const diaEntrada = lancamentosDia.filter(l=>l.tipo==='Entrada').reduce((s,l)=>s+Number(l.valor||0),0);
   const diaSaida   = lancamentosDia.filter(l=>l.tipo==='Saída').reduce((s,l)=>s+Number(l.valor||0),0);
@@ -276,7 +302,6 @@ export default function Caixa() {
           </p>
         </div>
         <div style={{ display:'flex', gap:'var(--space-2)', alignItems:'center' }}>
-          {/* Toggle dia/mês */}
           <div style={{ display:'flex', background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)',
             border:'1px solid var(--color-border)', overflow:'hidden' }}>
             {[['dia','Dia'],['mes','Mês']].map(([v,l]) => (
@@ -404,7 +429,7 @@ export default function Caixa() {
               <tr key={l.id} style={{ borderBottom:'1px solid var(--color-border)' }}>
                 <td style={{ padding:'var(--space-2) var(--space-3)', whiteSpace:'nowrap',
                   color:'var(--color-text-muted)' }}>
-                  {l.data ? new Date(l.data+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}) : '—'}
+                  {l.data ? new Date(normalizeDate(l.data)+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}) : '—'}
                 </td>
                 <td style={{ padding:'var(--space-2) var(--space-3)' }}>
                   <span style={{ fontSize:10, fontWeight:700, padding:'1px 6px', borderRadius:'var(--radius-full)',
@@ -494,7 +519,7 @@ function ModalLancamento({ item, onClose, onSave, defaultDate }) {
         categoria: item.categoria || 'Pagamento OS',
         descricao: item.descricao || '',
         valor: item.valor || '',
-        data: item.data ? item.data.slice(0,10) : getToday(),
+        data: item.data ? normalizeDate(item.data) : getToday(),
         os_id: item.os_id || '',
         os_numero: item.os_numero || '',
       });
