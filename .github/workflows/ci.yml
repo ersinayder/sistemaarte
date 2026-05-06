@@ -1,4 +1,4 @@
-name: CI — Testes
+name: CI - Testes
 
 on:
   push:
@@ -12,8 +12,6 @@ on:
 jobs:
   testes:
     name: Testes Backend
-    # Roda no runner self-hosted pois better-sqlite3
-    # precisa de binários nativos compilados para Windows
     runs-on: self-hosted
 
     env:
@@ -29,25 +27,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: backend/package-lock.json
 
-      - name: Instalar dependências de teste
+      - name: Instalar dependencias de teste
         working-directory: backend
         run: npm install
 
       - name: Executar testes
         working-directory: backend
         run: npm test
-
-      - name: Resultado
-        if: always()
-        shell: powershell
-        run: |
-          if ($env:JOB_STATUS -eq 'success') {
-            Write-Host "✅ Todos os testes passaram"
-          } else {
-            Write-Host "❌ Testes falharam — bloqueando deploy"
-          }
-        env:
-          JOB_STATUS: ${{ job.status }}

@@ -6,7 +6,6 @@ on:
       - main
 
 jobs:
-  # ── Etapa 1: Testes (obrigatória antes do deploy) ──────────────────────────
   testes:
     name: Testes Backend
     runs-on: self-hosted
@@ -24,7 +23,7 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Instalar dependências de teste
+      - name: Instalar dependencias de teste
         working-directory: backend
         run: npm install
 
@@ -32,11 +31,10 @@ jobs:
         working-directory: backend
         run: npm test
 
-  # ── Etapa 2: Deploy (só roda se testes passarem) ────────────────────────────
   build-and-deploy:
     name: Build & Deploy
     runs-on: self-hosted
-    needs: testes          # ← deploy bloqueado se testes falharem
+    needs: testes
 
     env:
       HOMEPATH: C:\Users\Administrator
@@ -51,7 +49,6 @@ jobs:
         with:
           node-version: '22'
 
-      # FRONTEND
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm install
@@ -71,7 +68,6 @@ jobs:
           robocopy $source $dest /MIR /NFL /NDL /NJH /NJS
           if ($LASTEXITCODE -le 7) { exit 0 } else { exit $LASTEXITCODE }
 
-      # PARAR PM2 antes de copiar backend
       - name: Stop PM2
         shell: powershell
         run: |
@@ -80,7 +76,6 @@ jobs:
           pm2 stop sistemaarte-backend 2>$null; $true
           Start-Sleep -Seconds 3
 
-      # BACKEND
       - name: Sync backend source
         shell: powershell
         run: |
@@ -98,7 +93,6 @@ jobs:
           Set-Location "C:\sistemaarte\backend"
           npm install --production --prefer-offline --ignore-scripts
 
-      # PM2 RELOAD
       - name: Reload PM2
         shell: powershell
         run: |
