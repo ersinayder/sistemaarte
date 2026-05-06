@@ -32,6 +32,9 @@ router.post("/", auth(["admin","caixa"]), (req, res, next) => {
     const nValor = toNumber(valor);
     let origem = "manual";
     let descFinal = descricao;
+    // Lançamentos vinculados a OS são sempre pago=1 para abater o saldo
+    // Lançamentos manuais respeitam o campo pago enviado pelo front
+    let pagoFinal = pago ? 1 : 0;
 
     if (ordemid) {
       const resumo = getResumoFinanceiroOS(ordemid);
@@ -40,6 +43,7 @@ router.post("/", auth(["admin","caixa"]), (req, res, next) => {
       if (nValor > resumo.saldo + 0.0001)
         return res.status(400).json({ error: `Saldo disponivel para a ${resumo.ordem.numero}: R$ ${resumo.saldo.toFixed(2)}` });
       origem = "saldoos";
+      pagoFinal = 1; // FIX: saldoos sempre pago=1
       descFinal = descricaoRestanteOS(resumo.ordem.numero, resumo.ordem.clientenome, resumo.ordem.servico);
     }
 
@@ -48,7 +52,7 @@ router.post("/", auth(["admin","caixa"]), (req, res, next) => {
 
     const id = runInsert(
       "INSERT INTO lancamentos (data,tipo,descricao,pagamento,valor,pago,ordemid,criadopor,origem) VALUES (?,?,?,?,?,?,?,?,?)",
-      [data, tipo||"Diversos", descFinal, pagamento, nValor, pago ? 1 : 0, ordemid||null, req.user.id, origem]
+      [data, tipo||"Diversos", descFinal, pagamento, nValor, pagoFinal, ordemid||null, req.user.id, origem]
     );
     res.json({ id, origem });
   } catch(e) { next(e); }
@@ -59,14 +63,31 @@ router.put("/:id", auth(["admin","caixa"]), (req, res, next) => {
   try {
     const old = getOne("SELECT * FROM lancamentos WHERE id=? AND deletedat IS NULL", [req.params.id]);
     if (!old) return res.status(404).json({ error: "Lancamento nao encontrado." });
-    if (old.origem === "entradaos")
+
+    // Admin pode editar data e pagamento de qualquer lançamento (incluindo entradaos)
+    // Operador caixa não pode editar lançamentos entradaos
+    if (old.origem === "entradaos" && req.user.role !== "admin")
       return res.status(400).json({ error: "A entrada vinculada a OS deve ser alterada pela propria OS." });
 
     const { data, tipo, descricao, pagamento, valor, pago, ordemid } = req.body ?? {};
+
+    // Admin editando só datas de entradaos
+    if (old.origem === "entradaos" && req.user.role === "admin") {
+      const camposPermitidos = {};
+      if (data) camposPermitidos.data = data;
+      if (pagamento) camposPermitidos.pagamento = pagamento;
+      run(
+        "UPDATE lancamentos SET data=COALESCE(?,data), pagamento=COALESCE(?,pagamento) WHERE id=?",
+        [data || null, pagamento || null, req.params.id]
+      );
+      return res.json({ ok: true });
+    }
+
     const novoOrdemId = ordemid || null;
     const nValor = toNumber(valor);
     let origem = novoOrdemId ? "saldoos" : "manual";
     let descFinal = descricao;
+    let pagoFinal = novoOrdemId ? 1 : (pago ? 1 : 0); // saldoos sempre pago=1
 
     if (novoOrdemId) {
       const ordem = getOne("SELECT id,numero,clientenome,servico,valortotal FROM ordens WHERE id=? AND deletedat IS NULL", [novoOrdemId]);
@@ -87,7 +108,7 @@ router.put("/:id", auth(["admin","caixa"]), (req, res, next) => {
 
     run(
       "UPDATE lancamentos SET data=?,tipo=?,descricao=?,pagamento=?,valor=?,pago=?,ordemid=?,origem=? WHERE id=?",
-      [data, tipo||"Diversos", descFinal, pagamento, nValor, pago ? 1 : 0, novoOrdemId, origem, req.params.id]
+      [data, tipo||"Diversos", descFinal, pagamento, nValor, pagoFinal, novoOrdemId, origem, req.params.id]
     );
     res.json({ ok: true });
   } catch(e) { next(e); }
