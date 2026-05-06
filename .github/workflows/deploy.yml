@@ -6,9 +6,35 @@ on:
       - main
 
 jobs:
+  testes:
+    name: Testes Backend
+    runs-on: self-hosted
+    env:
+      HOMEPATH: C:\Users\Administrator
+      HOME: C:\Users\Administrator
+      NODE_ENV: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Instalar dependencias de teste
+        working-directory: backend
+        run: npm install
+
+      - name: Executar testes
+        working-directory: backend
+        run: npm test
+
   build-and-deploy:
     name: Build & Deploy
     runs-on: self-hosted
+    needs: testes
 
     env:
       HOMEPATH: C:\Users\Administrator
@@ -23,7 +49,6 @@ jobs:
         with:
           node-version: '22'
 
-      # FRONTEND
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm install
@@ -43,7 +68,6 @@ jobs:
           robocopy $source $dest /MIR /NFL /NDL /NJH /NJS
           if ($LASTEXITCODE -le 7) { exit 0 } else { exit $LASTEXITCODE }
 
-      # PARAR PM2 antes de copiar backend
       - name: Stop PM2
         shell: powershell
         run: |
@@ -52,7 +76,6 @@ jobs:
           pm2 stop sistemaarte-backend 2>$null; $true
           Start-Sleep -Seconds 3
 
-      # BACKEND
       - name: Sync backend source
         shell: powershell
         run: |
@@ -70,7 +93,6 @@ jobs:
           Set-Location "C:\sistemaarte\backend"
           npm install --production --prefer-offline --ignore-scripts
 
-      # PM2 RELOAD
       - name: Reload PM2
         shell: powershell
         run: |
