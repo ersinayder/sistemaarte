@@ -13,7 +13,7 @@ import {
 describe('STATUSES_VALIDOS e TRANSICOES_VALIDAS (estrutura)', () => {
   it('STATUSES_VALIDOS contem os 5 status esperados', () => {
     expect(STATUSES_VALIDOS).toContain('Aguardando');
-    expect(STATUSES_VALIDOS).toContain('Em Producao');
+    expect(STATUSES_VALIDOS).toContain('Em Produção');
     expect(STATUSES_VALIDOS).toContain('Pronto');
     expect(STATUSES_VALIDOS).toContain('Entregue');
     expect(STATUSES_VALIDOS).toContain('Cancelado');
@@ -137,8 +137,8 @@ describe('descricaoRestanteOS', () => {
 });
 
 describe('validarStatus', () => {
-  it('Aguardando -> Em Producao (valida)', () => {
-    expect(validarStatus('Em Producao', 'Aguardando')).toBeNull();
+  it('Aguardando -> Em Produção (valida)', () => {
+    expect(validarStatus('Em Produção', 'Aguardando')).toBeNull();
   });
 
   it('Pronto -> Entregue (valida)', () => {
@@ -153,8 +153,8 @@ describe('validarStatus', () => {
     expect(validarStatus('Aguardando', 'Entregue')).not.toBeNull();
   });
 
-  it('Cancelado -> Em Producao (invalida)', () => {
-    expect(validarStatus('Em Producao', 'Cancelado')).not.toBeNull();
+  it('Cancelado -> Em Produção (invalida)', () => {
+    expect(validarStatus('Em Produção', 'Cancelado')).not.toBeNull();
   });
 
   it('sem status anterior aceita Aguardando', () => {
