@@ -13,7 +13,7 @@ function calcKpis() {
 
   const emProducao = getOne(
     `SELECT COUNT(*) AS n FROM ordens
-     WHERE status = 'Em Produção' AND deletedat IS NULL`
+     WHERE status = 'Em Produ\u00e7\u00e3o' AND deletedat IS NULL`
   )?.n ?? 0;
 
   const prontas = getOne(
@@ -72,7 +72,7 @@ function calcKpis() {
   };
 }
 
-// REST – snapshot único
+// REST snapshot unico
 router.get("/", auth(), (req, res, next) => {
   try {
     res.json(calcKpis());
@@ -81,17 +81,16 @@ router.get("/", auth(), (req, res, next) => {
   }
 });
 
-// SSE – stream contínuo a cada 15 s com limite de conexões
-// S-3: heartbeat a cada 30 s + timeout de inatividade de 5 min previnem vazamento
-const SSE_INTERVAL_MS    = 15000;
-const SSE_HEARTBEAT_MS   = 30000;
+// SSE stream continuo a cada 15s com limite de conexoes
+const SSE_INTERVAL_MS     = 15000;
+const SSE_HEARTBEAT_MS    = 30000;
 const SSE_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 let activeSSE = 0;
 const MAX_SSE = 10;
 
 router.get("/stream", auth(), (req, res) => {
   if (activeSSE >= MAX_SSE) {
-    return res.status(429).json({ error: `Limite de streams atingido (máx ${MAX_SSE})` });
+    return res.status(429).json({ error: `Limite de streams atingido (m\u00e1x ${MAX_SSE})` });
   }
 
   activeSSE++;
@@ -101,7 +100,9 @@ router.get("/stream", auth(), (req, res) => {
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
 
-  let closed = false;
+  let closed    = false;
+  // Declara idleTimer antes de qualquer uso para evitar hoisting error
+  let idleTimer = null;
 
   const cleanup = () => {
     if (closed) return;
@@ -114,7 +115,6 @@ router.get("/stream", auth(), (req, res) => {
 
   const resetIdle = () => {
     clearTimeout(idleTimer);
-    // eslint-disable-next-line no-use-before-define
     idleTimer = setTimeout(() => { res.end(); cleanup(); }, SSE_IDLE_TIMEOUT_MS);
   };
 
@@ -134,7 +134,9 @@ router.get("/stream", auth(), (req, res) => {
   const heartbeatTimer = setInterval(() => {
     if (!closed) res.write(": ping\n\n");
   }, SSE_HEARTBEAT_MS);
-  let idleTimer        = setTimeout(() => { res.end(); cleanup(); }, SSE_IDLE_TIMEOUT_MS);
+
+  // Inicia o idle timer apos declarar todas as variaveis
+  resetIdle();
 
   req.on("close", cleanup);
 });
