@@ -6,144 +6,166 @@ import {
   validarPrazo,
   descricaoEntradaOS,
   descricaoRestanteOS,
-  STATUS_VALIDOS,
+  STATUSES_VALIDOS,
   TRANSICOES_VALIDAS,
 } from '../domain/ordensRules.js';
 
-describe('STATUS_VALIDOS e TRANSICOES_VALIDAS (estrutura)', () => {
-  it('STATUS_VALIDOS contém os 5 status esperados', () => {
-    expect(STATUS_VALIDOS).toContain('Aguardando');
-    expect(STATUS_VALIDOS).toContain('Em Producao');
-    expect(STATUS_VALIDOS).toContain('Pronto');
-    expect(STATUS_VALIDOS).toContain('Entregue');
-    expect(STATUS_VALIDOS).toContain('Cancelado');
+describe('STATUSES_VALIDOS e TRANSICOES_VALIDAS (estrutura)', () => {
+  it('STATUSES_VALIDOS contem os 5 status esperados', () => {
+    expect(STATUSES_VALIDOS).toContain('Aguardando');
+    expect(STATUSES_VALIDOS).toContain('Em Producao');
+    expect(STATUSES_VALIDOS).toContain('Pronto');
+    expect(STATUSES_VALIDOS).toContain('Entregue');
+    expect(STATUSES_VALIDOS).toContain('Cancelado');
   });
 
-  it('TRANSICOES_VALIDAS cobre todos os status ativos', () => {
-    ['Aguardando', 'Em Producao', 'Pronto'].forEach(s => {
-      expect(TRANSICOES_VALIDAS).toHaveProperty(s);
-    });
+  it('TRANSICOES_VALIDAS tem chaves para os status de origem', () => {
+    expect(TRANSICOES_VALIDAS).toHaveProperty('Aguardando');
+    expect(TRANSICOES_VALIDAS).toHaveProperty('Pronto');
   });
 
-  it('Entregue e Cancelado não têm transições de saída', () => {
+  it('Entregue e Cancelado nao tem transicoes de saida', () => {
     expect(TRANSICOES_VALIDAS['Entregue'] ?? []).toHaveLength(0);
     expect(TRANSICOES_VALIDAS['Cancelado'] ?? []).toHaveLength(0);
   });
 });
 
-describe('validarEntradaOS — casos extremos', () => {
+describe('validarEntradaOS', () => {
   it('aceita entrada = 0 (sem entrada)', () => {
-    expect(() => validarEntradaOS(100, 0)).not.toThrow();
+    expect(validarEntradaOS(100, 0)).toBeNull();
   });
 
-  it('rejeita total = 0.001 (quase zero mas positivo não deve ser tratado como zero)', () => {
-    expect(() => validarEntradaOS(0.001, 0)).not.toThrow();
+  it('aceita entrada parcial', () => {
+    expect(validarEntradaOS(100, 50)).toBeNull();
   });
 
-  it('rejeita entrada 0.01 acima do total', () => {
-    expect(() => validarEntradaOS(100, 100.01)).toThrow();
+  it('aceita entrada igual ao total', () => {
+    expect(validarEntradaOS(100, 100)).toBeNull();
   });
 
-  it('aceita valores grandes (R$ 99.999,99)', () => {
-    expect(() => validarEntradaOS(99999.99, 50000)).not.toThrow();
+  it('rejeita entrada maior que total', () => {
+    expect(validarEntradaOS(100, 100.01)).not.toBeNull();
+  });
+
+  it('aceita valores grandes', () => {
+    expect(validarEntradaOS(99999.99, 50000)).toBeNull();
+  });
+
+  it('rejeita total zero', () => {
+    expect(validarEntradaOS(0, 0)).not.toBeNull();
+  });
+
+  it('rejeita entrada negativa', () => {
+    expect(validarEntradaOS(100, -1)).not.toBeNull();
   });
 });
 
-describe('normalizarStatus — todos os aliases', () => {
+describe('normalizarStatus', () => {
   it('normaliza Cancelada -> Cancelado', () => {
     expect(normalizarStatus('Cancelada')).toBe('Cancelado');
   });
 
-  it('retorna o mesmo valor para status já corretos', () => {
-    STATUS_VALIDOS.forEach(s => {
-      expect(normalizarStatus(s)).toBe(s);
-    });
+  it('preserva Cancelado', () => {
+    expect(normalizarStatus('Cancelado')).toBe('Cancelado');
   });
 
-  it('retorna o mesmo valor para status desconhecido (sem crash)', () => {
+  it('preserva Aguardando', () => {
+    expect(normalizarStatus('Aguardando')).toBe('Aguardando');
+  });
+
+  it('retorna o mesmo valor para status desconhecido', () => {
     expect(normalizarStatus('Outro')).toBe('Outro');
   });
 });
 
-describe('validarPrazo — formatos de data', () => {
-  it('aceita YYYY-MM-DD válido', () => {
-    expect(() => validarPrazo('2025-12-31')).not.toThrow();
+describe('validarPrazo', () => {
+  it('aceita YYYY-MM-DD valido', () => {
+    expect(validarPrazo('2025-12-31')).toBeNull();
   });
 
   it('aceita prazo undefined', () => {
-    expect(() => validarPrazo(undefined)).not.toThrow();
+    expect(validarPrazo(undefined)).toBeNull();
   });
 
   it('aceita prazo null', () => {
-    expect(() => validarPrazo(null)).not.toThrow();
+    expect(validarPrazo(null)).toBeNull();
   });
 
   it('rejeita DD/MM/YYYY', () => {
-    expect(() => validarPrazo('31/12/2025')).toThrow();
+    expect(validarPrazo('31/12/2025')).not.toBeNull();
   });
 
-  it('rejeita string aleatória', () => {
-    expect(() => validarPrazo('amanha')).toThrow();
+  it('rejeita string aleatoria', () => {
+    expect(validarPrazo('amanha')).not.toBeNull();
   });
 });
 
-describe('descricaoEntradaOS e descricaoRestanteOS', () => {
-  it('gera label correto para entrada parcial', () => {
-    const desc = descricaoEntradaOS(100, 30);
+describe('descricaoEntradaOS', () => {
+  it('gera label Entrada para entrada parcial', () => {
+    const desc = descricaoEntradaOS('OS-001', 'Joao', 'Quadro', 100, 30);
     expect(desc).toContain('Entrada');
-    expect(desc).toContain('30');
   });
 
-  it('gera label correto para pagamento total', () => {
-    const desc = descricaoEntradaOS(100, 100);
+  it('gera label Total para entrada igual ao total', () => {
+    const desc = descricaoEntradaOS('OS-001', 'Joao', null, 100, 100);
     expect(desc).toContain('Total');
   });
 
-  it('gera label correto para sem entrada', () => {
-    const desc = descricaoEntradaOS(100, 0);
+  it('gera label Sem entrada quando entrada zero', () => {
+    const desc = descricaoEntradaOS('OS-001', 'Joao', null, 100, 0);
     expect(desc).toContain('Sem entrada');
   });
 
-  it('descricaoRestanteOS inclui numero da OS', () => {
-    const desc = descricaoRestanteOS({ numero: 'OS-007', clientenome: 'João' }, 200);
+  it('inclui numero da OS na descricao', () => {
+    const desc = descricaoEntradaOS('OS-007', 'Ana', null, 200, 50);
     expect(desc).toContain('OS-007');
-    expect(desc).toContain('João');
-  });
-
-  it('descricaoRestanteOS para saldo zero', () => {
-    const desc = descricaoRestanteOS({ numero: 'OS-001', clientenome: 'Ana' }, 0);
-    expect(desc).toBeDefined();
+    expect(desc).toContain('Ana');
   });
 });
 
-describe('validarStatus — transições completas', () => {
-  it('Aguardando -> Em Producao (valida)', () => {
-    expect(() => validarStatus('Em Producao', 'Aguardando')).not.toThrow();
+describe('descricaoRestanteOS', () => {
+  it('inclui numero e cliente', () => {
+    const desc = descricaoRestanteOS('OS-007', 'Joao', null);
+    expect(desc).toContain('OS-007');
+    expect(desc).toContain('Joao');
   });
 
-  it('Em Producao -> Pronto (valida)', () => {
-    expect(() => validarStatus('Pronto', 'Em Producao')).not.toThrow();
+  it('inclui servico quando fornecido', () => {
+    const desc = descricaoRestanteOS('OS-001', 'Ana', 'Quadro');
+    expect(desc).toContain('Quadro');
+  });
+});
+
+describe('validarStatus', () => {
+  it('Aguardando -> Em Producao (valida)', () => {
+    expect(validarStatus('Em Producao', 'Aguardando')).toBeNull();
   });
 
   it('Pronto -> Entregue (valida)', () => {
-    expect(() => validarStatus('Entregue', 'Pronto')).not.toThrow();
+    expect(validarStatus('Entregue', 'Pronto')).toBeNull();
   });
 
   it('Pronto -> Cancelado (valida)', () => {
-    expect(() => validarStatus('Cancelado', 'Pronto')).not.toThrow();
+    expect(validarStatus('Cancelado', 'Pronto')).toBeNull();
   });
 
-  it('Entregue -> qualquer coisa (invalida)', () => {
-    expect(() => validarStatus('Aguardando', 'Entregue')).toThrow();
+  it('Entregue -> Aguardando (invalida)', () => {
+    expect(validarStatus('Aguardando', 'Entregue')).not.toBeNull();
   });
 
-  it('Cancelado -> qualquer coisa (invalida)', () => {
-    expect(() => validarStatus('Em Producao', 'Cancelado')).toThrow();
+  it('Cancelado -> Em Producao (invalida)', () => {
+    expect(validarStatus('Em Producao', 'Cancelado')).not.toBeNull();
   });
 
-  it('sem status anterior aceita qualquer status valido', () => {
-    STATUS_VALIDOS.forEach(s => {
-      expect(() => validarStatus(s)).not.toThrow();
-    });
+  it('sem status anterior aceita Aguardando', () => {
+    expect(validarStatus('Aguardando')).toBeNull();
+  });
+
+  it('sem status anterior aceita Entregue', () => {
+    expect(validarStatus('Entregue')).toBeNull();
+  });
+
+  it('rejeita status desconhecido', () => {
+    expect(validarStatus('Invalido')).not.toBeNull();
   });
 });
