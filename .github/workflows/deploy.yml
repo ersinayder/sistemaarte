@@ -93,17 +93,17 @@ jobs:
           Set-Location "C:\sistemaarte\backend"
           npm install --production --prefer-offline --ignore-scripts
 
-      - name: Reload PM2
+      - name: Reload PM2 via ecosystem
         shell: powershell
         run: |
           $env:HOMEPATH = "C:\Users\Administrator"
           $env:HOME     = "C:\Users\Administrator"
+          Set-Location "C:\sistemaarte\backend"
           $status = pm2 describe sistemaarte-backend 2>&1
           if ($status -match 'online|stopped|errored') {
-            pm2 reload sistemaarte-backend --update-env
-          } else {
-            pm2 start C:\sistemaarte\backend\server.js --name sistemaarte-backend
+            pm2 delete sistemaarte-backend 2>$null; $true
           }
+          pm2 start ecosystem.config.js --env production
           pm2 save
 
       - name: Concluido
