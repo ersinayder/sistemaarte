@@ -136,7 +136,14 @@ router.get("/:id", auth(), (req, res, next) => {
       "SELECT * FROM ordem_itens WHERE ordemid=? ORDER BY id ASC",
       [req.params.id]
     );
-    res.json({ ...o, logs, itens });
+    const lancamentos = getAll(
+      `SELECT l.*, u.name AS usuarionome FROM lancamentos l
+       LEFT JOIN users u ON u.id=l.criadopor
+       WHERE l.ordemid=? AND l.deletedat IS NULL
+       ORDER BY l.data ASC, l.id ASC`,
+      [req.params.id]
+    );
+    res.json({ ...o, logs, itens, lancamentos });
   } catch(e) { next(e); }
 });
 
@@ -226,7 +233,6 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
       if (!status) return res.status(400).json({ error: "Informe o status" });
       const erroStatus = validarStatus(status, old.status);
       if (erroStatus) return res.status(400).json({ error: erroStatus });
-      // Bloquear entrega com saldo aberto (mesmo controle do PATCH /status)
       if (status === 'Entregue') {
         const resumo = getResumoFinanceiroOS(req.params.id);
         if (resumo && resumo.saldo > 0.01)
@@ -315,19 +321,15 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
 });
 
 // PATCH /api/ordens/:id/status
-// A leitura do status atual e a validacao ocorrem DENTRO da transacao
-// para evitar race condition entre a leitura e o UPDATE.
 router.patch("/:id/status", auth(["admin","caixa","oficina"]), (req, res, next) => {
   try {
     const { obs } = req.body ?? {};
     const status = normalizarStatus(req.body?.status);
     if (!status) return res.status(400).json({ error: "status obrigatorio" });
 
-    // Verificacao de existencia fora da tx (fast-fail 404 antes de abrir lock)
     const existe = getOne("SELECT id FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);
     if (!existe) return res.status(404).json({ error: "Nao encontrado" });
 
-    // Verificacao de saldo fora da tx (leitura nao-critica, apenas evita abrir tx desnecessaria)
     if (status === 'Entregue') {
       const resumo = getResumoFinanceiroOS(req.params.id);
       if (resumo && resumo.saldo > 0.01)
@@ -336,7 +338,6 @@ router.patch("/:id/status", auth(["admin","caixa","oficina"]), (req, res, next) 
 
     let statusAnterior;
     transaction(() => {
-      // Releitura DENTRO da transacao — garante consistencia do status atual
       const current = getOne("SELECT status FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);
       if (!current) throw new Error("OS nao encontrada");
       const erroStatus = validarStatus(status, current.status);
@@ -352,7 +353,6 @@ router.patch("/:id/status", auth(["admin","caixa","oficina"]), (req, res, next) 
     maybeNotifyPronto(req.params.id, statusAnterior, status);
     res.json({ ok: true });
   } catch(e) {
-    // Erros de validacao de status lanc,ados dentro da tx chegam aqui
     if (e.message && !e.message.includes('SQLITE')) {
       return res.status(400).json({ error: e.message });
     }
