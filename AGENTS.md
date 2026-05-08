@@ -57,6 +57,7 @@ Os valores exatos (com acentos) são:
 - **Nunca** usar `'Em Producao'` sem acento — vai quebrar validações e testes
 - `normalizarStatus()` em `domain/ordensRules.js` normaliza aliases (ex: `'Cancelada'` → `'Cancelado'`)
 - Transições inválidas são bloqueadas por `validarStatus()`
+- O único alias legado suportado é `'Cancelada'` → `'Cancelado'` via `normalizarStatus()`. Nas queries SQL use **somente** `'Cancelado'` — a migration normalizou todos os registros do banco.
 
 ### Roles de usuário
 | Role | Permissões |
@@ -68,13 +69,23 @@ Os valores exatos (com acentos) são:
 ### Financeiro
 - Lançamentos com `pago=0` **não** abatam saldo da OS
 - Lançamentos com `deletedat IS NOT NULL` são ignorados no saldo
-- Saldo nunca vai abaixo de zero mesmo com pagamento excedente
-- Para entregar uma OS (`status = 'Entregue'`), saldo deve ser zero
+- Saldo nunca vai abaixo de zero mesmo com pagamento excedente — tanto no `SEL_ORDEM` (via `CASE WHEN`) quanto em `getResumoFinanceiroOS()` (via `Math.max`)
+- Para entregar uma OS (`status = 'Entregue'`), saldo deve ser zero — válido em **todas** as rotas que alteram status: `PATCH /status`, `PUT /:id` (role admin/caixa e role oficina)
+- **Sempre** usar `getResumoFinanceiroOS()` de `domain/financeiroRules.js` para cálculo de saldo — **nunca** reimplementar inline
 
 ### Numeração de OS
 - Formato: `OS-XXXX` (zero-padded, 4 dígitos)
 - Gerada pela tabela `sequencias` com lock via `RETURNING`
 - Em caso de conflito UNIQUE, retornar 409 e pedir para tentar novamente
+
+### resolveClienteData — comportamento intencional
+`resolveClienteData()` em `routes/ordens.js` faz lookup de telefone/CPF pelo **nome** do cliente quando o `clienteid` não é fornecido:
+
+```js
+const cli = getOne("SELECT phone, cpf FROM clientes WHERE name=? LIMIT 1", [clientenome]);
+```
+
+**Isso é UX deliberada**, não um bug. Permite criar uma OS digitando apenas o nome do cliente sem precisar selecionar o ID, priorizando agilidade no atendimento. Em caso de dois clientes com o mesmo nome, o sistema usa o primeiro cadastrado (id menor). Para clientes com nomes ambíguos, o operador deve informar o `clienteid` explicitamente. **Não alterar esse comportamento sem validar o fluxo de criação de OS no frontend.**
 
 ---
 
@@ -84,7 +95,21 @@ Os valores exatos (com acentos) são:
 - **Backups:** `backend/data/backups/` — rotação de 7 arquivos, gerado diariamente às 2h BRT
 - **Migrations:** adicionais de coluna ficam no array `migrations[]` em `database.js` — nunca alterar tabelas existentes, só `ALTER TABLE ADD COLUMN`
 - **SQLite é single-writer** — não ativar PM2 cluster sem migrar para WAL + testar locks
-- Índices já existentes: `idx_ordens_status`, `idx_ordens_prazo`, `idx_ordens_clienteid`, `idx_lancamentos_data`, `idx_lancamentos_ordemid`, `idx_statuslog_ordemid`, `idx_produtos_nome`, `idx_ordem_itens_ordemid`
+- Índices existentes:
+  - `idx_ordens_status`, `idx_ordens_prazo`, `idx_ordens_clienteid`
+  - `idx_lancamentos_data`, `idx_lancamentos_ordemid`
+  - `idx_lancamentos_pago_del` — composto em `(ordemid, pago, deletedat)` para queries de saldo
+  - `idx_statuslog_ordemid`, `idx_produtos_nome`, `idx_ordem_itens_ordemid`
+
+---
+
+## Seed de desenvolvimento
+
+O seed de usuários padrão (`admin/admin123`, `caixa/caixa123`, `oficina/oficina123`) **só executa** quando:
+- `NODE_ENV === 'development'` **OU**
+- `SEED_DEV === '1'`
+
+Em qualquer outro cenário (variável indefinida, `NODE_ENV=production`, etc.) o seed **não roda**. Nunca alterar esse guard para a lógica inversa (`!== 'production'`).
 
 ---
 
@@ -94,7 +119,7 @@ Os valores exatos (com acentos) são:
 backend/
 ├── domain/
 │   ├── ordensRules.js       # STATUSES_VALIDOS, TRANSICOES_VALIDAS, validarStatus, normalizarStatus
-│   └── financeiroRules.js   # getResumoFinanceiroOS
+│   └── financeiroRules.js   # getResumoFinanceiroOS — UNICA fonte de verdade para saldo de OS
 ├── middlewares/
 │   ├── auth.js              # Middleware JWT — lê cookie > header Authorization
 │   └── errorHandler.js      # Sanitiza erros SQLite, nunca vaza schema
@@ -154,6 +179,23 @@ frontend/src/
 | Backup durante escrita | Sem WAL: lock no banco | WAL já ativo, backup usa `db.backup()` assíncrono |
 | Múltiplos writers | SQLite single-writer | Não ativar PM2 cluster sem validar WAL + locks |
 | Testes CJS + Vitest | `vi.mock` incompatível com `better-sqlite3` | Usar mocks manuais com objetos `better-sqlite3` reais |
+| Guard do seed | `!== 'production'` roda se NODE_ENV undefined | Guard exige `=== 'development'` ou `SEED_DEV=1` |
+| Saldo inline no PUT caixa | Diverge de `getResumoFinanceiroOS` | Sempre usar `getResumoFinanceiroOS()` — nunca reimplementar |
+| `'Cancelada'` em queries SQL | Alias legado — banco já normalizado | Usar somente `'Cancelado'` em cláusulas WHERE/IN |
+| `saldoaberto` negativo | Estornos podem exceder total | SEL_ORDEM usa `CASE WHEN < 0 THEN 0.0` |
+
+---
+
+## Roadmap / Backlog técnico
+
+Itens validados mas não implementados ainda (features novas, não bugs):
+
+| # | Item | Impacto |
+|---|---|---|
+| 10 | `criadopor` + `updatedat` em `ordem_itens` | Rastreabilidade por operador |
+| 12 | SSE: limitar por `userId` (máx 3/usuário) | Evitar monopolização de conexões |
+| 13 | Paginação no `GET /api/ordens` (`?page=&limit=`) | Escala com volume crescente |
+| 9 | Backup: gravar `backup-status.json` + endpoint `/api/backup/status` | Observabilidade de falhas |
 
 ---
 
