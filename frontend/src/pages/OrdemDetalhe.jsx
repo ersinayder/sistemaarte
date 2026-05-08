@@ -1,5 +1,5 @@
 // frontend/src/pages/OrdemDetalhe.jsx
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import ReactDOM from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../services/api'
@@ -16,6 +16,7 @@ const STATUS_BADGE = { 'Recebido':'recebido','Em Produção':'emproducao','Pront
 const STATUS_COLOR = { 'Recebido':'var(--color-blue)','Em Produção':'var(--color-orange)','Pronto':'var(--color-primary)','Entregue':'var(--color-success)','Cancelado':'var(--color-text-faint)' }
 const PAG_BADGE    = { Pix:'pix', Dinheiro:'dinheiro', Credito:'credito', Debito:'debito', Link:'link' }
 const PAG_LABEL    = { Credito:'Crédito', Débito:'Débito', Link:'Link Pag.' }
+const PAG_ICONE    = { Pix:'💠', Dinheiro:'💵', Credito:'💳', Debito:'💳', Link:'🔗' }
 
 function formatarTelefoneWpp(tel) {
   if (!tel) return null
@@ -40,7 +41,6 @@ function buildWppUrl(ordem) {
   let msg = ''
 
   if (status === 'Pronto') {
-    // ── Mensagem: OS Pronta ────────────────────────────────────────────────
     msg += `🎉 *Arte e Molduras — Pedido Pronto!*\n\n`
     msg += `Olá, *${nome}*! Seu pedido está pronto para retirada. 😊\n\n`
     msg += `🖼️ *Serviço:* ${servico}\n`
@@ -52,9 +52,7 @@ function buildWppUrl(ordem) {
     }
     msg += `\nEstamos aguardando você!\n`
     msg += `_Arte e Molduras_ 🎨`
-
   } else {
-    // ── Mensagem: Confirmação de Pedido (todos os outros status) ───────────
     msg += `📋 *Arte e Molduras — Confirmação de Pedido*\n\n`
     msg += `Olá, *${nome}*! Seu pedido foi registrado com sucesso. 😊\n\n`
     msg += `🖼️ *Serviço:* ${servico}\n`
@@ -94,6 +92,7 @@ export default function OrdemDetalhe({ context }) {
   const [ordem, setOrdem]                 = useState(null)
   const [itens, setItens]                 = useState([])
   const [historico, setHistorico]         = useState([])
+  const [lancamentosOS, setLancamentosOS] = useState([])
   const [loading, setLoading]             = useState(true)
   const [novaObs, setNovaObs]             = useState('')
   const [savingObs, setSavingObs]         = useState(false)
@@ -110,6 +109,7 @@ export default function OrdemDetalhe({ context }) {
       setOrdem(ro.data)
       setHistorico(ro.data.logs || [])
       setItens(ro.data.itens || ro.data.items || ro.data.produtos || [])
+      setLancamentosOS(ro.data.lancamentos || [])
     } catch {
       toast.error('Erro ao carregar OS')
       navigate(backPath)
@@ -119,6 +119,37 @@ export default function OrdemDetalhe({ context }) {
   }, [id, navigate, backPath])
 
   useEffect(() => { load() }, [load])
+
+  // Timeline mesclada: statuslog + lancamentos do caixa, ordenados por data
+  const timelineMesclada = useMemo(() => {
+    const statusEventos = historico.map(h => ({
+      _tipo: 'status',
+      _ts: h.createdat || '',
+      ...h,
+    }))
+
+    const caixaEventos = lancamentosOS.map(l => {
+      const icone = PAG_ICONE[l.pagamento] || '💰'
+      let label
+      if (l.origem === 'entradaos') {
+        label = `${icone} Entrada recebida — ${fmt(l.valor)} via ${l.pagamento}`
+      } else if (l.origem === 'restanteos') {
+        label = `${icone} Restante recebido — ${fmt(l.valor)} via ${l.pagamento}`
+      } else {
+        label = `${icone} Pagamento registrado — ${fmt(l.valor)} via ${l.pagamento}`
+      }
+      return {
+        _tipo: 'caixa',
+        _ts: l.data ? `${l.data} 00:00:00` : '',
+        _label: label,
+        ...l,
+      }
+    })
+
+    return [...statusEventos, ...caixaEventos].sort((a, b) =>
+      (a._ts || '').localeCompare(b._ts || '') || (a.id || 0) - (b.id || 0)
+    )
+  }, [historico, lancamentosOS])
 
   const mudarStatus = async (novoStatus) => {
     try {
@@ -164,8 +195,6 @@ export default function OrdemDetalhe({ context }) {
   const canSendWpp = (isAdmin || isCaixa) && !['Cancelado'].includes(ordem.status)
   const canDelete  = isAdmin && !isOficinaContext
   const wppUrl     = buildWppUrl(ordem)
-
-  // Label do botão WPP muda conforme status
   const wppLabel = ordem.status === 'Pronto' ? 'Avisar Pronto' : 'Confirmar Pedido'
 
   return (
@@ -192,7 +221,6 @@ export default function OrdemDetalhe({ context }) {
         )}
         <div style={{ flex:1 }}/>
 
-        {/* Botão WhatsApp */}
         {canSendWpp && (
           <a
             href={wppUrl || undefined}
@@ -447,38 +475,46 @@ export default function OrdemDetalhe({ context }) {
         </div>
       )}
 
-      {/* Histórico */}
+      {/* Histórico de Atividade */}
       <div className="card card-pad">
         <div style={{ fontWeight:700, fontSize:'var(--text-sm)', marginBottom:'var(--space-4)' }}>Histórico de Atividade</div>
         <div style={{ position:'relative', paddingLeft:'var(--space-8)', marginBottom:'var(--space-5)' }}>
           <div style={{ position:'absolute', left:11, top:0, bottom:0, width:2, background:'var(--color-border)' }}/>
-          {historico.length === 0 && (
+          {timelineMesclada.length === 0 && (
             <p style={{ fontSize:'var(--text-xs)', color:'var(--color-text-faint)' }}>Nenhuma atividade registrada.</p>
           )}
-          {historico.map((h, i) => (
-            <div key={h.id || i} style={{ position:'relative', marginBottom:'var(--space-4)' }}>
+          {timelineMesclada.map((h, i) => (
+            <div key={`${h._tipo}-${h.id || i}`} style={{ position:'relative', marginBottom:'var(--space-4)' }}>
               <div style={{
                 position:'absolute', left:'calc(-1 * var(--space-8) + 4px)',
                 width:16, height:16, borderRadius:'50%',
-                background: h.statusnovo ? (STATUS_COLOR[h.statusnovo] || 'var(--color-primary)') : 'var(--color-surface-dynamic)',
-                border:`2px solid ${h.statusnovo ? (STATUS_COLOR[h.statusnovo] || 'var(--color-primary)') : 'var(--color-border)'}`,
+                background: h._tipo === 'caixa'
+                  ? 'var(--color-success)'
+                  : h.statusnovo ? (STATUS_COLOR[h.statusnovo] || 'var(--color-primary)') : 'var(--color-surface-dynamic)',
+                border: `2px solid ${
+                  h._tipo === 'caixa'
+                    ? 'var(--color-success)'
+                    : h.statusnovo ? (STATUS_COLOR[h.statusnovo] || 'var(--color-primary)') : 'var(--color-border)'
+                }`,
               }}/>
               <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-faint)', marginBottom:2 }}>
-                {fmtDT(h.createdat)} · {h.usuarionome || 'sistema'}
+                {fmtDT(h._ts || h.createdat)} · {h.usuarionome || 'sistema'}
               </div>
-              <div style={{ fontSize:'var(--text-sm)', fontWeight: h.obs ? 400 : 600 }}>
-                {h.obs
-                  ? <span style={{ color:'var(--color-text-muted)' }}>📝 {h.obs}</span>
-                  : <span>
-                      {h.statusanterior
-                        ? <>
-                            Status alterado:
-                            <span style={{ color: STATUS_COLOR[h.statusanterior] || 'inherit' }}> {h.statusanterior}</span>
-                            <span style={{ color: STATUS_COLOR[h.statusnovo] || 'inherit', fontWeight:700 }}> → {h.statusnovo}</span>
-                          </>
-                        : <span style={{ color:'var(--color-text-muted)' }}>Ordem criada</span>
-                      }
-                    </span>
+              <div style={{ fontSize:'var(--text-sm)', fontWeight: h._tipo === 'caixa' ? 600 : (h.obs ? 400 : 600) }}>
+                {h._tipo === 'caixa'
+                  ? <span style={{ color:'var(--color-success)' }}>{h._label}</span>
+                  : h.obs
+                    ? <span style={{ color:'var(--color-text-muted)' }}>📝 {h.obs}</span>
+                    : <span>
+                        {h.statusanterior
+                          ? <>
+                              Status alterado:
+                              <span style={{ color: STATUS_COLOR[h.statusanterior] || 'inherit' }}> {h.statusanterior}</span>
+                              <span style={{ color: STATUS_COLOR[h.statusnovo] || 'inherit', fontWeight:700 }}> → {h.statusnovo}</span>
+                            </>
+                          : <span style={{ color:'var(--color-text-muted)' }}>Ordem criada</span>
+                        }
+                      </span>
                 }
               </div>
             </div>
