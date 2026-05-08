@@ -315,30 +315,49 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
 });
 
 // PATCH /api/ordens/:id/status
+// A leitura do status atual e a validacao ocorrem DENTRO da transacao
+// para evitar race condition entre a leitura e o UPDATE.
 router.patch("/:id/status", auth(["admin","caixa","oficina"]), (req, res, next) => {
   try {
     const { obs } = req.body ?? {};
     const status = normalizarStatus(req.body?.status);
     if (!status) return res.status(400).json({ error: "status obrigatorio" });
-    const old = getOne("SELECT status FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);
-    if (!old) return res.status(404).json({ error: "Nao encontrado" });
-    const erroStatus = validarStatus(status, old.status);
-    if (erroStatus) return res.status(400).json({ error: erroStatus });
+
+    // Verificacao de existencia fora da tx (fast-fail 404 antes de abrir lock)
+    const existe = getOne("SELECT id FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);
+    if (!existe) return res.status(404).json({ error: "Nao encontrado" });
+
+    // Verificacao de saldo fora da tx (leitura nao-critica, apenas evita abrir tx desnecessaria)
     if (status === 'Entregue') {
       const resumo = getResumoFinanceiroOS(req.params.id);
       if (resumo && resumo.saldo > 0.01)
         return res.status(400).json({ error: `OS possui saldo aberto de R$ ${resumo.saldo.toFixed(2)}. Quite antes de entregar.` });
     }
+
+    let statusAnterior;
     transaction(() => {
+      // Releitura DENTRO da transacao — garante consistencia do status atual
+      const current = getOne("SELECT status FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);
+      if (!current) throw new Error("OS nao encontrada");
+      const erroStatus = validarStatus(status, current.status);
+      if (erroStatus) throw new Error(erroStatus);
+      statusAnterior = current.status;
       run("UPDATE ordens SET status=?,updatedat=datetime('now','localtime') WHERE id=?", [status, req.params.id]);
       runInsert(
         "INSERT INTO statuslog (ordemid,statusanterior,statusnovo,usuarioid,obs) VALUES (?,?,?,?,?)",
-        [req.params.id, old.status, status, req.user.id, obs||null]
+        [req.params.id, current.status, status, req.user.id, obs||null]
       );
     });
-    maybeNotifyPronto(req.params.id, old.status, status);
+
+    maybeNotifyPronto(req.params.id, statusAnterior, status);
     res.json({ ok: true });
-  } catch(e) { next(e); }
+  } catch(e) {
+    // Erros de validacao de status lanc,ados dentro da tx chegam aqui
+    if (e.message && !e.message.includes('SQLITE')) {
+      return res.status(400).json({ error: e.message });
+    }
+    next(e);
+  }
 });
 
 // POST /api/ordens/:id/whatsapp-confirmacao
