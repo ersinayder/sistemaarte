@@ -23,8 +23,10 @@ const fmtShort = v => {
 }
 const fmtD = iso => iso ? new Date(`${iso}T12:00:00`).toLocaleDateString('pt-BR') : '—'
 
-const HOJE = new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10)
-const MES_PADRAO = HOJE.slice(0, 7)
+// Funcao em vez de constante de modulo: recalcula a cada chamada
+// evitando que a data fique presa se o usuario deixar a aba aberta
+const getHoje = () => new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10)
+const getMesPadrao = () => getHoje().slice(0, 7)
 
 const STATUS_BADGE = {
   'Recebido': 'recebido', 'Em Produção': 'emproducao',
@@ -151,7 +153,7 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const { kpis: live, online } = useKpiStream()
 
-  const [mesSel, setMesSel] = useState(MES_PADRAO)
+  const [mesSel, setMesSel] = useState(getMesPadrao)
   const [dados, setDados]   = useState(null)
   const [ordens, setOrdens] = useState([])
   const [loading, setLoading] = useState(true)
@@ -182,6 +184,9 @@ export default function Dashboard() {
   if (loading) return (
     <div className="loading-center"><div className="spinner" /></div>
   )
+
+  // Recalcula a data atual a cada render para nao ficar presa
+  const hoje = getHoje()
 
   // ── Gráfico linha ────────────────────────────────────────────────────────
   const lineData = {
@@ -259,7 +264,7 @@ export default function Dashboard() {
     'Caixas': 'var(--color-blue)', '3D': 'var(--color-purple)', 'Diversos': 'var(--color-text-faint)',
   }
   const ordensVencidas = ordens.filter(o =>
-    !['Entregue', 'Cancelado'].includes(o.status) && o.prazoentrega && o.prazoentrega < HOJE
+    !['Entregue', 'Cancelado'].includes(o.status) && o.prazoentrega && o.prazoentrega < hoje
   ).length
 
   return (
@@ -274,7 +279,7 @@ export default function Dashboard() {
           </span>
         </div>
         <input
-          type="month" value={mesSel} max={MES_PADRAO}
+          type="month" value={mesSel} max={getMesPadrao()}
           onChange={e => e.target.value && setMesSel(e.target.value)}
           style={{
             background: 'var(--color-surface)', border: '1px solid var(--color-border)',
