@@ -21,7 +21,11 @@ const SEL_ORDEM = `
     o.observacoes AS obs,
     o.createdat AS criadoem,
     COALESCE((SELECT SUM(l.valor) FROM lancamentos l WHERE l.ordemid=o.id AND l.pago=1 AND l.deletedat IS NULL),0) AS valorrecebido,
-    CAST(o.valortotal - COALESCE((SELECT SUM(l.valor) FROM lancamentos l WHERE l.ordemid=o.id AND l.pago=1 AND l.deletedat IS NULL),0) AS REAL) AS saldoaberto,
+    CASE
+      WHEN (o.valortotal - COALESCE((SELECT SUM(l.valor) FROM lancamentos l WHERE l.ordemid=o.id AND l.pago=1 AND l.deletedat IS NULL),0)) < 0
+      THEN 0.0
+      ELSE CAST(o.valortotal - COALESCE((SELECT SUM(l.valor) FROM lancamentos l WHERE l.ordemid=o.id AND l.pago=1 AND l.deletedat IS NULL),0) AS REAL)
+    END AS saldoaberto,
     COALESCE((SELECT GROUP_CONCAT(oi.nome, ', ') FROM ordem_itens oi WHERE oi.ordemid=o.id ORDER BY oi.id), '') AS itens_resumo
   FROM ordens o
   LEFT JOIN users u ON u.id=o.criadopor
@@ -85,7 +89,7 @@ function saveItens(ordemId, produtos) {
     const nome = (p.nome || '').trim();
     if (!nome) continue;
     const qty   = Number(p.quantidade || 1);
-    const preco = Number(p.preco_unitario || p.preco || 0);
+    const preco = Math.max(0, Number(p.preco_unitario || p.preco || 0));
     const avulso = p.avulso ? 1 : 0;
     const pid = p.produto_id ? Number(p.produto_id) : null;
     runInsert(
@@ -222,6 +226,12 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
       if (!status) return res.status(400).json({ error: "Informe o status" });
       const erroStatus = validarStatus(status, old.status);
       if (erroStatus) return res.status(400).json({ error: erroStatus });
+      // Bloquear entrega com saldo aberto (mesmo controle do PATCH /status)
+      if (status === 'Entregue') {
+        const resumo = getResumoFinanceiroOS(req.params.id);
+        if (resumo && resumo.saldo > 0.01)
+          return res.status(400).json({ error: `Saldo aberto: R$ ${resumo.saldo.toFixed(2)}. Quite antes de entregar.` });
+      }
       transaction(() => {
         const current = getOne("SELECT status FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);
         if (!current) throw new Error("OS nao encontrada");
