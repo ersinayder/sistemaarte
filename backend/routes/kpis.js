@@ -26,9 +26,10 @@ function calcKpis() {
      WHERE status = 'Aguardando' AND deletedat IS NULL`
   )?.n ?? 0;
 
+  // Alinhado com GET /ordens?vencidas=1: exclui Pronto, Entregue e Cancelado
   const vencidas = getOne(
     `SELECT COUNT(*) AS n FROM ordens
-     WHERE status NOT IN ('Entregue','Cancelado')
+     WHERE status NOT IN ('Pronto','Entregue','Cancelado')
        AND prazoentrega IS NOT NULL AND prazoentrega < ?
        AND deletedat IS NULL`,
     [hj]
