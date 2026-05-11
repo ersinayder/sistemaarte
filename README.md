@@ -20,7 +20,7 @@ Sistema interno de gestão de ordens de serviço (OS), caixa, clientes e produto
 cd backend
 npm install
 cp .env.example .env   # preencher JWT_SECRET e demais vars
-node server.js
+NODE_ENV=development node server.js
 
 # Frontend (outro terminal)
 cd frontend
@@ -31,6 +31,9 @@ npm run dev
 Frontend: http://localhost:5173 | Backend: http://localhost:3001
 
 ### Usuários padrão (somente dev)
+
+> ⚠️ O seed de usuários padrão **só executa** quando `NODE_ENV=development` ou `SEED_DEV=1`.
+> Em qualquer outro ambiente (incluindo variável não definida) o seed **não roda**.
 
 | Usuário | Senha | Role |
 |---|---|---|

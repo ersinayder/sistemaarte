@@ -8,7 +8,7 @@ function calcKpis() {
 
   const abertas = getOne(
     `SELECT COUNT(*) AS n FROM ordens
-     WHERE status NOT IN ('Entregue','Cancelado','Cancelada') AND deletedat IS NULL`
+     WHERE status NOT IN ('Entregue','Cancelado') AND deletedat IS NULL`
   )?.n ?? 0;
 
   const emProducao = getOne(
@@ -26,9 +26,10 @@ function calcKpis() {
      WHERE status = 'Aguardando' AND deletedat IS NULL`
   )?.n ?? 0;
 
+  // Alinhado com GET /ordens?vencidas=1: exclui Pronto, Entregue e Cancelado
   const vencidas = getOne(
     `SELECT COUNT(*) AS n FROM ordens
-     WHERE status NOT IN ('Entregue','Cancelado','Cancelada')
+     WHERE status NOT IN ('Pronto','Entregue','Cancelado')
        AND prazoentrega IS NOT NULL AND prazoentrega < ?
        AND deletedat IS NULL`,
     [hj]
@@ -101,7 +102,6 @@ router.get("/stream", auth(), (req, res) => {
   res.flushHeaders();
 
   let closed    = false;
-  // Declara idleTimer antes de qualquer uso para evitar hoisting error
   let idleTimer = null;
 
   const cleanup = () => {
@@ -135,7 +135,6 @@ router.get("/stream", auth(), (req, res) => {
     if (!closed) res.write(": ping\n\n");
   }, SSE_HEARTBEAT_MS);
 
-  // Inicia o idle timer apos declarar todas as variaveis
   resetIdle();
 
   req.on("close", cleanup);
