@@ -120,7 +120,7 @@ export default function OrdemDetalhe({ context }) {
 
   useEffect(() => { load() }, [load])
 
-  // Timeline mesclada: statuslog + lancamentos do caixa, ordenados por data
+  // Timeline mesclada: statuslog + lancamentos do caixa, ordenados por timestamp real
   const timelineMesclada = useMemo(() => {
     const statusEventos = historico.map(h => ({
       _tipo: 'status',
@@ -140,7 +140,8 @@ export default function OrdemDetalhe({ context }) {
       }
       return {
         _tipo: 'caixa',
-        _ts: l.data ? `${l.data} 00:00:00` : '',
+        // usa createdat (timestamp completo) para ordenacao e exibicao correta da hora
+        _ts: l.createdat || (l.data ? `${l.data}T00:00:00` : ''),
         _label: label,
         ...l,
       }
@@ -498,7 +499,7 @@ export default function OrdemDetalhe({ context }) {
                 }`,
               }}/>
               <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-faint)', marginBottom:2 }}>
-                {fmtDT(h._ts || h.createdat)} · {h.usuarionome || 'sistema'}
+                {fmtDT(h._ts)} · {h.usuarionome || 'sistema'}
               </div>
               <div style={{ fontSize:'var(--text-sm)', fontWeight: h._tipo === 'caixa' ? 600 : (h.obs ? 400 : 600) }}>
                 {h._tipo === 'caixa'
