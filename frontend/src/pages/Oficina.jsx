@@ -16,6 +16,13 @@ const STATUSNEXT = {
   'Pronto': 'Entregue',
 };
 
+// Cor sólida para o fill do hover de cada transição
+const NEXT_COLOR = {
+  'Aguardando': '#3B82F6',   // azul  → Em Produção
+  'Em Produção': '#22C55E',  // verde → Pronto
+  'Pronto': '#6B7280',       // cinza → Entregue
+};
+
 const TIPOBADGE = {
   'Quadro': 'primary',
   'Corte a Laser': 'blue',
@@ -29,6 +36,45 @@ const fmtD = d => {
   const [y,m,dia] = d.split('-');
   return `${dia}/${m}`;
 };
+
+/* Botão de avançar status com hover rico via estado React */
+function AvancarBtn({ ordem, colColor, onAvancar }) {
+  const [hovered, setHovered] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const next = STATUSNEXT[ordem.status];
+  const hoverBg = NEXT_COLOR[ordem.status] || colColor;
+
+  const style = {
+    fontSize: 9,
+    padding: '3px 8px',
+    borderRadius: 'var(--radius-full)',
+    cursor: 'pointer',
+    fontWeight: 700,
+    whiteSpace: 'nowrap',
+    border: `1px solid ${hovered ? hoverBg : colColor + '44'}`,
+    background: hovered ? hoverBg : 'rgba(255,255,255,0.06)',
+    color: hovered ? '#fff' : colColor,
+    boxShadow: hovered
+      ? `0 0 10px ${hoverBg}66, 0 2px 8px rgba(0,0,0,0.30)`
+      : 'none',
+    transform: pressed ? 'scale(0.92)' : hovered ? 'scale(1.07)' : 'scale(1)',
+    transition: 'all 0.18s cubic-bezier(0.16,1,0.3,1)',
+    letterSpacing: hovered ? '0.03em' : '0',
+  };
+
+  return (
+    <button
+      onClick={e => { e.stopPropagation(); onAvancar(ordem); }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => { setHovered(false); setPressed(false); }}
+      onMouseDown={() => setPressed(true)}
+      onMouseUp={() => setPressed(false)}
+      style={style}
+    >
+      → {next}
+    </button>
+  );
+}
 
 export default function Oficina() {
   const { user } = useAuth();
@@ -265,11 +311,6 @@ export default function Oficina() {
                   </span>
                 </div>
 
-                {/*
-                  Wrapper de scroll com flex:1 para ocupar todo o espaco da coluna.
-                  O div interno tambem tem flex:1 para que a zona de drop
-                  cubra ate o fundo mesmo quando ha poucos cards.
-                */}
                 <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column' }}>
                   <div style={{
                     padding:'var(--space-2)',
@@ -383,19 +424,11 @@ export default function Oficina() {
                               )}
                             </div>
                             {canEdit && STATUSNEXT[o.status] && (
-                              <button
-                                onClick={e => { e.stopPropagation(); avancarStatus(o); }}
-                                style={{
-                                  fontSize:9, padding:'3px 8px',
-                                  borderRadius:'var(--radius-full)',
-                                  background:'rgba(255,255,255,0.06)',
-                                  color: col.color,
-                                  border:`1px solid ${col.color}44`,
-                                  cursor:'pointer', fontWeight:700, whiteSpace:'nowrap',
-                                  transition:'all 0.15s'
-                                }}>
-                                → {STATUSNEXT[o.status]}
-                              </button>
+                              <AvancarBtn
+                                ordem={o}
+                                colColor={col.color}
+                                onAvancar={avancarStatus}
+                              />
                             )}
                           </div>
                         </div>
