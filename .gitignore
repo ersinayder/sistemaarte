@@ -25,6 +25,10 @@ backend/data/*.db-wal
 backend/.env
 frontend/.env
 
+# NF-e — certificado e XMLs NUNCA vão ao repositório
+backend/certs/
+backend/data/nfe_xmls/
+
 # Arquivos gerados / dump arquitetura
 projeto_completo.txt
 *.dump.txt

@@ -150,14 +150,36 @@ function initDB() {
     "ALTER TABLE lancamentos ADD COLUMN deletedpor INTEGER DEFAULT NULL",
     "ALTER TABLE produtos ADD COLUMN deletedat TEXT DEFAULT NULL",
     "ALTER TABLE produtos ADD COLUMN deletedpor INTEGER DEFAULT NULL",
-    // v2: coluna categoria para classificar lancamentos por tipo de servico
+    // v2
     "ALTER TABLE lancamentos ADD COLUMN categoria TEXT DEFAULT NULL",
-    // v3: indice composto para queries de saldo (pago + deletedat por ordemid)
+    // v3
     "CREATE INDEX IF NOT EXISTS idx_lancamentos_pago_del ON lancamentos(ordemid, pago, deletedat)",
+    // v4: NF-e — campos fiscais em produtos
+    "ALTER TABLE produtos ADD COLUMN ncm TEXT",
+    "ALTER TABLE produtos ADD COLUMN cfop TEXT DEFAULT '5102'",
+    "ALTER TABLE produtos ADD COLUMN csosn TEXT DEFAULT '400'",
+    "ALTER TABLE produtos ADD COLUMN origem_fiscal INTEGER DEFAULT 0",
+    // v4: NF-e — campos de nota emitida em ordens
+    "ALTER TABLE ordens ADD COLUMN nfe_numero TEXT",
+    "ALTER TABLE ordens ADD COLUMN nfe_serie TEXT DEFAULT '1'",
+    "ALTER TABLE ordens ADD COLUMN nfe_chave TEXT",
+    "ALTER TABLE ordens ADD COLUMN nfe_protocolo TEXT",
+    "ALTER TABLE ordens ADD COLUMN nfe_status TEXT",
+    "ALTER TABLE ordens ADD COLUMN nfe_xml TEXT",
+    "ALTER TABLE ordens ADD COLUMN nfe_emitida_em TEXT",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {}
   }
+
+  // ── Tabela de sequências NF-e (numeração legal independente das OS) ─────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS nfe_sequencias (
+      serie TEXT PRIMARY KEY,
+      ultimo_numero INTEGER DEFAULT 0
+    );
+    INSERT OR IGNORE INTO nfe_sequencias (serie, ultimo_numero) VALUES ('1', 0);
+  `);
 
   // Normalizar status legados
   try {
@@ -181,8 +203,6 @@ function initDB() {
   db.prepare("UPDATE sequencias SET ultimo=MAX(ultimo,?) WHERE nome='os'").run(maxN);
 
   // Guard duplo: seed SOMENTE em ambiente de desenvolvimento explicito.
-  // NODE_ENV deve ser 'development' OU a flag SEED_DEV=1 deve estar definida.
-  // Nunca executa se NODE_ENV nao estiver definido ou for 'production'.
   const isDevSeed = process.env.NODE_ENV === "development" || process.env.SEED_DEV === "1";
   if (isDevSeed) {
     const existing = db.prepare("SELECT id FROM users WHERE role=?").get("admin");
