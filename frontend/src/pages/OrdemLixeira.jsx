@@ -14,7 +14,8 @@ export default function OrdemLixeira() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await api.get('/ordens/lixeira');
+      // backend aceita ?lixeira=1 na rota GET /ordens
+      const { data } = await api.get('/ordens?lixeira=1');
       setOrdens(data || []);
     } catch {
       toast.error('Erro ao carregar lixeira');
@@ -28,7 +29,8 @@ export default function OrdemLixeira() {
   const restaurar = async (id) => {
     setWorking(id);
     try {
-      await api.patch(`/ordens/${id}/restaurar`);
+      // backend usa POST /ordens/:id/restore
+      await api.post(`/ordens/${id}/restore`);
       toast.success('OS restaurada');
       load();
     } catch {
@@ -42,6 +44,7 @@ export default function OrdemLixeira() {
     if (!window.confirm('Excluir permanentemente esta OS? Não é possível desfazer.')) return;
     setWorking(id);
     try {
+      // backend usa DELETE /ordens/:id/permanente
       await api.delete(`/ordens/${id}/permanente`);
       toast.success('OS excluída permanentemente');
       load();

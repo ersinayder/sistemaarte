@@ -140,7 +140,7 @@ router.get("/:id", auth(), (req, res, next) => {
       `SELECT l.*, u.name AS usuarionome FROM lancamentos l
        LEFT JOIN users u ON u.id=l.criadopor
        WHERE l.ordemid=? AND l.deletedat IS NULL
-       ORDER BY l.data ASC, l.id ASC`,
+       ORDER BY l.createdat ASC, l.id ASC`,
       [req.params.id]
     );
     res.json({ ...o, logs, itens, lancamentos });
@@ -370,7 +370,7 @@ router.post("/:id/whatsapp-confirmacao", auth(["admin","caixa"]), async (req, re
   } catch(e) { next(e); }
 });
 
-// DELETE /api/ordens/:id
+// DELETE /api/ordens/:id  (soft delete — move para lixeira)
 router.delete("/:id", auth(["admin"]), (req, res, next) => {
   try {
     const { reason } = req.body ?? {};
@@ -384,12 +384,27 @@ router.delete("/:id", auth(["admin"]), (req, res, next) => {
   } catch(e) { next(e); }
 });
 
-// POST /api/ordens/:id/restore
+// POST /api/ordens/:id/restore  (restaurar da lixeira)
 router.post("/:id/restore", auth(["admin"]), (req, res, next) => {
   try {
     const old = getOne("SELECT id FROM ordens WHERE id=? AND deletedat IS NOT NULL", [req.params.id]);
     if (!old) return res.status(404).json({ error: "Nao encontrado na lixeira" });
     run("UPDATE ordens SET deletedat=NULL,deletedpor=NULL,deletedreason=NULL WHERE id=?", [req.params.id]);
+    res.json({ ok: true });
+  } catch(e) { next(e); }
+});
+
+// DELETE /api/ordens/:id/permanente  (exclusao definitiva — somente admin)
+router.delete("/:id/permanente", auth(["admin"]), (req, res, next) => {
+  try {
+    const old = getOne("SELECT id FROM ordens WHERE id=?", [req.params.id]);
+    if (!old) return res.status(404).json({ error: "Nao encontrado" });
+    transaction(() => {
+      run("DELETE FROM statuslog   WHERE ordemid=?", [req.params.id]);
+      run("DELETE FROM ordem_itens WHERE ordemid=?", [req.params.id]);
+      run("DELETE FROM lancamentos WHERE ordemid=?", [req.params.id]);
+      run("DELETE FROM ordens      WHERE id=?",      [req.params.id]);
+    });
     res.json({ ok: true });
   } catch(e) { next(e); }
 });
