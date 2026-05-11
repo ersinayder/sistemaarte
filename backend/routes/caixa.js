@@ -32,8 +32,6 @@ router.post("/", auth(["admin","caixa"]), (req, res, next) => {
     const nValor = toNumber(valor);
     let origem = "manual";
     let descFinal = descricao;
-    // Lançamentos vinculados a OS são sempre pago=1 para abater o saldo
-    // Lançamentos manuais respeitam o campo pago enviado pelo front
     let pagoFinal = pago ? 1 : 0;
 
     if (ordemid) {
@@ -43,7 +41,7 @@ router.post("/", auth(["admin","caixa"]), (req, res, next) => {
       if (nValor > resumo.saldo + 0.0001)
         return res.status(400).json({ error: `Saldo disponivel para a ${resumo.ordem.numero}: R$ ${resumo.saldo.toFixed(2)}` });
       origem = "saldoos";
-      pagoFinal = 1; // FIX: saldoos sempre pago=1
+      pagoFinal = 1;
       descFinal = descricaoRestanteOS(resumo.ordem.numero, resumo.ordem.clientenome, resumo.ordem.servico);
     }
 
@@ -64,18 +62,13 @@ router.put("/:id", auth(["admin","caixa"]), (req, res, next) => {
     const old = getOne("SELECT * FROM lancamentos WHERE id=? AND deletedat IS NULL", [req.params.id]);
     if (!old) return res.status(404).json({ error: "Lancamento nao encontrado." });
 
-    // Admin pode editar data e pagamento de qualquer lançamento (incluindo entradaos)
-    // Operador caixa não pode editar lançamentos entradaos
     if (old.origem === "entradaos" && req.user.role !== "admin")
       return res.status(400).json({ error: "A entrada vinculada a OS deve ser alterada pela propria OS." });
 
     const { data, tipo, descricao, pagamento, valor, pago, ordemid } = req.body ?? {};
 
-    // Admin editando só datas de entradaos
+    // Admin editando apenas data/pagamento de entradaos
     if (old.origem === "entradaos" && req.user.role === "admin") {
-      const camposPermitidos = {};
-      if (data) camposPermitidos.data = data;
-      if (pagamento) camposPermitidos.pagamento = pagamento;
       run(
         "UPDATE lancamentos SET data=COALESCE(?,data), pagamento=COALESCE(?,pagamento) WHERE id=?",
         [data || null, pagamento || null, req.params.id]
@@ -87,23 +80,24 @@ router.put("/:id", auth(["admin","caixa"]), (req, res, next) => {
     const nValor = toNumber(valor);
     let origem = novoOrdemId ? "saldoos" : "manual";
     let descFinal = descricao;
-    let pagoFinal = novoOrdemId ? 1 : (pago ? 1 : 0); // saldoos sempre pago=1
+    let pagoFinal = novoOrdemId ? 1 : (pago ? 1 : 0);
 
     if (novoOrdemId) {
-      const ordem = getOne("SELECT id,numero,clientenome,servico,valortotal FROM ordens WHERE id=? AND deletedat IS NULL", [novoOrdemId]);
-      if (!ordem) return res.status(404).json({ error: "OS vinculada nao encontrada." });
-      const recebido = getOne(
-        `SELECT COALESCE(SUM(l.valor),0) AS total
-         FROM lancamentos l
-         WHERE l.ordemid=? AND l.pago=1 AND l.valor>0 AND l.id!=? AND l.deletedat IS NULL
-           AND (l.ordemid IS NULL OR (SELECT deletedat FROM ordens WHERE id=l.ordemid) IS NULL)`,
-        [novoOrdemId, req.params.id]
-      );
-      const saldo = Math.max(0, toNumber(ordem.valortotal) - toNumber(recebido?.total));
+      // Usa getResumoFinanceiroOS para consistencia com o POST e com o GET
+      // O resumo ja exclui o lancamento atual via calculo de saldo real,
+      // portanto precisamos somar de volta o valor do lancamento sendo editado
+      // para que nao seja contado duas vezes na validacao.
+      const resumo = getResumoFinanceiroOS(novoOrdemId, req.params.id);
+      if (!resumo) return res.status(404).json({ error: "OS vinculada nao encontrada." });
+
+      // saldo disponivel = saldo atual + valor que este lancamento ja ocupa (edicao)
+      const saldoDisponivel = resumo.saldo + (old.ordemid === novoOrdemId ? toNumber(old.valor) : 0);
+
       if (!(nValor > 0)) return res.status(400).json({ error: "Recebimento de saldo deve ter valor maior que zero." });
-      if (nValor > saldo + 0.0001)
-        return res.status(400).json({ error: `Saldo disponivel para ${ordem.numero}: R$ ${saldo.toFixed(2)}` });
-      descFinal = descricaoRestanteOS(ordem.numero, ordem.clientenome, ordem.servico);
+      if (nValor > saldoDisponivel + 0.0001)
+        return res.status(400).json({ error: `Saldo disponivel para ${resumo.ordem.numero}: R$ ${saldoDisponivel.toFixed(2)}` });
+
+      descFinal = descricaoRestanteOS(resumo.ordem.numero, resumo.ordem.clientenome, resumo.ordem.servico);
     }
 
     run(

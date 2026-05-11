@@ -16,6 +16,13 @@ const STATUSNEXT = {
   'Pronto': 'Entregue',
 };
 
+// Cor sólida para o fill do hover de cada transição
+const NEXT_COLOR = {
+  'Aguardando': '#3B82F6',   // azul  → Em Produção
+  'Em Produção': '#22C55E',  // verde → Pronto
+  'Pronto': '#6B7280',       // cinza → Entregue
+};
+
 const TIPOBADGE = {
   'Quadro': 'primary',
   'Corte a Laser': 'blue',
@@ -30,16 +37,55 @@ const fmtD = d => {
   return `${dia}/${m}`;
 };
 
+/* Botão de avançar status com hover rico via estado React */
+function AvancarBtn({ ordem, colColor, onAvancar }) {
+  const [hovered, setHovered] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const next = STATUSNEXT[ordem.status];
+  const hoverBg = NEXT_COLOR[ordem.status] || colColor;
+
+  const style = {
+    fontSize: 9,
+    padding: '3px 8px',
+    borderRadius: 'var(--radius-full)',
+    cursor: 'pointer',
+    fontWeight: 700,
+    whiteSpace: 'nowrap',
+    border: `1px solid ${hovered ? hoverBg : colColor + '44'}`,
+    background: hovered ? hoverBg : 'rgba(255,255,255,0.06)',
+    color: hovered ? '#fff' : colColor,
+    boxShadow: hovered
+      ? `0 0 10px ${hoverBg}66, 0 2px 8px rgba(0,0,0,0.30)`
+      : 'none',
+    transform: pressed ? 'scale(0.92)' : hovered ? 'scale(1.07)' : 'scale(1)',
+    transition: 'all 0.18s cubic-bezier(0.16,1,0.3,1)',
+    letterSpacing: hovered ? '0.03em' : '0',
+  };
+
+  return (
+    <button
+      onClick={e => { e.stopPropagation(); onAvancar(ordem); }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => { setHovered(false); setPressed(false); }}
+      onMouseDown={() => setPressed(true)}
+      onMouseUp={() => setPressed(false)}
+      style={style}
+    >
+      → {next}
+    </button>
+  );
+}
+
 export default function Oficina() {
   const { user } = useAuth();
   const navigate  = useNavigate();
-  // admin e caixa podem arrastar e avançar; oficina também arrasta mas não vê valores
   const canEdit    = user?.role === 'admin' || user?.role === 'oficina' || user?.role === 'caixa';
   const showValor  = user?.role !== 'oficina';
 
   const [ordens,      setOrdens]      = useState([]);
   const [loading,     setLoading]     = useState(true);
   const [draggingId,  setDraggingId]  = useState(null);
+  const [dragOverCol, setDragOverCol] = useState(null);
   const [filterTipo,  setFilterTipo]  = useState('todos');
   const [filterPrio,  setFilterPrio]  = useState('todas');
   const [viewMode,    setViewMode]    = useState('kanban');
@@ -105,13 +151,26 @@ export default function Oficina() {
     e.dataTransfer.setData('ordemId', id);
   }, []);
 
+  const onDragOver = useCallback((e, status) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverCol(status);
+  }, []);
+
+  const onDragLeave = useCallback((e) => {
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      setDragOverCol(null);
+    }
+  }, []);
+
   const onDrop = useCallback(async (e, novoStatus) => {
     e.preventDefault();
     const id = e.dataTransfer.getData('ordemId');
+    setDraggingId(null);
+    setDragOverCol(null);
     if (!id) return;
     const ordem = ordens.find(o => String(o.id) === String(id));
     if (!ordem || ordem.status === novoStatus) return;
-    setDraggingId(null);
     try {
       await api.patch(`/ordens/${ordem.id}/status`, { status: novoStatus });
       load();
@@ -207,22 +266,27 @@ export default function Oficina() {
       {/* Kanban */}
       {viewMode === 'kanban' ? (
         <div style={{ display:'flex', gap:'var(--space-4)', padding:'var(--space-4)', flex:1,
-          overflow:'auto', alignItems:'flex-start' }}>
+          overflow:'auto', alignItems:'stretch' }}>
           {COLUNAS.map(col => {
             const cards = porStatus(col);
+            const isOver = dragOverCol === col.status;
             return (
               <div key={col.status}
                 className={`kanban-col-${col.slug}`}
-                onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect='move'; }}
+                onDragOver={e => onDragOver(e, col.status)}
+                onDragLeave={onDragLeave}
                 onDrop={e => onDrop(e, col.status)}
                 style={{
                   flex:'1 1 260px', minWidth:220, maxWidth:380,
                   display:'flex', flexDirection:'column',
                   background:'var(--color-surface-offset)',
                   borderRadius:'var(--radius-lg)',
-                  border:'1px solid var(--color-border)',
+                  border: isOver
+                    ? `2px solid ${col.color}`
+                    : '1px solid var(--color-border)',
                   overflow:'hidden',
-                  maxHeight:'calc(100vh - 160px)'
+                  minHeight: 0,
+                  transition: 'border-color 0.15s',
                 }}>
 
                 <div style={{
@@ -247,128 +311,130 @@ export default function Oficina() {
                   </span>
                 </div>
 
-                <div style={{ flex:1, overflowY:'auto', padding:'var(--space-2)', display:'flex',
-                  flexDirection:'column', gap:'var(--space-2)' }}>
-                  {cards.length === 0 ? (
-                    <div style={{ textAlign:'center', padding:'var(--space-8) var(--space-4)',
-                      color:'var(--color-text-faint)', fontSize:'var(--text-xs)' }}>
-                      Nenhuma OS aqui
-                    </div>
-                  ) : cards.map(o => {
-                    const vencida   = o.prazoentrega && o.prazoentrega < today && o.status !== 'Pronto' && o.status !== 'Entregue';
-                    const ehHoje    = o.prazoentrega === today;
-                    const isUrgente = o.prioridade === 'Urgente';
-                    const diasCriado = Math.floor((Date.now() - new Date(o.criadoem)) / 86400000);
-                    const saldo     = Number(o.saldoaberto ?? 0);
-                    const quitado   = saldo <= 0.009;
-                    const resumo    = o.itens_resumo && o.itens_resumo.trim()
-                                        ? { text: o.itens_resumo, tipo: 'itens' }
-                                        : o.observacoes && o.observacoes.trim()
-                                          ? { text: o.observacoes, tipo: 'obs' }
-                                          : null;
-
-                    const statusSlug = col.slug;
-
-                    return (
-                      <div key={o.id}
-                        className="kanban-card"
-                        data-status={statusSlug}
-                        draggable={canEdit}
-                        onDragStart={e => onDragStart(e, o.id)}
-                        onDragEnd={() => setDraggingId(null)}
-                        onClick={() => navigate(`/ordens/${o.id}`)}
-                        style={{
-                          padding:'var(--space-3)',
-                          opacity: draggingId === o.id ? 0.45 : 1,
-                          ...(vencida ? { borderLeftColor:'#EF4444 !important' } : {}),
-                        }}
-                      >
-                        {/* Linha 1: número + badge tipo */}
-                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'var(--space-1)' }}>
-                          <span style={{ fontWeight:800, fontSize:11, color:'var(--color-primary)', letterSpacing:'0.02em' }}>
-                            #{o.numero}
-                          </span>
-                          <div style={{ display:'flex', gap:4, alignItems:'center' }}>
-                            {isUrgente && (
-                              <span style={{ fontSize:9, fontWeight:700, color:'#EF4444',
-                                background:'rgba(239,68,68,0.12)', borderRadius:'var(--radius-full)',
-                                padding:'1px 5px', letterSpacing:'0.03em' }}>URGENTE</span>
-                            )}
-                            <span className={`badge badge-${TIPOBADGE[o.servico]||'secondary'}`} style={{ fontSize:9 }}>
-                              {o.servico}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Linha 2: cliente */}
-                        <div style={{
-                          fontWeight:600, fontSize:'var(--text-xs)',
-                          color:'var(--color-text)',
-                          marginBottom: resumo ? 'var(--space-1)' : 'var(--space-2)',
-                          overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'
-                        }}>
-                          {o.clientenome}
-                        </div>
-
-                        {/* Linha 3: resumo */}
-                        {resumo && (
-                          <div style={{
-                            fontSize:10, color:'var(--color-text-muted)',
-                            marginBottom:'var(--space-2)',
-                            overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
-                            fontStyle: resumo.tipo === 'obs' ? 'italic' : 'normal',
-                          }} title={resumo.text}>
-                            {resumo.tipo === 'itens' ? '📦 ' : '📝 '}{resumo.text}
-                          </div>
-                        )}
-
-                        {/* Linha 4: prazo + saldo + ação */}
-                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:'var(--space-1)' }}>
-                          <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
-                            {o.prazoentrega && o.status !== 'Entregue' && (
-                              <span className={vencida ? 'urgencia-atrasado' : ehHoje ? 'urgencia-hoje' : 'urgencia-normal'}
-                                style={{ display:'flex', alignItems:'center', gap:2 }}>
-                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                  <rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>
-                                </svg>
-                                {vencida ? '⚠ Vencido' : ehHoje ? '⏰ Hoje' : fmtD(o.prazoentrega)}
-                              </span>
-                            )}
-                            {showValor && o.status !== 'Entregue' && (
-                              <span style={{
-                                fontSize:9, fontWeight:600,
-                                display:'flex', alignItems:'center', gap:2,
-                                color: quitado ? 'var(--color-success)' : '#F59E0B'
-                              }}>
-                                {quitado
-                                  ? <><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>Quitado</>
-                                  : <>💰 {fmtR(saldo)}</>
-                                }
-                              </span>
-                            )}
-                            {diasCriado > 14 && o.status !== 'Entregue' && (
-                              <span style={{ fontSize:9, color:'var(--color-text-faint)' }} title={`Criada há ${diasCriado} dias`}>⏱ {diasCriado}d</span>
-                            )}
-                          </div>
-                          {canEdit && STATUSNEXT[o.status] && (
-                            <button
-                              onClick={e => { e.stopPropagation(); avancarStatus(o); }}
-                              style={{
-                                fontSize:9, padding:'3px 8px',
-                                borderRadius:'var(--radius-full)',
-                                background:'rgba(255,255,255,0.06)',
-                                color: col.color,
-                                border:`1px solid ${col.color}44`,
-                                cursor:'pointer', fontWeight:700, whiteSpace:'nowrap',
-                                transition:'all 0.15s'
-                              }}>
-                              → {STATUSNEXT[o.status]}
-                            </button>
-                          )}
-                        </div>
+                <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column' }}>
+                  <div style={{
+                    padding:'var(--space-2)',
+                    display:'flex', flexDirection:'column', gap:'var(--space-2)',
+                    flex: 1,
+                    minHeight: 80,
+                    background: isOver ? `${col.color}12` : 'transparent',
+                    transition: 'background 0.15s',
+                  }}>
+                    {cards.length === 0 ? (
+                      <div style={{ textAlign:'center', padding:'var(--space-8) var(--space-4)',
+                        color: isOver ? col.color : 'var(--color-text-faint)',
+                        fontSize:'var(--text-xs)', transition: 'color 0.15s',
+                      }}>
+                        {isOver ? '⬇ Soltar aqui' : 'Nenhuma OS aqui'}
                       </div>
-                    );
-                  })}
+                    ) : cards.map(o => {
+                      const vencida   = o.prazoentrega && o.prazoentrega < today && o.status !== 'Pronto' && o.status !== 'Entregue';
+                      const ehHoje    = o.prazoentrega === today;
+                      const isUrgente = o.prioridade === 'Urgente';
+                      const diasCriado = Math.floor((Date.now() - new Date(o.criadoem)) / 86400000);
+                      const saldo     = Number(o.saldoaberto ?? 0);
+                      const quitado   = saldo <= 0.009;
+                      const resumo    = o.itens_resumo && o.itens_resumo.trim()
+                                          ? { text: o.itens_resumo, tipo: 'itens' }
+                                          : o.observacoes && o.observacoes.trim()
+                                            ? { text: o.observacoes, tipo: 'obs' }
+                                            : null;
+
+                      const statusSlug = col.slug;
+
+                      return (
+                        <div key={o.id}
+                          className="kanban-card"
+                          data-status={statusSlug}
+                          draggable={canEdit}
+                          onDragStart={e => onDragStart(e, o.id)}
+                          onDragEnd={() => { setDraggingId(null); setDragOverCol(null); }}
+                          onClick={() => navigate(`/ordens/${o.id}`)}
+                          style={{
+                            padding:'var(--space-3)',
+                            opacity: draggingId === o.id ? 0.45 : 1,
+                            ...(vencida ? { borderLeftColor:'#EF4444 !important' } : {}),
+                          }}
+                        >
+                          {/* Linha 1: número + badge tipo */}
+                          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'var(--space-1)' }}>
+                            <span style={{ fontWeight:800, fontSize:11, color:'var(--color-primary)', letterSpacing:'0.02em' }}>
+                              #{o.numero}
+                            </span>
+                            <div style={{ display:'flex', gap:4, alignItems:'center' }}>
+                              {isUrgente && (
+                                <span style={{ fontSize:9, fontWeight:700, color:'#EF4444',
+                                  background:'rgba(239,68,68,0.12)', borderRadius:'var(--radius-full)',
+                                  padding:'1px 5px', letterSpacing:'0.03em' }}>URGENTE</span>
+                              )}
+                              <span className={`badge badge-${TIPOBADGE[o.servico]||'secondary'}`} style={{ fontSize:9 }}>
+                                {o.servico}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Linha 2: cliente */}
+                          <div style={{
+                            fontWeight:600, fontSize:'var(--text-xs)',
+                            color:'var(--color-text)',
+                            marginBottom: resumo ? 'var(--space-1)' : 'var(--space-2)',
+                            overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'
+                          }}>
+                            {o.clientenome}
+                          </div>
+
+                          {/* Linha 3: resumo */}
+                          {resumo && (
+                            <div style={{
+                              fontSize:10, color:'var(--color-text-muted)',
+                              marginBottom:'var(--space-2)',
+                              overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+                              fontStyle: resumo.tipo === 'obs' ? 'italic' : 'normal',
+                            }} title={resumo.text}>
+                              {resumo.tipo === 'itens' ? '📦 ' : '📝 '}{resumo.text}
+                            </div>
+                          )}
+
+                          {/* Linha 4: prazo + saldo + ação */}
+                          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:'var(--space-1)' }}>
+                            <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
+                              {o.prazoentrega && o.status !== 'Entregue' && (
+                                <span className={vencida ? 'urgencia-atrasado' : ehHoje ? 'urgencia-hoje' : 'urgencia-normal'}
+                                  style={{ display:'flex', alignItems:'center', gap:2 }}>
+                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                    <rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>
+                                  </svg>
+                                  {vencida ? '⚠ Vencido' : ehHoje ? '⏰ Hoje' : fmtD(o.prazoentrega)}
+                                </span>
+                              )}
+                              {showValor && o.status !== 'Entregue' && (
+                                <span style={{
+                                  fontSize:9, fontWeight:600,
+                                  display:'flex', alignItems:'center', gap:2,
+                                  color: quitado ? 'var(--color-success)' : '#F59E0B'
+                                }}>
+                                  {quitado
+                                    ? <><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>Quitado</>
+                                    : <>💰 {fmtR(saldo)}</>
+                                  }
+                                </span>
+                              )}
+                              {diasCriado > 14 && o.status !== 'Entregue' && (
+                                <span style={{ fontSize:9, color:'var(--color-text-faint)' }} title={`Criada há ${diasCriado} dias`}>⏱ {diasCriado}d</span>
+                              )}
+                            </div>
+                            {canEdit && STATUSNEXT[o.status] && (
+                              <AvancarBtn
+                                ordem={o}
+                                colColor={col.color}
+                                onAvancar={avancarStatus}
+                              />
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             );

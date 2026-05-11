@@ -23,8 +23,8 @@ const fmtShort = v => {
 }
 const fmtD = iso => iso ? new Date(`${iso}T12:00:00`).toLocaleDateString('pt-BR') : '—'
 
-const HOJE = new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10)
-const MES_PADRAO = HOJE.slice(0, 7)
+const getHoje = () => new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10)
+const getMesPadrao = () => getHoje().slice(0, 7)
 
 const STATUS_BADGE = {
   'Recebido': 'recebido', 'Em Produção': 'emproducao',
@@ -39,7 +39,22 @@ const C_TEXT_MUTED   = '#797876'
 const C_TEXT_FAINT   = '#5a5957'
 const C_DIVIDER      = '#262523'
 
-// ── KPI card estático (financeiro/mensal) ────────────────────────────────────
+// Chaves canônicas → cor e label amigável
+const PAG_COLORS = {
+  Pix:      '#01696f',
+  Dinheiro: '#d19900',
+  Credito:  '#da7101',
+  Debito:   '#006494',
+  Link:     '#7a39bb',
+}
+const PAG_LABELS = {
+  Pix:      'Pix',
+  Dinheiro: 'Dinheiro',
+  Credito:  'Cartão de Crédito',
+  Debito:   'Cartão de Débito',
+  Link:     'Link de Pagamento',
+}
+
 function KPI({ label, value, sub, accent }) {
   return (
     <div style={{
@@ -66,7 +81,6 @@ function KPI({ label, value, sub, accent }) {
   )
 }
 
-// ── KPI card ao vivo ─────────────────────────────────────────────────────────
 function LiveKPI({ label, value, sub, accent, pulse }) {
   return (
     <div style={{
@@ -151,7 +165,7 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const { kpis: live, online } = useKpiStream()
 
-  const [mesSel, setMesSel] = useState(MES_PADRAO)
+  const [mesSel, setMesSel] = useState(getMesPadrao)
   const [dados, setDados]   = useState(null)
   const [ordens, setOrdens] = useState([])
   const [loading, setLoading] = useState(true)
@@ -183,7 +197,8 @@ export default function Dashboard() {
     <div className="loading-center"><div className="spinner" /></div>
   )
 
-  // ── Gráfico linha ────────────────────────────────────────────────────────
+  const hoje = getHoje()
+
   const lineData = {
     labels: dados?.dias?.map(d => {
       const [, , day] = d.data.split('-')
@@ -224,15 +239,16 @@ export default function Dashboard() {
     }
   }
 
-  // ── Gráfico donut ────────────────────────────────────────────────────────
-  const pagLabels = Object.keys(dados?.porpagamento || {}).filter(k => dados.porpagamento[k] > 0)
-  const pagValues = pagLabels.map(k => dados.porpagamento[k])
-  const PAG_COLORS = { Pix: '#01696f', Dinheiro: '#d19900', Credito: '#da7101', Debito: '#006494', Link: '#7a39bb' }
+  // Usa chaves canônicas vindas do backend normalizado
+  const pagKeys   = Object.keys(dados?.porpagamento || {}).filter(k => (dados.porpagamento[k] || 0) > 0)
+  const pagLabels = pagKeys.map(k => PAG_LABELS[k] || k)
+  const pagValues = pagKeys.map(k => dados.porpagamento[k])
+
   const doughnutData = {
     labels: pagLabels,
     datasets: [{
       data: pagValues,
-      backgroundColor: pagLabels.map(k => PAG_COLORS[k] || '#bbb'),
+      backgroundColor: pagKeys.map(k => PAG_COLORS[k] || '#999'),
       borderWidth: 0, hoverOffset: 4
     }]
   }
@@ -259,7 +275,7 @@ export default function Dashboard() {
     'Caixas': 'var(--color-blue)', '3D': 'var(--color-purple)', 'Diversos': 'var(--color-text-faint)',
   }
   const ordensVencidas = ordens.filter(o =>
-    !['Entregue', 'Cancelado'].includes(o.status) && o.prazoentrega && o.prazoentrega < HOJE
+    !['Entregue', 'Cancelado'].includes(o.status) && o.prazoentrega && o.prazoentrega < hoje
   ).length
 
   return (
@@ -274,7 +290,7 @@ export default function Dashboard() {
           </span>
         </div>
         <input
-          type="month" value={mesSel} max={MES_PADRAO}
+          type="month" value={mesSel} max={getMesPadrao()}
           onChange={e => e.target.value && setMesSel(e.target.value)}
           style={{
             background: 'var(--color-surface)', border: '1px solid var(--color-border)',
@@ -284,7 +300,7 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* ── SEÇÃO AO VIVO ────────────────────────────────────────────────── */}
+      {/* ── SEÇÃO AO VIVO */}
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
           <span style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>Ao Vivo</span>
@@ -341,25 +357,25 @@ export default function Dashboard() {
           />
           <LiveKPI
             label="Faturado Hoje"
-            value={live?.faturamentoHoje != null ? fmtShort(live.faturamentoHoje) : '—'}
+            value={live?.faturamentoHoje != null ? fmt(live.faturamentoHoje) : '—'}
             accent="var(--color-orange)"
             pulse
           />
         </div>
       </div>
 
-      {/* ── KPIs mensais ────────────────────────────────────────────────── */}
+      {/* ── KPIs mensais */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
         gap: 'var(--space-4)'
       }}>
-        <KPI label="Total do Mês"    value={fmtShort(dados?.total)}
+        <KPI label="Total do Mês"    value={fmt(dados?.total)}
           sub={`${dados?.count || 0} lançamento${dados?.count !== 1 ? 's' : ''}`}
           accent="var(--color-primary)" />
-        <KPI label="Faturamento Hoje" value={fmtShort(dados?.hoje)}
+        <KPI label="Faturamento Hoje" value={fmt(dados?.hoje)}
           sub="dia atual" accent="var(--color-blue)" />
-        <KPI label="Ticket Médio"    value={fmtShort(dados?.ticket_medio || dados?.ticketmedio)}
+        <KPI label="Ticket Médio"    value={fmt(dados?.ticket_medio || dados?.ticketmedio)}
           sub="por lançamento" accent="var(--color-gold)" />
         <KPI label="OS em Aberto"    value={dados?.ordensabertas ?? 0}
           sub={ordensVencidas > 0 ? `${ordensVencidas} vencida${ordensVencidas > 1 ? 's' : ''}` : 'no prazo'}

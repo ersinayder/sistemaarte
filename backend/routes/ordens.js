@@ -21,7 +21,11 @@ const SEL_ORDEM = `
     o.observacoes AS obs,
     o.createdat AS criadoem,
     COALESCE((SELECT SUM(l.valor) FROM lancamentos l WHERE l.ordemid=o.id AND l.pago=1 AND l.deletedat IS NULL),0) AS valorrecebido,
-    CAST(o.valortotal - COALESCE((SELECT SUM(l.valor) FROM lancamentos l WHERE l.ordemid=o.id AND l.pago=1 AND l.deletedat IS NULL),0) AS REAL) AS saldoaberto,
+    CASE
+      WHEN (o.valortotal - COALESCE((SELECT SUM(l.valor) FROM lancamentos l WHERE l.ordemid=o.id AND l.pago=1 AND l.deletedat IS NULL),0)) < 0
+      THEN 0.0
+      ELSE CAST(o.valortotal - COALESCE((SELECT SUM(l.valor) FROM lancamentos l WHERE l.ordemid=o.id AND l.pago=1 AND l.deletedat IS NULL),0) AS REAL)
+    END AS saldoaberto,
     COALESCE((SELECT GROUP_CONCAT(oi.nome, ', ') FROM ordem_itens oi WHERE oi.ordemid=o.id ORDER BY oi.id), '') AS itens_resumo
   FROM ordens o
   LEFT JOIN users u ON u.id=o.criadopor
@@ -85,7 +89,7 @@ function saveItens(ordemId, produtos) {
     const nome = (p.nome || '').trim();
     if (!nome) continue;
     const qty   = Number(p.quantidade || 1);
-    const preco = Number(p.preco_unitario || p.preco || 0);
+    const preco = Math.max(0, Number(p.preco_unitario || p.preco || 0));
     const avulso = p.avulso ? 1 : 0;
     const pid = p.produto_id ? Number(p.produto_id) : null;
     runInsert(
@@ -132,7 +136,14 @@ router.get("/:id", auth(), (req, res, next) => {
       "SELECT * FROM ordem_itens WHERE ordemid=? ORDER BY id ASC",
       [req.params.id]
     );
-    res.json({ ...o, logs, itens });
+    const lancamentos = getAll(
+      `SELECT l.*, u.name AS usuarionome FROM lancamentos l
+       LEFT JOIN users u ON u.id=l.criadopor
+       WHERE l.ordemid=? AND l.deletedat IS NULL
+       ORDER BY l.createdat ASC, l.id ASC`,
+      [req.params.id]
+    );
+    res.json({ ...o, logs, itens, lancamentos });
   } catch(e) { next(e); }
 });
 
@@ -222,6 +233,11 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
       if (!status) return res.status(400).json({ error: "Informe o status" });
       const erroStatus = validarStatus(status, old.status);
       if (erroStatus) return res.status(400).json({ error: erroStatus });
+      if (status === 'Entregue') {
+        const resumo = getResumoFinanceiroOS(req.params.id);
+        if (resumo && resumo.saldo > 0.01)
+          return res.status(400).json({ error: `Saldo aberto: R$ ${resumo.saldo.toFixed(2)}. Quite antes de entregar.` });
+      }
       transaction(() => {
         const current = getOne("SELECT status FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);
         if (!current) throw new Error("OS nao encontrada");
@@ -310,25 +326,38 @@ router.patch("/:id/status", auth(["admin","caixa","oficina"]), (req, res, next) 
     const { obs } = req.body ?? {};
     const status = normalizarStatus(req.body?.status);
     if (!status) return res.status(400).json({ error: "status obrigatorio" });
-    const old = getOne("SELECT status FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);
-    if (!old) return res.status(404).json({ error: "Nao encontrado" });
-    const erroStatus = validarStatus(status, old.status);
-    if (erroStatus) return res.status(400).json({ error: erroStatus });
+
+    const existe = getOne("SELECT id FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);
+    if (!existe) return res.status(404).json({ error: "Nao encontrado" });
+
     if (status === 'Entregue') {
       const resumo = getResumoFinanceiroOS(req.params.id);
       if (resumo && resumo.saldo > 0.01)
         return res.status(400).json({ error: `OS possui saldo aberto de R$ ${resumo.saldo.toFixed(2)}. Quite antes de entregar.` });
     }
+
+    let statusAnterior;
     transaction(() => {
+      const current = getOne("SELECT status FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);
+      if (!current) throw new Error("OS nao encontrada");
+      const erroStatus = validarStatus(status, current.status);
+      if (erroStatus) throw new Error(erroStatus);
+      statusAnterior = current.status;
       run("UPDATE ordens SET status=?,updatedat=datetime('now','localtime') WHERE id=?", [status, req.params.id]);
       runInsert(
         "INSERT INTO statuslog (ordemid,statusanterior,statusnovo,usuarioid,obs) VALUES (?,?,?,?,?)",
-        [req.params.id, old.status, status, req.user.id, obs||null]
+        [req.params.id, current.status, status, req.user.id, obs||null]
       );
     });
-    maybeNotifyPronto(req.params.id, old.status, status);
+
+    maybeNotifyPronto(req.params.id, statusAnterior, status);
     res.json({ ok: true });
-  } catch(e) { next(e); }
+  } catch(e) {
+    if (e.message && !e.message.includes('SQLITE')) {
+      return res.status(400).json({ error: e.message });
+    }
+    next(e);
+  }
 });
 
 // POST /api/ordens/:id/whatsapp-confirmacao
@@ -341,7 +370,7 @@ router.post("/:id/whatsapp-confirmacao", auth(["admin","caixa"]), async (req, re
   } catch(e) { next(e); }
 });
 
-// DELETE /api/ordens/:id
+// DELETE /api/ordens/:id  (soft delete — move para lixeira)
 router.delete("/:id", auth(["admin"]), (req, res, next) => {
   try {
     const { reason } = req.body ?? {};
@@ -355,12 +384,27 @@ router.delete("/:id", auth(["admin"]), (req, res, next) => {
   } catch(e) { next(e); }
 });
 
-// POST /api/ordens/:id/restore
+// POST /api/ordens/:id/restore  (restaurar da lixeira)
 router.post("/:id/restore", auth(["admin"]), (req, res, next) => {
   try {
     const old = getOne("SELECT id FROM ordens WHERE id=? AND deletedat IS NOT NULL", [req.params.id]);
     if (!old) return res.status(404).json({ error: "Nao encontrado na lixeira" });
     run("UPDATE ordens SET deletedat=NULL,deletedpor=NULL,deletedreason=NULL WHERE id=?", [req.params.id]);
+    res.json({ ok: true });
+  } catch(e) { next(e); }
+});
+
+// DELETE /api/ordens/:id/permanente  (exclusao definitiva — somente admin)
+router.delete("/:id/permanente", auth(["admin"]), (req, res, next) => {
+  try {
+    const old = getOne("SELECT id FROM ordens WHERE id=?", [req.params.id]);
+    if (!old) return res.status(404).json({ error: "Nao encontrado" });
+    transaction(() => {
+      run("DELETE FROM statuslog   WHERE ordemid=?", [req.params.id]);
+      run("DELETE FROM ordem_itens WHERE ordemid=?", [req.params.id]);
+      run("DELETE FROM lancamentos WHERE ordemid=?", [req.params.id]);
+      run("DELETE FROM ordens      WHERE id=?",      [req.params.id]);
+    });
     res.json({ ok: true });
   } catch(e) { next(e); }
 });

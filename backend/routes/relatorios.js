@@ -9,6 +9,19 @@ const FILTRO_ATIVO = `
   AND (l.ordemid IS NULL OR (SELECT deletedat FROM ordens WHERE id=l.ordemid) IS NULL)
 `;
 
+function normalizarPagamento(str) {
+  if (!str) return str;
+  const s = str.toLowerCase()
+    .replace(/\s+/g, '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (s === 'pix') return 'Pix';
+  if (s === 'dinheiro' || s === 'especie') return 'Dinheiro';
+  if (['cartaodecredito','cartaocredito','credito'].includes(s)) return 'Credito';
+  if (['cartaodedebito','cartaodebito','debito'].includes(s)) return 'Debito';
+  if (['link','linkdepagamento','linkcredito','linkcobanca','linkcobran'].some(p => s.startsWith(p))) return 'Link';
+  return str;
+}
+
 router.get("/resumo", auth(), (req, res, next) => {
   try {
     const { mes } = req.query;
@@ -31,12 +44,14 @@ router.get("/resumo", auth(), (req, res, next) => {
       [mes]
     )?.c ?? 0;
 
-    // I-4: dinâmico — captura qualquer forma de pagamento presente no banco
     const porPag = {};
     getAll(
       `SELECT l.pagamento, SUM(l.valor) AS v FROM lancamentos l WHERE strftime('%Y-%m',l.data)=? AND ${FILTRO_ATIVO} GROUP BY l.pagamento`,
       [mes]
-    ).forEach(r => { porPag[r.pagamento] = r.v; });
+    ).forEach(r => {
+      const key = normalizarPagamento(r.pagamento);
+      porPag[key] = (porPag[key] || 0) + r.v;
+    });
 
     const porTipo = {};
     getAll(

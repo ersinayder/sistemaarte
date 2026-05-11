@@ -118,6 +118,7 @@ CREATE INDEX IF NOT EXISTS idx_lancamentos_ordemid ON lancamentos(ordemid);
 CREATE INDEX IF NOT EXISTS idx_statuslog_ordemid ON statuslog(ordemid);
 CREATE INDEX IF NOT EXISTS idx_produtos_nome     ON produtos(nome COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS idx_ordem_itens_ordemid ON ordem_itens(ordemid);
+CREATE INDEX IF NOT EXISTS idx_lancamentos_pago_del ON lancamentos(ordemid, pago, deletedat);
 `;
 
 let db;
@@ -151,6 +152,8 @@ function initDB() {
     "ALTER TABLE produtos ADD COLUMN deletedpor INTEGER DEFAULT NULL",
     // v2: coluna categoria para classificar lancamentos por tipo de servico
     "ALTER TABLE lancamentos ADD COLUMN categoria TEXT DEFAULT NULL",
+    // v3: indice composto para queries de saldo (pago + deletedat por ordemid)
+    "CREATE INDEX IF NOT EXISTS idx_lancamentos_pago_del ON lancamentos(ordemid, pago, deletedat)",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {}
@@ -177,7 +180,11 @@ function initDB() {
   const maxN  = maxOS?.maxn ?? 0;
   db.prepare("UPDATE sequencias SET ultimo=MAX(ultimo,?) WHERE nome='os'").run(maxN);
 
-  if (process.env.NODE_ENV !== "production") {
+  // Guard duplo: seed SOMENTE em ambiente de desenvolvimento explicito.
+  // NODE_ENV deve ser 'development' OU a flag SEED_DEV=1 deve estar definida.
+  // Nunca executa se NODE_ENV nao estiver definido ou for 'production'.
+  const isDevSeed = process.env.NODE_ENV === "development" || process.env.SEED_DEV === "1";
+  if (isDevSeed) {
     const existing = db.prepare("SELECT id FROM users WHERE role=?").get("admin");
     if (!existing) {
       const stmt = db.prepare("INSERT INTO users (name,username,password,role) VALUES (?,?,?,?)");
