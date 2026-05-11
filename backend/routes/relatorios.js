@@ -9,6 +9,21 @@ const FILTRO_ATIVO = `
   AND (l.ordemid IS NULL OR (SELECT deletedat FROM ordens WHERE id=l.ordemid) IS NULL)
 `;
 
+// Normaliza variações históricas para chave canônica
+const NORM_PAGAMENTO = `
+  CASE
+    WHEN LOWER(REPLACE(REPLACE(l.pagamento,' ',''),'ã','a'),'é','e') IN ('pix') THEN 'Pix'
+    WHEN LOWER(REPLACE(REPLACE(l.pagamento,' ',''),'ã','a'),'é','e') IN ('dinheiro','especie') THEN 'Dinheiro'
+    WHEN LOWER(REPLACE(REPLACE(l.pagamento,' ',''),'ã','a'),'é','e') IN
+         ('cartaodecredito','cartaocredito','credito') THEN 'Credito'
+    WHEN LOWER(REPLACE(REPLACE(l.pagamento,' ',''),'ã','a'),'é','e') IN
+         ('cartaodedebito','cartaodebito','debito') THEN 'Debito'
+    WHEN LOWER(REPLACE(REPLACE(l.pagamento,' ',''),'ã','a'),'é','e') IN
+         ('link','linkdepagamento','linkcredito','linkcobanca','linkcobra') THEN 'Link'
+    ELSE l.pagamento
+  END
+`;
+
 router.get("/resumo", auth(), (req, res, next) => {
   try {
     const { mes } = req.query;
@@ -31,12 +46,14 @@ router.get("/resumo", auth(), (req, res, next) => {
       [mes]
     )?.c ?? 0;
 
-    // I-4: dinâmico — captura qualquer forma de pagamento presente no banco
     const porPag = {};
     getAll(
-      `SELECT l.pagamento, SUM(l.valor) AS v FROM lancamentos l WHERE strftime('%Y-%m',l.data)=? AND ${FILTRO_ATIVO} GROUP BY l.pagamento`,
+      `SELECT ${NORM_PAGAMENTO} AS pagamento, SUM(l.valor) AS v
+       FROM lancamentos l
+       WHERE strftime('%Y-%m',l.data)=? AND ${FILTRO_ATIVO}
+       GROUP BY ${NORM_PAGAMENTO}`,
       [mes]
-    ).forEach(r => { porPag[r.pagamento] = r.v; });
+    ).forEach(r => { porPag[r.pagamento] = (porPag[r.pagamento] || 0) + r.v; });
 
     const porTipo = {};
     getAll(

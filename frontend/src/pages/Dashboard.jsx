@@ -39,6 +39,22 @@ const C_TEXT_MUTED   = '#797876'
 const C_TEXT_FAINT   = '#5a5957'
 const C_DIVIDER      = '#262523'
 
+// Chaves canônicas → cor e label amigável
+const PAG_COLORS = {
+  Pix:      '#01696f',
+  Dinheiro: '#d19900',
+  Credito:  '#da7101',
+  Debito:   '#006494',
+  Link:     '#7a39bb',
+}
+const PAG_LABELS = {
+  Pix:      'Pix',
+  Dinheiro: 'Dinheiro',
+  Credito:  'Cartão de Crédito',
+  Debito:   'Cartão de Débito',
+  Link:     'Link de Pagamento',
+}
+
 function KPI({ label, value, sub, accent }) {
   return (
     <div style={{
@@ -223,14 +239,16 @@ export default function Dashboard() {
     }
   }
 
-  const pagLabels = Object.keys(dados?.porpagamento || {}).filter(k => dados.porpagamento[k] > 0)
-  const pagValues = pagLabels.map(k => dados.porpagamento[k])
-  const PAG_COLORS = { Pix: '#01696f', Dinheiro: '#d19900', Credito: '#da7101', Debito: '#006494', Link: '#7a39bb' }
+  // Usa chaves canônicas vindas do backend normalizado
+  const pagKeys   = Object.keys(dados?.porpagamento || {}).filter(k => (dados.porpagamento[k] || 0) > 0)
+  const pagLabels = pagKeys.map(k => PAG_LABELS[k] || k)
+  const pagValues = pagKeys.map(k => dados.porpagamento[k])
+
   const doughnutData = {
     labels: pagLabels,
     datasets: [{
       data: pagValues,
-      backgroundColor: pagLabels.map(k => PAG_COLORS[k] || '#bbb'),
+      backgroundColor: pagKeys.map(k => PAG_COLORS[k] || '#999'),
       borderWidth: 0, hoverOffset: 4
     }]
   }
