@@ -95,19 +95,6 @@ export default function Clientes() {
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  // Monta endereço legível para exibição a partir dos campos separados
-  const enderecoCompleto = (c) => {
-    const parts = [
-      c.address,
-      c.numero   ? `nº ${c.numero}`   : '',
-      c.bairro   || '',
-      c.cidade   || '',
-      c.uf       ? `/ ${c.uf}`        : '',
-      c.cep      ? `— ${c.cep}`       : '',
-    ].filter(Boolean);
-    return parts.join(', ');
-  };
-
   const buscarCNPJ = async (raw) => {
     const n = raw.replace(/\D/g,'');
     if (n.length !== 14) return;
@@ -172,22 +159,21 @@ export default function Clientes() {
   const openEdit = (c) => {
     setEditId(c.id);
     const tipo = c.ie ? 'PJ' : 'PF';
-    // Compatibilidade retroativa: se address vier com tudo junto, popula logradouro
     setForm({
       tipo,
-      nome:       c.name      || '',
-      cpf:        c.cpf       || '',
+      nome:       c.name       || '',
+      cpf:        c.cpf        || '',
       cnpj:       '',
-      ie:         c.ie        || '',
-      contato:    c.phone     || '',
-      email:      c.email     || '',
-      cep:        c.cep       || '',
-      logradouro: c.logradouro || c.address || '',
-      numero:     c.numero    || '',
-      bairro:     c.bairro    || '',
-      cidade:     c.cidade    || '',
-      uf:         c.uf        || '',
-      obs:        c.notes     || ''
+      ie:         c.ie         || '',
+      contato:    c.phone      || '',
+      email:      c.email      || '',
+      cep:        c.cep        || '',
+      logradouro: c.logradouro || '',
+      numero:     c.numero     || '',
+      bairro:     c.bairro     || '',
+      cidade:     c.cidade     || '',
+      uf:         c.uf         || '',
+      obs:        c.notes      || ''
     });
     setCpfError(''); setCnpjError('');
     setShowForm(true);
@@ -320,11 +306,10 @@ export default function Clientes() {
       </div>
     );
 
-    // Monta endereço completo para exibição no painel
     const addrParts = [
-      c.address || c.logradouro,
-      c.numero   ? `nº ${c.numero}`   : '',
-      c.bairro   || '',
+      c.logradouro,
+      c.numero ? `nº ${c.numero}` : '',
+      c.bairro || '',
     ].filter(Boolean).join(', ');
     const cityPart = [c.cidade, c.uf ? `/${c.uf}` : ''].filter(Boolean).join('');
     const cepPart  = c.cep ? `— ${c.cep}` : '';
@@ -568,14 +553,12 @@ export default function Clientes() {
               <button className="btn btn-ghost btn-sm" onClick={closeForm}>✕</button>
             </div>
             <div className="modal-body">
-              {/* Tipo PF / PJ */}
               <div style={{ display:'flex', background:'var(--color-surface-offset)', borderRadius:'var(--radius-lg)', padding:3, gap:2, marginBottom:'var(--space-3)' }}>
                 <button style={tabStyle(form.tipo==='PF')} onClick={() => { set('tipo','PF'); setCnpjError(''); }}>👤 Pessoa Física</button>
                 <button style={tabStyle(form.tipo==='PJ')} onClick={() => { set('tipo','PJ'); setCpfError(''); }}>🏢 Pessoa Jurídica</button>
               </div>
 
               <div className="form-grid">
-                {/* CPF / CNPJ + IE */}
                 {form.tipo === 'PF' && (
                   <div className="form-group">
                     <label className="form-label">CPF</label>
@@ -602,13 +585,11 @@ export default function Clientes() {
                   </div>
                 )}
 
-                {/* Nome */}
                 <div className="form-group" style={{ gridColumn:'1/-1' }}>
                   <label className="form-label">Nome / Razão Social <span style={{color:"var(--color-error)"}}>*</span></label>
                   <input className="form-input" value={form.nome} onChange={e => set('nome', e.target.value)} placeholder={form.tipo==='PJ' ? 'Razão social ou nome fantasia' : 'Nome completo'} />
                 </div>
 
-                {/* Contato + Email */}
                 <div className="form-group">
                   <label className="form-label">Telefone / WhatsApp</label>
                   <input className="form-input" value={form.contato} onChange={e => set('contato', e.target.value)} placeholder="(31) 99999-9999" />
@@ -618,7 +599,6 @@ export default function Clientes() {
                   <input className="form-input" type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="email@exemplo.com" />
                 </div>
 
-                {/* CEP — ocupa meia linha */}
                 <div className="form-group">
                   <label className="form-label" style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                     <span>CEP</span>
@@ -627,16 +607,13 @@ export default function Clientes() {
                   <input className="form-input" value={form.cep} onChange={e => { set('cep', e.target.value); buscarCep(e.target.value); }} placeholder="00000-000" inputMode="numeric" />
                 </div>
 
-                {/* Spacer para manter grid de 2 colunas */}
                 <div />
 
-                {/* Logradouro — linha inteira */}
                 <div className="form-group" style={{ gridColumn:'1/-1' }}>
                   <label className="form-label">Logradouro</label>
                   <input className="form-input" value={form.logradouro} onChange={e => set('logradouro', e.target.value)} placeholder="Rua, Av., Travessa…" />
                 </div>
 
-                {/* Número + Bairro */}
                 <div className="form-group">
                   <label className="form-label">Número</label>
                   <input className="form-input" value={form.numero} onChange={e => set('numero', e.target.value)} placeholder="Ex: 123 / S/N" />
@@ -646,7 +623,6 @@ export default function Clientes() {
                   <input className="form-input" value={form.bairro} onChange={e => set('bairro', e.target.value)} placeholder="Bairro" />
                 </div>
 
-                {/* Cidade + UF */}
                 <div className="form-group">
                   <label className="form-label">Cidade</label>
                   <input className="form-input" value={form.cidade} onChange={e => set('cidade', e.target.value)} placeholder="Cidade" />
@@ -659,7 +635,6 @@ export default function Clientes() {
                   </select>
                 </div>
 
-                {/* Obs */}
                 <div className="form-group" style={{ gridColumn:'1/-1' }}>
                   <label className="form-label">Observações</label>
                   <textarea className="form-input" rows={3} value={form.obs} onChange={e => set('obs', e.target.value)} placeholder="Anotações sobre o cliente…" />
