@@ -38,8 +38,8 @@ jobs:
         shell: powershell
         working-directory: backend
         run: |
-          $env:JAVA_HOME = "C:\Program Files\Java\jdk-21"
-          $env:PATH = "C:\Program Files\Java\jdk-21\bin;" + $env:PATH
+          [System.Environment]::SetEnvironmentVariable('JAVA_HOME', 'C:\Program Files\Java\jdk-21', 'Process')
+          [System.Environment]::SetEnvironmentVariable('PATH', 'C:\Program Files\Java\jdk-21\bin;' + [System.Environment]::GetEnvironmentVariable('PATH', 'Process'), 'Process')
           npm install
 
       - name: Executar testes
@@ -105,8 +105,8 @@ jobs:
       - name: Install backend dependencies
         shell: powershell
         run: |
-          $env:JAVA_HOME = "C:\Program Files\Java\jdk-21"
-          $env:PATH = "C:\Program Files\Java\jdk-21\bin;" + $env:PATH
+          [System.Environment]::SetEnvironmentVariable('JAVA_HOME', 'C:\Program Files\Java\jdk-21', 'Process')
+          [System.Environment]::SetEnvironmentVariable('PATH', 'C:\Program Files\Java\jdk-21\bin;' + [System.Environment]::GetEnvironmentVariable('PATH', 'Process'), 'Process')
           Set-Location "C:\sistemaarte\backend"
           npm install --production --prefer-offline
 
