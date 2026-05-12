@@ -20,6 +20,7 @@ const ICONS = {
   usuarios:  { d: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2', d2: 'M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75M9 11a4 4 0 100-8 4 4 0 000 8z' },
   clientes:  { d: 'M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2', d2: 'M12 11a4 4 0 100-8 4 4 0 000 8z' },
   produtos:  { d: 'M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z', d2: 'M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12' },
+  nfe:       { d: 'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z', d2: 'M14 2v6h6M9 13h6M9 17h4' },
 }
 
 const ROLE_LABEL = { admin: 'Administrador', caixa: 'Caixa', oficina: 'Oficina' }
@@ -29,9 +30,7 @@ function useTheme() {
   const getTheme = () =>
     document.documentElement.getAttribute('data-theme') ||
     (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-
   const [theme, setTheme] = useState(getTheme)
-
   useEffect(() => {
     const obs = new MutationObserver(() => setTheme(getTheme()))
     obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
@@ -40,7 +39,6 @@ function useTheme() {
     mq.addEventListener('change', mqHandler)
     return () => { obs.disconnect(); mq.removeEventListener('change', mqHandler) }
   }, [])
-
   return theme
 }
 
@@ -48,7 +46,6 @@ export default function Sidebar({ collapsed, onToggle }) {
   const { user, logout, switchUser } = useAuth()
   const [vencidas, setVencidas] = useState(0)
   const theme = useTheme()
-
   const logoSrc = theme === 'light' ? '/logo preta.png' : '/logo.png'
 
   useEffect(() => {
@@ -57,8 +54,7 @@ export default function Sidebar({ collapsed, onToggle }) {
       try {
         const r = await api.get('/ordens?vencidas=1')
         if (cancelled) return
-        const n = (r.data?.ordens || r.data || []).length
-        setVencidas(n)
+        setVencidas((r.data?.ordens || r.data || []).length)
       } catch {}
     }
     load()
@@ -71,19 +67,14 @@ export default function Sidebar({ collapsed, onToggle }) {
   const handleLogout = () => { logout(); navigate('/login'); toast('Sessão encerrada') }
 
   const navItem = (to, label, iconKey) => (
-    <NavLink to={to}
-      className={({ isActive }) => `sidebar-nav-item${isActive ? ' active' : ''}`}
-      title={collapsed ? label : undefined}>
+    <NavLink to={to} className={({ isActive }) => `sidebar-nav-item${isActive ? ' active' : ''}`} title={collapsed ? label : undefined}>
       <Icon {...ICONS[iconKey]} />
       {!collapsed && <span className="nav-label">{label}</span>}
     </NavLink>
   )
 
   const navItemBadge = (to, label, iconKey, badge) => (
-    <NavLink to={to}
-      className={({ isActive }) => `sidebar-nav-item${isActive ? ' active' : ''}`}
-      title={collapsed ? label : undefined}
-      style={{ position: 'relative' }}>
+    <NavLink to={to} className={({ isActive }) => `sidebar-nav-item${isActive ? ' active' : ''}`} title={collapsed ? label : undefined} style={{ position: 'relative' }}>
       <Icon {...ICONS[iconKey]} />
       {!collapsed && <span className="nav-label">{label}</span>}
       {badge > 0 && (
@@ -104,42 +95,14 @@ export default function Sidebar({ collapsed, onToggle }) {
 
   return (
     <aside className={`sidebar${collapsed ? ' collapsed' : ''}`}>
-
-      {/* ── Cabeçalho ── */}
-      <div
-        className="sidebar-header"
-        onClick={onToggle}
-        style={{
-          cursor: 'pointer',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: collapsed ? 'var(--space-3) 0' : 'var(--space-6) var(--space-3) var(--space-4)',
-          gap: 'var(--space-2)',
-          borderBottom: '1px solid var(--color-divider)',
-          position: 'relative',
-        }}
+      <div className="sidebar-header" onClick={onToggle}
+        style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: collapsed ? 'var(--space-3) 0' : 'var(--space-6) var(--space-3) var(--space-4)', gap: 'var(--space-2)', borderBottom: '1px solid var(--color-divider)', position: 'relative' }}
       >
-        {!collapsed ? (
-          <img
-            key={logoSrc}
-            src={logoSrc}
-            alt="Arte & Molduras"
-            style={{ width: '100%', maxWidth: 148, height: 'auto', objectFit: 'contain', display: 'block' }}
-            onError={e => { e.target.src = '/logo.png' }}
-          />
-        ) : (
-          <img
-            key={logoSrc + '-sm'}
-            src={logoSrc}
-            alt="Arte & Molduras"
-            style={{ width: 32, height: 32, objectFit: 'contain', borderRadius: 'var(--radius-sm)' }}
-            onError={e => { e.target.src = '/logo.png' }}
-          />
-        )}
-        <button
-          className="btn btn-icon btn-ghost"
+        {!collapsed
+          ? <img key={logoSrc} src={logoSrc} alt="Arte & Molduras" style={{ width: '100%', maxWidth: 148, height: 'auto', objectFit: 'contain', display: 'block' }} onError={e => { e.target.src = '/logo.png' }} />
+          : <img key={logoSrc + '-sm'} src={logoSrc} alt="Arte & Molduras" style={{ width: 32, height: 32, objectFit: 'contain', borderRadius: 'var(--radius-sm)' }} onError={e => { e.target.src = '/logo.png' }} />
+        }
+        <button className="btn btn-icon btn-ghost"
           style={{ position: collapsed ? 'static' : 'absolute', bottom: collapsed ? undefined : 'var(--space-2)', right: collapsed ? undefined : 'var(--space-2)', width: 24, height: 24, opacity: 0.5 }}
           aria-label={collapsed ? 'Expandir menu' : 'Recolher menu'}
         >
@@ -149,11 +112,8 @@ export default function Sidebar({ collapsed, onToggle }) {
         </button>
       </div>
 
-      {/* ── Navegação ── */}
       <nav className="sidebar-nav" style={{ paddingTop: 'var(--space-3)' }}>
-
         {isOficina && navItem('/oficina', 'Fila da Oficina', 'oficina')}
-
         {(isAdmin || isCaixa) && (
           <>
             {section('Operação')}
@@ -161,6 +121,9 @@ export default function Sidebar({ collapsed, onToggle }) {
             {navItem('/caixa', 'Caixa', 'caixa')}
             {navItemBadge('/ordens', 'Ordens de Serviço', 'ordens', vencidas)}
             {navItem('/orcamento', 'Orçamento', 'orcamento')}
+
+            {section('Fiscal')}
+            {navItem('/nfe', 'Notas Fiscais', 'nfe')}
 
             {section('Produção')}
             {navItem('/oficina', 'Fila da Oficina', 'oficina')}
@@ -176,7 +139,6 @@ export default function Sidebar({ collapsed, onToggle }) {
         )}
       </nav>
 
-      {/* ── Footer de usuário ── */}
       <div className="sidebar-footer">
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', padding: 'var(--space-2) var(--space-3)', background: 'var(--color-surface-offset)', borderRadius: 'var(--radius-lg)', marginBottom: 'var(--space-2)' }}>
           <div style={{ width: 28, height: 28, borderRadius: '50%', background: ROLE_COLOR[user?.role] || 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: 12, flexShrink: 0 }}>

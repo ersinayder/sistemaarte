@@ -57,9 +57,10 @@ export default function Clientes() {
   const { user } = useAuth();
   const canEdit = user?.role !== 'viewer';
 
-  // cnpj existe apenas no estado local do form — usado para autocomplete via BrasilAPI
-  // NÃO é enviado ao backend (coluna inexistente na tabela clientes)
-  const blank = { tipo:'PF', nome:'', cpf:'', cnpj:'', ie:'', contato:'', email:'', cep:'', endereco:'', cidade:'', uf:'', obs:'' };
+  const blank = {
+    tipo:'PF', nome:'', cpf:'', cnpj:'', ie:'', contato:'', email:'',
+    cep:'', logradouro:'', numero:'', bairro:'', cidade:'', uf:'', obs:''
+  };
 
   const [clientes,      setClientes]      = useState([]);
   const [loading,       setLoading]       = useState(true);
@@ -106,13 +107,15 @@ export default function Clientes() {
       const d = await r.json();
       setForm(f => ({
         ...f,
-        nome:     f.nome.trim()     ? f.nome     : (d.razao_social || d.nome_fantasia || f.nome),
-        email:    f.email.trim()    ? f.email    : (d.email?.toLowerCase() || f.email),
-        contato:  f.contato.trim()  ? f.contato  : (d.ddd_telefone_1 ? d.ddd_telefone_1.replace(/[^\d]/g,'').replace(/(\d{2})(\d+)/,'($1) $2') : f.contato),
-        cep:      f.cep.trim()      ? f.cep      : (d.cep?.replace(/\D/g,'').replace(/(\d{5})(\d{3})/,'$1-$2') || f.cep),
-        endereco: f.endereco.trim() ? f.endereco : [d.logradouro, d.numero, d.bairro].filter(Boolean).join(', '),
-        cidade:   f.cidade.trim()   ? f.cidade   : (d.municipio || f.cidade),
-        uf:       f.uf.trim()       ? f.uf       : (d.uf || f.uf),
+        nome:       f.nome.trim()       ? f.nome       : (d.razao_social || d.nome_fantasia || f.nome),
+        email:      f.email.trim()      ? f.email      : (d.email?.toLowerCase() || f.email),
+        contato:    f.contato.trim()    ? f.contato    : (d.ddd_telefone_1 ? d.ddd_telefone_1.replace(/[^\d]/g,'').replace(/(\d{2})(\d+)/,'($1) $2') : f.contato),
+        cep:        f.cep.trim()        ? f.cep        : (d.cep?.replace(/\D/g,'').replace(/(\d{5})(\d{3})/,'$1-$2') || f.cep),
+        logradouro: f.logradouro.trim() ? f.logradouro : (d.logradouro || f.logradouro),
+        numero:     f.numero.trim()     ? f.numero     : (d.numero || f.numero),
+        bairro:     f.bairro.trim()     ? f.bairro     : (d.bairro || f.bairro),
+        cidade:     f.cidade.trim()     ? f.cidade     : (d.municipio || f.cidade),
+        uf:         f.uf.trim()         ? f.uf         : (d.uf || f.uf),
       }));
       toast.success('Dados do CNPJ carregados');
     } catch {
@@ -132,9 +135,10 @@ export default function Clientes() {
       if (!d.erro) {
         setForm(f => ({
           ...f,
-          endereco: f.endereco.trim() ? f.endereco : (d.logradouro ? `${d.logradouro}${d.bairro ? ', '+d.bairro : ''}` : f.endereco),
-          cidade:   f.cidade.trim()   ? f.cidade   : (d.localidade || ''),
-          uf:       f.uf.trim()       ? f.uf       : (d.uf || ''),
+          logradouro: f.logradouro.trim() ? f.logradouro : (d.logradouro || ''),
+          bairro:     f.bairro.trim()     ? f.bairro     : (d.bairro || ''),
+          cidade:     f.cidade.trim()     ? f.cidade     : (d.localidade || ''),
+          uf:         f.uf.trim()         ? f.uf         : (d.uf || ''),
         }));
       }
     } catch {}
@@ -154,21 +158,22 @@ export default function Clientes() {
 
   const openEdit = (c) => {
     setEditId(c.id);
-    // PJ detectado pela presença de ie (Inscrição Estadual) — cnpj não existe no banco
     const tipo = c.ie ? 'PJ' : 'PF';
     setForm({
       tipo,
-      nome:     c.name    || '',
-      cpf:      c.cpf     || '',
-      cnpj:     '',           // campo local apenas; não vem do banco
-      ie:       c.ie      || '',
-      contato:  c.phone   || '',
-      email:    c.email   || '',
-      cep:      c.cep     || '',
-      endereco: c.address || '',
-      cidade:   c.cidade  || '',
-      uf:       c.uf      || '',
-      obs:      c.notes   || ''
+      nome:       c.name       || '',
+      cpf:        c.cpf        || '',
+      cnpj:       '',
+      ie:         c.ie         || '',
+      contato:    c.phone      || '',
+      email:      c.email      || '',
+      cep:        c.cep        || '',
+      logradouro: c.logradouro || '',
+      numero:     c.numero     || '',
+      bairro:     c.bairro     || '',
+      cidade:     c.cidade     || '',
+      uf:         c.uf         || '',
+      obs:        c.notes      || ''
     });
     setCpfError(''); setCnpjError('');
     setShowForm(true);
@@ -183,18 +188,19 @@ export default function Clientes() {
     if (form.tipo === 'PJ' && form.cnpj && !validaCNPJ(form.cnpj)) { toast.error('CNPJ inválido'); return; }
     setSaving(true);
     try {
-      // cnpj NÃO incluído — coluna inexistente na tabela clientes
       const payload = {
-        name:    form.nome,
-        phone:   form.contato,
-        email:   form.email,
-        cpf:     form.tipo === 'PF' ? form.cpf : '',
-        ie:      form.ie,
-        address: form.endereco,
-        cidade:  form.cidade,
-        uf:      form.uf,
-        cep:     form.cep,
-        notes:   form.obs
+        name:       form.nome,
+        phone:      form.contato,
+        email:      form.email,
+        cpf:        form.tipo === 'PF' ? form.cpf : '',
+        ie:         form.ie,
+        logradouro: form.logradouro,
+        numero:     form.numero,
+        bairro:     form.bairro,
+        cidade:     form.cidade,
+        uf:         form.uf,
+        cep:        form.cep,
+        notes:      form.obs
       };
       if (editId) {
         await api.put(`/clientes/${editId}`, payload);
@@ -300,6 +306,14 @@ export default function Clientes() {
       </div>
     );
 
+    const addrParts = [
+      c.logradouro,
+      c.numero ? `nº ${c.numero}` : '',
+      c.bairro || '',
+    ].filter(Boolean).join(', ');
+    const cityPart = [c.cidade, c.uf ? `/${c.uf}` : ''].filter(Boolean).join('');
+    const cepPart  = c.cep ? `— ${c.cep}` : '';
+
     return (
       <div style={{ overflowY:'auto', flex:1, padding:'var(--space-3) var(--space-4)' }}>
 
@@ -309,9 +323,9 @@ export default function Clientes() {
           {c.phone   && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>📞 {c.phone}</div>}
           {c.cpf     && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>CPF: {c.cpf}</div>}
           {c.ie      && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>IE: {c.ie}</div>}
-          {c.address && (
+          {(addrParts || cityPart) && (
             <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>
-              📍 {c.address}{c.cidade ? `, ${c.cidade}` : ''}{c.uf ? `/${c.uf}` : ''}{c.cep ? ` — ${c.cep}` : ''}
+              📍 {[addrParts, cityPart, cepPart].filter(Boolean).join(' ')}
             </div>
           )}
           {c.notes && (
@@ -533,16 +547,17 @@ export default function Clientes() {
 
       {showForm && ReactDOM.createPortal(
         <div className="modal-overlay" onClick={closeForm}>
-          <div className="modal" style={{ maxWidth:560 }} onClick={e => e.stopPropagation()}>
+          <div className="modal" style={{ maxWidth:600 }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">{editId ? 'Editar Cliente' : 'Novo Cliente'}</h2>
               <button className="btn btn-ghost btn-sm" onClick={closeForm}>✕</button>
             </div>
             <div className="modal-body">
-              <div style={{ display:'flex', background:'var(--color-surface-offset)', borderRadius:'var(--radius-lg)', padding:3, gap:2 }}>
+              <div style={{ display:'flex', background:'var(--color-surface-offset)', borderRadius:'var(--radius-lg)', padding:3, gap:2, marginBottom:'var(--space-3)' }}>
                 <button style={tabStyle(form.tipo==='PF')} onClick={() => { set('tipo','PF'); setCnpjError(''); }}>👤 Pessoa Física</button>
                 <button style={tabStyle(form.tipo==='PJ')} onClick={() => { set('tipo','PJ'); setCpfError(''); }}>🏢 Pessoa Jurídica</button>
               </div>
+
               <div className="form-grid">
                 {form.tipo === 'PF' && (
                   <div className="form-group">
@@ -569,10 +584,12 @@ export default function Clientes() {
                     <input className="form-input" value={form.ie} onChange={e => set('ie', e.target.value)} placeholder="IE" />
                   </div>
                 )}
+
                 <div className="form-group" style={{ gridColumn:'1/-1' }}>
                   <label className="form-label">Nome / Razão Social <span style={{color:"var(--color-error)"}}>*</span></label>
                   <input className="form-input" value={form.nome} onChange={e => set('nome', e.target.value)} placeholder={form.tipo==='PJ' ? 'Razão social ou nome fantasia' : 'Nome completo'} />
                 </div>
+
                 <div className="form-group">
                   <label className="form-label">Telefone / WhatsApp</label>
                   <input className="form-input" value={form.contato} onChange={e => set('contato', e.target.value)} placeholder="(31) 99999-9999" />
@@ -581,6 +598,7 @@ export default function Clientes() {
                   <label className="form-label">E-mail</label>
                   <input className="form-input" type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="email@exemplo.com" />
                 </div>
+
                 <div className="form-group">
                   <label className="form-label" style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                     <span>CEP</span>
@@ -588,10 +606,23 @@ export default function Clientes() {
                   </label>
                   <input className="form-input" value={form.cep} onChange={e => { set('cep', e.target.value); buscarCep(e.target.value); }} placeholder="00000-000" inputMode="numeric" />
                 </div>
+
+                <div />
+
                 <div className="form-group" style={{ gridColumn:'1/-1' }}>
-                  <label className="form-label">Endereço</label>
-                  <input className="form-input" value={form.endereco} onChange={e => set('endereco', e.target.value)} placeholder="Rua, número, bairro" />
+                  <label className="form-label">Logradouro</label>
+                  <input className="form-input" value={form.logradouro} onChange={e => set('logradouro', e.target.value)} placeholder="Rua, Av., Travessa…" />
                 </div>
+
+                <div className="form-group">
+                  <label className="form-label">Número</label>
+                  <input className="form-input" value={form.numero} onChange={e => set('numero', e.target.value)} placeholder="Ex: 123 / S/N" />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Bairro</label>
+                  <input className="form-input" value={form.bairro} onChange={e => set('bairro', e.target.value)} placeholder="Bairro" />
+                </div>
+
                 <div className="form-group">
                   <label className="form-label">Cidade</label>
                   <input className="form-input" value={form.cidade} onChange={e => set('cidade', e.target.value)} placeholder="Cidade" />
@@ -603,6 +634,7 @@ export default function Clientes() {
                     {UFS.map(u => <option key={u} value={u}>{u}</option>)}
                   </select>
                 </div>
+
                 <div className="form-group" style={{ gridColumn:'1/-1' }}>
                   <label className="form-label">Observações</label>
                   <textarea className="form-input" rows={3} value={form.obs} onChange={e => set('obs', e.target.value)} placeholder="Anotações sobre o cliente…" />

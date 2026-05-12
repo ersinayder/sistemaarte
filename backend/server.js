@@ -41,17 +41,20 @@ const globalLimiter = rateLimit({
 app.use("/api", globalLimiter);
 
 // ── Rotas ──────────────────────────────────────────────────────────────────────
-app.use("/api/auth",       require("./routes/auth"));
-app.use("/api/users",      require("./routes/users"));
-app.use("/api/clientes",   require("./routes/clientes"));
-app.use("/api/ordens",     require("./routes/ordens"));
-app.use("/api/ordens",     require("./routes/pdf"));
-app.use("/api/caixa",      require("./routes/caixa"));
-app.use("/api/relatorios", require("./routes/relatorios"));
-app.use("/api/consulta",   require("./routes/consulta"));
-app.use("/api/backup",     require("./routes/backup"));
-app.use("/api/produtos",   require("./routes/produtos"));
-app.use("/api/kpis",       require("./routes/kpis"));
+app.use("/api/auth",        require("./routes/auth"));
+app.use("/api/users",       require("./routes/users"));
+app.use("/api/clientes",    require("./routes/clientes"));
+app.use("/api/ordens",      require("./routes/ordens"));
+app.use("/api/ordens",      require("./routes/pdf"));
+app.use("/api/caixa",       require("./routes/caixa"));
+app.use("/api/relatorios",  require("./routes/relatorios"));
+app.use("/api/consulta",    require("./routes/consulta"));
+app.use("/api/backup",      require("./routes/backup"));
+app.use("/api/produtos",    require("./routes/produtos"));
+app.use("/api/kpis",        require("./routes/kpis"));
+// ── NF-e ──────────────────────────────────────────────────────────────────────
+app.use("/api/nfe",         require("./routes/nfe"));
+app.use("/api/certificado", require("./routes/certificado"));
 
 app.get("/api/health", (_req, res) => res.json({ ok: true, ts: Date.now() }));
 

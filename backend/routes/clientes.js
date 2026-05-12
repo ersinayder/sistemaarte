@@ -81,11 +81,15 @@ router.get("/:id/ordens", auth(), (req, res, next) => {
 
 router.post("/", auth(["admin","caixa"]), (req, res, next) => {
   try {
-    const { name, phone, email, cpf, ie, address, cidade, uf, cep, notes } = req.body ?? {};
+    const { name, phone, email, cpf, ie, logradouro, numero, bairro, cidade, uf, cep, notes } = req.body ?? {};
     if (!name) return res.status(400).json({ error: "Nome obrigatorio" });
     const id = runInsert(
-      "INSERT INTO clientes (name,phone,email,cpf,ie,address,cidade,uf,cep,notes) VALUES (?,?,?,?,?,?,?,?,?,?)",
-      [name, phone||null, email||null, cpf||null, ie||null, address||null, cidade||null, uf||null, cep||null, notes||null]
+      `INSERT INTO clientes
+        (name, phone, email, cpf, ie, logradouro, numero, bairro, cidade, uf, cep, notes)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [name, phone||null, email||null, cpf||null, ie||null,
+       logradouro||null, numero||null, bairro||null,
+       cidade||null, uf||null, cep||null, notes||null]
     );
     res.json({ id, name });
   } catch(e) { next(e); }
@@ -93,13 +97,20 @@ router.post("/", auth(["admin","caixa"]), (req, res, next) => {
 
 router.put("/:id", auth(["admin","caixa"]), (req, res, next) => {
   try {
-    const { name, phone, email, cpf, ie, address, cidade, uf, cep, notes } = req.body ?? {};
+    const { name, phone, email, cpf, ie, logradouro, numero, bairro, cidade, uf, cep, notes } = req.body ?? {};
     if (!name) return res.status(400).json({ error: "Nome obrigatorio" });
     if (!getOne("SELECT id FROM clientes WHERE id=? AND deletedat IS NULL", [req.params.id]))
       return res.status(404).json({ error: "Cliente nao encontrado" });
     run(
-      "UPDATE clientes SET name=?,phone=?,email=?,cpf=?,ie=?,address=?,cidade=?,uf=?,cep=?,notes=? WHERE id=?",
-      [name, phone||null, email||null, cpf||null, ie||null, address||null, cidade||null, uf||null, cep||null, notes||null, req.params.id]
+      `UPDATE clientes
+       SET name=?, phone=?, email=?, cpf=?, ie=?,
+           logradouro=?, numero=?, bairro=?,
+           cidade=?, uf=?, cep=?, notes=?
+       WHERE id=?`,
+      [name, phone||null, email||null, cpf||null, ie||null,
+       logradouro||null, numero||null, bairro||null,
+       cidade||null, uf||null, cep||null, notes||null,
+       req.params.id]
     );
     res.json({ ok: true });
   } catch(e) { next(e); }

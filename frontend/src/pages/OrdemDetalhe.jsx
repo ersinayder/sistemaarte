@@ -81,6 +81,17 @@ function IconWhatsApp() {
   )
 }
 
+function IconNFe() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+      <line x1="9" y1="13" x2="15" y2="13"/>
+      <line x1="9" y1="17" x2="12" y2="17"/>
+    </svg>
+  )
+}
+
 export default function OrdemDetalhe({ context }) {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -97,6 +108,8 @@ export default function OrdemDetalhe({ context }) {
   const [novaObs, setNovaObs]             = useState('')
   const [savingObs, setSavingObs]         = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  // NF-e
+  const [emitindo, setEmitindo]           = useState(false)
 
   useEffect(() => {
     document.body.style.overflow = confirmDelete ? 'hidden' : ''
@@ -140,7 +153,6 @@ export default function OrdemDetalhe({ context }) {
       }
       return {
         _tipo: 'caixa',
-        // usa createdat (timestamp completo) para ordenacao e exibicao correta da hora
         _ts: l.createdat || (l.data ? `${l.data}T00:00:00` : ''),
         _label: label,
         ...l,
@@ -185,6 +197,22 @@ export default function OrdemDetalhe({ context }) {
 
   const imprimirOS = () => window.open(`/api/ordens/${id}/pdf`, '_blank', 'noopener,noreferrer')
 
+  // ── NF-e ──────────────────────────────────────────────────────────────────
+  const handleEmitirNFe = async () => {
+    if (!window.confirm('Emitir NF-e para esta OS? A nota será enviada à SEFAZ.')) return
+    setEmitindo(true)
+    try {
+      const res = await api.post(`/nfe/emitir/${id}`)
+      toast.success(`NF-e nº ${res.data.numero} autorizada pela SEFAZ! ✅`)
+      load()
+    } catch (e) {
+      toast.error(e.response?.data?.erro || 'Erro ao emitir NF-e')
+    } finally {
+      setEmitindo(false)
+    }
+  }
+  // ──────────────────────────────────────────────────────────────────────────
+
   if (loading) return <div className="loading-center"><div className="spinner"/></div>
   if (!ordem)  return null
 
@@ -197,6 +225,15 @@ export default function OrdemDetalhe({ context }) {
   const canDelete  = isAdmin && !isOficinaContext
   const wppUrl     = buildWppUrl(ordem)
   const wppLabel = ordem.status === 'Pronto' ? 'Avisar Pronto' : 'Confirmar Pedido'
+
+  // NF-e: visível para admin e caixa, OS em Pronto ou Entregue, ainda não emitida
+  const podeEmitirNFe =
+    (isAdmin || isCaixa) &&
+    !isOficinaContext &&
+    ['Pronto', 'Entregue'].includes(ordem.status) &&
+    !ordem.nfe_chave
+
+  const nfeEmitida = !!ordem.nfe_chave
 
   return (
     <div>
@@ -215,12 +252,42 @@ export default function OrdemDetalhe({ context }) {
             ⚠ Prazo vencido
           </span>
         )}
+        {nfeEmitida && (
+          <span className="badge" style={{ background:'var(--color-success-highlight)', color:'var(--color-success)', fontSize:'var(--text-xs)', fontWeight:700 }}>
+            📄 NF-e {ordem.nfe_numero}
+          </span>
+        )}
         {isOficinaContext && (
           <span className="badge" style={{ background:'var(--color-surface-dynamic)', color:'var(--color-text-muted)', fontSize:'var(--text-xs)' }}>
             🔧 Modo Oficina
           </span>
         )}
         <div style={{ flex:1 }}/>
+
+        {/* Botão NF-e */}
+        {podeEmitirNFe && (
+          <button
+            className="btn btn-sm"
+            onClick={handleEmitirNFe}
+            disabled={emitindo}
+            style={{
+              background: emitindo ? 'var(--color-surface-dynamic)' : 'var(--color-primary)',
+              color: emitindo ? 'var(--color-text-muted)' : '#fff',
+              border: 'none',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 'var(--space-2)',
+              minWidth: 130,
+              justifyContent: 'center',
+            }}
+            title="Emitir Nota Fiscal Eletrônica para esta OS"
+          >
+            {emitindo
+              ? <><div className="spinner" style={{width:14,height:14}}/> Emitindo...</>
+              : <><IconNFe /> Emitir NF-e</>
+            }
+          </button>
+        )}
 
         {canSendWpp && (
           <a
@@ -406,6 +473,60 @@ export default function OrdemDetalhe({ context }) {
                 {PAG_LABEL[ordem.pagamento] || ordem.pagamento || '—'}
               </span>
             </div>
+
+            {/* ── Painel NF-e ─────────────────────────────────────────── */}
+            {nfeEmitida && (
+              <div style={{
+                marginTop: 'var(--space-4)',
+                padding: 'var(--space-3)',
+                borderRadius: 'var(--radius-md)',
+                background: 'var(--color-success-highlight)',
+                border: '1px solid color-mix(in oklab, var(--color-success) 30%, transparent)',
+              }}>
+                <div style={{ display:'flex', alignItems:'center', gap:'var(--space-2)', marginBottom:'var(--space-2)' }}>
+                  <IconNFe />
+                  <span style={{ fontSize:'var(--text-xs)', fontWeight:700, color:'var(--color-success)', textTransform:'uppercase', letterSpacing:'0.05em' }}>
+                    NF-e Autorizada
+                  </span>
+                </div>
+                <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', lineHeight:1.8 }}>
+                  <div><b>Nº:</b> {ordem.nfe_numero} · Série {ordem.nfe_serie || '1'}</div>
+                  {ordem.nfe_protocolo && <div><b>Protocolo:</b> {ordem.nfe_protocolo}</div>}
+                  {ordem.nfe_emitida_em && <div><b>Emitida em:</b> {fmtDT(ordem.nfe_emitida_em)}</div>}
+                  {ordem.nfe_chave && (
+                    <div style={{ marginTop:'var(--space-2)', wordBreak:'break-all', fontFamily:'monospace', fontSize:10, color:'var(--color-text-faint)' }}>
+                      {ordem.nfe_chave}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Botão emitir dentro do card financeiro (estado Pronto sem NF-e) */}
+            {podeEmitirNFe && (
+              <button
+                className="btn btn-sm"
+                onClick={handleEmitirNFe}
+                disabled={emitindo}
+                style={{
+                  width: '100%',
+                  marginTop: 'var(--space-4)',
+                  background: emitindo ? 'var(--color-surface-dynamic)' : 'var(--color-primary)',
+                  color: emitindo ? 'var(--color-text-muted)' : '#fff',
+                  border: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 'var(--space-2)',
+                }}
+              >
+                {emitindo
+                  ? <><div className="spinner" style={{width:14,height:14}}/> Emitindo...</>
+                  : <><IconNFe /> Emitir NF-e</>
+                }
+              </button>
+            )}
+            {/* ────────────────────────────────────────────────────────── */}
           </div>
         )}
       </div>

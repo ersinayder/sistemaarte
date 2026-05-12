@@ -28,6 +28,12 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Setup Java 21 (requerido pelo nfewizard-io/xsd-schema-validator)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
       - name: Instalar dependencias de teste
         working-directory: backend
         run: npm install

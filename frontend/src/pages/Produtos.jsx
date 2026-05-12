@@ -6,26 +6,62 @@ import ReactDOM from 'react-dom'
 
 const fmt = v => 'R$ ' + Number(v||0).toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.')
 
-const CATEGORIAS = ['Quadro','Caixas','Corte a Laser','Diversos']
+const CATEGORIAS = ['Quadro','Caixas','Acrilico','MDF','Corte a Laser','Diversos']
 const UNIDADES   = ['un','m','m²','kg','g','l','ml','rolo','folha','pacote']
 
+// NCM pré-definido por categoria (preenchimento automático)
+const NCM_POR_CATEGORIA = {
+  'Quadro':        '44151000',
+  'Caixas':        '44151000',
+  'Acrilico':      '39269090',
+  'MDF':           '44150000',
+  'Corte a Laser': '49119900',
+  'Diversos':      '49119900',
+}
+
+const CFOP_OPCOES = [
+  { value: '5101', label: '5101 — Venda dentro do estado (MG)' },
+  { value: '6102', label: '6102 — Venda fora do estado' },
+]
+
 function Modal({ open, onClose, onSaved, editData }) {
-  const BLANK = { nome: '', categoria: 'Diversos', unidade: 'un', preco: '', estoque: '', estoquemin: '', descricao: '' }
+  const BLANK = {
+    nome: '', categoria: 'Quadro', unidade: 'un',
+    preco: '', estoque: '', estoquemin: '', descricao: '',
+    ncm: NCM_POR_CATEGORIA['Quadro'],
+    cfop: '5101',
+  }
   const [form, setForm] = useState(BLANK)
   const [saving, setSaving] = useState(false)
+
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  // Ao trocar categoria, preenche NCM automaticamente
+  const handleCategoria = (cat) => {
+    setForm(f => ({
+      ...f,
+      categoria: cat,
+      ncm: NCM_POR_CATEGORIA[cat] || '49119900',
+    }))
+  }
 
   useEffect(() => {
     if (!open) return
-    setForm(editData ? {
-      nome:       editData.nome        || '',
-      categoria:  editData.categoria   || 'Diversos',
-      unidade:    editData.unidade     || 'un',
-      preco:      editData.preco       != null ? String(editData.preco)       : '',
-      estoque:    editData.estoque     != null ? String(editData.estoque)     : '',
-      estoquemin: editData.estoquemin  != null ? String(editData.estoquemin)  : '',
-      descricao:  editData.descricao   || '',
-    } : BLANK)
+    if (editData) {
+      setForm({
+        nome:       editData.nome        || '',
+        categoria:  editData.categoria   || 'Quadro',
+        unidade:    editData.unidade     || 'un',
+        preco:      editData.preco       != null ? String(editData.preco)       : '',
+        estoque:    editData.estoque     != null ? String(editData.estoque)     : '',
+        estoquemin: editData.estoquemin  != null ? String(editData.estoquemin)  : '',
+        descricao:  editData.descricao   || '',
+        ncm:        editData.ncm         || NCM_POR_CATEGORIA[editData.categoria] || '49119900',
+        cfop:       editData.cfop        || '5101',
+      })
+    } else {
+      setForm(BLANK)
+    }
   }, [open, editData])
 
   useEffect(() => {
@@ -38,13 +74,17 @@ function Modal({ open, onClose, onSaved, editData }) {
     setSaving(true)
     try {
       const payload = {
-        nome:       form.nome.trim(),
-        categoria:  form.categoria,
-        unidade:    form.unidade,
-        preco:      parseFloat(form.preco)      || 0,
-        estoque:    parseFloat(form.estoque)    || 0,
-        estoquemin: parseFloat(form.estoquemin) || 0,
-        descricao:  form.descricao.trim(),
+        nome:          form.nome.trim(),
+        categoria:     form.categoria,
+        unidade:       form.unidade,
+        preco:         parseFloat(form.preco)      || 0,
+        estoque:       parseFloat(form.estoque)    || 0,
+        estoquemin:    parseFloat(form.estoquemin) || 0,
+        descricao:     form.descricao.trim(),
+        ncm:           form.ncm.replace(/\D/g, '').padStart(8, '0'),
+        cfop:          form.cfop,
+        csosn:         '400',
+        origem_fiscal: 0,
       }
       if (editData) {
         await api.put(`/produtos/${editData.id}`, payload)
@@ -71,16 +111,30 @@ function Modal({ open, onClose, onSaved, editData }) {
           </button>
         </div>
         <div className="modal-body" style={{ display:'flex', flexDirection:'column', gap:'var(--space-4)' }}>
+
+          {/* Nome */}
           <div className="form-group">
             <label className="form-label">Nome <span style={{color:'var(--color-error)'}}>*</span></label>
             <input className="form-input" value={form.nome} onChange={e=>set('nome',e.target.value)} autoFocus placeholder="Ex: Moldura Alumínio 2cm"/>
           </div>
-          <div className="form-group">
-            <label className="form-label">Categoria</label>
-            <select className="form-input" value={form.categoria} onChange={e=>set('categoria',e.target.value)}>
-              {CATEGORIAS.map(c=><option key={c}>{c}</option>)}
-            </select>
+
+          {/* Categoria + Unidade */}
+          <div className="form-grid-2">
+            <div className="form-group">
+              <label className="form-label">Categoria</label>
+              <select className="form-input" value={form.categoria} onChange={e=>handleCategoria(e.target.value)}>
+                {CATEGORIAS.map(c=><option key={c}>{c}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Unidade</label>
+              <select className="form-input" value={form.unidade} onChange={e=>set('unidade',e.target.value)}>
+                {UNIDADES.map(u=><option key={u}>{u}</option>)}
+              </select>
+            </div>
           </div>
+
+          {/* Preço + Estoque */}
           <div className="form-grid-2">
             <div className="form-group">
               <label className="form-label">Preço de Venda (R$)</label>
@@ -91,15 +145,58 @@ function Modal({ open, onClose, onSaved, editData }) {
               <input type="number" className="form-input" value={form.estoque} onChange={e=>set('estoque',e.target.value)} min="0" step="0.01" placeholder="0"/>
             </div>
           </div>
+
+          {/* Estoque Mínimo */}
           <div className="form-group">
             <label className="form-label">Estoque Mínimo</label>
             <input type="number" className="form-input" value={form.estoquemin} onChange={e=>set('estoquemin',e.target.value)} min="0" step="0.01" placeholder="0" />
             <span style={{fontSize:'var(--text-xs)',color:'var(--color-text-muted)',marginTop:4,display:'block'}}>Alerta quando estoque cair abaixo desse valor</span>
           </div>
+
+          {/* Dados Fiscais */}
+          <div style={{
+            background: 'var(--color-surface-offset)',
+            border: '1px solid var(--color-border)',
+            borderRadius: 'var(--radius-md)',
+            padding: 'var(--space-4)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 'var(--space-3)',
+          }}>
+            <div style={{fontSize:'var(--text-xs)',fontWeight:700,color:'var(--color-text-muted)',textTransform:'uppercase',letterSpacing:'0.05em'}}>
+              Dados Fiscais (NF-e)
+            </div>
+            <div className="form-grid-2">
+              <div className="form-group" style={{margin:0}}>
+                <label className="form-label">NCM
+                  <span style={{fontSize:'var(--text-xs)',fontWeight:400,color:'var(--color-text-muted)',marginLeft:6}}>preenchido pela categoria</span>
+                </label>
+                <input
+                  className="form-input"
+                  value={form.ncm}
+                  onChange={e=>set('ncm', e.target.value.replace(/\D/g,'').slice(0,8))}
+                  placeholder="00000000"
+                  maxLength={8}
+                />
+              </div>
+              <div className="form-group" style={{margin:0}}>
+                <label className="form-label">CFOP</label>
+                <select className="form-input" value={form.cfop} onChange={e=>set('cfop',e.target.value)}>
+                  {CFOP_OPCOES.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+            </div>
+            <div style={{fontSize:'var(--text-xs)',color:'var(--color-text-muted)'}}>
+              CSOSN: <strong>400</strong> · Origem: <strong>0 — Nacional</strong> · Regime: <strong>Simples Nacional</strong>
+            </div>
+          </div>
+
+          {/* Descrição */}
           <div className="form-group">
             <label className="form-label">Descrição</label>
             <input type="text" className="form-input" value={form.descricao} onChange={e=>set('descricao',e.target.value)} placeholder="Detalhes, referência, fornecedor..."/>
           </div>
+
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
@@ -114,10 +211,12 @@ function Modal({ open, onClose, onSaved, editData }) {
 }
 
 const CATBADGE = {
-  'Quadro':'primary',
-  'Caixas':'warning',
-  'Corte a Laser':'success',
-  'Diversos':'primary',
+  'Quadro':        'primary',
+  'Caixas':        'warning',
+  'Acrilico':      'success',
+  'MDF':           'primary',
+  'Corte a Laser': 'success',
+  'Diversos':      'primary',
 }
 
 export default function Produtos() {
@@ -202,7 +301,7 @@ export default function Produtos() {
           <div className="table-wrap">
             <table>
               <thead>
-                <tr><th>Nome</th><th>Categoria</th><th>Preço</th><th>Estoque</th><th>Est. Mín.</th><th>Unidade</th><th></th></tr>
+                <tr><th>Nome</th><th>Categoria</th><th>NCM</th><th>CFOP</th><th>Preço</th><th>Estoque</th><th></th></tr>
               </thead>
               <tbody>
                 {filtered.map(p => {
@@ -214,12 +313,12 @@ export default function Produtos() {
                         {p.descricao && <div style={{fontSize:'var(--text-xs)',color:'var(--color-text-muted)'}}>{p.descricao}</div>}
                       </td>
                       <td><span className={`badge badge-${CATBADGE[p.categoria]||'primary'}`}>{p.categoria}</span></td>
+                      <td className="tabnum" style={{fontSize:'var(--text-xs)',color:'var(--color-text-muted)',fontFamily:'monospace'}}>{p.ncm || '—'}</td>
+                      <td className="tabnum" style={{fontSize:'var(--text-xs)',color:'var(--color-text-muted)'}}>{p.cfop || '—'}</td>
                       <td className="tabnum" style={{fontWeight:700}}>{fmt(p.preco)}</td>
                       <td className="tabnum" style={{fontWeight:700,color:baixo?'var(--color-warning)':undefined}}>
                         {p.estoque} {baixo && <span style={{fontSize:10}}>⚠</span>}
                       </td>
-                      <td className="tabnum" style={{color:'var(--color-text-muted)'}}>{p.estoquemin||'—'}</td>
-                      <td style={{color:'var(--color-text-muted)',fontSize:'var(--text-xs)'}}>{p.unidade}</td>
                       <td>
                         <div style={{display:'flex',gap:'var(--space-1)'}}>
                           {(isAdmin||isCaixa) && (

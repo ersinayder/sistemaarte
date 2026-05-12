@@ -18,20 +18,22 @@ CREATE TABLE IF NOT EXISTS users (
   createdat TEXT    DEFAULT (datetime('now','localtime'))
 );
 CREATE TABLE IF NOT EXISTS clientes (
-  id        INTEGER PRIMARY KEY AUTOINCREMENT,
-  name      TEXT NOT NULL,
-  phone     TEXT,
-  email     TEXT,
-  cpf       TEXT,
-  ie        TEXT,
-  address   TEXT,
-  cidade    TEXT,
-  uf        TEXT,
-  cep       TEXT,
-  notes     TEXT,
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  name       TEXT NOT NULL,
+  phone      TEXT,
+  email      TEXT,
+  cpf        TEXT,
+  ie         TEXT,
+  logradouro TEXT,
+  numero     TEXT,
+  bairro     TEXT,
+  cidade     TEXT,
+  uf         TEXT,
+  cep        TEXT,
+  notes      TEXT,
   deletedat  TEXT    DEFAULT NULL,
   deletedpor INTEGER DEFAULT NULL,
-  createdat TEXT DEFAULT (datetime('now','localtime'))
+  createdat  TEXT DEFAULT (datetime('now','localtime'))
 );
 CREATE TABLE IF NOT EXISTS ordens (
   id                INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -82,18 +84,22 @@ CREATE TABLE IF NOT EXISTS statuslog (
   createdat      TEXT DEFAULT (datetime('now','localtime'))
 );
 CREATE TABLE IF NOT EXISTS produtos (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  nome        TEXT NOT NULL,
-  categoria   TEXT DEFAULT 'Outros',
-  unidade     TEXT DEFAULT 'un',
-  preco       REAL DEFAULT 0,
-  estoque     REAL DEFAULT 0,
-  estoquemin  REAL DEFAULT 0,
-  descricao   TEXT DEFAULT '',
-  deletedat   TEXT DEFAULT NULL,
-  deletedpor  INTEGER DEFAULT NULL,
-  createdat   TEXT DEFAULT (datetime('now','localtime')),
-  updatedat   TEXT DEFAULT (datetime('now','localtime'))
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  nome           TEXT NOT NULL,
+  categoria      TEXT DEFAULT 'Outros',
+  unidade        TEXT DEFAULT 'un',
+  preco          REAL DEFAULT 0,
+  estoque        REAL DEFAULT 0,
+  estoquemin     REAL DEFAULT 0,
+  descricao      TEXT DEFAULT '',
+  ncm            TEXT,
+  cfop           TEXT DEFAULT '5102',
+  csosn          TEXT DEFAULT '400',
+  origem_fiscal  INTEGER DEFAULT 0,
+  deletedat      TEXT DEFAULT NULL,
+  deletedpor     INTEGER DEFAULT NULL,
+  createdat      TEXT DEFAULT (datetime('now','localtime')),
+  updatedat      TEXT DEFAULT (datetime('now','localtime'))
 );
 CREATE TABLE IF NOT EXISTS ordem_itens (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -110,13 +116,13 @@ CREATE TABLE IF NOT EXISTS sequencias (
   nome   TEXT PRIMARY KEY,
   ultimo INTEGER DEFAULT 0
 );
-CREATE INDEX IF NOT EXISTS idx_ordens_status     ON ordens(status);
-CREATE INDEX IF NOT EXISTS idx_ordens_prazo      ON ordens(prazoentrega);
-CREATE INDEX IF NOT EXISTS idx_ordens_clienteid  ON ordens(clienteid);
-CREATE INDEX IF NOT EXISTS idx_lancamentos_data  ON lancamentos(data);
+CREATE INDEX IF NOT EXISTS idx_ordens_status       ON ordens(status);
+CREATE INDEX IF NOT EXISTS idx_ordens_prazo        ON ordens(prazoentrega);
+CREATE INDEX IF NOT EXISTS idx_ordens_clienteid    ON ordens(clienteid);
+CREATE INDEX IF NOT EXISTS idx_lancamentos_data    ON lancamentos(data);
 CREATE INDEX IF NOT EXISTS idx_lancamentos_ordemid ON lancamentos(ordemid);
-CREATE INDEX IF NOT EXISTS idx_statuslog_ordemid ON statuslog(ordemid);
-CREATE INDEX IF NOT EXISTS idx_produtos_nome     ON produtos(nome COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS idx_statuslog_ordemid   ON statuslog(ordemid);
+CREATE INDEX IF NOT EXISTS idx_produtos_nome       ON produtos(nome COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS idx_ordem_itens_ordemid ON ordem_itens(ordemid);
 CREATE INDEX IF NOT EXISTS idx_lancamentos_pago_del ON lancamentos(ordemid, pago, deletedat);
 `;
@@ -130,6 +136,7 @@ function initDB() {
   db.exec(SCHEMA);
 
   const migrations = [
+    // v1 — colunas adicionadas incrementalmente
     "ALTER TABLE ordens ADD COLUMN pagamento TEXT DEFAULT 'Pix'",
     "ALTER TABLE ordens ADD COLUMN prioridade TEXT DEFAULT 'Normal'",
     "ALTER TABLE ordens ADD COLUMN observacoes TEXT",
@@ -150,14 +157,41 @@ function initDB() {
     "ALTER TABLE lancamentos ADD COLUMN deletedpor INTEGER DEFAULT NULL",
     "ALTER TABLE produtos ADD COLUMN deletedat TEXT DEFAULT NULL",
     "ALTER TABLE produtos ADD COLUMN deletedpor INTEGER DEFAULT NULL",
-    // v2: coluna categoria para classificar lancamentos por tipo de servico
+    // v2 — categoria em lancamentos
     "ALTER TABLE lancamentos ADD COLUMN categoria TEXT DEFAULT NULL",
-    // v3: indice composto para queries de saldo (pago + deletedat por ordemid)
+    // v3 — índice composto saldo
     "CREATE INDEX IF NOT EXISTS idx_lancamentos_pago_del ON lancamentos(ordemid, pago, deletedat)",
+    // v4 — campos fiscais NF-e em produtos e ordens
+    "ALTER TABLE produtos ADD COLUMN ncm TEXT",
+    "ALTER TABLE produtos ADD COLUMN cfop TEXT DEFAULT '5102'",
+    "ALTER TABLE produtos ADD COLUMN csosn TEXT DEFAULT '400'",
+    "ALTER TABLE produtos ADD COLUMN origem_fiscal INTEGER DEFAULT 0",
+    "ALTER TABLE ordens ADD COLUMN nfe_numero TEXT",
+    "ALTER TABLE ordens ADD COLUMN nfe_serie TEXT DEFAULT '1'",
+    "ALTER TABLE ordens ADD COLUMN nfe_chave TEXT",
+    "ALTER TABLE ordens ADD COLUMN nfe_protocolo TEXT",
+    "ALTER TABLE ordens ADD COLUMN nfe_status TEXT",
+    "ALTER TABLE ordens ADD COLUMN nfe_xml TEXT",
+    "ALTER TABLE ordens ADD COLUMN nfe_emitida_em TEXT",
+    // v5 — endereço estruturado em clientes
+    "ALTER TABLE clientes ADD COLUMN logradouro TEXT",
+    "ALTER TABLE clientes ADD COLUMN numero TEXT",
+    "ALTER TABLE clientes ADD COLUMN bairro TEXT",
+    // v5 — migrar dados legados: address -> logradouro
+    "UPDATE clientes SET logradouro = address WHERE logradouro IS NULL AND address IS NOT NULL",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {}
   }
+
+  // ── Tabela de sequências NF-e ────────────────────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS nfe_sequencias (
+      serie TEXT PRIMARY KEY,
+      ultimo_numero INTEGER DEFAULT 0
+    );
+    INSERT OR IGNORE INTO nfe_sequencias (serie, ultimo_numero) VALUES ('1', 0);
+  `);
 
   // Normalizar status legados
   try {
@@ -165,7 +199,7 @@ function initDB() {
     db.prepare("UPDATE ordens SET status='Cancelado' WHERE status='Cancelada'").run();
   } catch (_) {}
 
-  // Corrigir lancamentos de entradaos que tenham tipo diferente de 'Entrada'
+  // Corrigir lancamentos de entradaos com tipo inválido
   try {
     const fixed = db.prepare(
       "UPDATE lancamentos SET categoria=tipo, tipo='Entrada' WHERE origem='entradaos' AND tipo != 'Entrada' AND deletedat IS NULL"
@@ -180,9 +214,6 @@ function initDB() {
   const maxN  = maxOS?.maxn ?? 0;
   db.prepare("UPDATE sequencias SET ultimo=MAX(ultimo,?) WHERE nome='os'").run(maxN);
 
-  // Guard duplo: seed SOMENTE em ambiente de desenvolvimento explicito.
-  // NODE_ENV deve ser 'development' OU a flag SEED_DEV=1 deve estar definida.
-  // Nunca executa se NODE_ENV nao estiver definido ou for 'production'.
   const isDevSeed = process.env.NODE_ENV === "development" || process.env.SEED_DEV === "1";
   if (isDevSeed) {
     const existing = db.prepare("SELECT id FROM users WHERE role=?").get("admin");
