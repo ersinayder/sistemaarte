@@ -23,19 +23,28 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Diagnosticar Java no servidor
+        shell: powershell
+        run: |
+          Write-Host "=== where java ==="
+          where.exe java 2>&1
+          Write-Host "=== where javac ==="
+          where.exe javac 2>&1
+          Write-Host "=== JAVA_HOME env ==="
+          [System.Environment]::GetEnvironmentVariable('JAVA_HOME', 'Machine')
+          Write-Host "=== Listar C:\Program Files\Java ==="
+          if (Test-Path 'C:\Program Files\Java') { Get-ChildItem 'C:\Program Files\Java' } else { Write-Host 'NAO EXISTE' }
+          Write-Host "=== Listar C:\Program Files\Eclipse Adoptium ==="
+          if (Test-Path 'C:\Program Files\Eclipse Adoptium') { Get-ChildItem 'C:\Program Files\Eclipse Adoptium' } else { Write-Host 'NAO EXISTE' }
+          Write-Host "=== Listar C:\jdk* ==="
+          Get-ChildItem C:\ -Filter 'jdk*' -ErrorAction SilentlyContinue
+          Write-Host "=== PATH do sistema ==="
+          [System.Environment]::GetEnvironmentVariable('PATH', 'Machine')
+
       - name: Instalar dependencias de teste
         shell: powershell
         working-directory: backend
         run: npm install --ignore-scripts
-
-      - name: Compilar XMLValidator.class
-        shell: powershell
-        run: |
-          $javac = "C:\Program Files\Java\jdk-21\bin\javac.exe"
-          $src   = "${{ github.workspace }}\backend\node_modules\xsd-schema-validator\support\XMLValidator.java"
-          $out   = "${{ github.workspace }}\backend\node_modules\xsd-schema-validator\support"
-          & $javac -d $out $src
-          if ($LASTEXITCODE -ne 0) { throw "javac falhou: $LASTEXITCODE" }
 
       - name: Executar testes
         working-directory: backend
@@ -106,11 +115,15 @@ jobs:
       - name: Compilar XMLValidator.class em producao
         shell: powershell
         run: |
-          $javac = "C:\Program Files\Java\jdk-21\bin\javac.exe"
-          $src   = "C:\sistemaarte\backend\node_modules\xsd-schema-validator\support\XMLValidator.java"
-          $out   = "C:\sistemaarte\backend\node_modules\xsd-schema-validator\support"
+          $javac = (where.exe javac 2>$null | Select-Object -First 1).Trim()
+          if (-not $javac) {
+            $javac = [System.Environment]::GetEnvironmentVariable('JAVA_HOME','Machine') + '\bin\javac.exe'
+          }
+          Write-Host "Usando javac: $javac"
+          $src = "C:\sistemaarte\backend\node_modules\xsd-schema-validator\support\XMLValidator.java"
+          $out = "C:\sistemaarte\backend\node_modules\xsd-schema-validator\support"
           & $javac -d $out $src
-          if ($LASTEXITCODE -ne 0) { throw "javac falhou em producao: $LASTEXITCODE" }
+          if ($LASTEXITCODE -ne 0) { throw "javac falhou: $LASTEXITCODE" }
 
       - name: Reload PM2 via ecosystem
         shell: powershell
