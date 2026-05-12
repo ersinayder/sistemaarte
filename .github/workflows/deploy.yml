@@ -23,24 +23,19 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Matar processos travados e limpar node_modules
-        shell: powershell
-        run: |
-          Stop-Process -Name node -Force -ErrorAction SilentlyContinue
-          Stop-Process -Name esbuild -Force -ErrorAction SilentlyContinue
-          Start-Sleep -Seconds 2
-          $nm = "${{ github.workspace }}\backend\node_modules"
-          if (Test-Path $nm) {
-            cmd /c rmdir /s /q "$nm"
-          }
-
       - name: Instalar dependencias de teste
         shell: powershell
         working-directory: backend
+        run: npm install --ignore-scripts
+
+      - name: Compilar XMLValidator.class
+        shell: powershell
         run: |
-          [System.Environment]::SetEnvironmentVariable('JAVA_HOME', 'C:\Program Files\Java\jdk-21', 'Process')
-          [System.Environment]::SetEnvironmentVariable('PATH', 'C:\Program Files\Java\jdk-21\bin;' + [System.Environment]::GetEnvironmentVariable('PATH', 'Process'), 'Process')
-          npm install
+          $javac = "C:\Program Files\Java\jdk-21\bin\javac.exe"
+          $src   = "${{ github.workspace }}\backend\node_modules\xsd-schema-validator\support\XMLValidator.java"
+          $out   = "${{ github.workspace }}\backend\node_modules\xsd-schema-validator\support"
+          & $javac -d $out $src
+          if ($LASTEXITCODE -ne 0) { throw "javac falhou: $LASTEXITCODE" }
 
       - name: Executar testes
         working-directory: backend
@@ -105,10 +100,17 @@ jobs:
       - name: Install backend dependencies
         shell: powershell
         run: |
-          [System.Environment]::SetEnvironmentVariable('JAVA_HOME', 'C:\Program Files\Java\jdk-21', 'Process')
-          [System.Environment]::SetEnvironmentVariable('PATH', 'C:\Program Files\Java\jdk-21\bin;' + [System.Environment]::GetEnvironmentVariable('PATH', 'Process'), 'Process')
           Set-Location "C:\sistemaarte\backend"
-          npm install --production --prefer-offline
+          npm install --production --prefer-offline --ignore-scripts
+
+      - name: Compilar XMLValidator.class em producao
+        shell: powershell
+        run: |
+          $javac = "C:\Program Files\Java\jdk-21\bin\javac.exe"
+          $src   = "C:\sistemaarte\backend\node_modules\xsd-schema-validator\support\XMLValidator.java"
+          $out   = "C:\sistemaarte\backend\node_modules\xsd-schema-validator\support"
+          & $javac -d $out $src
+          if ($LASTEXITCODE -ne 0) { throw "javac falhou em producao: $LASTEXITCODE" }
 
       - name: Reload PM2 via ecosystem
         shell: powershell
