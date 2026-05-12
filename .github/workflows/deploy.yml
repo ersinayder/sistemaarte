@@ -85,10 +85,8 @@ jobs:
         run: |
           $env:HOMEPATH = "C:\Users\Administrator"
           $env:HOME     = "C:\Users\Administrator"
-          $ErrorActionPreference = 'SilentlyContinue'
-          pm2 delete sistemaarte-backend 2>&1 | Out-Null
-          $ErrorActionPreference = 'Continue'
-          Start-Sleep -Seconds 2
+          try { pm2 delete sistemaarte-backend 2>&1 | Out-Null } catch { Write-Host "PM2: nenhum processo ativo, continuando" }
+          exit 0
 
       - name: Sync backend source
         shell: powershell
