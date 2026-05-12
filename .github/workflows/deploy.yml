@@ -13,7 +13,6 @@ jobs:
       HOMEPATH: C:\Users\Administrator
       HOME: C:\Users\Administrator
       NODE_ENV: test
-      JAVA_HOME: C:\Program Files\Java\jdk-21
 
     steps:
       - name: Checkout
@@ -24,13 +23,22 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Adicionar Java ao PATH
+      - name: Limpar node_modules travados
         shell: powershell
-        run: echo "C:\Program Files\Java\jdk-21\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        run: |
+          $nm = "${{ github.workspace }}\backend\node_modules"
+          if (Test-Path $nm) {
+            Get-ChildItem $nm -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue
+            Remove-Item $nm -Force -Recurse -ErrorAction SilentlyContinue
+          }
 
       - name: Instalar dependencias de teste
+        shell: powershell
         working-directory: backend
-        run: npm install
+        run: |
+          $env:JAVA_HOME = "C:\Program Files\Java\jdk-21"
+          $env:PATH = "C:\Program Files\Java\jdk-21\bin;" + $env:PATH
+          npm install
 
       - name: Executar testes
         working-directory: backend
@@ -44,7 +52,6 @@ jobs:
     env:
       HOMEPATH: C:\Users\Administrator
       HOME: C:\Users\Administrator
-      JAVA_HOME: C:\Program Files\Java\jdk-21
 
     steps:
       - name: Checkout
@@ -54,10 +61,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-
-      - name: Adicionar Java ao PATH
-        shell: powershell
-        run: echo "C:\Program Files\Java\jdk-21\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Install frontend dependencies
         working-directory: frontend
@@ -100,6 +103,8 @@ jobs:
       - name: Install backend dependencies
         shell: powershell
         run: |
+          $env:JAVA_HOME = "C:\Program Files\Java\jdk-21"
+          $env:PATH = "C:\Program Files\Java\jdk-21\bin;" + $env:PATH
           Set-Location "C:\sistemaarte\backend"
           npm install --production --prefer-offline
 
