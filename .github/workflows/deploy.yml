@@ -14,7 +14,6 @@ jobs:
       HOME: C:\Users\Administrator
       NODE_ENV: test
       JAVA_HOME: C:\Program Files\Java\jdk-21
-      PATH: C:\Program Files\Java\jdk-21\bin;${{ env.PATH }}
 
     steps:
       - name: Checkout
@@ -24,6 +23,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+
+      - name: Adicionar Java ao PATH
+        shell: powershell
+        run: echo "C:\Program Files\Java\jdk-21\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Instalar dependencias de teste
         working-directory: backend
@@ -42,7 +45,6 @@ jobs:
       HOMEPATH: C:\Users\Administrator
       HOME: C:\Users\Administrator
       JAVA_HOME: C:\Program Files\Java\jdk-21
-      PATH: C:\Program Files\Java\jdk-21\bin;${{ env.PATH }}
 
     steps:
       - name: Checkout
@@ -52,6 +54,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+
+      - name: Adicionar Java ao PATH
+        shell: powershell
+        run: echo "C:\Program Files\Java\jdk-21\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Install frontend dependencies
         working-directory: frontend
@@ -94,8 +100,6 @@ jobs:
       - name: Install backend dependencies
         shell: powershell
         run: |
-          $env:JAVA_HOME = "C:\Program Files\Java\jdk-21"
-          $env:PATH = "C:\Program Files\Java\jdk-21\bin;" + $env:PATH
           Set-Location "C:\sistemaarte\backend"
           npm install --production --prefer-offline
 
