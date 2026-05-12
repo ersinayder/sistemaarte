@@ -85,8 +85,10 @@ jobs:
         run: |
           $env:HOMEPATH = "C:\Users\Administrator"
           $env:HOME     = "C:\Users\Administrator"
-          pm2 stop sistemaarte-backend 2>$null; $true
-          Start-Sleep -Seconds 3
+          $ErrorActionPreference = 'SilentlyContinue'
+          pm2 delete sistemaarte-backend 2>&1 | Out-Null
+          $ErrorActionPreference = 'Continue'
+          Start-Sleep -Seconds 2
 
       - name: Sync backend source
         shell: powershell
@@ -105,16 +107,12 @@ jobs:
           Set-Location "C:\sistemaarte\backend"
           npm install --production --prefer-offline
 
-      - name: Reload PM2 via ecosystem
+      - name: Start PM2
         shell: powershell
         run: |
           $env:HOMEPATH = "C:\Users\Administrator"
           $env:HOME     = "C:\Users\Administrator"
           Set-Location "C:\sistemaarte\backend"
-          $status = pm2 describe sistemaarte-backend 2>&1
-          if ($status -match 'online|stopped|errored') {
-            pm2 delete sistemaarte-backend 2>$null; $true
-          }
           pm2 start ecosystem.config.js --env production
           pm2 save
 
