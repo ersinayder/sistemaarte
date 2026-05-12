@@ -194,7 +194,7 @@ export default function Clientes() {
         email:      form.email,
         cpf:        form.tipo === 'PF' ? form.cpf : '',
         ie:         form.ie,
-        address:    form.logradouro,
+        logradouro: form.logradouro,
         numero:     form.numero,
         bairro:     form.bairro,
         cidade:     form.cidade,
