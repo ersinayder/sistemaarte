@@ -26,7 +26,6 @@ function calcKpis() {
      WHERE status = 'Aguardando' AND deletedat IS NULL`
   )?.n ?? 0;
 
-  // Alinhado com GET /ordens?vencidas=1: exclui Pronto, Entregue e Cancelado
   const vencidas = getOne(
     `SELECT COUNT(*) AS n FROM ordens
      WHERE status NOT IN ('Pronto','Entregue','Cancelado')
@@ -101,8 +100,11 @@ router.get("/stream", auth(), (req, res) => {
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
 
-  let closed    = false;
-  let idleTimer = null;
+  // Declarar todas as variaveis antes de qualquer closure que as referencie
+  let closed       = false;
+  let idleTimer    = null;
+  let dataTimer    = null;
+  let heartbeatTimer = null;
 
   const cleanup = () => {
     if (closed) return;
@@ -129,15 +131,15 @@ router.get("/stream", auth(), (req, res) => {
     }
   };
 
+  req.on("close", cleanup);
+
   send();
-  const dataTimer      = setInterval(send, SSE_INTERVAL_MS);
-  const heartbeatTimer = setInterval(() => {
+  dataTimer      = setInterval(send, SSE_INTERVAL_MS);
+  heartbeatTimer = setInterval(() => {
     if (!closed) res.write(": ping\n\n");
   }, SSE_HEARTBEAT_MS);
 
   resetIdle();
-
-  req.on("close", cleanup);
 });
 
 module.exports = router;
