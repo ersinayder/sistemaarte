@@ -1,0 +1,62 @@
+name: Setup PM2 Windows Service
+# Roda UMA UNICA VEZ para instalar o PM2 como servico Windows.
+# Apos rodar, o processo persiste entre reboots e o deploy.yml apenas faz restart.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  setup:
+    name: Instalar PM2 como Servico Windows
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Instalar backend deps
+        shell: powershell
+        run: |
+          Set-Location "C:\sistemaarte\backend"
+          npm install --production
+
+      - name: Iniciar processo no PM2
+        shell: powershell
+        run: |
+          $env:HOMEPATH = "C:\Users\Administrator"
+          $env:HOME     = "C:\Users\Administrator"
+          $env:PM2_HOME = "C:\Users\Administrator\.pm2"
+          Set-Location "C:\sistemaarte\backend"
+          # Para e remove qualquer instancia anterior
+          try { pm2 delete sistemaarte-backend 2>&1 | Out-Null } catch {}
+          # Inicia com ecosystem
+          pm2 start ecosystem.config.js --env production
+          pm2 save
+          Write-Host "Processo iniciado:"
+          pm2 list
+
+      - name: Instalar pm2-windows-startup
+        shell: powershell
+        run: |
+          $env:HOMEPATH = "C:\Users\Administrator"
+          $env:HOME     = "C:\Users\Administrator"
+          $env:PM2_HOME = "C:\Users\Administrator\.pm2"
+          # Instala o modulo de startup para Windows (registra tarefa no Task Scheduler)
+          npm install -g pm2-windows-startup 2>&1 | Out-Null
+          pm2-startup install
+          Write-Host "Servico PM2 registrado no Task Scheduler."
+          Write-Host "O backend vai subir automaticamente apos reboot."
+
+      - name: Status final
+        shell: powershell
+        run: |
+          $env:HOMEPATH = "C:\Users\Administrator"
+          $env:HOME     = "C:\Users\Administrator"
+          $env:PM2_HOME = "C:\Users\Administrator\.pm2"
+          pm2 list
