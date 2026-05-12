@@ -23,19 +23,15 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Instalar dependencias de teste
-        shell: powershell
-        working-directory: backend
-        run: npm install --ignore-scripts
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
 
-      - name: Compilar XMLValidator.class
-        shell: powershell
-        run: |
-          $javac = "C:\Program Files\Java\jdk-21\bin\javac.exe"
-          $src   = "${{ github.workspace }}\backend\node_modules\xsd-schema-validator\support\XMLValidator.java"
-          $out   = "${{ github.workspace }}\backend\node_modules\xsd-schema-validator\support"
-          & $javac -d $out $src
-          if ($LASTEXITCODE -ne 0) { throw "javac falhou: $LASTEXITCODE" }
+      - name: Instalar dependencias de teste
+        working-directory: backend
+        run: npm install
 
       - name: Executar testes
         working-directory: backend
@@ -58,6 +54,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
 
       - name: Install frontend dependencies
         working-directory: frontend
@@ -101,16 +103,7 @@ jobs:
         shell: powershell
         run: |
           Set-Location "C:\sistemaarte\backend"
-          npm install --production --prefer-offline --ignore-scripts
-
-      - name: Compilar XMLValidator.class em producao
-        shell: powershell
-        run: |
-          $javac = "C:\Program Files\Java\jdk-21\bin\javac.exe"
-          $src   = "C:\sistemaarte\backend\node_modules\xsd-schema-validator\support\XMLValidator.java"
-          $out   = "C:\sistemaarte\backend\node_modules\xsd-schema-validator\support"
-          & $javac -d $out $src
-          if ($LASTEXITCODE -ne 0) { throw "javac falhou em producao: $LASTEXITCODE" }
+          npm install --production --prefer-offline
 
       - name: Reload PM2 via ecosystem
         shell: powershell
