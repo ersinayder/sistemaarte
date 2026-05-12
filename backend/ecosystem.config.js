@@ -11,7 +11,7 @@ module.exports = {
     {
       name: 'sistemaarte-backend',
       script: './server.js',
-      cwd: 'C:\\sistemaarte\\backend',
+      cwd: 'C:\\\\sistemaarte\\\\backend',
       instances: 1,
       exec_mode: 'fork',
       watch: false,
@@ -32,19 +32,19 @@ module.exports = {
         NFE_CNPJ_EMITENTE:  process.env.NFE_CNPJ_EMITENTE,
         NFE_IE_EMITENTE:    process.env.NFE_IE_EMITENTE,
       },
-      error_file: 'C:\\Users\\Administrator\\.pm2\\logs\\sistemaarte-backend-error.log',
-      out_file:   'C:\\Users\\Administrator\\.pm2\\logs\\sistemaarte-backend-out.log',
+      error_file: 'C:\\\\Users\\\\Administrator\\\\.pm2\\\\logs\\\\sistemaarte-backend-error.log',
+      out_file:   'C:\\\\Users\\\\Administrator\\\\.pm2\\\\logs\\\\sistemaarte-backend-out.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
     },
 
     // ═══════════════════════════════════════════════════════════
-    //  DEV/HOMOLOGACAO NF-e — porta 3002 — branch feat/nfe-sprint-*
+    //  DEV/HOMOLOGACAO NF-e — porta 3003 — branch feat/nfe-sprint-*
     //
     //  Setup inicial no servidor:
-    //    git clone https://github.com/ersinayder/sistemaarte C:\sistemaarte-dev
-    //    cd C:\sistemaarte-dev && git checkout feat/nfe-sprint-1
+    //    git clone https://github.com/ersinayder/sistemaarte C:\\sistemaarte-dev
+    //    cd C:\\sistemaarte-dev && git checkout feat/nfe-sprint-1
     //    cd backend && npm install
-    //    copy .env.example .env   (editar: PORT=3002, NFE_AMBIENTE=homologacao)
+    //    copy .env.example .env   (editar: PORT=3003, NFE_AMBIENTE=homologacao)
     //
     //  Iniciar:  pm2 start ecosystem.config.js --only sistemaarte-dev --env dev
     //  Parar:    pm2 stop sistemaarte-dev
@@ -53,14 +53,14 @@ module.exports = {
     {
       name: 'sistemaarte-dev',
       script: './server.js',
-      cwd: 'C:\\sistemaarte-dev\\backend',
+      cwd: 'C:\\\\sistemaarte-dev\\\\backend',
       instances: 1,
       exec_mode: 'fork',
       watch: false,
       max_memory_restart: '200M',
       env_dev: {
-        NODE_ENV:           'production',   // usa o mesmo guard de producao
-        PORT:               3002,
+        NODE_ENV:           'production',
+        PORT:               3003,
         JWT_SECRET:         process.env.JWT_SECRET,
         CORS_ORIGINS:       process.env.CORS_ORIGINS_DEV || 'http://localhost:5174',
         EVOLUTION_API_URL:  process.env.EVOLUTION_API_URL,
@@ -68,15 +68,14 @@ module.exports = {
         EVOLUTION_INSTANCE: process.env.EVOLUTION_INSTANCE,
         WHATSAPP_ENABLED:   'false',
         // ── NF-e HOMOLOGACAO ──────────────────────────────────
-        // Aponta para o mesmo .pfx de homologacao (nunca producao aqui)
         NFE_CERT_PATH:      process.env.NFE_CERT_PATH,
         NFE_CERT_PASSWORD:  process.env.NFE_CERT_PASSWORD,
-        NFE_AMBIENTE:       'homologacao',  // HARDCODED — nunca muda neste app
+        NFE_AMBIENTE:       'homologacao',
         NFE_CNPJ_EMITENTE:  process.env.NFE_CNPJ_EMITENTE,
         NFE_IE_EMITENTE:    process.env.NFE_IE_EMITENTE,
       },
-      error_file: 'C:\\Users\\Administrator\\.pm2\\logs\\sistemaarte-dev-error.log',
-      out_file:   'C:\\Users\\Administrator\\.pm2\\logs\\sistemaarte-dev-out.log',
+      error_file: 'C:\\\\Users\\\\Administrator\\\\.pm2\\\\logs\\\\sistemaarte-dev-error.log',
+      out_file:   'C:\\\\Users\\\\Administrator\\\\.pm2\\\\logs\\\\sistemaarte-dev-out.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
     },
   ],
