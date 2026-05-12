@@ -80,14 +80,6 @@ jobs:
           robocopy $source $dest /MIR /NFL /NDL /NJH /NJS
           if ($LASTEXITCODE -le 7) { exit 0 } else { exit $LASTEXITCODE }
 
-      - name: Stop PM2
-        shell: powershell
-        run: |
-          $env:HOMEPATH = "C:\Users\Administrator"
-          $env:HOME     = "C:\Users\Administrator"
-          try { pm2 delete sistemaarte-backend 2>&1 | Out-Null } catch { Write-Host "PM2: nenhum processo ativo, continuando" }
-          exit 0
-
       - name: Sync backend source
         shell: powershell
         run: |
@@ -105,14 +97,22 @@ jobs:
           Set-Location "C:\sistemaarte\backend"
           npm install --production --prefer-offline
 
-      - name: Start PM2
+      - name: Restart PM2
         shell: powershell
         run: |
           $env:HOMEPATH = "C:\Users\Administrator"
           $env:HOME     = "C:\Users\Administrator"
+          $env:PM2_HOME = "C:\Users\Administrator\.pm2"
           Set-Location "C:\sistemaarte\backend"
-          pm2 start ecosystem.config.js --env production
-          pm2 save
+          $status = pm2 describe sistemaarte-backend 2>&1
+          if ($status -match 'online|stopped|errored|launching') {
+            Write-Host "Processo existe — reiniciando"
+            pm2 restart sistemaarte-backend --update-env
+          } else {
+            Write-Host "Processo nao existe — iniciando"
+            pm2 start ecosystem.config.js --env production
+            pm2 save
+          }
 
       - name: Concluido
         shell: powershell

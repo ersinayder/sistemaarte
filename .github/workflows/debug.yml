@@ -14,6 +14,7 @@ jobs:
         run: |
           $env:HOMEPATH = "C:\Users\Administrator"
           $env:HOME     = "C:\Users\Administrator"
+          $env:PM2_HOME = "C:\Users\Administrator\.pm2"
           pm2 list
 
       - name: PM2 Error Log
