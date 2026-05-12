@@ -25,18 +25,19 @@ const itens = [
 ];
 
 describe('montarNFe', () => {
+  // xNome DEVE ser maiúsculo — obrigação do schema NF-e (tag xNome = uppercase)
   it('deve montar a estrutura básica da NF-e', () => {
     const nfe = montarNFe({ ordem, itens, cliente, emitente, numero: 1, serie: '1' });
     expect(nfe.ide.mod).toBe('55');
     expect(nfe.ide.nNF).toBe('1');
     expect(nfe.det).toHaveLength(2);
-    expect(nfe.dest.xNome).toBe('João Teste');
+    expect(nfe.dest.xNome).toBe('JOÃO TESTE');
   });
 
   it('dest sem CPF quando cliente não tem CPF válido', () => {
     const nfe = montarNFe({ ordem, itens, cliente: { name: 'Consumidor' }, emitente, numero: 2, serie: '1' });
     expect(nfe.dest.CPF).toBeUndefined();
-    expect(nfe.dest.xNome).toBe('Consumidor');
+    expect(nfe.dest.xNome).toBe('CONSUMIDOR');
   });
 
   it('calcula vNF corretamente', () => {
