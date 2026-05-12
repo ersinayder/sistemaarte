@@ -23,22 +23,23 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Matar processos Node travados e limpar node_modules
-        shell: cmd
+      - name: Matar processos travados e limpar node_modules
+        shell: powershell
         run: |
-          taskkill /F /IM node.exe /T 2>nul || echo sem processos node
-          taskkill /F /IM esbuild.exe /T 2>nul || echo sem processos esbuild
-          timeout /t 2 /nobreak >nul
-          if exist "%GITHUB_WORKSPACE%\backend\node_modules" (
-            rmdir /s /q "%GITHUB_WORKSPACE%\backend\node_modules"
-          )
+          Stop-Process -Name node -Force -ErrorAction SilentlyContinue
+          Stop-Process -Name esbuild -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 2
+          $nm = "${{ github.workspace }}\backend\node_modules"
+          if (Test-Path $nm) {
+            cmd /c rmdir /s /q "$nm"
+          }
 
       - name: Instalar dependencias de teste
-        shell: cmd
+        shell: powershell
         working-directory: backend
         run: |
-          set JAVA_HOME=C:\Program Files\Java\jdk-21
-          set PATH=C:\Program Files\Java\jdk-21\bin;%PATH%
+          $env:JAVA_HOME = "C:\Program Files\Java\jdk-21"
+          $env:PATH = "C:\Program Files\Java\jdk-21\bin;" + $env:PATH
           npm install
 
       - name: Executar testes
@@ -102,11 +103,11 @@ jobs:
           if ($LASTEXITCODE -le 7) { exit 0 } else { exit $LASTEXITCODE }
 
       - name: Install backend dependencies
-        shell: cmd
+        shell: powershell
         run: |
-          set JAVA_HOME=C:\Program Files\Java\jdk-21
-          set PATH=C:\Program Files\Java\jdk-21\bin;%PATH%
-          cd C:\sistemaarte\backend
+          $env:JAVA_HOME = "C:\Program Files\Java\jdk-21"
+          $env:PATH = "C:\Program Files\Java\jdk-21\bin;" + $env:PATH
+          Set-Location "C:\sistemaarte\backend"
           npm install --production --prefer-offline
 
       - name: Reload PM2 via ecosystem
