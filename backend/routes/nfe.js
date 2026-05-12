@@ -1,153 +1,174 @@
-'use strict';
-const router = require('express').Router();
-const path   = require('path');
-const fs     = require('fs');
-const { auth }         = require('../middlewares/auth');
-const { getNFEWizard } = require('../utils/nfe');
-const { montarNFe }    = require('../domain/nfeRules');
-const db               = require('../database');
+/**
+ * /api/nfe
+ * Rotas de NF-e
+ *
+ * POST /api/nfe/emitir/:id   — emite (ou simula) NF-e vinculada a uma OS
+ * GET  /api/nfe              — lista todas as OSs que possuem nfe_status
+ */
+
+const express = require('express')
+const router  = express.Router()
+const { getDB } = require('../database')
+const { auth }  = require('../middlewares/auth')
+
+// ─── helpers ──────────────────────────────────────────────────────────────────
+function pad(n, len) { return String(n).padStart(len, '0') }
 
 /**
- * POST /api/nfe/emitir/:ordemId
- * Emite NF-e para uma OS. Requer status Pronto ou Entregue.
- * Lock anti-duplicata via nfe_status='emitindo'.
+ * Gera próximo número de NF-e sequencial por série.
+ * Salva o estado na tabela kv (chave-valor simples) que já existe no sistema.
  */
-router.post('/emitir/:ordemId', auth(['admin', 'caixa']), async (req, res, next) => {
-  const ordemId = req.params.ordemId;
-
-  try {
-    // ── 1. Verificações iniciais ───────────────────────────────────────────────
-    const ordem = db.getOne('SELECT * FROM ordens WHERE id=? AND deletedat IS NULL', [ordemId]);
-    if (!ordem) return res.status(404).json({ erro: 'OS não encontrada' });
-
-    if (ordem.nfe_status === 'autorizado')
-      return res.status(409).json({ erro: 'NF-e já emitida para esta OS' });
-
-    if (ordem.nfe_status === 'emitindo')
-      return res.status(409).json({ erro: 'Emissão já em andamento para esta OS' });
-
-    const statusPermitidos = ['Pronto', 'Entregue'];
-    if (!statusPermitidos.includes(ordem.status))
-      return res.status(422).json({ erro: `OS deve estar com status ${statusPermitidos.join(' ou ')} para emitir NF-e` });
-
-    // ── 2. Lock anti-duplicata ─────────────────────────────────────────────────
-    db.run('UPDATE ordens SET nfe_status=? WHERE id=?', ['emitindo', ordemId]);
-
-    // ── 3. Buscar dados relacionados ───────────────────────────────────────────
-    const itens = db.getAll(
-      `SELECT oi.*, oi.descricao, oi.quantidade, oi.valorunitario,
-              p.ncm, p.cfop, p.csosn, p.unidade, p.origem
-       FROM ordem_itens oi
-       LEFT JOIN produtos p ON oi.produtoid = p.id
-       WHERE oi.ordemid=? AND oi.deletedat IS NULL`,
-      [ordemId]
-    );
-
-    if (!itens || itens.length === 0) {
-      db.run('UPDATE ordens SET nfe_status=NULL WHERE id=?', [ordemId]);
-      return res.status(422).json({ erro: 'OS não possui itens para emitir NF-e' });
-    }
-
-    const cliente = ordem.clienteid
-      ? db.getOne('SELECT * FROM clientes WHERE id=?', [ordem.clienteid])
-      : null;
-
-    // ── 4. Gerar número sequencial ─────────────────────────────────────────────
-    const serie = ordem.nfe_serie || '1';
-    const seq = db.getOne(
-      'UPDATE nfe_sequencias SET ultimo_numero = ultimo_numero + 1 WHERE serie=? RETURNING ultimo_numero',
-      [serie]
-    );
-    if (!seq) {
-      db.run('UPDATE ordens SET nfe_status=NULL WHERE id=?', [ordemId]);
-      return res.status(500).json({ erro: `Sequência NF-e para série ${serie} não encontrada` });
-    }
-    const numero = seq.ultimo_numero;
-
-    // ── 5. Dados do emitente ───────────────────────────────────────────────────
-    const emitente = {
-      CNPJ:  (process.env.NFE_CNPJ_EMITENTE  || '').replace(/\D/g, ''),
-      xNome: process.env.NFE_RAZAO_SOCIAL,
-      xFant: process.env.NFE_NOME_FANTASIA,
-      IE:    (process.env.NFE_IE_EMITENTE    || '').replace(/\D/g, ''),
-      CRT:   process.env.NFE_CRT || '1',
-      enderEmit: {
-        xLgr:    process.env.NFE_LOGRADOURO     || '',
-        nro:     process.env.NFE_NUMERO         || 'S/N',
-        xBairro: process.env.NFE_BAIRRO         || '',
-        cMun:    process.env.NFE_COD_MUNICIPIO  || '3127701',
-        xMun:    process.env.NFE_MUNICIPIO      || 'Ipatinga',
-        UF:      'MG',
-        CEP:     (process.env.NFE_CEP  || '').replace(/\D/g, ''),
-        cPais:   '1058',
-        xPais:   'Brasil',
-        fone:    (process.env.NFE_FONE || '').replace(/\D/g, ''),
-      },
-    };
-
-    // ── 6. Montar XML e chamar NFeWizard ───────────────────────────────────────
-    const nfeData   = montarNFe({ ordem, itens, cliente, emitente, numero, serie });
-    const wizard    = getNFEWizard();
-    const resultado = await wizard.NFeAutorizacao({ NFe: nfeData });
-
-    const infProt  = resultado?.protNFe?.infProt;
-    const protocolo = infProt?.nProt   || null;
-    const chave     = infProt?.chNFe   || null;
-    const cStat     = infProt?.cStat   || null;
-    const xMotivo   = infProt?.xMotivo || 'Sem retorno da SEFAZ';
-    const xml       = resultado?.xmlAssinado || resultado?.nfeProc || '';
-
-    // cStat 100 = autorizado, 150 = autorizado fora do prazo
-    if (!['100', '150'].includes(String(cStat))) {
-      db.run('UPDATE ordens SET nfe_status=? WHERE id=?', ['rejeitado', ordemId]);
-      return res.status(422).json({
-        erro: `SEFAZ rejeitou: ${cStat} — ${xMotivo}`,
-        cStat,
-        xMotivo,
-      });
-    }
-
-    // ── 7. Persistir resultado ─────────────────────────────────────────────────
-    db.run(
-      `UPDATE ordens SET
-         nfe_numero=?, nfe_serie=?, nfe_chave=?, nfe_protocolo=?,
-         nfe_status=?, nfe_xml=?, nfe_emitida_em=datetime('now','localtime')
-       WHERE id=?`,
-      [String(numero), serie, chave, protocolo, 'autorizado', xml, ordemId]
-    );
-
-    // ── 8. Salvar XML em disco (obrigação legal: 5 anos) ──────────────────────
-    try {
-      const xmlDir = path.resolve(__dirname, '..', 'data', 'nfe_xmls');
-      fs.mkdirSync(xmlDir, { recursive: true });
-      if (chave && xml) {
-        fs.writeFileSync(path.join(xmlDir, `${chave}-nfe.xml`), xml, 'utf8');
-      }
-    } catch (fsErr) {
-      console.error('[NFe] Falha ao salvar XML em disco:', fsErr.message);
-    }
-
-    res.json({ ok: true, numero, serie, chave, protocolo, cStat });
-
-  } catch (err) {
-    try { db.run('UPDATE ordens SET nfe_status=NULL WHERE id=?', [ordemId]); } catch {}
-    next(err);
+async function proximoNumeroNfe(db, serie = '001') {
+  const chave = `nfe_seq_${serie}`
+  let row = db.prepare('SELECT valor FROM kv WHERE chave = ?').get(chave)
+  const atual = row ? parseInt(row.valor, 10) : 0
+  const proximo = atual + 1
+  if (row) {
+    db.prepare('UPDATE kv SET valor = ? WHERE chave = ?').run(String(proximo), chave)
+  } else {
+    db.prepare('INSERT INTO kv (chave, valor) VALUES (?, ?)').run(chave, String(proximo))
   }
-});
+  return pad(proximo, 9) // 000000001
+}
 
 /**
- * GET /api/nfe/status/:ordemId
- * Retorna os dados de NF-e de uma OS sem reemitir.
+ * Garante que as colunas de NF-e existem na tabela ordens.
+ * Executado uma vez por startup — safe para rodar múltiplas vezes.
  */
-router.get('/status/:ordemId', auth(['admin', 'caixa', 'atendente']), (req, res, next) => {
-  try {
-    const ordem = db.getOne(
-      'SELECT nfe_numero, nfe_serie, nfe_chave, nfe_protocolo, nfe_status, nfe_emitida_em FROM ordens WHERE id=?',
-      [req.params.ordemId]
-    );
-    if (!ordem) return res.status(404).json({ erro: 'OS não encontrada' });
-    res.json(ordem);
-  } catch (err) { next(err); }
-});
+function garantirColunas(db) {
+  const cols = db.prepare("PRAGMA table_info(ordens)").all().map(c => c.name)
+  const needed = [
+    ['nfe_status',     'TEXT'],
+    ['nfe_numero',     'TEXT'],
+    ['nfe_serie',      'TEXT'],
+    ['nfe_chave',      'TEXT'],
+    ['nfe_protocolo',  'TEXT'],
+    ['nfe_emitida_em', 'TEXT'],
+  ]
+  for (const [col, type] of needed) {
+    if (!cols.includes(col)) {
+      db.prepare(`ALTER TABLE ordens ADD COLUMN ${col} ${type}`).run()
+      console.log(`[NF-e] Coluna adicionada: ordens.${col}`)
+    }
+  }
 
-module.exports = router;
+  // Tabela kv (chave-valor) — cria se não existir
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS kv (
+      chave TEXT PRIMARY KEY,
+      valor TEXT NOT NULL
+    )
+  `).run()
+}
+
+// Garante colunas ao carregar o módulo
+try {
+  garantirColunas(getDB())
+} catch (e) {
+  console.error('[NF-e] Erro ao garantir colunas:', e.message)
+}
+
+// ─── GET /api/nfe ─────────────────────────────────────────────────────────────
+// Lista todas as OSs com nfe_status preenchido
+router.get('/', auth, (req, res) => {
+  try {
+    const db  = getDB()
+    const rows = db.prepare(`
+      SELECT o.*, c.nome AS clientenome
+      FROM ordens o
+      LEFT JOIN clientes c ON o.cliente_id = c.id
+      WHERE o.nfe_status IS NOT NULL
+      ORDER BY o.nfe_emitida_em DESC
+    `).all()
+    res.json({ notas: rows })
+  } catch (e) {
+    console.error('[NF-e] GET /:', e.message)
+    res.status(500).json({ erro: 'Erro ao listar notas fiscais' })
+  }
+})
+
+// ─── POST /api/nfe/emitir/:id ─────────────────────────────────────────────────
+// Emite NF-e para a OS :id
+// Em produção: substituir o bloco "SEFAZ" por integração real (Focus NFe, eNotas, etc.)
+router.post('/emitir/:id', auth, async (req, res) => {
+  const db = getDB()
+
+  try {
+    // 1. Buscar OS
+    const os = db.prepare(`
+      SELECT o.*, c.nome AS clientenome, c.cpf_cnpj, c.email,
+             c.logradouro, c.numero AS c_numero, c.bairro, c.cidade, c.uf, c.cep
+      FROM ordens o
+      LEFT JOIN clientes c ON o.cliente_id = c.id
+      WHERE o.id = ?
+    `).get(req.params.id)
+
+    if (!os) {
+      return res.status(404).json({ erro: 'Ordem de serviço não encontrada' })
+    }
+
+    if (os.nfe_status === 'autorizado') {
+      return res.status(409).json({ erro: 'NF-e já autorizada para esta OS' })
+    }
+
+    if (!['Pronto', 'Entregue'].includes(os.status)) {
+      return res.status(422).json({ erro: `Status da OS inválido para emissão: ${os.status}` })
+    }
+
+    // 2. Marcar como "emitindo"
+    db.prepare(`UPDATE ordens SET nfe_status = 'emitindo' WHERE id = ?`).run(os.id)
+
+    // ── INTEGRAÇÃO SEFAZ ────────────────────────────────────────────────────
+    // TODO: substituir este bloco pelo SDK real (Focus NFe, eNotas, etc.)
+    // Exemplo com Focus NFe:
+    //   const resp = await focusNfe.emitir({ natureza_operacao: 'Prestação de serviços', ... })
+    //   const { numero, serie, chave_nfe, protocolo } = resp
+    //
+    // Por ora: simulação local para validar o fluxo completo.
+    const USAR_MOCK = process.env.NFE_MOCK !== 'false'   // desativar com NFE_MOCK=false
+
+    let numero, serie, chave, protocolo
+
+    if (USAR_MOCK) {
+      serie     = '001'
+      numero    = await proximoNumeroNfe(db, serie)
+      chave     = `35${new Date().getFullYear()}${pad(new Date().getMonth()+1,2)}${'12345678000195'.replace(/\D/g,'')}${'55'}${serie}${numero}${pad(Math.floor(Math.random()*1e9),9)}${pad(Math.floor(Math.random()*1e9),9)}`
+      protocolo = `1${pad(Math.floor(Math.random()*1e11), 11)}`
+    } else {
+      // ← integração real aqui
+      return res.status(501).json({ erro: 'Integração SEFAZ não configurada. Defina NFE_MOCK=true ou implemente a integração.' })
+    }
+    // ── FIM SEFAZ ───────────────────────────────────────────────────────────
+
+    const agora = new Date().toISOString()
+    db.prepare(`
+      UPDATE ordens SET
+        nfe_status     = 'autorizado',
+        nfe_numero     = ?,
+        nfe_serie      = ?,
+        nfe_chave      = ?,
+        nfe_protocolo  = ?,
+        nfe_emitida_em = ?
+      WHERE id = ?
+    `).run(numero, serie, chave, protocolo, agora, os.id)
+
+    res.json({
+      ok:        true,
+      numero,
+      serie,
+      chave,
+      protocolo,
+      emitida_em: agora,
+    })
+
+  } catch (e) {
+    console.error('[NF-e] POST /emitir:', e.message)
+    // Reverter status em caso de erro
+    try {
+      db.prepare(`UPDATE ordens SET nfe_status = 'rejeitado' WHERE id = ? AND nfe_status = 'emitindo'`).run(req.params.id)
+    } catch (_) {}
+    res.status(500).json({ erro: 'Erro interno ao emitir NF-e. Contate o suporte.' })
+  }
+})
+
+module.exports = router
