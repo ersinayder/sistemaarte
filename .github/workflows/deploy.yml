@@ -13,6 +13,8 @@ jobs:
       HOMEPATH: C:\Users\Administrator
       HOME: C:\Users\Administrator
       NODE_ENV: test
+      JAVA_HOME: C:\Program Files\Java\jdk-21
+      PATH: C:\Program Files\Java\jdk-21\bin;${{ env.PATH }}
 
     steps:
       - name: Checkout
@@ -39,6 +41,8 @@ jobs:
     env:
       HOMEPATH: C:\Users\Administrator
       HOME: C:\Users\Administrator
+      JAVA_HOME: C:\Program Files\Java\jdk-21
+      PATH: C:\Program Files\Java\jdk-21\bin;${{ env.PATH }}
 
     steps:
       - name: Checkout
@@ -90,8 +94,10 @@ jobs:
       - name: Install backend dependencies
         shell: powershell
         run: |
+          $env:JAVA_HOME = "C:\Program Files\Java\jdk-21"
+          $env:PATH = "C:\Program Files\Java\jdk-21\bin;" + $env:PATH
           Set-Location "C:\sistemaarte\backend"
-          npm install --production --prefer-offline --ignore-scripts
+          npm install --production --prefer-offline
 
       - name: Reload PM2 via ecosystem
         shell: powershell
