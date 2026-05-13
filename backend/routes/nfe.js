@@ -40,7 +40,7 @@ function emitente() {
 }
 
 // GET /api/nfe
-router.get('/', auth, (req, res) => {
+router.get('/', auth(), (req, res) => {
   try {
     const rows = getDB().prepare(`
       SELECT o.*, c.name AS clientenome
@@ -57,7 +57,7 @@ router.get('/', auth, (req, res) => {
 });
 
 // POST /api/nfe/emitir/:id
-router.post('/emitir/:id', auth, async (req, res) => {
+router.post('/emitir/:id', auth(), async (req, res) => {
   let respondido = false;
   const guardTimeout = setTimeout(() => {
     if (!respondido) {
