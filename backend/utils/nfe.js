@@ -36,14 +36,16 @@ async function getNFEWizard() {
 
   const wizard = new NFEWizard();
 
-  // v1.0.4: NFE_LoadEnvironment espera { config: { ... } }
+  // v1.0.4: usa pathCertificado (string) em vez de pfx (Buffer)
   await wizard.NFE_LoadEnvironment({
     config: {
-      pfx:        fs.readFileSync(resolvedPath),
-      passPhrase: certPass,
-      tpAmb:      process.env.NFE_AMBIENTE === 'producao' ? '1' : '2',
-      cUF:        '31',
-      axiosConfig: { timeout: SEFAZ_TIMEOUT_MS },
+      pathCertificado: resolvedPath,
+      senhaCertificado: certPass,
+      tpAmb:           process.env.NFE_AMBIENTE === 'producao' ? 1 : 2,
+      cUF:             31,
+      idCSC:           process.env.NFE_ID_CSC  || '',
+      CSC:             process.env.NFE_CSC     || '',
+      axiosConfig:     { timeout: SEFAZ_TIMEOUT_MS },
     },
   });
 
