@@ -131,7 +131,7 @@ router.post('/emitir/:id', auth(), async (req, res) => {
     console.log('[NF-e] Payload dest:', JSON.stringify(payload.dest));
     console.log('[NF-e] Payload det[0]:', JSON.stringify(payload.det?.[0]));
 
-    const wizard = getNFEWizard();
+    const wizard = await getNFEWizard();
     let resultado;
     try {
       // NFE_Autorizacao e o nome correto do metodo na nfewizard-io
