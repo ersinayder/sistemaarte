@@ -1,10 +1,10 @@
 'use strict';
-const express         = require('express');
-const router          = express.Router();
-const { getDB }       = require('../database');
-const { auth }        = require('../middlewares/auth');
-const { getNFEWizard } = require('../utils/nfe');
-const { montarNFe }   = require('../domain/nfeRules');
+const express          = require('express');
+const router           = express.Router();
+const { getDB }        = require('../database');
+const { auth }         = require('../middlewares/auth');
+const { getNFEWizard, callSEFAZ } = require('../utils/nfe');
+const { montarNFe }    = require('../domain/nfeRules');
 
 function pad(n, len) { return String(n).padStart(len, '0'); }
 
@@ -27,9 +27,9 @@ function emitente() {
     enderEmit: {
       xLgr:    process.env.NFE_LOGRADOURO    || '',
       nro:     process.env.NFE_NUMERO        || 'S/N',
-      xBairro: process.env.NFE_BAIRRO       || '',
+      xBairro: process.env.NFE_BAIRRO        || '',
       cMun:    process.env.NFE_COD_MUNICIPIO || '3127701',
-      xMun:    process.env.NFE_MUNICIPIO    || 'IPATINGA',
+      xMun:    process.env.NFE_MUNICIPIO     || 'IPATINGA',
       UF:      'MG',
       CEP:     (process.env.NFE_CEP  || '').replace(/\D/g, ''),
       fone:    (process.env.NFE_FONE || '').replace(/\D/g, ''),
@@ -97,15 +97,20 @@ router.post('/emitir/:id', auth, async (req, res) => {
       serie,
     });
 
-    const wizard    = getNFEWizard();
-    const resultado = await wizard.NFeAutorizacao({ NFe: payload });
+    console.log(`[NF-e] Iniciando emissao OS#${os.id} numero=${numero} tpAmb=${process.env.NFE_AMBIENTE === 'producao' ? '1(PROD)' : '2(HOMOL)'}`);
 
-    const cStat     = String(resultado?.cStat || resultado?.retEnviNFe?.infRec?.cStat || '');
+    const wizard    = getNFEWizard();
+    const resultado = await callSEFAZ(() => wizard.NFeAutorizacao({ NFe: payload }));
+
+    console.log(`[NF-e] Resposta SEFAZ:`, JSON.stringify(resultado).slice(0, 300));
+
+    const cStat      = String(resultado?.cStat || resultado?.retEnviNFe?.infRec?.cStat || '');
     const autorizado = cStat === '100';
 
     if (!autorizado) {
       const motivo = resultado?.xMotivo || resultado?.retEnviNFe?.xMotivo || `cStat ${cStat}`;
       db.prepare(`UPDATE ordens SET nfe_status = 'rejeitado' WHERE id = ?`).run(os.id);
+      console.error(`[NF-e] Rejeitado OS#${os.id}: cStat=${cStat} motivo=${motivo}`);
       return res.status(422).json({ erro: `SEFAZ rejeitou: ${motivo}`, cStat });
     }
 
@@ -124,10 +129,11 @@ router.post('/emitir/:id', auth, async (req, res) => {
       WHERE id = ?
     `).run(numero, serie, chave, protocolo, agora, os.id);
 
+    console.log(`[NF-e] Autorizada OS#${os.id} chave=${chave} protocolo=${protocolo}`);
     res.json({ ok: true, numero, serie, chave, protocolo, emitida_em: agora });
 
   } catch (e) {
-    console.error('[NF-e] POST /emitir:', e.message, e.stack);
+    console.error('[NF-e] ERRO POST /emitir:', e.message);
     try {
       db.prepare(`UPDATE ordens SET nfe_status = 'rejeitado' WHERE id = ? AND nfe_status = 'emitindo'`)
         .run(req.params.id);
