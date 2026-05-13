@@ -1,9 +1,9 @@
 'use strict';
 
 /**
- * utils/nfe.js – Singleton do NFEWizard.
- * O .pfx é lido do disco UMA vez e cacheado em memória.
- * Use resetNFEWizard() após upload de novo certificado.
+ * utils/nfe.js - Singleton do NFEWizard.
+ * O .pfx e lido do disco UMA vez e cacheado em memoria.
+ * Use resetNFEWizard() apos upload de novo certificado.
  */
 
 const fs   = require('fs');
@@ -11,7 +11,6 @@ const path = require('path');
 
 let _wizard = null;
 
-// Timeout para requisições ao SEFAZ (ms)
 const SEFAZ_TIMEOUT_MS = 30_000;
 
 function getNFEWizard() {
@@ -21,42 +20,50 @@ function getNFEWizard() {
   const certPass = process.env.NFE_CERT_PASSWORD;
 
   if (!certPath || !certPass)
-    throw new Error('NFE_CERT_PATH ou NFE_CERT_PASSWORD não configurados no .env');
+    throw new Error('NFE_CERT_PATH ou NFE_CERT_PASSWORD nao configurados no .env');
 
   const resolvedPath = path.resolve(certPath);
   if (!fs.existsSync(resolvedPath))
-    throw new Error(`Certificado não encontrado: ${resolvedPath}`);
+    throw new Error(`Certificado nao encontrado: ${resolvedPath}`);
 
-  const NFEWizard = require('nfewizard-io');
+  let NFEWizard;
+  try {
+    NFEWizard = require('nfewizard-io');
+  } catch (e) {
+    throw new Error(`nfewizard-io nao instalado ou com erro de import: ${e.message}`);
+  }
+
+  // Suporte a modulos ESM exportando default
+  if (NFEWizard && NFEWizard.default) NFEWizard = NFEWizard.default;
 
   _wizard = new NFEWizard({
     pfx:        fs.readFileSync(resolvedPath),
     passPhrase: certPass,
     tpAmb:      process.env.NFE_AMBIENTE === 'producao' ? '1' : '2',
-    cUF:        '31', // MG
-    // Timeout para conexão HTTP com SEFAZ via axios
+    cUF:        '31',
     axiosConfig: {
       timeout: SEFAZ_TIMEOUT_MS,
     },
   });
 
+  console.log('[NF-e] NFEWizard singleton criado. tpAmb=', process.env.NFE_AMBIENTE === 'producao' ? '1(PROD)' : '2(HOMOL)');
   return _wizard;
 }
 
-/**
- * Executa uma chamada ao SEFAZ com timeout garantido.
- * Uso: await callSEFAZ(() => wizard.NFeAutorizacao(...))
- */
 async function callSEFAZ(fn) {
+  const GUARD = SEFAZ_TIMEOUT_MS + 5_000;
   const timeout = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error(`Timeout SEFAZ (${SEFAZ_TIMEOUT_MS / 1000}s) — verifique conectividade com a SEFAZ-MG`)), SEFAZ_TIMEOUT_MS + 5_000)
+    setTimeout(
+      () => reject(new Error(`Timeout SEFAZ (${SEFAZ_TIMEOUT_MS / 1000}s) - sem resposta da SEFAZ-MG`)),
+      GUARD
+    )
   );
   return Promise.race([fn(), timeout]);
 }
 
-/** Limpa o singleton – chamar após upload de novo .pfx */
 function resetNFEWizard() {
   _wizard = null;
+  console.log('[NF-e] Singleton resetado.');
 }
 
 module.exports = { getNFEWizard, resetNFEWizard, callSEFAZ };

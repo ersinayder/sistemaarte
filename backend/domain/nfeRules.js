@@ -7,9 +7,31 @@
  */
 
 function montarDest(cliente) {
-  const dest = { xNome: (cliente?.name || 'CONSUMIDOR FINAL').toUpperCase() };
+  const dest = { xNome: (cliente?.clientenome || cliente?.name || 'CONSUMIDOR FINAL').toUpperCase() };
   const cpf = (cliente?.cpf || '').replace(/\D/g, '');
-  if (cpf.length === 11) dest.CPF = cpf;
+
+  if (cpf.length === 11) {
+    dest.CPF = cpf;
+    // Endereco do destinatario (obrigatorio quando ha CPF)
+    if (cliente?.logradouro) {
+      dest.enderDest = {
+        xLgr:    (cliente.logradouro || '').toUpperCase(),
+        nro:     (cliente.c_numero   || cliente.numero || 'S/N').toUpperCase(),
+        xBairro: (cliente.bairro     || 'CENTRO').toUpperCase(),
+        cMun:    cliente.cod_municipio || '3127701',
+        xMun:    (cliente.cidade     || 'IPATINGA').toUpperCase(),
+        UF:      (cliente.uf         || 'MG').toUpperCase(),
+        CEP:     (cliente.cep        || '').replace(/\D/g, ''),
+        cPais:   '1058',
+        xPais:   'BRASIL',
+      };
+    }
+    dest.indIEDest = '9';
+  } else {
+    // Consumidor final sem CPF/CNPJ valido
+    dest.indIEDest = '9';
+  }
+
   return dest;
 }
 
@@ -17,8 +39,8 @@ function montarImpostoSimples(item) {
   return {
     ICMS: {
       ICMSSN400: {
-        orig:  String(item.origem_fiscal ?? 0),
-        CSOSN: item.csosn || '400',
+        orig:  String(item.origem_fiscal ?? '0'),
+        CSOSN: String(item.csosn || '400'),
       },
     },
     PIS: {
@@ -46,12 +68,12 @@ function montarItem(item, nItem) {
       NCM:      ncm,
       CFOP:     cfop,
       uCom:     (item.unidade || 'UN').toUpperCase(),
-      qCom:     String(qtd),
+      qCom:     qtd.toFixed(4),
       vUnCom:   vUnit.toFixed(10),
       vProd:    vProd,
       cEANTrib: 'SEM GTIN',
       uTrib:    (item.unidade || 'UN').toUpperCase(),
-      qTrib:    String(qtd),
+      qTrib:    qtd.toFixed(4),
       vUnTrib:  vUnit.toFixed(10),
       indTot:   '1',
     },
@@ -78,16 +100,6 @@ function calcularTotais(itens) {
   };
 }
 
-/**
- * @param {object} opts
- * @param {object}   opts.ordem    – registro da tabela ordens
- * @param {object[]} opts.itens    – itens com colunas de produtos joinadas
- * @param {object}   opts.cliente  – registro da tabela clientes (pode ser null)
- * @param {object}   opts.emitente – dados do emitente (CNPJ, IE, endereço, etc.)
- * @param {number}   opts.numero   – próximo número sequencial NF-e
- * @param {string}   opts.serie    – série (ex: '1')
- * @returns {object} payload pronto para wizard.NFeAutorizacao({ NFe: payload })
- */
 function montarNFe({ ordem, itens, cliente, emitente, numero, serie }) {
   const tpAmb = process.env.NFE_AMBIENTE === 'producao' ? '1' : '2';
 

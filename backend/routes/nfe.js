@@ -58,8 +58,28 @@ router.get('/', auth, (req, res) => {
 
 // POST /api/nfe/emitir/:id
 router.post('/emitir/:id', auth, async (req, res) => {
+  // Guard: garante resposta em qualquer cenario em ate 40s
+  let respondido = false;
+  const guardTimeout = setTimeout(() => {
+    if (!respondido) {
+      respondido = true;
+      console.error(`[NF-e] Guard timeout disparado para OS#${req.params.id}`);
+      res.status(504).json({ erro: 'Timeout interno: SEFAZ sem resposta apos 40s' });
+    }
+  }, 40_000);
+
   const db = getDB();
   try {
+    // Validacao de env ANTES de qualquer operacao
+    if (!process.env.NFE_CERT_PATH || !process.env.NFE_CERT_PASSWORD) {
+      clearTimeout(guardTimeout); respondido = true;
+      return res.status(500).json({ erro: 'Certificado nao configurado: NFE_CERT_PATH ou NFE_CERT_PASSWORD ausentes no .env' });
+    }
+    if (!process.env.NFE_CNPJ_EMITENTE) {
+      clearTimeout(guardTimeout); respondido = true;
+      return res.status(500).json({ erro: 'NFE_CNPJ_EMITENTE nao configurado no .env' });
+    }
+
     const os = db.prepare(`
       SELECT o.*, c.name AS clientenome, c.cpf, c.logradouro,
              c.numero AS c_numero, c.bairro, c.cidade, c.uf, c.cep
@@ -68,10 +88,18 @@ router.post('/emitir/:id', auth, async (req, res) => {
       WHERE o.id = ?
     `).get(req.params.id);
 
-    if (!os)                                    return res.status(404).json({ erro: 'OS nao encontrada' });
-    if (os.nfe_status === 'autorizado')          return res.status(409).json({ erro: 'NF-e ja autorizada para esta OS' });
-    if (!['Pronto', 'Entregue'].includes(os.status))
+    if (!os) {
+      clearTimeout(guardTimeout); respondido = true;
+      return res.status(404).json({ erro: 'OS nao encontrada' });
+    }
+    if (os.nfe_status === 'autorizado') {
+      clearTimeout(guardTimeout); respondido = true;
+      return res.status(409).json({ erro: 'NF-e ja autorizada para esta OS' });
+    }
+    if (!['Pronto', 'Entregue'].includes(os.status)) {
+      clearTimeout(guardTimeout); respondido = true;
       return res.status(422).json({ erro: `Status invalido para emissao: ${os.status}` });
+    }
 
     const itens = db.prepare(`
       SELECT oi.*, p.nome, p.ncm, p.cfop, p.unidade, p.origem_fiscal, p.csosn
@@ -80,8 +108,10 @@ router.post('/emitir/:id', auth, async (req, res) => {
       WHERE oi.ordem_id = ?
     `).all(os.id);
 
-    if (!itens.length)
+    if (!itens.length) {
+      clearTimeout(guardTimeout); respondido = true;
       return res.status(422).json({ erro: 'OS nao possui itens - nao e possivel emitir NF-e' });
+    }
 
     db.prepare(`UPDATE ordens SET nfe_status = 'emitindo' WHERE id = ?`).run(os.id);
 
@@ -97,21 +127,48 @@ router.post('/emitir/:id', auth, async (req, res) => {
       serie,
     });
 
-    console.log(`[NF-e] Iniciando emissao OS#${os.id} numero=${numero} tpAmb=${process.env.NFE_AMBIENTE === 'producao' ? '1(PROD)' : '2(HOMOL)'}`);
+    const tpAmbLabel = process.env.NFE_AMBIENTE === 'producao' ? '1(PROD)' : '2(HOMOL)';
+    console.log(`[NF-e] Iniciando emissao OS#${os.id} numero=${numero} tpAmb=${tpAmbLabel}`);
+    console.log('[NF-e] Payload ide:', JSON.stringify(payload.ide));
+    console.log('[NF-e] Payload dest:', JSON.stringify(payload.dest));
+    console.log('[NF-e] Payload det[0]:', JSON.stringify(payload.det?.[0]));
 
-    const wizard    = getNFEWizard();
-    const resultado = await callSEFAZ(() => wizard.NFeAutorizacao({ NFe: payload }));
+    const wizard = getNFEWizard();
+    let resultado;
+    try {
+      resultado = await callSEFAZ(() => wizard.NFeAutorizacao({ NFe: payload }));
+    } catch (sefazErr) {
+      console.error('[NF-e] Erro na chamada SEFAZ:', sefazErr.message);
+      db.prepare(`UPDATE ordens SET nfe_status = 'rejeitado' WHERE id = ? AND nfe_status = 'emitindo'`).run(os.id);
+      if (!respondido) {
+        clearTimeout(guardTimeout); respondido = true;
+        return res.status(504).json({ erro: 'Sem resposta da SEFAZ', detalhe: sefazErr.message });
+      }
+      return;
+    }
 
-    console.log(`[NF-e] Resposta SEFAZ:`, JSON.stringify(resultado).slice(0, 300));
+    console.log(`[NF-e] Resposta SEFAZ (500 chars):`, JSON.stringify(resultado).slice(0, 500));
 
-    const cStat      = String(resultado?.cStat || resultado?.retEnviNFe?.infRec?.cStat || '');
+    const cStat = String(
+      resultado?.cStat ||
+      resultado?.retEnviNFe?.infRec?.cStat ||
+      resultado?.retEnviNFe?.protNFe?.infProt?.cStat ||
+      ''
+    );
     const autorizado = cStat === '100';
 
     if (!autorizado) {
-      const motivo = resultado?.xMotivo || resultado?.retEnviNFe?.xMotivo || `cStat ${cStat}`;
+      const motivo = resultado?.xMotivo ||
+                     resultado?.retEnviNFe?.xMotivo ||
+                     resultado?.retEnviNFe?.protNFe?.infProt?.xMotivo ||
+                     `cStat ${cStat || 'desconhecido'}`;
       db.prepare(`UPDATE ordens SET nfe_status = 'rejeitado' WHERE id = ?`).run(os.id);
       console.error(`[NF-e] Rejeitado OS#${os.id}: cStat=${cStat} motivo=${motivo}`);
-      return res.status(422).json({ erro: `SEFAZ rejeitou: ${motivo}`, cStat });
+      if (!respondido) {
+        clearTimeout(guardTimeout); respondido = true;
+        return res.status(422).json({ erro: `SEFAZ rejeitou: ${motivo}`, cStat });
+      }
+      return;
     }
 
     const chave     = resultado.chNFe    || resultado.retEnviNFe?.protNFe?.infProt?.chNFe    || '';
@@ -130,15 +187,21 @@ router.post('/emitir/:id', auth, async (req, res) => {
     `).run(numero, serie, chave, protocolo, agora, os.id);
 
     console.log(`[NF-e] Autorizada OS#${os.id} chave=${chave} protocolo=${protocolo}`);
-    res.json({ ok: true, numero, serie, chave, protocolo, emitida_em: agora });
+    if (!respondido) {
+      clearTimeout(guardTimeout); respondido = true;
+      res.json({ ok: true, numero, serie, chave, protocolo, emitida_em: agora });
+    }
 
   } catch (e) {
-    console.error('[NF-e] ERRO POST /emitir:', e.message);
+    console.error('[NF-e] ERRO POST /emitir:', e.message, e.stack);
     try {
       db.prepare(`UPDATE ordens SET nfe_status = 'rejeitado' WHERE id = ? AND nfe_status = 'emitindo'`)
         .run(req.params.id);
     } catch (_) {}
-    res.status(500).json({ erro: 'Erro interno ao emitir NF-e', detalhe: e.message });
+    if (!respondido) {
+      clearTimeout(guardTimeout); respondido = true;
+      res.status(500).json({ erro: 'Erro interno ao emitir NF-e', detalhe: e.message });
+    }
   }
 });
 
