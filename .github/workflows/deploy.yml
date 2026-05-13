@@ -45,7 +45,6 @@ jobs:
     env:
       HOMEPATH: C:\Users\Administrator
       HOME: C:\Users\Administrator
-      PM2_HOME: C:\Users\Administrator\.pm2
 
     steps:
       - name: Checkout
@@ -61,17 +60,6 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-
-      - name: Parar PM2 antes do sync
-        shell: powershell
-        run: |
-          $desc = pm2 describe sistemaarte-backend 2>&1
-          if ($desc -match 'online|stopped|errored|launching') {
-            Write-Host "Parando processo para liberar arquivos em disco"
-            pm2 stop sistemaarte-backend
-          } else {
-            Write-Host "Processo nao encontrado no daemon atual - prosseguindo"
-          }
 
       - name: Install frontend dependencies
         working-directory: frontend
@@ -102,8 +90,6 @@ jobs:
             /XD node_modules data `
             /XF .env *.db
           if ($LASTEXITCODE -le 7) { exit 0 } else { exit $LASTEXITCODE }
-          Write-Host "=== Validacao kpis.js ==="
-          Get-Content "C:\sistemaarte\backend\routes\kpis.js" | Select-String 'idleTimer' | Select-Object -First 5
 
       - name: Install backend dependencies
         shell: powershell
@@ -111,21 +97,13 @@ jobs:
           Set-Location "C:\sistemaarte\backend"
           npm install --omit=dev --prefer-offline
 
-      - name: Iniciar ou reiniciar PM2
+      - name: Sinalizar restart via sentinela
         shell: powershell
         run: |
-          Set-Location "C:\sistemaarte\backend"
-          $desc = pm2 describe sistemaarte-backend 2>&1
-          if ($desc -match 'online|stopped|errored|launching') {
-            Write-Host "Reiniciando processo existente"
-            pm2 restart sistemaarte-backend --update-env
-          } else {
-            Write-Host "Iniciando processo pela primeira vez"
-            pm2 start ecosystem.config.js --only sistemaarte-backend --env production
-            pm2 save
-          }
-          Start-Sleep -Seconds 3
-          pm2 list
+          $sentinel = "C:\sistemaarte\backend\.deploy-trigger"
+          [System.IO.File]::WriteAllText($sentinel, (Get-Date -Format 'o'))
+          Write-Host "Sentinela gravado: $sentinel"
+          Write-Host "PM2-DeployRestart vai detectar em ate 1 minuto e reiniciar o processo."
 
       - name: Concluido
         shell: powershell
