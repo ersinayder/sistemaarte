@@ -27,7 +27,6 @@ async function getNFEWizard() {
     throw new Error(`nfewizard-io nao instalado ou com erro de import: ${e.message}`);
   }
 
-  // A lib exporta NFeWizard (F minusculo) e tambem default
   const NFEWizard = nfewizardModule.NFeWizard
     || nfewizardModule.default?.NFeWizard
     || nfewizardModule.default;
@@ -37,12 +36,15 @@ async function getNFEWizard() {
 
   const wizard = new NFEWizard();
 
+  // v1.0.4: NFE_LoadEnvironment espera { config: { ... } }
   await wizard.NFE_LoadEnvironment({
-    pfx:        fs.readFileSync(resolvedPath),
-    passPhrase: certPass,
-    tpAmb:      process.env.NFE_AMBIENTE === 'producao' ? '1' : '2',
-    cUF:        '31',
-    axiosConfig: { timeout: SEFAZ_TIMEOUT_MS },
+    config: {
+      pfx:        fs.readFileSync(resolvedPath),
+      passPhrase: certPass,
+      tpAmb:      process.env.NFE_AMBIENTE === 'producao' ? '1' : '2',
+      cUF:        '31',
+      axiosConfig: { timeout: SEFAZ_TIMEOUT_MS },
+    },
   });
 
   _wizard = wizard;
