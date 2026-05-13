@@ -103,7 +103,7 @@ router.post('/emitir/:id', auth(), async (req, res) => {
       SELECT oi.*, p.nome, p.ncm, p.cfop, p.unidade, p.origem_fiscal, p.csosn
       FROM ordem_itens oi
       LEFT JOIN produtos p ON oi.produto_id = p.id
-      WHERE oi.ordem_id = ?
+      WHERE oi.ordemid = ?
     `).all(os.id);
 
     if (!itens.length) {
