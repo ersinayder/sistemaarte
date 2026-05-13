@@ -58,7 +58,6 @@ router.get('/', auth, (req, res) => {
 
 // POST /api/nfe/emitir/:id
 router.post('/emitir/:id', auth, async (req, res) => {
-  // Guard: garante resposta em qualquer cenario em ate 40s
   let respondido = false;
   const guardTimeout = setTimeout(() => {
     if (!respondido) {
@@ -70,10 +69,9 @@ router.post('/emitir/:id', auth, async (req, res) => {
 
   const db = getDB();
   try {
-    // Validacao de env ANTES de qualquer operacao
     if (!process.env.NFE_CERT_PATH || !process.env.NFE_CERT_PASSWORD) {
       clearTimeout(guardTimeout); respondido = true;
-      return res.status(500).json({ erro: 'Certificado nao configurado: NFE_CERT_PATH ou NFE_CERT_PASSWORD ausentes no .env' });
+      return res.status(500).json({ erro: 'NFE_CERT_PATH ou NFE_CERT_PASSWORD ausentes no .env' });
     }
     if (!process.env.NFE_CNPJ_EMITENTE) {
       clearTimeout(guardTimeout); respondido = true;
@@ -136,7 +134,8 @@ router.post('/emitir/:id', auth, async (req, res) => {
     const wizard = getNFEWizard();
     let resultado;
     try {
-      resultado = await callSEFAZ(() => wizard.NFeAutorizacao({ NFe: payload }));
+      // NFE_Autorizacao e o nome correto do metodo na nfewizard-io
+      resultado = await callSEFAZ(() => wizard.NFE_Autorizacao({ NFe: payload }));
     } catch (sefazErr) {
       console.error('[NF-e] Erro na chamada SEFAZ:', sefazErr.message);
       db.prepare(`UPDATE ordens SET nfe_status = 'rejeitado' WHERE id = ? AND nfe_status = 'emitindo'`).run(os.id);
