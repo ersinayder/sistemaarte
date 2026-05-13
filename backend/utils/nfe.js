@@ -1,11 +1,5 @@
 'use strict';
 
-/**
- * utils/nfe.js - Singleton do NFEWizard.
- * O .pfx e lido do disco UMA vez e cacheado em memoria.
- * Use resetNFEWizard() apos upload de novo certificado.
- */
-
 const fs   = require('fs');
 const path = require('path');
 
@@ -13,7 +7,7 @@ let _wizard = null;
 
 const SEFAZ_TIMEOUT_MS = 30_000;
 
-function getNFEWizard() {
+async function getNFEWizard() {
   if (_wizard) return _wizard;
 
   const certPath = process.env.NFE_CERT_PATH;
@@ -33,20 +27,21 @@ function getNFEWizard() {
     throw new Error(`nfewizard-io nao instalado ou com erro de import: ${e.message}`);
   }
 
-  // Suporte a modulos ESM exportando default
   if (NFEWizard && NFEWizard.default) NFEWizard = NFEWizard.default;
 
-  _wizard = new NFEWizard({
+  const wizard = new NFEWizard();
+
+  await wizard.NFE_LoadEnvironment({
     pfx:        fs.readFileSync(resolvedPath),
     passPhrase: certPass,
     tpAmb:      process.env.NFE_AMBIENTE === 'producao' ? '1' : '2',
     cUF:        '31',
-    axiosConfig: {
-      timeout: SEFAZ_TIMEOUT_MS,
-    },
+    axiosConfig: { timeout: SEFAZ_TIMEOUT_MS },
   });
 
-  console.log('[NF-e] NFEWizard singleton criado. tpAmb=', process.env.NFE_AMBIENTE === 'producao' ? '1(PROD)' : '2(HOMOL)');
+  _wizard = wizard;
+  console.log('[NF-e] NFEWizard singleton criado e ambiente carregado. tpAmb=',
+    process.env.NFE_AMBIENTE === 'producao' ? '1(PROD)' : '2(HOMOL)');
   return _wizard;
 }
 
