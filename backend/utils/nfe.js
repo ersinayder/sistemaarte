@@ -20,14 +20,20 @@ async function getNFEWizard() {
   if (!fs.existsSync(resolvedPath))
     throw new Error(`Certificado nao encontrado: ${resolvedPath}`);
 
-  let NFEWizard;
+  let nfewizardModule;
   try {
-    NFEWizard = require('nfewizard-io');
+    nfewizardModule = require('nfewizard-io');
   } catch (e) {
     throw new Error(`nfewizard-io nao instalado ou com erro de import: ${e.message}`);
   }
 
-  if (NFEWizard && NFEWizard.default) NFEWizard = NFEWizard.default;
+  // A lib exporta NFeWizard (F minusculo) e tambem default
+  const NFEWizard = nfewizardModule.NFeWizard
+    || nfewizardModule.default?.NFeWizard
+    || nfewizardModule.default;
+
+  if (typeof NFEWizard !== 'function')
+    throw new Error(`Erro ao inicializar a lib: NFeWizard nao e uma funcao. Exports: ${Object.keys(nfewizardModule).join(', ')}`);
 
   const wizard = new NFEWizard();
 
