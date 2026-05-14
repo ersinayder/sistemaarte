@@ -138,6 +138,10 @@ backend/
 │   ├── dates.js             # hoje() — retorna YYYY-MM-DD no fuso America/Sao_Paulo
 │   ├── numbers.js           # toNumber(), validarNaoNegativo()
 │   └── whatsapp.js          # sendWhatsApp(), sendWhatsAppConfirmacao()
+├── data/
+│   ├── oficina.db           # banco principal (não commitado)
+│   ├── backups/             # rotação 7 arquivos — backup diário 2h BRT
+│   └── nfe_xmls/            # XMLs de NF-e — retenção legal 5 anos (não commitado)
 ├── database.js              # initDB, WAL, schema, migrations, backup
 ├── ecosystem.config.js      # PM2 — carrega .env, injeta todas as vars
 └── server.js                # Entry point — CORS, rotas, SPA fallback, errorHandler
@@ -179,15 +183,15 @@ frontend/src/
 ```js
 const config = {
   dfe: {
-    pathCertificado: 'C:\\caminho\\para\\certificado.pfx',  // dentro de dfe, NÃO na raiz
-    senhaCertificado: 'senha',                               // dentro de dfe, NÃO na raiz
+    pathCertificado: path.resolve('backend/certs/certificado.pfx'), // usar path.resolve(), nunca string hardcoded com barras
+    senhaCertificado: process.env.NFE_CERT_SENHA,
   },
   nfe: {
-    ambiente: 2,          // number: 1=produção, 2=homologação — NÃO string
-    versaoDF: '4.00',     // string obrigatória
+    ambiente: Number(process.env.NFE_AMBIENTE_NUM), // number: 1=produção, 2=homologação — NÃO string
+    versaoDF: '4.00',
   },
   lib: {
-    useOpenSSL: false,    // Windows não tem openssl no PATH — SEMPRE false no servidor Windows
+    useOpenSSL: false, // Windows não tem openssl no PATH — SEMPRE false no servidor Windows
   },
 };
 ```
@@ -196,6 +200,7 @@ const config = {
 - `pathCertificado` e `senhaCertificado` ficam dentro de `config.dfe`, **não** na raiz do objeto
 - `config.nfe.ambiente` deve ser **number** (`1` ou `2`), não string (`'2'` vai rejeitar)
 - `config.lib.useOpenSSL = false` é obrigatório no Windows — a lib tenta chamar `openssl` do PATH e quebra
+- No `ecosystem.config.js`, caminhos do `.pfx` usam `\\` duplo. No código, **sempre usar `path.resolve()`** em vez de concatenação manual de strings — evita problemas com barra simples vs. dupla no Windows
 
 ### Tributação — Simples Nacional
 
@@ -241,6 +246,69 @@ console.log(infProt.cStat, infProt.xMotivo); // 100 = autorizado
 - A resposta **é** um array — sempre acessar `resultado[0]`
 - `infProt.cStat === 100` = nota autorizada com sucesso
 
+### 🔒 Concorrência — fila simples com `nfe_status`
+
+A emissão SEFAZ leva **2–8 segundos**. Se dois usuários tentarem emitir a mesma OS simultaneamente, ocorre race condition com lock no SQLite (single-writer). **Solução obrigatória antes do go-live:**
+
+```js
+// Antes de chamar NFE_Autorizacao:
+const bloqueio = db.prepare(
+  "UPDATE notas_fiscais SET nfe_status='emitindo' WHERE id=? AND nfe_status NOT IN ('emitindo','autorizada')"
+).run(nfeId);
+
+if (bloqueio.changes === 0) {
+  return res.status(409).json({ error: 'Nota já está sendo emitida ou já foi autorizada.' });
+}
+
+// ... chama NFE_Autorizacao ...
+
+// Ao finalizar (sucesso ou erro), atualizar nfe_status para 'autorizada' ou 'erro'
+```
+
+Valores válidos para `nfe_status`: `'pendente'`, `'emitindo'`, `'autorizada'`, `'cancelada'`, `'erro'`.
+
+### 🗄️ Armazenamento de XML — obrigação legal (5 anos)
+
+O XML da NF-e autorizada **deve ser armazenado por 5 anos** (obrigação fiscal). Estratégia dupla:
+
+1. **Banco:** salvar no campo `nfe_xml TEXT` da tabela de notas (garante consulta rápida)
+2. **Arquivo:** salvar em `backend/data/nfe_xmls/{chave_nfe}.xml` (garante sobrevivência a futuras migrações de banco)
+
+O backup diário às 2h BRT já cobre `backend/data/` — o diretório `nfe_xmls/` **deve estar incluído** no mesmo backup e **nunca** ser adicionado ao `.gitignore`. Verificar que o `robocopy` do deploy não sobrescreve esse diretório.
+
+### ✏️ Carta de Correção e Cancelamento
+
+| Evento | Prazo | Função nfewizard-io |
+|---|---|---|
+| Cancelamento | Até 24h após autorização (168h se sem circulação) | `NFeRecepcaoEvento` com `tpEvento: '110111'` |
+| Carta de Correção (CC-e) | Até 720h (30 dias) | `NFeRecepcaoEvento` com `tpEvento: '110110'` |
+
+**Implementar `NFeRecepcaoEvento` (cancelamento) antes de ir para produção** — sem isso, qualquer nota emitida incorretamente exige contato manual com a SEFAZ.
+
+### 🔌 Contingência
+
+O `nfewizard-io` suporta emissão em contingência (DPEC/offline) quando o webservice da SEFAZ está indisponível. **Para o MVP atual**, é aceitável retornar erro amigável:
+
+```js
+// Em caso de timeout/erro de rede com a SEFAZ:
+return res.status(503).json({
+  error: 'Serviço da SEFAZ temporariamente indisponível. Aguarde alguns minutos e tente novamente.',
+  contingencia: false,
+});
+```
+
+Implementar contingência real é backlog — documentar para o usuário que a emissão deve ser retentada manualmente.
+
+### 🚀 Checklist de go-live (homologação → produção)
+
+- [ ] Mínimo **10 NF-es bem-sucedidas** em homologação (`NFE_AMBIENTE_NUM=2`)
+- [ ] Implementar cancelamento (`NFeRecepcaoEvento`) antes de emitir em produção
+- [ ] Verificar que `backend/data/nfe_xmls/` está no backup e fora do `.gitignore`
+- [ ] Implementar fila com `nfe_status='emitindo'` para bloquear duplicatas
+- [ ] Alterar `NFE_AMBIENTE_NUM=1` no `.env` do servidor
+- [ ] Reiniciar PM2: `pm2 restart sistemaarte-backend` (necessário para recarregar vars do `.env`)
+- [ ] Emitir primeira nota real de baixo valor para validar
+
 ---
 
 ## Armadilhas conhecidas
@@ -263,6 +331,10 @@ console.log(infProt.cStat, infProt.xMotivo); // 100 = autorizado
 | NF-e: `dhEmi` com milissegundos | SEFAZ rejeita o formato | Usar `.replace(/\.\d{3}Z$/, '-03:00')` |
 | NF-e: `useOpenSSL: true` no Windows | Crash — `openssl` não está no PATH | Setar `config.lib.useOpenSSL = false` |
 | NF-e: `resultado` não é indexado | `resultado.protNFe` undefined | Resposta é array — acessar `resultado[0].protNFe.infProt` |
+| NF-e: emissão simultânea | Race condition + SQLite lock (2–8s por emissão) | Coluna `nfe_status='emitindo'` como mutex antes do webservice |
+| NF-e: XML não salvo | Obrigação legal 5 anos — multa fiscal | Salvar em `nfe_xml` no banco E em `backend/data/nfe_xmls/` |
+| NF-e: path do .pfx com barra | Crash silencioso no Windows | Sempre usar `path.resolve()` — nunca string hardcoded |
+| NF-e: go-live sem `pm2 restart` | `.env` não recarrega — continua em homologação | `pm2 restart sistemaarte-backend` após alterar `NFE_AMBIENTE_NUM` |
 
 ---
 
@@ -276,6 +348,9 @@ Itens validados mas não implementados ainda (features novas, não bugs):
 | 12 | SSE: limitar por `userId` (máx 3/usuário) | Evitar monopolização de conexões |
 | 13 | Paginação no `GET /api/ordens` (`?page=&limit=`) | Escala com volume crescente |
 | 9 | Backup: gravar `backup-status.json` + endpoint `/api/backup/status` | Observabilidade de falhas |
+| 14 | NF-e: cancelamento via `NFeRecepcaoEvento` | Obrigatório antes do go-live em produção |
+| 15 | NF-e: fila com `nfe_status='emitindo'` | Bloquear duplicatas em emissão simultânea |
+| 16 | NF-e: contingência DPEC/offline | Disponibilidade quando SEFAZ estiver fora |
 
 ---
 
