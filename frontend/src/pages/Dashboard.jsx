@@ -430,17 +430,17 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── KPIs mensais */}
+      {/* ── KPIs mensais — usa fmt para valor completo com centavos */}
       <div className="dash-kpi-grid">
         <KPI label="Total do Mês"
-          value={fmtShort(dados?.total)}
+          value={fmt(dados?.total)}
           sub={`${dados?.count || 0} lançamentos`}
           accent="var(--color-primary)" />
         <KPI label="Faturamento Hoje"
-          value={fmtShort(dados?.hoje)}
+          value={fmt(dados?.hoje)}
           sub="dia atual" accent="var(--color-blue)" />
         <KPI label="Ticket Médio"
-          value={fmtShort(dados?.ticket_medio || dados?.ticketmedio)}
+          value={fmt(dados?.ticket_medio || dados?.ticketmedio)}
           sub="por lançamento" accent="var(--color-gold)" />
         <KPI label="OS em Aberto"
           value={dados?.ordensabertas ?? 0}
