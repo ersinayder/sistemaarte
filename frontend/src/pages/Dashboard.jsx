@@ -284,15 +284,11 @@ export default function Dashboard() {
           gap: var(--space-4);
         }
 
-        /* ── Live grid: 6 cards em 2 linhas de 3 (padrão ≥ 1100px: linha única de 6+faturado) */
+        /* ── Live grid: 6 cards em linha única */
         .dash-live-grid {
           display: grid;
           grid-template-columns: repeat(6, 1fr);
           gap: var(--space-3);
-        }
-        /* Faturado Hoje fica na mesma linha mas com coluna simples */
-        .dash-live-faturado {
-          grid-column: span 1;
         }
 
         /* ── KPI mensal: 4 colunas */
@@ -317,29 +313,19 @@ export default function Dashboard() {
           align-items: start;
         }
 
-        /* ── Telas médias: 1024px–1280px (monitor 19" com sidebar 220px) */
+        /* ── Telas médias: 1024px–1280px */
         @media (max-width: 1280px) {
-          /* Live: 3 colunas → 2 linhas de 3 */
           .dash-live-grid {
             grid-template-columns: repeat(3, 1fr);
             gap: var(--space-2);
           }
-          .dash-live-faturado {
-            grid-column: span 1;
-          }
-
-          /* KPI mensal: 2 colunas */
           .dash-kpi-grid {
             grid-template-columns: repeat(2, 1fr);
             gap: var(--space-2);
           }
-
-          /* Gráficos: mantém 2 colunas */
           .dash-charts-grid {
             gap: var(--space-3);
           }
-
-          /* Bottom: 1 coluna */
           .dash-bottom-grid {
             grid-template-columns: 1fr;
             gap: var(--space-3);
@@ -357,35 +343,23 @@ export default function Dashboard() {
         /* ── Mobile (≤ 600px) */
         @media (max-width: 600px) {
           .dash-root         { gap: var(--space-3); }
-
           .dash-live-grid {
             grid-template-columns: repeat(3, 1fr);
             gap: var(--space-2);
           }
-          .dash-live-faturado {
-            grid-column: span 1;
-          }
-
           .dash-kpi-grid {
             grid-template-columns: repeat(2, 1fr);
             gap: var(--space-2);
           }
-
           .dash-charts-grid  { grid-template-columns: 1fr; gap: var(--space-3); }
           .dash-bottom-grid  { grid-template-columns: 1fr; gap: var(--space-3); }
-
           .hide-mobile       { display: none !important; }
           .dash-header-input { font-size: 11px !important; padding: 4px 8px !important; }
         }
 
         /* ── Mobile pequeno (≤ 380px) */
         @media (max-width: 380px) {
-          .dash-live-grid {
-            grid-template-columns: repeat(2, 1fr);
-          }
-          .dash-live-faturado {
-            grid-column: span 2;
-          }
+          .dash-live-grid { grid-template-columns: repeat(2, 1fr); }
         }
       `}</style>
 
@@ -453,14 +427,6 @@ export default function Dashboard() {
             accent="var(--color-purple)"
             sub={live?.abertasHoje != null ? `${live.abertasHoje} abertas hoje` : undefined}
           />
-          <div className="dash-live-faturado">
-            <LiveKPI
-              label="Faturado Hoje"
-              value={live?.faturamentoHoje != null ? fmtShort(live.faturamentoHoje) : '—'}
-              accent="var(--color-orange)"
-              pulse
-            />
-          </div>
         </div>
       </div>
 

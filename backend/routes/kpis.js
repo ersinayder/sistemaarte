@@ -13,7 +13,7 @@ function calcKpis() {
 
   const emProducao = getOne(
     `SELECT COUNT(*) AS n FROM ordens
-     WHERE status = 'Em Produ\u00e7\u00e3o' AND deletedat IS NULL`
+     WHERE status = 'Em Produção' AND deletedat IS NULL`
   )?.n ?? 0;
 
   const prontas = getOne(
@@ -42,17 +42,6 @@ function calcKpis() {
     [hj]
   )?.n ?? 0;
 
-  const faturamentoHoje = getOne(
-    `SELECT COALESCE(SUM(l.valor),0) AS total
-     FROM lancamentos l
-     WHERE l.pago = 1 AND l.valor > 0
-       AND date(l.data) = ?
-       AND l.deletedat IS NULL
-       AND (l.ordemid IS NULL OR
-         (SELECT deletedat FROM ordens WHERE id=l.ordemid) IS NULL)`,
-    [hj]
-  )?.total ?? 0;
-
   const abertasHoje = getOne(
     `SELECT COUNT(*) AS n FROM ordens
      WHERE date(createdat) = ? AND deletedat IS NULL`,
@@ -66,7 +55,6 @@ function calcKpis() {
     aguardando,
     vencidas,
     entreguesHoje,
-    faturamentoHoje: Number(faturamentoHoje),
     abertasHoje,
     ts: Date.now()
   };
@@ -90,7 +78,7 @@ const MAX_SSE = 10;
 
 router.get("/stream", auth(), (req, res) => {
   if (activeSSE >= MAX_SSE) {
-    return res.status(429).json({ error: `Limite de streams atingido (m\u00e1x ${MAX_SSE})` });
+    return res.status(429).json({ error: `Limite de streams atingido (máx ${MAX_SSE})` });
   }
 
   activeSSE++;
@@ -100,7 +88,6 @@ router.get("/stream", auth(), (req, res) => {
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
 
-  // Declarar todas as variaveis antes de qualquer closure que as referencie
   let closed       = false;
   let idleTimer    = null;
   let dataTimer    = null;
