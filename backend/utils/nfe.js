@@ -1,5 +1,17 @@
 'use strict';
 
+/**
+ * utils/nfe.js
+ * Singleton do NFEWizard para nfewizard-io v1.0.4.
+ *
+ * Estrutura de config descoberta lendo @nfewizard/shared/dist/index.cjs:
+ *   config.dfe.pathCertificado, config.dfe.senhaCertificado, config.dfe.UF
+ *   config.nfe.ambiente  (1=producao, 2=homologacao)
+ *   config.nfe.versaoDF  ('4.00')
+ *   config.lib.useOpenSSL = false  (usa node-forge, sem openssl do sistema)
+ *   config.lib.connection.timeout
+ */
+
 const fs   = require('fs');
 const path = require('path');
 
@@ -34,24 +46,40 @@ async function getNFEWizard() {
   if (typeof NFEWizard !== 'function')
     throw new Error(`Erro ao inicializar a lib: NFeWizard nao e uma funcao. Exports: ${Object.keys(nfewizardModule).join(', ')}`);
 
-  const wizard = new NFEWizard();
+  let libVersion = '0.0.0';
+  try { libVersion = require('nfewizard-io/package.json').version; } catch (_) {}
+  console.log('[NF-e] nfewizard-io versao:', libVersion);
 
-  // v1.0.4: usa pathCertificado (string) em vez de pfx (Buffer)
-  await wizard.NFE_LoadEnvironment({
-    config: {
-      pathCertificado: resolvedPath,
+  const wizard = new NFEWizard();
+  const tpAmb  = process.env.NFE_AMBIENTE === 'producao' ? 1 : 2;
+
+  const configObj = {
+    dfe: {
+      pathCertificado:  resolvedPath,
       senhaCertificado: certPass,
-      tpAmb:           process.env.NFE_AMBIENTE === 'producao' ? 1 : 2,
-      cUF:             31,
-      idCSC:           process.env.NFE_ID_CSC  || '',
-      CSC:             process.env.NFE_CSC     || '',
-      axiosConfig:     { timeout: SEFAZ_TIMEOUT_MS },
+      UF:               'MG',
+      idCSC:            process.env.NFE_ID_CSC || '',
+      CSC:              process.env.NFE_CSC    || '',
     },
-  });
+    nfe: {
+      ambiente: tpAmb,
+      versaoDF: '4.00',
+    },
+    lib: {
+      useOpenSSL: false,
+      connection: { timeout: SEFAZ_TIMEOUT_MS },
+    },
+  };
+
+  try {
+    await wizard.NFE_LoadEnvironment({ config: configObj });
+  } catch (e) {
+    throw new Error(`Erro ao inicializar a lib: ${e.message}`);
+  }
 
   _wizard = wizard;
   console.log('[NF-e] NFEWizard singleton criado e ambiente carregado. tpAmb=',
-    process.env.NFE_AMBIENTE === 'producao' ? '1(PROD)' : '2(HOMOL)');
+    tpAmb === 1 ? '1(PROD)' : '2(HOMOL)');
   return _wizard;
 }
 

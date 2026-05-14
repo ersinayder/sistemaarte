@@ -1,10 +1,10 @@
 'use strict';
-const express          = require('express');
-const router           = express.Router();
-const { getDB }        = require('../database');
-const { auth }         = require('../middlewares/auth');
+const express       = require('express');
+const router        = express.Router();
+const { getDB }     = require('../database');
+const { auth }      = require('../middlewares/auth');
 const { getNFEWizard, callSEFAZ } = require('../utils/nfe');
-const { montarNFe }    = require('../domain/nfeRules');
+const { montarNFe } = require('../domain/nfeRules');
 
 function pad(n, len) { return String(n).padStart(len, '0'); }
 
@@ -116,6 +116,7 @@ router.post('/emitir/:id', auth(), async (req, res) => {
     const serie  = '1';
     const numero = proximoNumero(db, serie);
 
+    // montarNFe retorna { infNFe: { ide, emit, dest, det, total, transp, pag } }
     const payload = montarNFe({
       ordem:    os,
       itens,
@@ -127,15 +128,19 @@ router.post('/emitir/:id', auth(), async (req, res) => {
 
     const tpAmbLabel = process.env.NFE_AMBIENTE === 'producao' ? '1(PROD)' : '2(HOMOL)';
     console.log(`[NF-e] Iniciando emissao OS#${os.id} numero=${numero} tpAmb=${tpAmbLabel}`);
-    console.log('[NF-e] Payload ide:', JSON.stringify(payload.ide));
-    console.log('[NF-e] Payload dest:', JSON.stringify(payload.dest));
-    console.log('[NF-e] Payload det[0]:', JSON.stringify(payload.det?.[0]));
+    console.log('[NF-e] Payload ide:', JSON.stringify(payload.infNFe.ide));
+    console.log('[NF-e] Payload dest:', JSON.stringify(payload.infNFe.dest));
+    console.log('[NF-e] Payload det[0]:', JSON.stringify(payload.infNFe.det?.[0]));
 
     const wizard = await getNFEWizard();
     let resultado;
     try {
-      // NFE_Autorizacao e o nome correto do metodo na nfewizard-io
-      resultado = await callSEFAZ(() => wizard.NFE_Autorizacao({ NFe: payload }));
+      // Estrutura: { idLote, indSinc, NFe: { infNFe: {...} } }
+      resultado = await callSEFAZ(() => wizard.NFE_Autorizacao({
+        idLote:  numero,
+        indSinc: 1,
+        NFe:     payload,
+      }));
     } catch (sefazErr) {
       console.error('[NF-e] Erro na chamada SEFAZ:', sefazErr.message);
       db.prepare(`UPDATE ordens SET nfe_status = 'rejeitado' WHERE id = ? AND nfe_status = 'emitindo'`).run(os.id);
@@ -148,19 +153,30 @@ router.post('/emitir/:id', auth(), async (req, res) => {
 
     console.log(`[NF-e] Resposta SEFAZ (500 chars):`, JSON.stringify(resultado).slice(0, 500));
 
-    const cStat = String(
-      resultado?.cStat ||
-      resultado?.retEnviNFe?.infRec?.cStat ||
-      resultado?.retEnviNFe?.protNFe?.infProt?.cStat ||
-      ''
-    );
+    // v1.0.4 retorna array de xmls — extrai cStat/chave/protocolo do primeiro
+    let cStat = '', chave = '', protocolo = '', agora = new Date().toISOString();
+
+    if (Array.isArray(resultado)) {
+      const prot = resultado[0]?.protNFe?.infProt || resultado[0]?.infProt || resultado[0];
+      cStat     = String(prot?.cStat    || '');
+      chave     = prot?.chNFe           || '';
+      protocolo = prot?.nProt           || '';
+      agora     = prot?.dhRecbto        || agora;
+    } else {
+      cStat     = String(resultado?.cStat || resultado?.retEnviNFe?.protNFe?.infProt?.cStat || '');
+      chave     = resultado?.chNFe        || resultado?.retEnviNFe?.protNFe?.infProt?.chNFe || '';
+      protocolo = resultado?.nProt        || resultado?.retEnviNFe?.protNFe?.infProt?.nProt || '';
+      agora     = resultado?.dhRecbto     || agora;
+    }
+
     const autorizado = cStat === '100';
 
     if (!autorizado) {
-      const motivo = resultado?.xMotivo ||
-                     resultado?.retEnviNFe?.xMotivo ||
-                     resultado?.retEnviNFe?.protNFe?.infProt?.xMotivo ||
-                     `cStat ${cStat || 'desconhecido'}`;
+      const motivo = resultado?.[0]?.protNFe?.infProt?.xMotivo
+        || resultado?.xMotivo
+        || resultado?.retEnviNFe?.xMotivo
+        || resultado?.retEnviNFe?.protNFe?.infProt?.xMotivo
+        || `cStat ${cStat || 'desconhecido'}`;
       db.prepare(`UPDATE ordens SET nfe_status = 'rejeitado' WHERE id = ?`).run(os.id);
       console.error(`[NF-e] Rejeitado OS#${os.id}: cStat=${cStat} motivo=${motivo}`);
       if (!respondido) {
@@ -169,10 +185,6 @@ router.post('/emitir/:id', auth(), async (req, res) => {
       }
       return;
     }
-
-    const chave     = resultado.chNFe    || resultado.retEnviNFe?.protNFe?.infProt?.chNFe    || '';
-    const protocolo = resultado.nProt    || resultado.retEnviNFe?.protNFe?.infProt?.nProt    || '';
-    const agora     = resultado.dhRecbto || new Date().toISOString();
 
     db.prepare(`
       UPDATE ordens SET
