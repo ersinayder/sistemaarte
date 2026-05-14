@@ -4,7 +4,7 @@ import Sidebar from './Sidebar'
 import { useTheme } from '../hooks/useTheme'
 import { useAuth } from '../context/AuthContext'
 
-const ROLE_LABEL = { admin: 'Administrador', caixa: 'Caixa', oficina: 'Oficina' }
+const ROLE_LABEL = { admin: 'Admin', caixa: 'Caixa', oficina: 'Oficina' }
 const ROLE_COLOR = { admin: 'var(--color-purple)', caixa: 'var(--color-primary)', oficina: 'var(--color-orange)' }
 
 export default function Layout() {
@@ -14,25 +14,18 @@ export default function Layout() {
 
   return (
     <div className="app-layout">
+      {/* Sidebar — visível apenas ≥ 768px */}
       <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(c => !c)} />
 
       <div className="main-wrapper">
         {/* Topbar */}
         <header className="topbar">
-          {/* Data */}
-          <span style={{
-            fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)',
-            padding: 'var(--space-1) var(--space-3)',
-            background: 'var(--color-surface-dynamic)',
-            borderRadius: 'var(--radius-full)',
-            whiteSpace: 'nowrap',
-          }}>
+          <span className="topbar-date">
             {new Date().toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })}
           </span>
 
           <div style={{ flex: 1 }} />
 
-          {/* Perfil badge */}
           <span style={{
             fontSize: 'var(--text-xs)', fontWeight: 600,
             color: ROLE_COLOR[user?.role],
@@ -41,10 +34,11 @@ export default function Layout() {
             borderRadius: 'var(--radius-full)',
           }}>
             {ROLE_LABEL[user?.role]}
+            <span className="topbar-username"> · {user?.name}</span>
           </span>
 
-          {/* Theme toggle */}
-          <button className="btn btn-icon btn-ghost" onClick={toggle} aria-label="Alternar tema">
+          <button className="btn btn-icon btn-ghost" onClick={toggle} aria-label="Alternar tema"
+            style={{ width: 36, height: 36 }}>
             {theme === 'dark'
               ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <circle cx="12" cy="12" r="5"/>

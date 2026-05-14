@@ -21,6 +21,7 @@ const ICONS = {
   clientes:  { d: 'M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2', d2: 'M12 11a4 4 0 100-8 4 4 0 000 8z' },
   produtos:  { d: 'M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z', d2: 'M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12' },
   nfe:       { d: 'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z', d2: 'M14 2v6h6M9 13h6M9 17h4' },
+  mais:      { d: 'M4 6h16M4 12h16M4 18h16' },
 }
 
 const ROLE_LABEL = { admin: 'Administrador', caixa: 'Caixa', oficina: 'Oficina' }
@@ -66,6 +67,10 @@ export default function Sidebar({ collapsed, onToggle }) {
   const handleSwitch = () => { switchUser(); navigate('/login'); toast('Faça login com outro usuário') }
   const handleLogout = () => { logout(); navigate('/login'); toast('Sessão encerrada') }
 
+  const isAdmin   = user?.role === 'admin'
+  const isCaixa   = user?.role === 'caixa'
+  const isOficina = user?.role === 'oficina'
+
   const navItem = (to, label, iconKey) => (
     <NavLink to={to} className={({ isActive }) => `sidebar-nav-item${isActive ? ' active' : ''}`} title={collapsed ? label : undefined}>
       <Icon {...ICONS[iconKey]} />
@@ -89,79 +94,116 @@ export default function Sidebar({ collapsed, onToggle }) {
     ? <span className="nav-section">{label}</span>
     : <span className="nav-section-divider" />
 
-  const isAdmin   = user?.role === 'admin'
-  const isCaixa   = user?.role === 'caixa'
-  const isOficina = user?.role === 'oficina'
+  // ── Bottom Nav (mobile ≤ 767px) ──────────────────────────
+  const bottomNavItems = isOficina
+    ? [
+        { to: '/oficina', label: 'Oficina', icon: 'oficina' },
+      ]
+    : [
+        { to: '/dashboard', label: 'Resumo',  icon: 'resumo' },
+        { to: '/ordens',    label: 'Ordens',   icon: 'ordens',    badge: vencidas },
+        { to: '/caixa',     label: 'Caixa',    icon: 'caixa' },
+        { to: '/oficina',   label: 'Oficina',  icon: 'oficina' },
+        { to: '/clientes',  label: 'Clientes', icon: 'clientes' },
+      ]
 
   return (
-    <aside className={`sidebar${collapsed ? ' collapsed' : ''}`}>
-      <div className="sidebar-header" onClick={onToggle}
-        style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: collapsed ? 'var(--space-3) 0' : 'var(--space-6) var(--space-3) var(--space-4)', gap: 'var(--space-2)', borderBottom: '1px solid var(--color-divider)', position: 'relative' }}
-      >
-        {!collapsed
-          ? <img key={logoSrc} src={logoSrc} alt="Arte & Molduras" style={{ width: '100%', maxWidth: 148, height: 'auto', objectFit: 'contain', display: 'block' }} onError={e => { e.target.src = '/logo.png' }} />
-          : <img key={logoSrc + '-sm'} src={logoSrc} alt="Arte & Molduras" style={{ width: 32, height: 32, objectFit: 'contain', borderRadius: 'var(--radius-sm)' }} onError={e => { e.target.src = '/logo.png' }} />
-        }
-        <button className="btn btn-icon btn-ghost"
-          style={{ position: collapsed ? 'static' : 'absolute', bottom: collapsed ? undefined : 'var(--space-2)', right: collapsed ? undefined : 'var(--space-2)', width: 24, height: 24, opacity: 0.5 }}
-          aria-label={collapsed ? 'Expandir menu' : 'Recolher menu'}
+    <>
+      {/* ── Sidebar desktop (≥ 768px) */}
+      <aside className={`sidebar${collapsed ? ' collapsed' : ''}`}>
+        <div className="sidebar-header" onClick={onToggle}
+          style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: collapsed ? 'var(--space-3) 0' : 'var(--space-6) var(--space-3) var(--space-4)', gap: 'var(--space-2)', borderBottom: '1px solid var(--color-divider)', position: 'relative' }}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            {collapsed ? <path d="M9 18l6-6-6-6"/> : <path d="M15 18l-6-6 6-6"/>}
-          </svg>
-        </button>
-      </div>
+          {!collapsed
+            ? <img key={logoSrc} src={logoSrc} alt="Arte & Molduras" style={{ width: '100%', maxWidth: 148, height: 'auto', objectFit: 'contain', display: 'block' }} onError={e => { e.target.src = '/logo.png' }} />
+            : <img key={logoSrc + '-sm'} src={logoSrc} alt="Arte & Molduras" style={{ width: 32, height: 32, objectFit: 'contain', borderRadius: 'var(--radius-sm)' }} onError={e => { e.target.src = '/logo.png' }} />
+          }
+          <button className="btn btn-icon btn-ghost"
+            style={{ position: collapsed ? 'static' : 'absolute', bottom: collapsed ? undefined : 'var(--space-2)', right: collapsed ? undefined : 'var(--space-2)', width: 24, height: 24, opacity: 0.5 }}
+            aria-label={collapsed ? 'Expandir menu' : 'Recolher menu'}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              {collapsed ? <path d="M9 18l6-6-6-6"/> : <path d="M15 18l-6-6 6-6"/>}
+            </svg>
+          </button>
+        </div>
 
-      <nav className="sidebar-nav" style={{ paddingTop: 'var(--space-3)' }}>
-        {isOficina && navItem('/oficina', 'Fila da Oficina', 'oficina')}
-        {(isAdmin || isCaixa) && (
-          <>
-            {section('Operação')}
-            {navItem('/dashboard', 'Resumo', 'resumo')}
-            {navItem('/caixa', 'Caixa', 'caixa')}
-            {navItemBadge('/ordens', 'Ordens de Serviço', 'ordens', vencidas)}
-            {navItem('/orcamento', 'Orçamento', 'orcamento')}
+        <nav className="sidebar-nav" style={{ paddingTop: 'var(--space-3)' }}>
+          {isOficina && navItem('/oficina', 'Fila da Oficina', 'oficina')}
+          {(isAdmin || isCaixa) && (
+            <>
+              {section('Operação')}
+              {navItem('/dashboard', 'Resumo', 'resumo')}
+              {navItem('/caixa', 'Caixa', 'caixa')}
+              {navItemBadge('/ordens', 'Ordens de Serviço', 'ordens', vencidas)}
+              {navItem('/orcamento', 'Orçamento', 'orcamento')}
 
-            {section('Fiscal')}
-            {navItem('/nfe', 'Notas Fiscais', 'nfe')}
+              {section('Fiscal')}
+              {navItem('/nfe', 'Notas Fiscais', 'nfe')}
 
-            {section('Produção')}
-            {navItem('/oficina', 'Fila da Oficina', 'oficina')}
+              {section('Produção')}
+              {navItem('/oficina', 'Fila da Oficina', 'oficina')}
 
-            {section('Análise')}
-            {navItem('/relatorios', 'Relatórios', 'relat')}
+              {section('Análise')}
+              {navItem('/relatorios', 'Relatórios', 'relat')}
 
-            {section('Cadastros')}
-            {navItem('/clientes', 'Clientes', 'clientes')}
-            {navItem('/produtos', 'Produtos', 'produtos')}
-            {isAdmin && navItem('/usuarios', 'Usuários', 'usuarios')}
-          </>
-        )}
-      </nav>
-
-      <div className="sidebar-footer">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', padding: 'var(--space-2) var(--space-3)', background: 'var(--color-surface-offset)', borderRadius: 'var(--radius-lg)', marginBottom: 'var(--space-2)' }}>
-          <div style={{ width: 28, height: 28, borderRadius: '50%', background: ROLE_COLOR[user?.role] || 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: 12, flexShrink: 0 }}>
-            {user?.name?.[0]?.toUpperCase() || '?'}
-          </div>
-          {!collapsed && (
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: 'var(--text-xs)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name}</div>
-              <div style={{ fontSize: 10, color: ROLE_COLOR[user?.role], fontWeight: 600 }}>{ROLE_LABEL[user?.role]}</div>
-            </div>
+              {section('Cadastros')}
+              {navItem('/clientes', 'Clientes', 'clientes')}
+              {navItem('/produtos', 'Produtos', 'produtos')}
+              {isAdmin && navItem('/usuarios', 'Usuários', 'usuarios')}
+            </>
           )}
+        </nav>
+
+        <div className="sidebar-footer">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', padding: 'var(--space-2) var(--space-3)', background: 'var(--color-surface-offset)', borderRadius: 'var(--radius-lg)', marginBottom: 'var(--space-2)' }}>
+            <div style={{ width: 28, height: 28, borderRadius: '50%', background: ROLE_COLOR[user?.role] || 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: 12, flexShrink: 0 }}>
+              {user?.name?.[0]?.toUpperCase() || '?'}
+            </div>
+            {!collapsed && (
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 'var(--text-xs)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name}</div>
+                <div style={{ fontSize: 10, color: ROLE_COLOR[user?.role], fontWeight: 600 }}>{ROLE_LABEL[user?.role]}</div>
+              </div>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
+            <button className="btn btn-ghost btn-sm" onClick={handleSwitch} title="Trocar usuário" style={{ flex: 1, justifyContent: 'center', fontSize: 'var(--text-xs)' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6"/></svg>
+              {!collapsed && <span>Trocar</span>}
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={handleLogout} title="Sair" style={{ flex: 1, justifyContent: 'center', fontSize: 'var(--text-xs)', color: 'var(--color-error)' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+              {!collapsed && <span>Sair</span>}
+            </button>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
-          <button className="btn btn-ghost btn-sm" onClick={handleSwitch} title="Trocar usuário" style={{ flex: 1, justifyContent: 'center', fontSize: 'var(--text-xs)' }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6"/></svg>
-            {!collapsed && <span>Trocar</span>}
-          </button>
-          <button className="btn btn-ghost btn-sm" onClick={handleLogout} title="Sair" style={{ flex: 1, justifyContent: 'center', fontSize: 'var(--text-xs)', color: 'var(--color-error)' }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
-            {!collapsed && <span>Sair</span>}
-          </button>
-        </div>
-      </div>
-    </aside>
+      </aside>
+
+      {/* ── Bottom Nav mobile (< 768px) */}
+      <nav className="bottom-nav">
+        {bottomNavItems.map(item => (
+          <NavLink key={item.to} to={item.to}
+            className={({ isActive }) => `bottom-nav-item${isActive ? ' active' : ''}`}
+          >
+            <span className="bottom-nav-icon" style={{ position: 'relative' }}>
+              <Icon {...ICONS[item.icon]} />
+              {(item.badge || 0) > 0 && (
+                <span style={{ position: 'absolute', top: -4, right: -6, minWidth: 16, height: 16, borderRadius: 8, background: 'var(--color-notification)', color: '#fff', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px' }}>
+                  {item.badge > 99 ? '99+' : item.badge}
+                </span>
+              )}
+            </span>
+            <span className="bottom-nav-label">{item.label}</span>
+          </NavLink>
+        ))}
+        <button className="bottom-nav-item" onClick={handleLogout} style={{ background: 'none', border: 'none', color: 'var(--color-error)' }}>
+          <span className="bottom-nav-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+          </span>
+          <span className="bottom-nav-label">Sair</span>
+        </button>
+      </nav>
+    </>
   )
 }
