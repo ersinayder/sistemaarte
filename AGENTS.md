@@ -132,6 +132,7 @@ backend/
 │   ├── clientes.js          # CRUD clientes
 │   ├── produtos.js          # CRUD produtos/estoque
 │   ├── relatorios.js        # Relatórios financeiros
+│   ├── nfe.js               # Emissão de NF-e via nfewizard-io
 │   └── backup.js            # Trigger manual de backup
 ├── utils/
 │   ├── dates.js             # hoje() — retorna YYYY-MM-DD no fuso America/Sao_Paulo
@@ -169,6 +170,79 @@ frontend/src/
 
 ---
 
+## NF-e — nfewizard-io (homologado ✅)
+
+> Integração testada e com nota aprovada na SEFAZ. Versão: `nfewizard-io@1.0.4`.
+
+### Configuração correta do objeto `config`
+
+```js
+const config = {
+  dfe: {
+    pathCertificado: 'C:\\caminho\\para\\certificado.pfx',  // dentro de dfe, NÃO na raiz
+    senhaCertificado: 'senha',                               // dentro de dfe, NÃO na raiz
+  },
+  nfe: {
+    ambiente: 2,          // number: 1=produção, 2=homologação — NÃO string
+    versaoDF: '4.00',     // string obrigatória
+  },
+  lib: {
+    useOpenSSL: false,    // Windows não tem openssl no PATH — SEMPRE false no servidor Windows
+  },
+};
+```
+
+**Armadilhas críticas de configuração:**
+- `pathCertificado` e `senhaCertificado` ficam dentro de `config.dfe`, **não** na raiz do objeto
+- `config.nfe.ambiente` deve ser **number** (`1` ou `2`), não string (`'2'` vai rejeitar)
+- `config.lib.useOpenSSL = false` é obrigatório no Windows — a lib tenta chamar `openssl` do PATH e quebra
+
+### Tributação — Simples Nacional
+
+| Campo | Valor correto | ❌ Errado |
+|---|---|---|
+| `ICMS.CST` (CSOSN 400) | `ICMSSN102` | `ICMSSN400` — não existe no schema SEFAZ |
+| PIS regime SN | `PISNT` com `CST: '07'` | `PISAliq`, `PISNT` com outro CST |
+| COFINS regime SN | `COFINSNT` com `CST: '07'` | `COFINSAliq`, `COFINSNT` com outro CST |
+
+> `ICMSSN400` **não existe** no XSD da SEFAZ. Usar sempre `ICMSSN102` para CSOSN 400.
+
+### Formatação de `dhEmi`
+
+```js
+// UTC-3 sem milissegundos — formato exigido pela SEFAZ
+const now = new Date();
+const dhEmi = new Date(now.getTime() - 3 * 60 * 60 * 1000)
+  .toISOString()
+  .replace(/\.\d{3}Z$/, '-03:00');
+// Resultado: '2025-05-14T09:22:00-03:00'
+```
+
+Nunca passar `new Date().toISOString()` direto — a SEFAZ rejeita milissegundos e UTC puro (`Z`).
+
+### Chamada de autorização
+
+```js
+const resultado = await NFE_Autorizacao({
+  idLote: '1',
+  indSinc: 1,
+  NFe: {
+    infNFe: { /* dados da nota */ }
+  }
+});
+
+// resultado é um array — acessar índice 0
+const infProt = resultado[0].protNFe.infProt;
+console.log(infProt.cStat, infProt.xMotivo); // 100 = autorizado
+```
+
+**Armadilhas:**
+- `NFE_Autorizacao` recebe `{ idLote, indSinc, NFe: { infNFe: {...} } }` — não envolver em array
+- A resposta **é** um array — sempre acessar `resultado[0]`
+- `infProt.cStat === 100` = nota autorizada com sucesso
+
+---
+
 ## Armadilhas conhecidas
 
 | Situação | Problema | Solução |
@@ -183,6 +257,12 @@ frontend/src/
 | Saldo inline no PUT caixa | Diverge de `getResumoFinanceiroOS` | Sempre usar `getResumoFinanceiroOS()` — nunca reimplementar |
 | `'Cancelada'` em queries SQL | Alias legado — banco já normalizado | Usar somente `'Cancelado'` em cláusulas WHERE/IN |
 | `saldoaberto` negativo | Estornos podem exceder total | SEL_ORDEM usa `CASE WHEN < 0 THEN 0.0` |
+| NF-e: `pathCertificado` na raiz | lib ignora o certificado silenciosamente | Colocar dentro de `config.dfe` |
+| NF-e: `ambiente` como string | SEFAZ rejeita / lib não conecta | Usar `number`: `1` ou `2` |
+| NF-e: `ICMSSN400` | Não existe no XSD da SEFAZ — nota rejeitada | Usar `ICMSSN102` para CSOSN 400 |
+| NF-e: `dhEmi` com milissegundos | SEFAZ rejeita o formato | Usar `.replace(/\.\d{3}Z$/, '-03:00')` |
+| NF-e: `useOpenSSL: true` no Windows | Crash — `openssl` não está no PATH | Setar `config.lib.useOpenSSL = false` |
+| NF-e: `resultado` não é indexado | `resultado.protNFe` undefined | Resposta é array — acessar `resultado[0].protNFe.infProt` |
 
 ---
 
