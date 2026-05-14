@@ -56,25 +56,13 @@ const PAG_LABELS = {
 
 function KPI({ label, value, sub, accent }) {
   return (
-    <div style={{
-      background: 'var(--color-surface)',
-      border: '1px solid var(--color-border)',
-      borderRadius: 'var(--radius-xl)',
+    <div className="kpi-card" style={{
       borderTop: `3px solid ${accent || 'var(--color-primary)'}`,
-      padding: 'var(--space-4)',
-      boxShadow: 'var(--shadow-sm)',
-      display: 'flex', flexDirection: 'column', gap: 'var(--space-1)'
     }}>
-      <span style={{
-        fontSize: 'var(--text-xs)', fontWeight: 700,
-        color: 'var(--color-text-muted)',
-        textTransform: 'uppercase', letterSpacing: '0.07em'
-      }}>{label}</span>
-      <span style={{
-        fontSize: 'clamp(1.1rem, 1rem + 1.5vw, 1.8rem)', fontWeight: 800,
-        lineHeight: 1, fontVariantNumeric: 'tabular-nums',
-        color: accent || 'var(--color-text)'
-      }}>{value}</span>
+      <span className="kpi-label">{label}</span>
+      <span className="kpi-value" style={{ color: accent || 'var(--color-text)', fontSize: 'clamp(1.1rem, 1rem + 1.5vw, 1.8rem)' }}>
+        {value}
+      </span>
       {sub && <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)' }}>{sub}</span>}
     </div>
   )
@@ -87,32 +75,32 @@ function LiveKPI({ label, value, sub, accent, pulse }) {
       border: '1px solid var(--color-border)',
       borderRadius: 'var(--radius-lg)',
       borderTop: `3px solid ${accent || 'var(--color-primary)'}`,
-      padding: 'var(--space-3) var(--space-4)',
+      padding: 'var(--space-3) var(--space-3)',
       boxShadow: 'var(--shadow-sm)',
       display: 'flex', flexDirection: 'column', gap: 4,
-      position: 'relative', overflow: 'hidden'
+      position: 'relative', overflow: 'hidden', minWidth: 0
     }}>
       {pulse && (
         <span style={{
-          position: 'absolute', top: 8, right: 10,
-          width: 7, height: 7, borderRadius: '50%',
+          position: 'absolute', top: 8, right: 8,
+          width: 6, height: 6, borderRadius: '50%',
           background: accent || 'var(--color-primary)',
           boxShadow: `0 0 0 3px ${(accent || '#01696f')}33`,
           animation: 'kpi-pulse 2s infinite'
         }} />
       )}
       <span style={{
-        fontSize: 10, fontWeight: 700,
+        fontSize: 9, fontWeight: 700,
         color: 'var(--color-text-muted)',
         textTransform: 'uppercase', letterSpacing: '0.07em',
-        lineHeight: 1
+        lineHeight: 1, paddingRight: 14
       }}>{label}</span>
       <span style={{
-        fontSize: 'clamp(1.3rem, 1rem + 1.5vw, 1.8rem)', fontWeight: 800,
+        fontSize: 'clamp(1.1rem, 0.9rem + 1.5vw, 1.6rem)', fontWeight: 800,
         lineHeight: 1, fontVariantNumeric: 'tabular-nums',
         color: accent || 'var(--color-text)'
       }}>{value ?? '—'}</span>
-      {sub && <span style={{ fontSize: 10, color: 'var(--color-text-faint)', lineHeight: 1.2 }}>{sub}</span>}
+      {sub && <span style={{ fontSize: 9, color: 'var(--color-text-faint)', lineHeight: 1.2 }}>{sub}</span>}
     </div>
   )
 }
@@ -128,7 +116,7 @@ function ChartCard({ title, subtitle, children, style }) {
       ...style
     }}>
       <div style={{
-        padding: 'var(--space-4) var(--space-4) var(--space-3)',
+        padding: 'var(--space-3) var(--space-4)',
         borderBottom: '1px solid var(--color-divider)',
         display: 'flex', flexDirection: 'column', gap: 2
       }}>
@@ -141,7 +129,7 @@ function ChartCard({ title, subtitle, children, style }) {
           </span>
         )}
       </div>
-      <div style={{ padding: 'var(--space-4)' }}>{children}</div>
+      <div style={{ padding: 'var(--space-3) var(--space-4)' }}>{children}</div>
     </div>
   )
 }
@@ -233,7 +221,7 @@ export default function Dashboard() {
       x: {
         grid: { display: false },
         border: { display: false },
-        ticks: { color: C_TEXT_FAINT, font: { size: 10 }, maxTicksLimit: 8 }
+        ticks: { color: C_TEXT_FAINT, font: { size: 10 }, maxTicksLimit: 6 }
       },
       y: {
         grid: { color: C_DIVIDER, drawBorder: false },
@@ -260,7 +248,7 @@ export default function Dashboard() {
     plugins: {
       legend: {
         position: 'bottom',
-        labels: { color: C_TEXT_MUTED, font: { size: 11 }, padding: 10, boxWidth: 9, boxHeight: 9, borderRadius: 3, useBorderRadius: true }
+        labels: { color: C_TEXT_MUTED, font: { size: 10 }, padding: 8, boxWidth: 8, boxHeight: 8, borderRadius: 3, useBorderRadius: true }
       },
       tooltip: {
         backgroundColor: '#171614', titleColor: '#cdccca', bodyColor: C_TEXT_MUTED,
@@ -282,52 +270,106 @@ export default function Dashboard() {
   ).length
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+    <div className="dash-root">
 
       <style>{`
         @keyframes kpi-pulse {
           0%, 100% { opacity: 1; transform: scale(1); }
           50%       { opacity: 0.4; transform: scale(1.4); }
         }
-        /* Dashboard KPI grids — responsivos */
+
+        .dash-root {
+          display: flex;
+          flex-direction: column;
+          gap: var(--space-4);
+        }
+
+        /* ── Live grid: 4 colunas → 4 → 3 no mobile pequeno */
         .dash-live-grid {
           display: grid;
           grid-template-columns: repeat(4, 1fr);
           gap: var(--space-3);
         }
+        /* Faturado Hoje ocupa 2 colunas na linha do grid de 4 para ficar proporcional */
+        .dash-live-faturado {
+          grid-column: span 2;
+        }
+
+        /* ── KPI mensal: 4 colunas */
         .dash-kpi-grid {
           display: grid;
           grid-template-columns: repeat(4, 1fr);
           gap: var(--space-3);
         }
+
+        /* ── Gráficos: 2 colunas */
         .dash-charts-grid {
           display: grid;
           grid-template-columns: 1fr 1fr;
           gap: var(--space-4);
         }
+
+        /* ── Tabela + OS Tipo: 2 colunas */
         .dash-bottom-grid {
           display: grid;
           grid-template-columns: 1fr 1fr;
           gap: var(--space-4);
           align-items: start;
         }
-        /* Tablet */
+
+        /* ── Tablet (≤ 900px) */
         @media (max-width: 900px) {
-          .dash-live-grid  { grid-template-columns: repeat(4, 1fr); }
-          .dash-kpi-grid   { grid-template-columns: repeat(2, 1fr); }
-          .dash-bottom-grid { grid-template-columns: 1fr; }
+          .dash-live-grid    { grid-template-columns: repeat(4, 1fr); }
+          .dash-kpi-grid     { grid-template-columns: repeat(2, 1fr); }
+          .dash-bottom-grid  { grid-template-columns: 1fr; }
         }
-        /* Mobile */
+
+        /* ── Mobile (≤ 600px) */
         @media (max-width: 600px) {
-          .dash-live-grid  { grid-template-columns: repeat(2, 1fr); gap: var(--space-2); }
-          .dash-kpi-grid   { grid-template-columns: repeat(2, 1fr); gap: var(--space-2); }
-          .dash-charts-grid { grid-template-columns: 1fr; gap: var(--space-3); }
-          .dash-bottom-grid { grid-template-columns: 1fr; gap: var(--space-3); }
+          .dash-root         { gap: var(--space-3); }
+
+          /* Live KPIs: 3 colunas balanceadas — 6 cards ficam em 2 linhas de 3 */
+          .dash-live-grid {
+            grid-template-columns: repeat(3, 1fr);
+            gap: var(--space-2);
+          }
+          /* Faturado Hoje volta a ocupar 1 coluna no grid de 3 */
+          .dash-live-faturado {
+            grid-column: span 1;
+          }
+
+          /* KPI mensal: 2 colunas */
+          .dash-kpi-grid {
+            grid-template-columns: repeat(2, 1fr);
+            gap: var(--space-2);
+          }
+
+          /* Gráficos: 1 coluna */
+          .dash-charts-grid  { grid-template-columns: 1fr; gap: var(--space-3); }
+
+          /* Tabela+Tipo: 1 coluna */
+          .dash-bottom-grid  { grid-template-columns: 1fr; gap: var(--space-3); }
+
+          /* Esconde colunas secundárias da tabela */
+          .hide-mobile       { display: none !important; }
+
+          /* Cabeçalho do dashboard mais compacto */
+          .dash-header-input { font-size: 11px !important; padding: 4px 8px !important; }
+        }
+
+        /* ── Mobile pequeno (≤ 380px) */
+        @media (max-width: 380px) {
+          .dash-live-grid {
+            grid-template-columns: repeat(2, 1fr);
+          }
+          .dash-live-faturado {
+            grid-column: span 2;
+          }
         }
       `}</style>
 
       {/* ── Cabeçalho */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
         <div>
           <h1 style={{ fontSize: 'var(--text-lg)', fontWeight: 800, marginBottom: 2 }}>Dashboard</h1>
           <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', textTransform: 'capitalize' }}>
@@ -337,6 +379,7 @@ export default function Dashboard() {
         <input
           type="month" value={mesSel} max={getMesPadrao()}
           onChange={e => e.target.value && setMesSel(e.target.value)}
+          className="dash-header-input"
           style={{
             background: 'var(--color-surface)', border: '1px solid var(--color-border)',
             borderRadius: 'var(--radius-lg)', padding: 'var(--space-2) var(--space-3)',
@@ -347,7 +390,7 @@ export default function Dashboard() {
 
       {/* ── SEÇÃO AO VIVO */}
       <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-2)', flexWrap: 'wrap' }}>
           <span style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>Ao Vivo</span>
           <span style={{
             display: 'inline-flex', alignItems: 'center', gap: 4,
@@ -362,20 +405,20 @@ export default function Dashboard() {
               display: 'inline-block',
               animation: online ? 'kpi-pulse 2s infinite' : 'none'
             }} />
-            {online ? 'online' : 'polling'}
+            {online ? 'SSE conectado' : 'polling'}
           </span>
           {live?.ts && (
             <span style={{ fontSize: 10, color: 'var(--color-text-faint)' }}>
-              {new Date(live.ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+              atualizado {new Date(live.ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
             </span>
           )}
         </div>
 
         <div className="dash-live-grid">
-          <LiveKPI label="Abertas"       value={live?.abertas}      accent="var(--color-primary)"  pulse />
-          <LiveKPI label="Produção"      value={live?.emProducao}   accent="var(--color-blue)"     pulse />
-          <LiveKPI label="Prontas"       value={live?.prontas}      accent="var(--color-success)"  pulse />
-          <LiveKPI label="Aguardando"    value={live?.aguardando}   accent="var(--color-gold)"     pulse />
+          <LiveKPI label="OS Abertas"      value={live?.abertas}      accent="var(--color-primary)"  pulse />
+          <LiveKPI label="Em Produção"     value={live?.emProducao}   accent="var(--color-blue)"     pulse />
+          <LiveKPI label="Prontas"         value={live?.prontas}      accent="var(--color-success)"  pulse />
+          <LiveKPI label="Aguardando"      value={live?.aguardando}   accent="var(--color-gold)"     pulse />
           <LiveKPI
             label="Vencidas"
             value={live?.vencidas}
@@ -384,17 +427,19 @@ export default function Dashboard() {
             pulse={live?.vencidas > 0}
           />
           <LiveKPI
-            label="Entregues Hoje"
+            label="Entregas Hoje"
             value={live?.entreguesHoje}
             accent="var(--color-purple)"
-            sub={live?.abertasHoje != null ? `${live.abertasHoje} abertas` : undefined}
+            sub={live?.abertasHoje != null ? `${live.abertasHoje} abertas hoje` : undefined}
           />
-          <LiveKPI
-            label="Faturado Hoje"
-            value={live?.faturamentoHoje != null ? fmtShort(live.faturamentoHoje) : '—'}
-            accent="var(--color-orange)"
-            pulse
-          />
+          <div className="dash-live-faturado">
+            <LiveKPI
+              label="Faturado Hoje"
+              value={live?.faturamentoHoje != null ? fmtShort(live.faturamentoHoje) : '—'}
+              accent="var(--color-orange)"
+              pulse
+            />
+          </div>
         </div>
       </div>
 
@@ -404,7 +449,7 @@ export default function Dashboard() {
           value={fmtShort(dados?.total)}
           sub={`${dados?.count || 0} lançamentos`}
           accent="var(--color-primary)" />
-        <KPI label="Hoje"
+        <KPI label="Faturamento Hoje"
           value={fmtShort(dados?.hoje)}
           sub="dia atual" accent="var(--color-blue)" />
         <KPI label="Ticket Médio"
@@ -420,11 +465,11 @@ export default function Dashboard() {
       <div className="dash-charts-grid">
         <ChartCard title="Faturamento Diário" subtitle={`${mesNome}`}>
           {dados?.dias?.length ? (
-            <div style={{ height: 200 }}>
+            <div style={{ height: 180 }}>
               <Line data={lineData} options={lineOptions} plugins={[gradientPlugin]} />
             </div>
           ) : (
-            <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)' }}>Sem dados</span>
             </div>
           )}
@@ -432,9 +477,9 @@ export default function Dashboard() {
 
         <ChartCard title="Por Pagamento" subtitle="Distribuição do mês">
           {pagValues.length ? (
-            <div style={{ height: 200 }}><Doughnut data={doughnutData} options={doughnutOptions} /></div>
+            <div style={{ height: 180 }}><Doughnut data={doughnutData} options={doughnutOptions} /></div>
           ) : (
-            <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)' }}>Sem dados</span>
             </div>
           )}
@@ -463,7 +508,7 @@ export default function Dashboard() {
             </button>
           </div>
           <div className="table-wrap">
-            <table>
+            <table className="table">
               <thead>
                 <tr>
                   <th>OS</th>
@@ -478,7 +523,7 @@ export default function Dashboard() {
                 {ordensRecentes.length ? ordensRecentes.map(o => (
                   <tr key={o.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/ordens/${o.id}`)}>
                     <td style={{ fontWeight: 700, color: 'var(--color-primary)', whiteSpace: 'nowrap' }}>{o.numero}</td>
-                    <td style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <td style={{ maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {o.cliente_nome || o.clientenome || o.cliente?.nome || '—'}
                     </td>
                     <td className="hide-mobile">
@@ -526,13 +571,6 @@ export default function Dashboard() {
           )}
         </ChartCard>
       </div>
-
-      {/* Esconde colunas menos importantes no mobile */}
-      <style>{`
-        @media (max-width: 600px) {
-          .hide-mobile { display: none; }
-        }
-      `}</style>
     </div>
   )
 }

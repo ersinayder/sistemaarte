@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import toast from 'react-hot-toast'
 import api from '../services/api'
@@ -43,11 +43,17 @@ function useTheme() {
   return theme
 }
 
-export default function Sidebar({ collapsed, onToggle }) {
+export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }) {
   const { user, logout, switchUser } = useAuth()
   const [vencidas, setVencidas] = useState(0)
   const theme = useTheme()
   const logoSrc = theme === 'light' ? '/logo preta.png' : '/logo.png'
+  const location = useLocation()
+
+  // Fecha drawer mobile ao navegar
+  useEffect(() => {
+    if (onMobileClose) onMobileClose()
+  }, [location.pathname])
 
   useEffect(() => {
     let cancelled = false
@@ -94,23 +100,10 @@ export default function Sidebar({ collapsed, onToggle }) {
     ? <span className="nav-section">{label}</span>
     : <span className="nav-section-divider" />
 
-  // ── Bottom Nav (mobile ≤ 767px) ──────────────────────────
-  const bottomNavItems = isOficina
-    ? [
-        { to: '/oficina', label: 'Oficina', icon: 'oficina' },
-      ]
-    : [
-        { to: '/dashboard', label: 'Resumo',  icon: 'resumo' },
-        { to: '/ordens',    label: 'Ordens',   icon: 'ordens',    badge: vencidas },
-        { to: '/caixa',     label: 'Caixa',    icon: 'caixa' },
-        { to: '/oficina',   label: 'Oficina',  icon: 'oficina' },
-        { to: '/clientes',  label: 'Clientes', icon: 'clientes' },
-      ]
-
   return (
     <>
-      {/* ── Sidebar desktop (≥ 768px) */}
-      <aside className={`sidebar${collapsed ? ' collapsed' : ''}`}>
+      {/* ── Sidebar desktop (≥ 768px) + Drawer mobile */}
+      <aside className={`sidebar${collapsed ? ' collapsed' : ''}${mobileOpen ? ' mobile-open' : ''}`}>
         <div className="sidebar-header" onClick={onToggle}
           style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: collapsed ? 'var(--space-3) 0' : 'var(--space-6) var(--space-3) var(--space-4)', gap: 'var(--space-2)', borderBottom: '1px solid var(--color-divider)', position: 'relative' }}
         >
@@ -179,31 +172,6 @@ export default function Sidebar({ collapsed, onToggle }) {
           </div>
         </div>
       </aside>
-
-      {/* ── Bottom Nav mobile (< 768px) */}
-      <nav className="bottom-nav">
-        {bottomNavItems.map(item => (
-          <NavLink key={item.to} to={item.to}
-            className={({ isActive }) => `bottom-nav-item${isActive ? ' active' : ''}`}
-          >
-            <span className="bottom-nav-icon" style={{ position: 'relative' }}>
-              <Icon {...ICONS[item.icon]} />
-              {(item.badge || 0) > 0 && (
-                <span style={{ position: 'absolute', top: -4, right: -6, minWidth: 16, height: 16, borderRadius: 8, background: 'var(--color-notification)', color: '#fff', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px' }}>
-                  {item.badge > 99 ? '99+' : item.badge}
-                </span>
-              )}
-            </span>
-            <span className="bottom-nav-label">{item.label}</span>
-          </NavLink>
-        ))}
-        <button className="bottom-nav-item" onClick={handleLogout} style={{ background: 'none', border: 'none', color: 'var(--color-error)' }}>
-          <span className="bottom-nav-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
-          </span>
-          <span className="bottom-nav-label">Sair</span>
-        </button>
-      </nav>
     </>
   )
 }

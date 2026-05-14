@@ -9,17 +9,47 @@ const ROLE_COLOR = { admin: 'var(--color-purple)', caixa: 'var(--color-primary)'
 
 export default function Layout() {
   const [collapsed, setCollapsed] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
   const { theme, toggle } = useTheme()
   const { user } = useAuth()
 
   return (
     <div className="app-layout">
-      {/* Sidebar — visível apenas ≥ 768px */}
-      <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(c => !c)} />
+      <Sidebar
+        collapsed={collapsed}
+        onToggle={() => setCollapsed(c => !c)}
+        mobileOpen={mobileOpen}
+        onMobileClose={() => setMobileOpen(false)}
+      />
+
+      {/* Overlay mobile quando drawer aberto */}
+      {mobileOpen && (
+        <div
+          onClick={() => setMobileOpen(false)}
+          style={{
+            position: 'fixed', inset: 0,
+            background: 'oklch(0.1 0 0 / 0.5)',
+            zIndex: 149,
+            backdropFilter: 'blur(1px)',
+          }}
+        />
+      )}
 
       <div className="main-wrapper">
         {/* Topbar */}
         <header className="topbar">
+          {/* Botão hamburguer — só aparece no mobile */}
+          <button
+            className="btn btn-icon btn-ghost topbar-menu-btn"
+            onClick={() => setMobileOpen(o => !o)}
+            aria-label="Abrir menu"
+            style={{ width: 36, height: 36 }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 6h18M3 12h18M3 18h18"/>
+            </svg>
+          </button>
+
           <span className="topbar-date">
             {new Date().toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })}
           </span>
@@ -32,6 +62,7 @@ export default function Layout() {
             padding: 'var(--space-1) var(--space-3)',
             background: 'var(--color-surface-dynamic)',
             borderRadius: 'var(--radius-full)',
+            whiteSpace: 'nowrap',
           }}>
             {ROLE_LABEL[user?.role]}
             <span className="topbar-username"> · {user?.name}</span>
