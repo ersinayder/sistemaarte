@@ -1,6 +1,8 @@
 'use strict';
 const express       = require('express');
 const router        = express.Router();
+const path          = require('path');
+const fs            = require('fs');
 const { getDB }     = require('../database');
 const { auth }      = require('../middlewares/auth');
 const { getNFEWizard, callSEFAZ } = require('../utils/nfe');
@@ -37,6 +39,25 @@ function emitente() {
     IE:  (process.env.NFE_IE_EMITENTE || '').replace(/\D/g, ''),
     CRT: process.env.NFE_CRT || '1',
   };
+}
+
+/**
+ * Salva XML de evento (cancelamento, CC-e) no disco.
+ * Pasta: xmls/cancelamentos/ relativo ao cwd do processo.
+ * Nome: {chave}-canc.xml
+ */
+function salvarXmlCancelamento(chave, xmlContent) {
+  try {
+    const dir = path.resolve(process.cwd(), 'xmls', 'cancelamentos');
+    fs.mkdirSync(dir, { recursive: true });
+    const arquivo = path.join(dir, `${chave}-canc.xml`);
+    fs.writeFileSync(arquivo, xmlContent, 'utf8');
+    console.log(`[NF-e] XML cancelamento salvo: ${arquivo}`);
+    return arquivo;
+  } catch (err) {
+    console.error('[NF-e] Falha ao salvar XML cancelamento em disco:', err.message);
+    return null;
+  }
 }
 
 // GET /api/nfe
@@ -116,7 +137,6 @@ router.post('/emitir/:id', auth(), async (req, res) => {
     const serie  = '1';
     const numero = proximoNumero(db, serie);
 
-    // montarNFe retorna { infNFe: { ide, emit, dest, det, total, transp, pag } }
     const payload = montarNFe({
       ordem:    os,
       itens,
@@ -135,7 +155,6 @@ router.post('/emitir/:id', auth(), async (req, res) => {
     const wizard = await getNFEWizard();
     let resultado;
     try {
-      // Estrutura: { idLote, indSinc, NFe: { infNFe: {...} } }
       resultado = await callSEFAZ(() => wizard.NFE_Autorizacao({
         idLote:  numero,
         indSinc: 1,
@@ -153,7 +172,6 @@ router.post('/emitir/:id', auth(), async (req, res) => {
 
     console.log(`[NF-e] Resposta SEFAZ (500 chars):`, JSON.stringify(resultado).slice(0, 500));
 
-    // v1.0.4 retorna array de xmls — extrai cStat/chave/protocolo do primeiro
     let cStat = '', chave = '', protocolo = '', agora = new Date().toISOString();
 
     if (Array.isArray(resultado)) {
@@ -212,6 +230,184 @@ router.post('/emitir/:id', auth(), async (req, res) => {
     if (!respondido) {
       clearTimeout(guardTimeout); respondido = true;
       res.status(500).json({ erro: 'Erro interno ao emitir NF-e', detalhe: e.message });
+    }
+  }
+});
+
+// POST /api/nfe/:chave/cancelar
+// Body: { motivo: string (min 15 chars) }
+router.post('/:chave/cancelar', auth(), async (req, res) => {
+  const { chave } = req.params;
+  const { motivo } = req.body || {};
+
+  // Validacao da chave (44 digitos numericos)
+  if (!chave || !/^\d{44}$/.test(chave)) {
+    return res.status(400).json({ erro: 'Chave NF-e invalida. Deve conter exatamente 44 digitos.' });
+  }
+
+  // SEFAZ exige motivo com no minimo 15 caracteres
+  const motivoStr = (motivo || '').trim();
+  if (motivoStr.length < 15) {
+    return res.status(400).json({ erro: 'Motivo do cancelamento deve ter no minimo 15 caracteres.' });
+  }
+
+  if (!process.env.NFE_CERT_PATH || !process.env.NFE_CERT_PASSWORD) {
+    return res.status(500).json({ erro: 'NFE_CERT_PATH ou NFE_CERT_PASSWORD ausentes no .env' });
+  }
+
+  const db = getDB();
+
+  // Busca a OS pela chave para obter protocolo de autorizacao
+  const os = db.prepare(`SELECT * FROM ordens WHERE nfe_chave = ?`).get(chave);
+
+  if (!os) {
+    return res.status(404).json({ erro: 'NF-e nao encontrada para esta chave' });
+  }
+  if (os.nfe_status === 'cancelado') {
+    return res.status(409).json({ erro: 'NF-e ja cancelada' });
+  }
+  if (os.nfe_status !== 'autorizado') {
+    return res.status(422).json({ erro: `Cancelamento impossivel: nfe_status atual e '${os.nfe_status}'` });
+  }
+  if (!os.nfe_protocolo) {
+    return res.status(422).json({ erro: 'Protocolo de autorizacao ausente no banco — nao e possivel cancelar' });
+  }
+
+  // Prazo de 24h para cancelamento (regra SEFAZ producao)
+  if (process.env.NFE_AMBIENTE === 'producao' && os.nfe_emitida_em) {
+    const emitidaEm = new Date(os.nfe_emitida_em);
+    const diffHoras = (Date.now() - emitidaEm.getTime()) / (1000 * 60 * 60);
+    if (diffHoras > 24) {
+      return res.status(422).json({
+        erro: `Prazo de cancelamento expirado. NF-e emitida ha ${diffHoras.toFixed(1)}h (limite: 24h).`
+      });
+    }
+  }
+
+  let respondido = false;
+  const guardTimeout = setTimeout(() => {
+    if (!respondido) {
+      respondido = true;
+      console.error(`[NF-e] Guard timeout cancelamento chave=${chave}`);
+      res.status(504).json({ erro: 'Timeout interno: SEFAZ sem resposta apos 40s' });
+    }
+  }, 40_000);
+
+  try {
+    const cnpj   = (process.env.NFE_CNPJ_EMITENTE || '').replace(/\D/g, '');
+    const tpAmb  = process.env.NFE_AMBIENTE === 'producao' ? 1 : 2;
+
+    // cOrgao: 2 digitos de UF da chave (posicoes 0-1)
+    const cOrgao = chave.substring(0, 2);
+
+    // dhEvento em horario de Brasilia sem milissegundos
+    const now  = new Date();
+    const brt  = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+    const dhEvento = brt.toISOString().replace(/\.\d{3}Z$/, '-03:00');
+
+    const eventoPayload = {
+      idLote: '1',
+      evento: [
+        {
+          infEvento: {
+            cOrgao,
+            tpAmb,
+            CNPJ:       cnpj,
+            chNFe:      chave,
+            dhEvento,
+            tpEvento:  '110111',
+            nSeqEvento: '1',
+            verEvento:  '1.00',
+            detEvento: {
+              descEvento: 'Cancelamento',
+              nProt:      os.nfe_protocolo,
+              xJust:      motivoStr,
+            },
+          },
+        },
+      ],
+    };
+
+    console.log(`[NF-e] Iniciando cancelamento chave=${chave} protocolo=${os.nfe_protocolo}`);
+
+    const wizard = await getNFEWizard();
+    let resultado;
+    try {
+      resultado = await callSEFAZ(() => wizard.NFeRecepcaoEvento(eventoPayload));
+    } catch (sefazErr) {
+      console.error('[NF-e] Erro SEFAZ cancelamento:', sefazErr.message);
+      if (!respondido) {
+        clearTimeout(guardTimeout); respondido = true;
+        return res.status(504).json({ erro: 'Sem resposta da SEFAZ', detalhe: sefazErr.message });
+      }
+      return;
+    }
+
+    console.log(`[NF-e] Resposta cancelamento (500 chars):`, JSON.stringify(resultado).slice(0, 500));
+
+    // Extrai cStat, nProt e dhEvento da resposta
+    const retEvento =
+      resultado?.[0]?.retEvento?.infEvento ||
+      resultado?.retEnvEvento?.retEvento?.[0]?.infEvento ||
+      resultado?.infEvento ||
+      resultado?.[0] ||
+      resultado;
+
+    const cStatResp  = String(retEvento?.cStat || '');
+    const nProtResp  = retEvento?.nProt        || '';
+    const dhEventoResp = retEvento?.dhRegEvento || dhEvento;
+
+    // cStat 135 = Evento Registrado e Vinculado a NF-e
+    // cStat 155 = Cancelamento homologado
+    const cancelado = ['135', '155'].includes(cStatResp);
+
+    if (!cancelado) {
+      const xMotivo = retEvento?.xMotivo || `cStat ${cStatResp || 'desconhecido'}`;
+      console.error(`[NF-e] Cancelamento rejeitado: cStat=${cStatResp} motivo=${xMotivo}`);
+      if (!respondido) {
+        clearTimeout(guardTimeout); respondido = true;
+        return res.status(422).json({ erro: `SEFAZ rejeitou cancelamento: ${xMotivo}`, cStat: cStatResp });
+      }
+      return;
+    }
+
+    // Persiste no banco
+    db.prepare(`
+      UPDATE ordens SET
+        nfe_status          = 'cancelado',
+        nfe_cancelado_em    = ?,
+        nfe_cancel_protocolo = ?,
+        nfe_cancel_motivo   = ?
+      WHERE nfe_chave = ?
+    `).run(dhEventoResp, nProtResp, motivoStr, chave);
+
+    // Tenta recuperar XML do evento para salvar em disco
+    // O wizard pode retornar o XML bruto ou um objeto; salvamos o JSON serializado como fallback
+    const xmlEvento =
+      typeof resultado === 'string'
+        ? resultado
+        : JSON.stringify(resultado, null, 2);
+
+    salvarXmlCancelamento(chave, xmlEvento);
+
+    console.log(`[NF-e] Cancelamento registrado chave=${chave} nProtCanc=${nProtResp}`);
+
+    if (!respondido) {
+      clearTimeout(guardTimeout); respondido = true;
+      res.json({
+        ok:         true,
+        chave,
+        protocolo:  nProtResp,
+        dhEvento:   dhEventoResp,
+        cStat:      cStatResp,
+      });
+    }
+
+  } catch (e) {
+    console.error('[NF-e] ERRO POST /:chave/cancelar:', e.message, e.stack);
+    if (!respondido) {
+      clearTimeout(guardTimeout); respondido = true;
+      res.status(500).json({ erro: 'Erro interno ao cancelar NF-e', detalhe: e.message });
     }
   }
 });
