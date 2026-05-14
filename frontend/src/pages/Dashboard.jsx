@@ -75,7 +75,7 @@ function LiveKPI({ label, value, sub, accent, pulse }) {
       border: '1px solid var(--color-border)',
       borderRadius: 'var(--radius-lg)',
       borderTop: `3px solid ${accent || 'var(--color-primary)'}`,
-      padding: 'var(--space-3) var(--space-3)',
+      padding: 'var(--space-3)',
       boxShadow: 'var(--shadow-sm)',
       display: 'flex', flexDirection: 'column', gap: 4,
       position: 'relative', overflow: 'hidden', minWidth: 0
@@ -90,17 +90,17 @@ function LiveKPI({ label, value, sub, accent, pulse }) {
         }} />
       )}
       <span style={{
-        fontSize: 9, fontWeight: 700,
+        fontSize: 10, fontWeight: 700,
         color: 'var(--color-text-muted)',
         textTransform: 'uppercase', letterSpacing: '0.07em',
         lineHeight: 1, paddingRight: 14
       }}>{label}</span>
       <span style={{
-        fontSize: 'clamp(1.1rem, 0.9rem + 1.5vw, 1.6rem)', fontWeight: 800,
+        fontSize: 'clamp(1.2rem, 0.9rem + 1.5vw, 1.7rem)', fontWeight: 800,
         lineHeight: 1, fontVariantNumeric: 'tabular-nums',
         color: accent || 'var(--color-text)'
       }}>{value ?? '—'}</span>
-      {sub && <span style={{ fontSize: 9, color: 'var(--color-text-faint)', lineHeight: 1.2 }}>{sub}</span>}
+      {sub && <span style={{ fontSize: 10, color: 'var(--color-text-faint)', lineHeight: 1.2 }}>{sub}</span>}
     </div>
   )
 }
@@ -284,15 +284,15 @@ export default function Dashboard() {
           gap: var(--space-4);
         }
 
-        /* ── Live grid: 4 colunas → 4 → 3 no mobile pequeno */
+        /* ── Live grid: 6 cards em 2 linhas de 3 (padrão ≥ 1100px: linha única de 6+faturado) */
         .dash-live-grid {
           display: grid;
-          grid-template-columns: repeat(4, 1fr);
+          grid-template-columns: repeat(6, 1fr);
           gap: var(--space-3);
         }
-        /* Faturado Hoje ocupa 2 colunas na linha do grid de 4 para ficar proporcional */
+        /* Faturado Hoje fica na mesma linha mas com coluna simples */
         .dash-live-faturado {
-          grid-column: span 2;
+          grid-column: span 1;
         }
 
         /* ── KPI mensal: 4 colunas */
@@ -317,23 +317,13 @@ export default function Dashboard() {
           align-items: start;
         }
 
-        /* ── Tablet (≤ 900px) */
-        @media (max-width: 900px) {
-          .dash-live-grid    { grid-template-columns: repeat(4, 1fr); }
-          .dash-kpi-grid     { grid-template-columns: repeat(2, 1fr); }
-          .dash-bottom-grid  { grid-template-columns: 1fr; }
-        }
-
-        /* ── Mobile (≤ 600px) */
-        @media (max-width: 600px) {
-          .dash-root         { gap: var(--space-3); }
-
-          /* Live KPIs: 3 colunas balanceadas — 6 cards ficam em 2 linhas de 3 */
+        /* ── Telas médias: 1024px–1280px (monitor 19" com sidebar 220px) */
+        @media (max-width: 1280px) {
+          /* Live: 3 colunas → 2 linhas de 3 */
           .dash-live-grid {
             grid-template-columns: repeat(3, 1fr);
             gap: var(--space-2);
           }
-          /* Faturado Hoje volta a ocupar 1 coluna no grid de 3 */
           .dash-live-faturado {
             grid-column: span 1;
           }
@@ -344,16 +334,47 @@ export default function Dashboard() {
             gap: var(--space-2);
           }
 
-          /* Gráficos: 1 coluna */
-          .dash-charts-grid  { grid-template-columns: 1fr; gap: var(--space-3); }
+          /* Gráficos: mantém 2 colunas */
+          .dash-charts-grid {
+            gap: var(--space-3);
+          }
 
-          /* Tabela+Tipo: 1 coluna */
+          /* Bottom: 1 coluna */
+          .dash-bottom-grid {
+            grid-template-columns: 1fr;
+            gap: var(--space-3);
+          }
+        }
+
+        /* ── Tablet (≤ 900px) */
+        @media (max-width: 900px) {
+          .dash-live-grid    { grid-template-columns: repeat(3, 1fr); }
+          .dash-kpi-grid     { grid-template-columns: repeat(2, 1fr); }
+          .dash-charts-grid  { grid-template-columns: 1fr; }
+          .dash-bottom-grid  { grid-template-columns: 1fr; }
+        }
+
+        /* ── Mobile (≤ 600px) */
+        @media (max-width: 600px) {
+          .dash-root         { gap: var(--space-3); }
+
+          .dash-live-grid {
+            grid-template-columns: repeat(3, 1fr);
+            gap: var(--space-2);
+          }
+          .dash-live-faturado {
+            grid-column: span 1;
+          }
+
+          .dash-kpi-grid {
+            grid-template-columns: repeat(2, 1fr);
+            gap: var(--space-2);
+          }
+
+          .dash-charts-grid  { grid-template-columns: 1fr; gap: var(--space-3); }
           .dash-bottom-grid  { grid-template-columns: 1fr; gap: var(--space-3); }
 
-          /* Esconde colunas secundárias da tabela */
           .hide-mobile       { display: none !important; }
-
-          /* Cabeçalho do dashboard mais compacto */
           .dash-header-input { font-size: 11px !important; padding: 4px 8px !important; }
         }
 
