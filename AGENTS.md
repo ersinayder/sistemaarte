@@ -174,6 +174,55 @@ frontend/src/
 
 ---
 
+## Testes via PowerShell
+
+> ⚠️ `-WebSession` do PowerShell **não funciona** com cookies `HttpOnly`/`SameSite` — o cookie não é reenviado automaticamente. O método correto é extrair o token do header `Set-Cookie` e passar como `Bearer` em todas as chamadas seguintes.
+
+### Padrão de autenticação (usar em todos os testes)
+
+```powershell
+# Login — extrai token do cookie HttpOnly
+$loginResp = Invoke-WebRequest -Uri "http://localhost:3001/api/auth/login" `
+  -Method POST -ContentType "application/json" `
+  -Body '{"username":"admin","password":"lojanova"}'
+$token = ($loginResp.Headers["Set-Cookie"] -split ";")[0] -replace "token=",""
+
+# Usar $token em qualquer chamada subsequente
+Invoke-RestMethod -Uri "http://localhost:3001/api/nfe" `
+  -Method GET -Headers @{ Authorization = "Bearer $token" }
+```
+
+### Teste completo de cancelamento (one-liner para console)
+
+```powershell
+$loginResp = Invoke-WebRequest -Uri "http://localhost:3001/api/auth/login" -Method POST -ContentType "application/json" -Body '{"username":"admin","password":"lojanova"}'; $token = ($loginResp.Headers["Set-Cookie"] -split ";")[0] -replace "token=",""; $nota = (Invoke-RestMethod -Uri "http://localhost:3001/api/nfe" -Method GET -Headers @{ Authorization = "Bearer $token" }).notas | Where-Object { $_.nfe_status -eq "autorizado" } | Select-Object -First 1; if (-not $nota) { Write-Host "Nenhuma nota autorizada" -ForegroundColor Yellow } else { Write-Host "Cancelando OS#$($nota.id) chave=$($nota.nfe_chave)" -ForegroundColor Cyan; try { $r = Invoke-RestMethod -Uri "http://localhost:3001/api/nfe/$($nota.nfe_chave)/cancelar" -Method POST -Headers @{ Authorization = "Bearer $token" } -ContentType "application/json" -Body '{"motivo":"Nota emitida para teste de cancelamento em homologacao"}'; Write-Host "OK cStat=$($r.cStat) protocolo=$($r.protocolo)" -ForegroundColor Green } catch { Write-Host "ERRO $($_.Exception.Response.StatusCode.value__): $($_.ErrorDetails.Message)" -ForegroundColor Red } }
+```
+
+### Outros endpoints úteis
+
+```powershell
+# Listar notas
+Invoke-RestMethod -Uri "http://localhost:3001/api/nfe" -Method GET -Headers @{ Authorization = "Bearer $token" }
+
+# Cancelar chave específica
+Invoke-RestMethod -Uri "http://localhost:3001/api/nfe/CHAVE44DIGITOS/cancelar" `
+  -Method POST `
+  -Headers @{ Authorization = "Bearer $token" } `
+  -ContentType "application/json" `
+  -Body '{"motivo":"Nota emitida para teste de cancelamento em homologacao"}'
+```
+
+### cStat esperados no cancelamento (homologação)
+
+| cStat | Significado |
+|---|---|
+| `135` | ✅ Evento registrado e vinculado à NF-e |
+| `155` | ✅ Cancelamento homologado |
+| `218` | ❌ NF-e não consta na base SEFAZ |
+| `573` | ❌ Duplicidade de evento (já cancelada) |
+
+---
+
 ## NF-e — nfewizard-io (homologado ✅)
 
 > Integração testada e com nota aprovada na SEFAZ. Versão: `nfewizard-io@1.0.4`.
@@ -335,6 +384,7 @@ Implementar contingência real é backlog — documentar para o usuário que a e
 | NF-e: XML não salvo | Obrigação legal 5 anos — multa fiscal | Salvar em `nfe_xml` no banco E em `backend/data/nfe_xmls/` |
 | NF-e: path do .pfx com barra | Crash silencioso no Windows | Sempre usar `path.resolve()` — nunca string hardcoded |
 | NF-e: go-live sem `pm2 restart` | `.env` não recarrega — continua em homologação | `pm2 restart sistemaarte-backend` após alterar `NFE_AMBIENTE_NUM` |
+| PowerShell: `-WebSession` com cookie HttpOnly | Cookie não é reenviado — todas as chamadas retornam 401 | Extrair token do `Set-Cookie` e passar como `Bearer` (ver seção "Testes via PowerShell") |
 
 ---
 
@@ -348,7 +398,7 @@ Itens validados mas não implementados ainda (features novas, não bugs):
 | 12 | SSE: limitar por `userId` (máx 3/usuário) | Evitar monopolização de conexões |
 | 13 | Paginação no `GET /api/ordens` (`?page=&limit=`) | Escala com volume crescente |
 | 9 | Backup: gravar `backup-status.json` + endpoint `/api/backup/status` | Observabilidade de falhas |
-| 14 | NF-e: cancelamento via `NFeRecepcaoEvento` | ⚠️ Implementado (commit 2691384) mas NÃO TESTADO — endpoint `POST /api/nfe/:chave/cancelar` criado, migration rodada em `data/oficina.db`, mas chamada real nunca executou. Testar antes do go-live. |
+| 14 | NF-e: cancelamento via `NFeRecepcaoEvento` | ⚠️ Implementado (commit 2691384) mas NÃO TESTADO — endpoint `POST /api/nfe/:chave/cancelar` criado. Testar antes do go-live. |
 | 15 | NF-e: fila com `nfe_status='emitindo'` | Bloquear duplicatas em emissão simultânea |
 | 16 | NF-e: contingência DPEC/offline | Disponibilidade quando SEFAZ estiver fora |
 
@@ -367,60 +417,28 @@ Itens validados mas não implementados ainda (features novas, não bugs):
 
 ## Última sessão
 
-**Data:** 2026-05-14
-**Agente:** Claude (claude.ai) + Perplexity
-**Tema:** NF-e homologada, cancelamento implementado, Dashboard corrigido
+**Data:** 2026-05-15
+**Agente:** Perplexity
+**Tema:** Migration das colunas de cancelamento + documentação PowerShell
 
 ### O que foi feito
 
-**NF-e homologada com sucesso**
-- Primeira nota autorizada pela SEFAZ MG homologação — protocolo `131260152109901`
-- Todas as correções documentadas na seção NF-e acima
+**Migration das colunas de cancelamento (✅ concluído)**
+- Commit `d66177f` — adicionado bloco `// v6` no array `migrations[]` de `database.js`
+- Colunas: `nfe_cancelado_em`, `nfe_cancel_protocolo`, `nfe_cancel_motivo`
+- O `try/catch` existente garante que bancos com as colunas já adicionadas manualmente não crasham
 
-**Bug Dashboard corrigido**
-- Removido `faturamentoHoje` do SSE (`kpis.js`) — causava divergência com o caixa
-- Removido card `LiveKPI "Faturado Hoje"` do `Dashboard.jsx`
-- KPIs monetários mensais trocados de `fmtShort()` para `fmt()` (valor completo)
-- **Não restaurar esses cards** — foram removidos intencionalmente
-
-**Cancelamento de NF-e — implementado mas NÃO testado**
-- Commit `2691384` — endpoint `POST /api/nfe/:chave/cancelar` em `routes/nfe.js`
-- Migration rodada manualmente em `data/oficina.db` (não em `database.js`)
-- Colunas adicionadas: `nfe_cancelado_em`, `nfe_cancel_protocolo`, `nfe_cancel_motivo`
-- ⚠️ O endpoint **nunca foi chamado com sucesso** — o teste travou em problemas com curl/PowerShell
-- **Testar cancelamento é a primeira tarefa da próxima sessão**
-
-**Migration manual — adicionar ao database.js**
-As 3 colunas foram adicionadas diretamente no banco mas o array `migrations[]` em `database.js` ainda não foi atualizado. Adicionar para garantir que novos ambientes recebam as colunas:
-```js
-"ALTER TABLE ordens ADD COLUMN nfe_cancelado_em TEXT",
-"ALTER TABLE ordens ADD COLUMN nfe_cancel_protocolo TEXT",
-"ALTER TABLE ordens ADD COLUMN nfe_cancel_motivo TEXT",
-```
-
-### Como testar o cancelamento na próxima sessão
-
-```powershell
-# 1. Login
-$loginResp = Invoke-WebRequest -Uri "http://localhost:3001/api/auth/login" `
-  -Method POST -ContentType "application/json" `
-  -Body '{"username":"admin","password":"lojanova"}'
-$token = ($loginResp.Headers["Set-Cookie"] -split ";")[0] -replace "token=",""
-
-# 2. Cancelar nota (substituir pela chave real de uma nota autorizada em homologacao)
-Invoke-RestMethod -Uri "http://localhost:3001/api/nfe/31260507500718000196550010000000251000000250/cancelar" `
-  -Method POST `
-  -Headers @{ Authorization = "Bearer $token" } `
-  -ContentType "application/json" `
-  -Body '{"motivo":"Nota emitida para teste de cancelamento em homologacao"}'
-```
+**Documentação PowerShell (✅ concluído)**
+- Adicionada seção "Testes via PowerShell" com o padrão correto de autenticação
+- `-WebSession` não funciona com cookies `HttpOnly` — usar extração de token via `Set-Cookie` + `Bearer`
+- Armadilha adicionada na tabela de armadilhas conhecidas
 
 ### Próximos passos (Fase 1)
 
 | Item | Status |
 |---|---|
-| Cancelamento — testar endpoint | ⬜ Primeira tarefa |
-| Migration das colunas em `database.js` | ⬜ Pendente |
+| Migration das colunas em `database.js` | ✅ Concluído (commit d66177f) |
+| Cancelamento — testar endpoint no servidor | ⬜ Próxima tarefa |
 | XML da nota autorizada salvo em disco | ⬜ Pendente |
 | Carta de Correção (CC-e) | ⬜ Pendente |
 | Fila com mutex no `nfe_status` | ⬜ Pendente |
