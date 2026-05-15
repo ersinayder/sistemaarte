@@ -240,12 +240,10 @@ router.post('/:chave/cancelar', auth(), async (req, res) => {
   const { chave } = req.params;
   const { motivo } = req.body || {};
 
-  // Validacao da chave (44 digitos numericos)
   if (!chave || !/^\d{44}$/.test(chave)) {
     return res.status(400).json({ erro: 'Chave NF-e invalida. Deve conter exatamente 44 digitos.' });
   }
 
-  // SEFAZ exige motivo com no minimo 15 caracteres
   const motivoStr = (motivo || '').trim();
   if (motivoStr.length < 15) {
     return res.status(400).json({ erro: 'Motivo do cancelamento deve ter no minimo 15 caracteres.' });
@@ -257,7 +255,6 @@ router.post('/:chave/cancelar', auth(), async (req, res) => {
 
   const db = getDB();
 
-  // Busca a OS pela chave para obter protocolo de autorizacao
   const os = db.prepare(`SELECT * FROM ordens WHERE nfe_chave = ?`).get(chave);
 
   if (!os) {
@@ -273,7 +270,6 @@ router.post('/:chave/cancelar', auth(), async (req, res) => {
     return res.status(422).json({ erro: 'Protocolo de autorizacao ausente no banco — nao e possivel cancelar' });
   }
 
-  // Prazo de 24h para cancelamento (regra SEFAZ producao)
   if (process.env.NFE_AMBIENTE === 'producao' && os.nfe_emitida_em) {
     const emitidaEm = new Date(os.nfe_emitida_em);
     const diffHoras = (Date.now() - emitidaEm.getTime()) / (1000 * 60 * 60);
@@ -294,46 +290,50 @@ router.post('/:chave/cancelar', auth(), async (req, res) => {
   }, 40_000);
 
   try {
-    const cnpj   = (process.env.NFE_CNPJ_EMITENTE || '').replace(/\D/g, '');
-    const tpAmb  = process.env.NFE_AMBIENTE === 'producao' ? 1 : 2;
+    const cnpj  = (process.env.NFE_CNPJ_EMITENTE || '').replace(/\D/g, '');
+    const tpAmb = process.env.NFE_AMBIENTE === 'producao' ? 1 : 2;
 
-    // cOrgao: 2 digitos de UF da chave (posicoes 0-1)
-    const cOrgao = chave.substring(0, 2);
+    // cOrgao: 2 primeiros dígitos da chave = código UF (number)
+    const cOrgao = Number(chave.substring(0, 2));
 
-    // dhEvento em horario de Brasilia sem milissegundos
-    const now  = new Date();
-    const brt  = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+    // dhEvento BRT sem milissegundos
+    const now      = new Date();
+    const brt      = new Date(now.getTime() - 3 * 60 * 60 * 1000);
     const dhEvento = brt.toISOString().replace(/\.\d{3}Z$/, '-03:00');
 
+    // Payload conforme interface Cancelamento do nfewizard-io:
+    // { idLote: number, modelo: '55'|'65', evento: EventoCancelamento[] }
+    // EventoCancelamento NÃO tem wrapper infEvento — campos diretos no objeto
     const eventoPayload = {
-      idLote: '1',
+      idLote: Date.now(),   // number único por chamada
+      modelo: '55',
       evento: [
         {
-          infEvento: {
-            cOrgao,
-            tpAmb,
-            CNPJ:       cnpj,
-            chNFe:      chave,
-            dhEvento,
-            tpEvento:  '110111',
-            nSeqEvento: '1',
-            verEvento:  '1.00',
-            detEvento: {
-              descEvento: 'Cancelamento',
-              nProt:      os.nfe_protocolo,
-              xJust:      motivoStr,
-            },
+          cOrgao,
+          tpAmb,
+          CNPJ:       cnpj,
+          chNFe:      chave,
+          dhEvento,
+          tpEvento:  '110111',
+          nSeqEvento: 1,          // number, não string
+          verEvento:  '1.00',
+          detEvento: {
+            descEvento: 'Cancelamento',
+            nProt:      os.nfe_protocolo,
+            xJust:      motivoStr,
           },
         },
       ],
     };
 
     console.log(`[NF-e] Iniciando cancelamento chave=${chave} protocolo=${os.nfe_protocolo}`);
+    console.log('[NF-e] eventoPayload:', JSON.stringify(eventoPayload));
 
     const wizard = await getNFEWizard();
     let resultado;
     try {
-      resultado = await callSEFAZ(() => wizard.NFeRecepcaoEvento(eventoPayload));
+      // Método correto: NFE_Cancelamento (não NFeRecepcaoEvento)
+      resultado = await callSEFAZ(() => wizard.NFE_Cancelamento(eventoPayload));
     } catch (sefazErr) {
       console.error('[NF-e] Erro SEFAZ cancelamento:', sefazErr.message);
       if (!respondido) {
@@ -345,7 +345,6 @@ router.post('/:chave/cancelar', auth(), async (req, res) => {
 
     console.log(`[NF-e] Resposta cancelamento (500 chars):`, JSON.stringify(resultado).slice(0, 500));
 
-    // Extrai cStat, nProt e dhEvento da resposta
     const retEvento =
       resultado?.[0]?.retEvento?.infEvento ||
       resultado?.retEnvEvento?.retEvento?.[0]?.infEvento ||
@@ -353,12 +352,11 @@ router.post('/:chave/cancelar', auth(), async (req, res) => {
       resultado?.[0] ||
       resultado;
 
-    const cStatResp  = String(retEvento?.cStat || '');
-    const nProtResp  = retEvento?.nProt        || '';
-    const dhEventoResp = retEvento?.dhRegEvento || dhEvento;
+    const cStatResp    = String(retEvento?.cStat || '');
+    const nProtResp    = retEvento?.nProt        || '';
+    const dhEventoResp = retEvento?.dhRegEvento  || dhEvento;
 
-    // cStat 135 = Evento Registrado e Vinculado a NF-e
-    // cStat 155 = Cancelamento homologado
+    // 135 = Evento Registrado e Vinculado a NF-e  |  155 = Cancelamento homologado
     const cancelado = ['135', '155'].includes(cStatResp);
 
     if (!cancelado) {
@@ -371,18 +369,15 @@ router.post('/:chave/cancelar', auth(), async (req, res) => {
       return;
     }
 
-    // Persiste no banco
     db.prepare(`
       UPDATE ordens SET
-        nfe_status          = 'cancelado',
-        nfe_cancelado_em    = ?,
+        nfe_status           = 'cancelado',
+        nfe_cancelado_em     = ?,
         nfe_cancel_protocolo = ?,
-        nfe_cancel_motivo   = ?
+        nfe_cancel_motivo    = ?
       WHERE nfe_chave = ?
     `).run(dhEventoResp, nProtResp, motivoStr, chave);
 
-    // Tenta recuperar XML do evento para salvar em disco
-    // O wizard pode retornar o XML bruto ou um objeto; salvamos o JSON serializado como fallback
     const xmlEvento =
       typeof resultado === 'string'
         ? resultado
@@ -395,11 +390,11 @@ router.post('/:chave/cancelar', auth(), async (req, res) => {
     if (!respondido) {
       clearTimeout(guardTimeout); respondido = true;
       res.json({
-        ok:         true,
+        ok:        true,
         chave,
-        protocolo:  nProtResp,
-        dhEvento:   dhEventoResp,
-        cStat:      cStatResp,
+        protocolo: nProtResp,
+        dhEvento:  dhEventoResp,
+        cStat:     cStatResp,
       });
     }
 
