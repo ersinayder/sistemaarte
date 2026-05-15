@@ -11,9 +11,9 @@ const fmtDT = iso => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
 const fmtD  = iso => iso ? new Date(`${iso}T12:00:00`).toLocaleDateString('pt-BR') : '—'
 const today = () => new Date(Date.now()-3*60*60*1000).toISOString().slice(0,10)
 
-const STATUS_FLOW  = ['Recebido','Em Produção','Pronto','Entregue']
-const STATUS_BADGE = { 'Recebido':'recebido','Em Produção':'emproducao','Pronto':'pronto','Entregue':'entregue','Cancelado':'cancelado' }
-const STATUS_COLOR = { 'Recebido':'var(--color-blue)','Em Produção':'var(--color-orange)','Pronto':'var(--color-primary)','Entregue':'var(--color-success)','Cancelado':'var(--color-text-faint)' }
+const STATUS_FLOW  = ['Aguardando','Em Produção','Pronto','Entregue']
+const STATUS_BADGE = { 'Aguardando':'secondary','Em Produção':'emproducao','Pronto':'pronto','Entregue':'entregue','Cancelado':'cancelado' }
+const STATUS_COLOR = { 'Aguardando':'var(--color-gold)','Em Produção':'var(--color-orange)','Pronto':'var(--color-primary)','Entregue':'var(--color-success)','Cancelado':'var(--color-text-faint)' }
 const PAG_BADGE    = { Pix:'pix', Dinheiro:'dinheiro', Credito:'credito', Debito:'debito', Link:'link' }
 const PAG_LABEL    = { Credito:'Crédito', Débito:'Débito', Link:'Link Pag.' }
 const PAG_ICONE    = { Pix:'💠', Dinheiro:'💵', Credito:'💳', Debito:'💳', Link:'🔗' }
