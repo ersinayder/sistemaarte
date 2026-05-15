@@ -179,6 +179,10 @@ function initDB() {
     "ALTER TABLE clientes ADD COLUMN bairro TEXT",
     // v5 — migrar dados legados: address -> logradouro
     "UPDATE clientes SET logradouro = address WHERE logradouro IS NULL AND address IS NOT NULL",
+    // v6 — colunas de cancelamento de NF-e (adicionadas manualmente em 2026-05-14, commit 2691384)
+    "ALTER TABLE ordens ADD COLUMN nfe_cancelado_em TEXT",
+    "ALTER TABLE ordens ADD COLUMN nfe_cancel_protocolo TEXT",
+    "ALTER TABLE ordens ADD COLUMN nfe_cancel_motivo TEXT",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {}
