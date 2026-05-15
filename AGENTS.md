@@ -192,11 +192,24 @@ Invoke-RestMethod -Uri "http://localhost:3001/api/nfe" `
   -Method GET -Headers @{ Authorization = "Bearer $token" }
 ```
 
-### Teste completo de cancelamento (one-liner para console)
+### Reset de nfe_status via node (útil em homologação)
+
+> Usar quando uma OS tem `nfe_status='autorizado'` expirado (>24h) e precisa ser reemitida para teste.
 
 ```powershell
-$loginResp = Invoke-WebRequest -Uri "http://localhost:3001/api/auth/login" -Method POST -ContentType "application/json" -Body '{"username":"admin","password":"lojanova"}'; $token = ($loginResp.Headers["Set-Cookie"] -split ";")[0] -replace "token=",""; $nota = (Invoke-RestMethod -Uri "http://localhost:3001/api/nfe" -Method GET -Headers @{ Authorization = "Bearer $token" }).notas | Where-Object { $_.nfe_status -eq "autorizado" } | Select-Object -First 1; if (-not $nota) { Write-Host "Nenhuma nota autorizada" -ForegroundColor Yellow } else { Write-Host "Cancelando OS#$($nota.id) chave=$($nota.nfe_chave)" -ForegroundColor Cyan; try { $r = Invoke-RestMethod -Uri "http://localhost:3001/api/nfe/$($nota.nfe_chave)/cancelar" -Method POST -Headers @{ Authorization = "Bearer $token" } -ContentType "application/json" -Body '{"motivo":"Nota emitida para teste de cancelamento em homologacao"}'; Write-Host "OK cStat=$($r.cStat) protocolo=$($r.protocolo)" -ForegroundColor Green } catch { Write-Host "ERRO $($_.Exception.Response.StatusCode.value__): $($_.ErrorDetails.Message)" -ForegroundColor Red } }
+cd C:\sistemaarte\backend
+node -e "const db=require('better-sqlite3')('./data/oficina.db');db.prepare('UPDATE ordens SET nfe_status=NULL,nfe_chave=NULL,nfe_protocolo=NULL,nfe_numero=NULL,nfe_emitida_em=NULL WHERE id=?').run(79);console.log('OK');db.close();"
 ```
+
+> **Nunca usar em produção.** Apenas em homologação para reaproveitamento de OS de teste.
+
+### Teste completo: emitir e cancelar em sequência
+
+```powershell
+$loginResp = Invoke-WebRequest -Uri "http://localhost:3001/api/auth/login" -Method POST -ContentType "application/json" -Body '{"username":"admin","password":"lojanova"}'; $token = ($loginResp.Headers["Set-Cookie"] -split ";")[0] -replace "token=",""; $emissao = Invoke-RestMethod -Uri "http://localhost:3001/api/nfe/emitir/79" -Method POST -Headers @{ Authorization = "Bearer $token" }; Write-Host "Emitida chave=$($emissao.chave)" -ForegroundColor Green; Start-Sleep -Seconds 2; $r = Invoke-RestMethod -Uri "http://localhost:3001/api/nfe/$($emissao.chave)/cancelar" -Method POST -Headers @{ Authorization = "Bearer $token" } -ContentType "application/json" -Body '{"motivo":"Nota emitida para teste de cancelamento em homologacao"}'; Write-Host "Cancelada cStat=$($r.cStat) protocolo=$($r.protocolo)" -ForegroundColor Green
+```
+
+**Resultado esperado:** `cStat=135` e protocolo numérico preenchido.
 
 ### Outros endpoints úteis
 
@@ -220,6 +233,8 @@ Invoke-RestMethod -Uri "http://localhost:3001/api/nfe/CHAVE44DIGITOS/cancelar" `
 | `155` | ✅ Cancelamento homologado |
 | `218` | ❌ NF-e não consta na base SEFAZ |
 | `573` | ❌ Duplicidade de evento (já cancelada) |
+
+> ⚠️ **Prazo de cancelamento:** A SEFAZ rejeita com "Prazo de cancelamento superior ao previsto" se a nota tiver mais de 24h. Em homologação, sempre resetar o `nfe_status` e reemitir antes de testar o cancelamento.
 
 ---
 
@@ -295,6 +310,37 @@ console.log(infProt.cStat, infProt.xMotivo); // 100 = autorizado
 - A resposta **é** um array — sempre acessar `resultado[0]`
 - `infProt.cStat === 100` = nota autorizada com sucesso
 
+### Chamada de cancelamento — `NFeRecepcaoEvento` ✅ Testado
+
+```js
+// tpEvento '110111' = cancelamento
+const resultado = await NFeRecepcaoEvento({
+  idLote: '1',
+  evento: [{
+    infEvento: {
+      cOrgao: uf,
+      tpAmb: Number(process.env.NFE_AMBIENTE_NUM),
+      CNPJ: process.env.NFE_CNPJ_EMITENTE,
+      chNFe: chave,
+      dhEvento: dhEvento,       // mesmo formato de dhEmi: UTC-3, sem milissegundos
+      tpEvento: '110111',
+      nSeqEvento: '1',
+      verEvento: '1.00',
+      detEvento: {
+        descEvento: 'Cancelamento',
+        nProt: protocolo,       // protocolo de autorização da nota
+        xJust: motivo,          // mínimo 15 caracteres
+      },
+    },
+  }],
+});
+
+const retEvento = resultado[0].retEvento.infEvento;
+// retEvento.cStat === '135' = evento registrado com sucesso
+```
+
+> **Prazo:** até 24h após autorização (ou 168h se sem circulação). SEFAZ retorna rejeição se exceder.
+
 ### 🔒 Concorrência — fila simples com `nfe_status`
 
 A emissão SEFAZ leva **2–8 segundos**. Se dois usuários tentarem emitir a mesma OS simultaneamente, ocorre race condition com lock no SQLite (single-writer). **Solução obrigatória antes do go-live:**
@@ -350,10 +396,13 @@ Implementar contingência real é backlog — documentar para o usuário que a e
 
 ### 🚀 Checklist de go-live (homologação → produção)
 
-- [ ] Mínimo **10 NF-es bem-sucedidas** em homologação (`NFE_AMBIENTE_NUM=2`)
-- [ ] Implementar cancelamento (`NFeRecepcaoEvento`) antes de emitir em produção
-- [ ] Verificar que `backend/data/nfe_xmls/` está no backup e fora do `.gitignore`
+- [x] Migration das colunas de cancelamento em `database.js` (commit `d66177f`)
+- [x] Endpoint `POST /api/nfe/:chave/cancelar` implementado (commit `2691384`)
+- [x] Cancelamento testado em homologação — **cStat=135, protocolo=131260152114451** (2026-05-15)
+- [ ] Mínimo **10 NF-es bem-sucedidas** em homologação (`NFE_AMBIENTE_NUM=2`) — contador atual: ~2
+- [ ] XML da nota autorizada salvo em `backend/data/nfe_xmls/{chave}.xml`
 - [ ] Implementar fila com `nfe_status='emitindo'` para bloquear duplicatas
+- [ ] Implementar Carta de Correção (CC-e) — `tpEvento: '110110'`
 - [ ] Alterar `NFE_AMBIENTE_NUM=1` no `.env` do servidor
 - [ ] Reiniciar PM2: `pm2 restart sistemaarte-backend` (necessário para recarregar vars do `.env`)
 - [ ] Emitir primeira nota real de baixo valor para validar
@@ -384,6 +433,9 @@ Implementar contingência real é backlog — documentar para o usuário que a e
 | NF-e: XML não salvo | Obrigação legal 5 anos — multa fiscal | Salvar em `nfe_xml` no banco E em `backend/data/nfe_xmls/` |
 | NF-e: path do .pfx com barra | Crash silencioso no Windows | Sempre usar `path.resolve()` — nunca string hardcoded |
 | NF-e: go-live sem `pm2 restart` | `.env` não recarrega — continua em homologação | `pm2 restart sistemaarte-backend` após alterar `NFE_AMBIENTE_NUM` |
+| NF-e: cancelar nota >24h | SEFAZ rejeita "Prazo superior ao previsto" | Resetar `nfe_status` no banco e reemitir antes de cancelar |
+| NF-e: `wizard.NFeRecepcaoEvento is not a function` | PM2 rodando código antigo em memória | `pm2 restart sistemaarte-backend` após `git pull` |
+| PowerShell: aspas mistas em `-e` node | `SyntaxError: Invalid or unexpected token` | Usar apenas aspas simples dentro do `-e`: `node -e "...db.prepare('SQL').run()..."` |
 | PowerShell: `-WebSession` com cookie HttpOnly | Cookie não é reenviado — todas as chamadas retornam 401 | Extrair token do `Set-Cookie` e passar como `Bearer` (ver seção "Testes via PowerShell") |
 
 ---
@@ -398,9 +450,10 @@ Itens validados mas não implementados ainda (features novas, não bugs):
 | 12 | SSE: limitar por `userId` (máx 3/usuário) | Evitar monopolização de conexões |
 | 13 | Paginação no `GET /api/ordens` (`?page=&limit=`) | Escala com volume crescente |
 | 9 | Backup: gravar `backup-status.json` + endpoint `/api/backup/status` | Observabilidade de falhas |
-| 14 | NF-e: cancelamento via `NFeRecepcaoEvento` | ⚠️ Implementado (commit 2691384) mas NÃO TESTADO — endpoint `POST /api/nfe/:chave/cancelar` criado. Testar antes do go-live. |
 | 15 | NF-e: fila com `nfe_status='emitindo'` | Bloquear duplicatas em emissão simultânea |
-| 16 | NF-e: contingência DPEC/offline | Disponibilidade quando SEFAZ estiver fora |
+| 16 | NF-e: Carta de Correção (CC-e) via `NFeRecepcaoEvento` `tpEvento:'110110'` | Correção sem reemissão |
+| 17 | NF-e: contingência DPEC/offline | Disponibilidade quando SEFAZ estiver fora |
+| 18 | NF-e: salvar XML em `backend/data/nfe_xmls/{chave}.xml` | Obrigação legal 5 anos |
 
 ---
 
@@ -419,27 +472,32 @@ Itens validados mas não implementados ainda (features novas, não bugs):
 
 **Data:** 2026-05-15
 **Agente:** Perplexity
-**Tema:** Migration das colunas de cancelamento + documentação PowerShell
+**Tema:** Teste e homologação do cancelamento de NF-e
 
 ### O que foi feito
 
-**Migration das colunas de cancelamento (✅ concluído)**
-- Commit `d66177f` — adicionado bloco `// v6` no array `migrations[]` de `database.js`
-- Colunas: `nfe_cancelado_em`, `nfe_cancel_protocolo`, `nfe_cancel_motivo`
-- O `try/catch` existente garante que bancos com as colunas já adicionadas manualmente não crasham
+**`git pull` após commits da sessão anterior (✅)**
+- Aplicados commits `d66177f` (migration v6) e `6d725f6` (refactor nfe.js) no servidor
+- Erro `wizard.NFeRecepcaoEvento is not a function` resolvido com `pm2 restart sistemaarte-backend` — PM2 estava rodando o código antigo em memória
 
-**Documentação PowerShell (✅ concluído)**
-- Adicionada seção "Testes via PowerShell" com o padrão correto de autenticação
-- `-WebSession` não funciona com cookies `HttpOnly` — usar extração de token via `Set-Cookie` + `Bearer`
-- Armadilha adicionada na tabela de armadilhas conhecidas
+**Diagnóstico do erro de prazo (✅)**
+- Primeira tentativa de cancelamento rejeitada: `cStat` não retornado, erro "Prazo de cancelamento superior ao previsto"
+- Causa: nota da OS#79 tinha mais de 24h — prazo SEFAZ expirado
+- Solução: reset do `nfe_status` via `node -e` direto no banco + reemissão imediata
 
-### Próximos passos (Fase 1)
+**Cancelamento homologado (✅)**
+- Nova nota emitida: chave `31260507500718000196550010000000261000000265`
+- Cancelamento aprovado pela SEFAZ: **cStat=135, protocolo=131260152114451**
+- Endpoint `POST /api/nfe/:chave/cancelar` validado end-to-end em homologação
+
+### Próximos passos
 
 | Item | Status |
 |---|---|
-| Migration das colunas em `database.js` | ✅ Concluído (commit d66177f) |
-| Cancelamento — testar endpoint no servidor | ⬜ Próxima tarefa |
-| XML da nota autorizada salvo em disco | ⬜ Pendente |
+| Migration das colunas em `database.js` | ✅ Concluído (commit `d66177f`) |
+| Endpoint cancelamento implementado | ✅ Concluído (commit `2691384`) |
+| Cancelamento testado em homologação | ✅ **cStat=135** (2026-05-15) |
+| XML salvo em `nfe_xmls/{chave}.xml` | ⬜ Próxima tarefa |
+| Fila mutex `nfe_status='emitindo'` | ⬜ Pendente |
 | Carta de Correção (CC-e) | ⬜ Pendente |
-| Fila com mutex no `nfe_status` | ⬜ Pendente |
-| 10 notas em homologação | ⬜ Pendente |
+| 10 notas em homologação | ⬜ ~2 feitas, faltam ~8 |
