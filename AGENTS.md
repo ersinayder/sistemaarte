@@ -416,10 +416,41 @@ O backup diário às 2h BRT já cobre `backend/data/` — o diretório `nfe_xmls
 
 | Evento | Prazo | Função nfewizard-io |
 |---|---|---|
-| Cancelamento | Até 24h após autorização (168h se sem circulação) | `NFeRecepcaoEvento` com `tpEvento: '110111'` |
-| Carta de Correção (CC-e) | Até 720h (30 dias) | `NFeRecepcaoEvento` com `tpEvento: '110110'` |
+| Cancelamento | Até 24h após autorização (168h se sem circulação) | `NFE_Cancelamento` com `tpEvento: '110111'` |
+| Carta de Correção (CC-e) | Até 720h (30 dias) | `NFE_CartaDeCorrecao` com `tpEvento: '110110'` |
 
-**Implementar CC-e é o próximo item do roadmap NF-e.**
+**CC-e implementada nesta sessão Codex. Próximo passo: validar em homologação contra a SEFAZ.**
+
+### Tela NF-e — estado atual
+
+`frontend/src/pages/NotasFiscais.jsx` agora:
+- Lista notas via `GET /api/nfe` (sem carregar `nfe_xml` pesado na listagem)
+- Mostra KPIs: total, autorizadas, rejeitadas, em andamento e canceladas
+- Mostra indicador temporario de homologacao: notas autorizadas X/10 e ambiente atual
+- Mostra motivo persistido da última rejeição quando `nfe_status='rejeitado'`
+- Permite ações por status:
+  - `autorizado`: CC-e, baixar XML de autorização, DANFE (roadmap), cancelar, detalhes
+  - `rejeitado`: reemitir, detalhes
+  - `cancelado`: baixar XML de autorização, reemitir, detalhes
+  - `emitindo`: atualizar andamento, detalhes
+- Modal de detalhes busca eventos fiscais e mostra linha do tempo com XML por evento
+- Modal de CC-e mostra aviso do que não pode ser corrigido por Carta de Correção
+- Modal de cancelamento mostra resumo da nota, exige motivo mais detalhado e confirmação explícita
+
+### Endpoints fiscais auxiliares
+
+```txt
+GET  /api/nfe                         # lista notas sem XML pesado; retorna meta.ambiente e contador homologacao
+GET  /api/nfe/:chave/eventos          # eventos por chave NF-e
+GET  /api/nfe/ordem/:ordemId/eventos  # eventos por OS (útil para rejeição sem chave)
+GET  /api/nfe/:chave/xml/autorizacao  # baixa XML da autorização salvo em ordens.nfe_xml
+GET  /api/nfe/eventos/:eventoId/xml   # baixa XML de CC-e/cancelamento/rejeição
+POST /api/nfe/:chave/cce              # emite CC-e
+POST /api/nfe/:chave/cancelar         # cancela NF-e autorizada
+```
+
+Eventos fiscais ficam em `nfe_eventos` com `tipo`: `autorizacao`, `rejeicao`, `cce`, `cancelamento`.
+Novas emissões registram autorização/rejeição nessa tabela. Notas antigas podem ter `nfe_xml` e dados de cancelamento em `ordens`, mas não necessariamente eventos retroativos em `nfe_eventos`.
 
 ### 🔌 Contingência
 
@@ -444,7 +475,9 @@ Implementar contingência real é backlog — documentar para o usuário que a e
 - [x] Mutex `nfe_status='emitindo'` — bloqueia race condition em emissões simultâneas (commit `a0d0550`)
 - [x] Testes `nfe.test.js` corrigidos — 90/90 passando (commit `5a7eabd`)
 - [ ] Mínimo **10 NF-es bem-sucedidas** em homologação (`NFE_AMBIENTE_NUM=2`) — contador atual: ~2
-- [ ] Implementar Carta de Correção (CC-e) — `tpEvento: '110110'`
+- [x] Implementar Carta de Correção (CC-e) — `tpEvento: '110110'` (pendente teste SEFAZ em homologação)
+- [x] Tela de NF-e com histórico de eventos, motivo de rejeição, reemissão, download de XML, aviso de CC-e, confirmação forte de cancelamento e contador X/10 homologação
+- [ ] DANFE na tela NF-e — hoje aparece como ação/roadmap, mas ainda não gera impressão/visualização
 - [ ] Alterar `NFE_AMBIENTE_NUM=1` no `.env` do servidor
 - [ ] Reiniciar PM2: `pm2 restart sistemaarte-backend` (necessário para recarregar vars do `.env`)
 - [ ] Emitir primeira nota real de baixo valor para validar
@@ -495,7 +528,6 @@ Itens validados mas não implementados ainda (features novas, não bugs):
 | 12 | SSE: limitar por `userId` (máx 3/usuário) | Evitar monopolização de conexões |
 | 13 | Paginação no `GET /api/ordens` (`?page=&limit=`) | Escala com volume crescente |
 | 9 | Backup: gravar `backup-status.json` + endpoint `/api/backup/status` | Observabilidade de falhas |
-| 16 | NF-e: Carta de Correção (CC-e) via `NFeRecepcaoEvento` `tpEvento:'110110'` | Correção sem reemissão |
 | 17 | NF-e: contingência DPEC/offline | Disponibilidade quando SEFAZ estiver fora |
 
 ---
@@ -514,22 +546,34 @@ Itens validados mas não implementados ainda (features novas, não bugs):
 ## Última sessão
 
 **Data:** 2026-05-15  
-**Agente:** Perplexity  
-**Tema:** Correção de testes NF-e + Mutex de emissão simultânea
+**Agente:** Codex  
+**Tema:** Implementação de Carta de Correção (CC-e) + ações fiscais na tela
 
 ### O que foi feito
 
-**Correção dos testes `nfe.test.js` (✅ commit `5a7eabd`)**
-- 4 testes falhando com `TypeError: Cannot read properties of undefined`
-- Causa raiz: testes acessavam `nfe.ide`, `nfe.dest`, etc. — mas `montarNFe()` retorna `{ infNFe: { ide, dest, ... } }`
-- Segundo problema: testes esperavam `ICMSSN400` e `PISAliq` — tags inexistentes no XSD da SEFAZ
-- Correção: testes atualizados para `infNFe.ide`, `ICMSSN102`, `PISNT`/`COFINSNT`
-- Resultado: **90/90 testes passando**
+**Carta de Correção (CC-e)**
+- Endpoint `POST /api/nfe/:chave/cce` implementado usando `NFE_CartaDeCorrecao`, `tpEvento='110110'`, sequência incremental e prazo de 720h
+- Eventos fiscais agora são persistidos em `nfe_eventos`, com protocolo, cStat, texto, XML e sequência
+- XML da CC-e salvo em `backend/data/nfe_xmls/{chave}-cce-XX.xml`
+- Tela `NotasFiscais.jsx` ganhou ações para CC-e e cancelamento, além de listagem via `GET /api/nfe`
+- Timeout das chamadas fiscais no frontend ajustado para 45s
+- Verificação local: **90/90 testes backend passando** e **build frontend OK**
 
-**Mutex `nfe_status='emitindo'` (✅ commit `a0d0550`)**
-- Implementado `UPDATE ... WHERE NOT IN ('emitindo','autorizado')` no `POST /emitir/:id`
-- `lock.changes === 0` → retorna 409 imediatamente sem chegar na SEFAZ
-- Guard timeout (40s) e bloco `catch` garantem que o mutex nunca fica preso em `'emitindo'`
+**Complemento da tela fiscal**
+- `GET /api/nfe` foi otimizado para não retornar `nfe_xml` na listagem
+- Implementados endpoints de eventos e download XML:
+  - `GET /api/nfe/:chave/eventos`
+  - `GET /api/nfe/ordem/:ordemId/eventos`
+  - `GET /api/nfe/:chave/xml/autorizacao`
+  - `GET /api/nfe/eventos/:eventoId/xml`
+- Emissão autorizada e rejeição agora registram evento em `nfe_eventos`
+- Detalhe da NF-e mostra linha do tempo fiscal e permite baixar XML da autorização, CC-e e cancelamento
+- Rejeições exibem motivo persistido e notas rejeitadas/canceladas podem ser reemitidas pela tela
+- Reemissão de nota cancelada limpa `nfe_cancelado_em`, `nfe_cancel_protocolo` e `nfe_cancel_motivo` quando a nova autorização entra
+- Tela recebeu contador temporário de homologação X/10, ação DANFE marcada como roadmap, botão de atualizar para notas em `emitindo`
+- Modal de CC-e recebeu aviso operacional sobre restrições legais; modal de cancelamento recebeu resumo da nota, motivo mínimo mais contextualizado e confirmação explícita
+- `GET /api/nfe` passou a retornar `meta` com ambiente atual e alvo/contador de homologação; `tpAmbAtual()` aceita `NFE_AMBIENTE_NUM` ou `NFE_AMBIENTE`
+- Verificação repetida: **90/90 testes backend passando**, `node --check backend/routes/nfe.js` OK e **build frontend OK**
 
 ### Próximos passos
 
@@ -538,6 +582,8 @@ Itens validados mas não implementados ainda (features novas, não bugs):
 | Testes `nfe.test.js` | ✅ 90/90 passando (commit `5a7eabd`) |
 | XML salvo em `nfe_xmls/{chave}.xml` | ✅ Já implementado (commit anterior) |
 | Mutex `nfe_status='emitindo'` | ✅ Concluído (commit `a0d0550`) |
-| **Carta de Correção (CC-e)** | ⬜ **Próxima tarefa** |
+| **Carta de Correção (CC-e)** | ✅ Implementada; falta teste SEFAZ em homologação |
+| Histórico/XML/avisos/contador na tela NF-e | ✅ Implementado localmente; falta validar no servidor |
+| DANFE | ⬜ Roadmap visível na tela; geração/visualização ainda pendente |
 | 10 notas em homologação | ⬜ ~2 feitas, faltam ~8 |
 | Go-live (NFE_AMBIENTE_NUM=1) | ⬜ Aguarda 10 notas homologadas |

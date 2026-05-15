@@ -125,6 +125,21 @@ CREATE INDEX IF NOT EXISTS idx_statuslog_ordemid   ON statuslog(ordemid);
 CREATE INDEX IF NOT EXISTS idx_produtos_nome       ON produtos(nome COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS idx_ordem_itens_ordemid ON ordem_itens(ordemid);
 CREATE INDEX IF NOT EXISTS idx_lancamentos_pago_del ON lancamentos(ordemid, pago, deletedat);
+CREATE TABLE IF NOT EXISTS nfe_eventos (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  ordemid     INTEGER,
+  chave       TEXT NOT NULL,
+  tipo        TEXT NOT NULL,
+  nseqevento  INTEGER NOT NULL DEFAULT 1,
+  protocolo   TEXT,
+  cstat       TEXT,
+  motivo      TEXT,
+  texto       TEXT,
+  xml         TEXT,
+  createdat   TEXT DEFAULT (datetime('now','localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_nfe_eventos_chave_tipo ON nfe_eventos(chave, tipo);
+CREATE INDEX IF NOT EXISTS idx_nfe_eventos_ordemid ON nfe_eventos(ordemid);
 `;
 
 let db;
@@ -183,6 +198,22 @@ function initDB() {
     "ALTER TABLE ordens ADD COLUMN nfe_cancelado_em TEXT",
     "ALTER TABLE ordens ADD COLUMN nfe_cancel_protocolo TEXT",
     "ALTER TABLE ordens ADD COLUMN nfe_cancel_motivo TEXT",
+    // v7 - eventos fiscais da NF-e (CC-e, cancelamento e futuros eventos)
+    `CREATE TABLE IF NOT EXISTS nfe_eventos (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      ordemid     INTEGER,
+      chave       TEXT NOT NULL,
+      tipo        TEXT NOT NULL,
+      nseqevento  INTEGER NOT NULL DEFAULT 1,
+      protocolo   TEXT,
+      cstat       TEXT,
+      motivo      TEXT,
+      texto       TEXT,
+      xml         TEXT,
+      createdat   TEXT DEFAULT (datetime('now','localtime'))
+    )`,
+    "CREATE INDEX IF NOT EXISTS idx_nfe_eventos_chave_tipo ON nfe_eventos(chave, tipo)",
+    "CREATE INDEX IF NOT EXISTS idx_nfe_eventos_ordemid ON nfe_eventos(ordemid)",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {}
