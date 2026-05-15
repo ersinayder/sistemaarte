@@ -47,9 +47,6 @@ function emitente() {
 /**
  * Salva XML de NF-e (autorização ou cancelamento) em backend/data/nfe_xmls/.
  * Falha silenciosa — nunca deve interromper o fluxo principal.
- * @param {string} nomeArquivo  Ex: "{chave}.xml" ou "{chave}-canc.xml"
- * @param {string} xmlContent   Conteúdo XML ou JSON serializado
- * @returns {string|null}       Caminho completo ou null em caso de falha
  */
 function salvarXmlDisco(nomeArquivo, xmlContent) {
   try {
@@ -84,15 +81,19 @@ router.get('/', auth(), (req, res) => {
 // POST /api/nfe/emitir/:id
 router.post('/emitir/:id', auth(), async (req, res) => {
   let respondido = false;
+  const db = getDB();
+  const osId = req.params.id;
+
   const guardTimeout = setTimeout(() => {
     if (!respondido) {
       respondido = true;
-      console.error(`[NF-e] Guard timeout disparado para OS#${req.params.id}`);
+      console.error(`[NF-e] Guard timeout disparado para OS#${osId}`);
+      // Libera mutex se ainda estiver 'emitindo' (guard disparou antes da resposta SEFAZ)
+      try { db.prepare(`UPDATE ordens SET nfe_status='rejeitado' WHERE id=? AND nfe_status='emitindo'`).run(osId); } catch(_) {}
       res.status(504).json({ erro: 'Timeout interno: SEFAZ sem resposta apos 40s' });
     }
   }, 40_000);
 
-  const db = getDB();
   try {
     if (!process.env.NFE_CERT_PATH || !process.env.NFE_CERT_PASSWORD) {
       clearTimeout(guardTimeout); respondido = true;
@@ -109,7 +110,7 @@ router.post('/emitir/:id', auth(), async (req, res) => {
       FROM ordens o
       LEFT JOIN clientes c ON o.clienteid = c.id
       WHERE o.id = ?
-    `).get(req.params.id);
+    `).get(osId);
 
     if (!os) {
       clearTimeout(guardTimeout); respondido = true;
@@ -136,7 +137,22 @@ router.post('/emitir/:id', auth(), async (req, res) => {
       return res.status(422).json({ erro: 'OS nao possui itens - nao e possivel emitir NF-e' });
     }
 
-    db.prepare(`UPDATE ordens SET nfe_status = 'emitindo' WHERE id = ?`).run(os.id);
+    // ── MUTEX: tenta adquirir o lock de emissao ────────────────────────────────
+    // UPDATE só executa se o status NÃO for 'emitindo' nem 'autorizado'.
+    // Se changes === 0, outro processo já pegou o lock — rejeita com 409.
+    const lock = db.prepare(`
+      UPDATE ordens
+      SET nfe_status = 'emitindo'
+      WHERE id = ? AND (nfe_status IS NULL OR nfe_status NOT IN ('emitindo', 'autorizado'))
+    `).run(osId);
+
+    if (lock.changes === 0) {
+      clearTimeout(guardTimeout); respondido = true;
+      return res.status(409).json({
+        erro: 'NF-e ja esta sendo emitida ou ja foi autorizada. Aguarde e tente novamente.'
+      });
+    }
+    // ── fim do mutex ───────────────────────────────────────────────────────────
 
     const serie  = '1';
     const numero = proximoNumero(db, serie);
@@ -166,7 +182,7 @@ router.post('/emitir/:id', auth(), async (req, res) => {
       }));
     } catch (sefazErr) {
       console.error('[NF-e] Erro na chamada SEFAZ:', sefazErr.message);
-      db.prepare(`UPDATE ordens SET nfe_status = 'rejeitado' WHERE id = ? AND nfe_status = 'emitindo'`).run(os.id);
+      db.prepare(`UPDATE ordens SET nfe_status='rejeitado' WHERE id=? AND nfe_status='emitindo'`).run(osId);
       if (!respondido) {
         clearTimeout(guardTimeout); respondido = true;
         return res.status(504).json({ erro: 'Sem resposta da SEFAZ', detalhe: sefazErr.message });
@@ -199,7 +215,7 @@ router.post('/emitir/:id', auth(), async (req, res) => {
         || resultado?.retEnviNFe?.xMotivo
         || resultado?.retEnviNFe?.protNFe?.infProt?.xMotivo
         || `cStat ${cStat || 'desconhecido'}`;
-      db.prepare(`UPDATE ordens SET nfe_status = 'rejeitado' WHERE id = ?`).run(os.id);
+      db.prepare(`UPDATE ordens SET nfe_status='rejeitado' WHERE id=?`).run(osId);
       console.error(`[NF-e] Rejeitado OS#${os.id}: cStat=${cStat} motivo=${motivo}`);
       if (!respondido) {
         clearTimeout(guardTimeout); respondido = true;
@@ -224,7 +240,7 @@ router.post('/emitir/:id', auth(), async (req, res) => {
         nfe_emitida_em = ?,
         nfe_xml        = ?
       WHERE id = ?
-    `).run(numero, serie, chave, protocolo, agora, xmlAutorizacao, os.id);
+    `).run(numero, serie, chave, protocolo, agora, xmlAutorizacao, osId);
 
     if (chave) {
       salvarXmlDisco(`${chave}.xml`, xmlAutorizacao);
@@ -238,10 +254,8 @@ router.post('/emitir/:id', auth(), async (req, res) => {
 
   } catch (e) {
     console.error('[NF-e] ERRO POST /emitir:', e.message, e.stack);
-    try {
-      db.prepare(`UPDATE ordens SET nfe_status = 'rejeitado' WHERE id = ? AND nfe_status = 'emitindo'`)
-        .run(req.params.id);
-    } catch (_) {}
+    // Garante que o mutex nunca fique travado em 'emitindo' após exceção inesperada
+    try { db.prepare(`UPDATE ordens SET nfe_status='rejeitado' WHERE id=? AND nfe_status='emitindo'`).run(osId); } catch(_) {}
     if (!respondido) {
       clearTimeout(guardTimeout); respondido = true;
       res.status(500).json({ erro: 'Erro interno ao emitir NF-e', detalhe: e.message });
@@ -308,10 +322,8 @@ router.post('/:chave/cancelar', auth(), async (req, res) => {
     const cnpj  = (process.env.NFE_CNPJ_EMITENTE || '').replace(/\D/g, '');
     const tpAmb = process.env.NFE_AMBIENTE === 'producao' ? 1 : 2;
 
-    // cOrgao: 2 primeiros dígitos da chave = código UF (number)
     const cOrgao = Number(chave.substring(0, 2));
 
-    // dhEvento BRT sem milissegundos
     const now      = new Date();
     const brt      = new Date(now.getTime() - 3 * 60 * 60 * 1000);
     const dhEvento = brt.toISOString().replace(/\.\d{3}Z$/, '-03:00');
@@ -367,7 +379,6 @@ router.post('/:chave/cancelar', auth(), async (req, res) => {
     const nProtResp    = retEvento?.nProt        || '';
     const dhEventoResp = retEvento?.dhRegEvento  || dhEvento;
 
-    // 135 = Evento Registrado e Vinculado a NF-e  |  155 = Cancelamento homologado
     const cancelado = ['135', '155'].includes(cStatResp);
 
     if (!cancelado) {
@@ -393,7 +404,6 @@ router.post('/:chave/cancelar', auth(), async (req, res) => {
       ? resultado
       : JSON.stringify(resultado, null, 2);
 
-    // Salvar XML de cancelamento em backend/data/nfe_xmls/{chave}-canc.xml
     salvarXmlDisco(`${chave}-canc.xml`, xmlEvento);
 
     console.log(`[NF-e] Cancelamento registrado chave=${chave} nProtCanc=${nProtResp}`);
