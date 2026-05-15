@@ -44,6 +44,50 @@ function parseRetEvento(resultado, fallbackDhEvento) {
   };
 }
 
+function extrairXmlFiscal(valor, depth = 0) {
+  if (!valor || depth > 5) return null;
+
+  if (typeof valor === 'string') {
+    const texto = valor.trim();
+    if (texto.startsWith('<')) return texto;
+    if (texto.startsWith('{') || texto.startsWith('[')) {
+      try {
+        return extrairXmlFiscal(JSON.parse(texto), depth + 1);
+      } catch (_) {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  if (Array.isArray(valor)) {
+    for (const item of valor) {
+      const xml = extrairXmlFiscal(item, depth + 1);
+      if (xml) return xml;
+    }
+    return null;
+  }
+
+  if (typeof valor === 'object') {
+    for (const key of ['xml', 'xmlAssinado', 'xmlProc', 'nfeProc', 'procNFe']) {
+      const xml = extrairXmlFiscal(valor[key], depth + 1);
+      if (xml) return xml;
+    }
+    for (const item of Object.values(valor)) {
+      const xml = extrairXmlFiscal(item, depth + 1);
+      if (xml) return xml;
+    }
+  }
+
+  return null;
+}
+
+function serializarXmlFiscal(resultado) {
+  return extrairXmlFiscal(resultado) || (typeof resultado === 'string'
+    ? resultado
+    : JSON.stringify(resultado, null, 2));
+}
+
 function proximoNumero(db, serie = '1') {
   const row = db.prepare('SELECT ultimo_numero FROM nfe_sequencias WHERE serie = ?').get(serie);
   if (!row) {
@@ -227,9 +271,14 @@ router.get('/:chave/xml/autorizacao', auth(), (req, res) => {
       return res.status(404).json({ erro: 'XML de autorizacao nao encontrado para esta NF-e' });
     }
 
+    const xml = extrairXmlFiscal(os.nfe_xml);
+    if (!xml) {
+      return res.status(422).json({ erro: 'XML de autorizacao salvo em formato invalido para esta NF-e' });
+    }
+
     res.setHeader('Content-Type', 'application/xml; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filenameSeguro(chave)}.xml"`);
-    res.send(os.nfe_xml);
+    res.send(xml);
   } catch (e) {
     console.error('[NF-e] GET /:chave/xml/autorizacao:', e.message);
     res.status(500).json({ erro: 'Erro ao baixar XML de autorizacao' });
@@ -256,13 +305,17 @@ router.get('/eventos/:eventoId/xml', auth(), (req, res) => {
     if (!evento.xml) {
       return res.status(404).json({ erro: 'XML nao encontrado para este evento fiscal.' });
     }
+    const xml = extrairXmlFiscal(evento.xml);
+    if (!xml) {
+      return res.status(422).json({ erro: 'XML salvo em formato invalido para este evento fiscal.' });
+    }
 
     const sufixo = evento.tipo === 'cce'
       ? `cce-${pad(evento.nseqevento, 2)}`
       : evento.tipo;
     res.setHeader('Content-Type', 'application/xml; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filenameSeguro(evento.chave)}-${filenameSeguro(sufixo)}.xml"`);
-    res.send(evento.xml);
+    res.send(xml);
   } catch (e) {
     console.error('[NF-e] GET /eventos/:eventoId/xml:', e.message);
     res.status(500).json({ erro: 'Erro ao baixar XML do evento fiscal' });
@@ -415,6 +468,7 @@ router.post('/emitir/:id', auth(), async (req, res) => {
         || resultado?.retEnviNFe?.protNFe?.infProt?.xMotivo
         || `cStat ${cStat || 'desconhecido'}`;
       db.prepare(`UPDATE ordens SET nfe_status='rejeitado' WHERE id=?`).run(osId);
+      const xmlRejeicao = serializarXmlFiscal(resultado);
       registrarEventoFiscal(db, {
         ordemid: os.id,
         chave: chave || os.nfe_chave || `OS-${os.id}`,
@@ -422,7 +476,7 @@ router.post('/emitir/:id', auth(), async (req, res) => {
         cstat: cStat || null,
         motivo,
         texto: 'Rejeicao de autorizacao NF-e',
-        xml: typeof resultado === 'string' ? resultado : JSON.stringify(resultado, null, 2),
+        xml: xmlRejeicao,
       });
       console.error(`[NF-e] Rejeitado OS#${os.id}: cStat=${cStat} motivo=${motivo}`);
       if (!respondido) {
@@ -433,9 +487,7 @@ router.post('/emitir/:id', auth(), async (req, res) => {
     }
 
     // Serializar XML da resposta para armazenamento (obrigação legal 5 anos)
-    const xmlAutorizacao = typeof resultado === 'string'
-      ? resultado
-      : JSON.stringify(resultado, null, 2);
+    const xmlAutorizacao = serializarXmlFiscal(resultado);
 
     // Salvar em banco (campo nfe_xml) + arquivo em backend/data/nfe_xmls/{chave}.xml
     db.prepare(`
@@ -462,7 +514,7 @@ router.post('/emitir/:id', auth(), async (req, res) => {
       chave,
       tipo: 'autorizacao',
       protocolo,
-      cstat,
+      cstat: cStat,
       motivo: 'NF-e autorizada',
       xml: xmlAutorizacao,
       createdat: agora,
@@ -603,9 +655,7 @@ router.post('/:chave/cce', auth(), async (req, res) => {
       return;
     }
 
-    const xmlEvento = typeof resultado === 'string'
-      ? resultado
-      : JSON.stringify(resultado, null, 2);
+    const xmlEvento = serializarXmlFiscal(resultado);
 
     registrarEventoFiscal(db, {
       ordemid: os.id,
@@ -770,9 +820,7 @@ router.post('/:chave/cancelar', auth(), async (req, res) => {
       WHERE nfe_chave = ?
     `).run(dhEventoResp, nProtResp, motivoStr, chave);
 
-    const xmlEvento = typeof resultado === 'string'
-      ? resultado
-      : JSON.stringify(resultado, null, 2);
+    const xmlEvento = serializarXmlFiscal(resultado);
 
     registrarEventoFiscal(db, {
       ordemid: os.id,
