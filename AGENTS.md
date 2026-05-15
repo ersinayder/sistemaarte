@@ -119,7 +119,8 @@ Em qualquer outro cenário (variável indefinida, `NODE_ENV=production`, etc.) o
 backend/
 ├── domain/
 │   ├── ordensRules.js       # STATUSES_VALIDOS, TRANSICOES_VALIDAS, validarStatus, normalizarStatus
-│   └── financeiroRules.js   # getResumoFinanceiroOS — UNICA fonte de verdade para saldo de OS
+│   ├── financeiroRules.js   # getResumoFinanceiroOS — UNICA fonte de verdade para saldo de OS
+│   └── nfeRules.js          # montarNFe() — retorna { infNFe: { ide, emit, dest, det[], total, transp, pag } }
 ├── middlewares/
 │   ├── auth.js              # Middleware JWT — lê cookie > header Authorization
 │   └── errorHandler.js      # Sanitiza erros SQLite, nunca vaza schema
@@ -168,7 +169,7 @@ frontend/src/
 
 - **Branch protegida:** `main` — requer PR + testes passando
 - **Branch de trabalho:** `develop` — commits diretos permitidos
-- **Fluxo:** `develop` → PR → testes (Vitest, 86 testes) → merge → deploy automático
+- **Fluxo:** `develop` → PR → testes (Vitest, 90 testes) → merge → deploy automático
 - **Deploy:** `robocopy` sincroniza `backend/` e `frontend/dist/` no servidor, PM2 reinicia via `ecosystem.config.js`
 - **O `.env` nunca é copiado pelo deploy** (`/XF .env` no robocopy)
 
@@ -202,6 +203,29 @@ node -e "const db=require('better-sqlite3')('./data/oficina.db');db.prepare('UPD
 ```
 
 > **Nunca usar em produção.** Apenas em homologação para reaproveitamento de OS de teste.
+
+### Script para emitir múltiplas notas em homologação
+
+> Usar para atingir o mínimo de 10 NF-es homologadas antes do go-live.  
+> Ajustar o array `$osIds` com IDs de OS no status `'Pronto'` ou `'Entregue'`.
+
+```powershell
+$loginResp = Invoke-WebRequest -Uri "http://localhost:3001/api/auth/login" -Method POST -ContentType "application/json" -Body '{"username":"admin","password":"lojanova"}'
+$token = ($loginResp.Headers["Set-Cookie"] -split ";")[0] -replace "token=",""
+
+$osIds = @(79, 80, 81, 82, 83, 84, 85, 86)   # ajustar conforme IDs disponíveis
+foreach ($id in $osIds) {
+  try {
+    # Reset (caso nota anterior ainda esteja no banco)
+    node -e "const db=require('better-sqlite3')('./data/oficina.db');db.prepare('UPDATE ordens SET nfe_status=NULL,nfe_chave=NULL,nfe_protocolo=NULL,nfe_numero=NULL,nfe_emitida_em=NULL WHERE id=?').run($id);db.close();"
+    $r = Invoke-RestMethod -Uri "http://localhost:3001/api/nfe/emitir/$id" -Method POST -Headers @{ Authorization = "Bearer $token" }
+    Write-Host "OS#$id ✅ chave=$($r.chave)" -ForegroundColor Green
+    Start-Sleep -Seconds 3
+  } catch {
+    Write-Host "OS#$id ❌ $_" -ForegroundColor Red
+  }
+}
+```
 
 ### Teste completo: emitir e cancelar em sequência
 
@@ -241,6 +265,22 @@ Invoke-RestMethod -Uri "http://localhost:3001/api/nfe/CHAVE44DIGITOS/cancelar" `
 ## NF-e — nfewizard-io (homologado ✅)
 
 > Integração testada e com nota aprovada na SEFAZ. Versão: `nfewizard-io@1.0.4`.
+
+### Estrutura de retorno de `montarNFe()`
+
+```js
+// domain/nfeRules.js — retorna SEMPRE com wrapper infNFe
+const payload = montarNFe({ ordem, itens, cliente, emitente, numero, serie });
+// payload = { infNFe: { ide, emit, dest, det[], total, transp, pag } }
+
+// Acesso correto:
+payload.infNFe.ide.mod     // '55'
+payload.infNFe.det[0]      // primeiro item
+payload.infNFe.total.ICMSTot.vNF
+
+// ❌ ERRADO — não existe payload.ide, payload.dest, etc.
+payload.ide.mod
+```
 
 ### Configuração correta do objeto `config`
 
@@ -341,33 +381,34 @@ const retEvento = resultado[0].retEvento.infEvento;
 
 > **Prazo:** até 24h após autorização (ou 168h se sem circulação). SEFAZ retorna rejeição se exceder.
 
-### 🔒 Concorrência — fila simples com `nfe_status`
-
-A emissão SEFAZ leva **2–8 segundos**. Se dois usuários tentarem emitir a mesma OS simultaneamente, ocorre race condition com lock no SQLite (single-writer). **Solução obrigatória antes do go-live:**
+### 🔒 Mutex `nfe_status='emitindo'` ✅ Implementado (commit `a0d0550`)
 
 ```js
-// Antes de chamar NFE_Autorizacao:
-const bloqueio = db.prepare(
-  "UPDATE notas_fiscais SET nfe_status='emitindo' WHERE id=? AND nfe_status NOT IN ('emitindo','autorizada')"
-).run(nfeId);
+// UPDATE atômico — só executa se status NÃO for 'emitindo' nem 'autorizado'
+const lock = db.prepare(`
+  UPDATE ordens
+  SET nfe_status = 'emitindo'
+  WHERE id = ? AND (nfe_status IS NULL OR nfe_status NOT IN ('emitindo', 'autorizado'))
+`).run(osId);
 
-if (bloqueio.changes === 0) {
-  return res.status(409).json({ error: 'Nota já está sendo emitida ou já foi autorizada.' });
+if (lock.changes === 0) {
+  return res.status(409).json({ erro: 'NF-e já está sendo emitida ou já foi autorizada.' });
 }
-
-// ... chama NFE_Autorizacao ...
-
-// Ao finalizar (sucesso ou erro), atualizar nfe_status para 'autorizada' ou 'erro'
+// ... chama SEFAZ ...
+// Em caso de erro: UPDATE SET nfe_status='rejeitado' WHERE nfe_status='emitindo'
 ```
 
-Valores válidos para `nfe_status`: `'pendente'`, `'emitindo'`, `'autorizada'`, `'cancelada'`, `'erro'`.
+O guard timeout de 40s também libera o mutex (`nfe_status='rejeitado'`) se o status ainda for `'emitindo'` ao disparar.
 
-### 🗄️ Armazenamento de XML — obrigação legal (5 anos)
+### 🗄️ Armazenamento de XML — obrigação legal (5 anos) ✅ Implementado
 
-O XML da NF-e autorizada **deve ser armazenado por 5 anos** (obrigação fiscal). Estratégia dupla:
-
-1. **Banco:** salvar no campo `nfe_xml TEXT` da tabela de notas (garante consulta rápida)
-2. **Arquivo:** salvar em `backend/data/nfe_xmls/{chave_nfe}.xml` (garante sobrevivência a futuras migrações de banco)
+```js
+// Salvo em duas camadas:
+// 1. Banco: campo nfe_xml TEXT na tabela ordens
+// 2. Arquivo: backend/data/nfe_xmls/{chave}.xml  (e {chave}-canc.xml para cancelamentos)
+salvarXmlDisco(`${chave}.xml`, xmlAutorizacao);
+salvarXmlDisco(`${chave}-canc.xml`, xmlEvento);
+```
 
 O backup diário às 2h BRT já cobre `backend/data/` — o diretório `nfe_xmls/` **deve estar incluído** no mesmo backup e **nunca** ser adicionado ao `.gitignore`. Verificar que o `robocopy` do deploy não sobrescreve esse diretório.
 
@@ -378,7 +419,7 @@ O backup diário às 2h BRT já cobre `backend/data/` — o diretório `nfe_xmls
 | Cancelamento | Até 24h após autorização (168h se sem circulação) | `NFeRecepcaoEvento` com `tpEvento: '110111'` |
 | Carta de Correção (CC-e) | Até 720h (30 dias) | `NFeRecepcaoEvento` com `tpEvento: '110110'` |
 
-**Implementar `NFeRecepcaoEvento` (cancelamento) antes de ir para produção** — sem isso, qualquer nota emitida incorretamente exige contato manual com a SEFAZ.
+**Implementar CC-e é o próximo item do roadmap NF-e.**
 
 ### 🔌 Contingência
 
@@ -399,9 +440,10 @@ Implementar contingência real é backlog — documentar para o usuário que a e
 - [x] Migration das colunas de cancelamento em `database.js` (commit `d66177f`)
 - [x] Endpoint `POST /api/nfe/:chave/cancelar` implementado (commit `2691384`)
 - [x] Cancelamento testado em homologação — **cStat=135, protocolo=131260152114451** (2026-05-15)
+- [x] XML salvo em `backend/data/nfe_xmls/{chave}.xml` e `{chave}-canc.xml` (commit `a0d0550`)
+- [x] Mutex `nfe_status='emitindo'` — bloqueia race condition em emissões simultâneas (commit `a0d0550`)
+- [x] Testes `nfe.test.js` corrigidos — 90/90 passando (commit `5a7eabd`)
 - [ ] Mínimo **10 NF-es bem-sucedidas** em homologação (`NFE_AMBIENTE_NUM=2`) — contador atual: ~2
-- [ ] XML da nota autorizada salvo em `backend/data/nfe_xmls/{chave}.xml`
-- [ ] Implementar fila com `nfe_status='emitindo'` para bloquear duplicatas
 - [ ] Implementar Carta de Correção (CC-e) — `tpEvento: '110110'`
 - [ ] Alterar `NFE_AMBIENTE_NUM=1` no `.env` do servidor
 - [ ] Reiniciar PM2: `pm2 restart sistemaarte-backend` (necessário para recarregar vars do `.env`)
@@ -426,10 +468,13 @@ Implementar contingência real é backlog — documentar para o usuário que a e
 | NF-e: `pathCertificado` na raiz | lib ignora o certificado silenciosamente | Colocar dentro de `config.dfe` |
 | NF-e: `ambiente` como string | SEFAZ rejeita / lib não conecta | Usar `number`: `1` ou `2` |
 | NF-e: `ICMSSN400` | Não existe no XSD da SEFAZ — nota rejeitada | Usar `ICMSSN102` para CSOSN 400 |
+| NF-e: `PISAliq` no Simples Nacional | Tag errada — SEFAZ rejeita | Usar `PISNT`/`COFINSNT` com `CST: '07'` |
 | NF-e: `dhEmi` com milissegundos | SEFAZ rejeita o formato | Usar `.replace(/\.\d{3}Z$/, '-03:00')` |
 | NF-e: `useOpenSSL: true` no Windows | Crash — `openssl` não está no PATH | Setar `config.lib.useOpenSSL = false` |
 | NF-e: `resultado` não é indexado | `resultado.protNFe` undefined | Resposta é array — acessar `resultado[0].protNFe.infProt` |
-| NF-e: emissão simultânea | Race condition + SQLite lock (2–8s por emissão) | Coluna `nfe_status='emitindo'` como mutex antes do webservice |
+| NF-e: `montarNFe()` sem wrapper | `nfe.ide` undefined | Retorna `{ infNFe: {...} }` — sempre acessar `payload.infNFe.ide` |
+| NF-e: emissão simultânea | Race condition + SQLite lock (2–8s por emissão) | Mutex atômico com `UPDATE WHERE NOT IN ('emitindo','autorizado')` — `changes===0` → 409 |
+| NF-e: mutex preso em 'emitindo' | Crash antes do finally liberar | Guard timeout de 40s + catch global reseta para `'rejeitado'` |
 | NF-e: XML não salvo | Obrigação legal 5 anos — multa fiscal | Salvar em `nfe_xml` no banco E em `backend/data/nfe_xmls/` |
 | NF-e: path do .pfx com barra | Crash silencioso no Windows | Sempre usar `path.resolve()` — nunca string hardcoded |
 | NF-e: go-live sem `pm2 restart` | `.env` não recarrega — continua em homologação | `pm2 restart sistemaarte-backend` após alterar `NFE_AMBIENTE_NUM` |
@@ -450,10 +495,8 @@ Itens validados mas não implementados ainda (features novas, não bugs):
 | 12 | SSE: limitar por `userId` (máx 3/usuário) | Evitar monopolização de conexões |
 | 13 | Paginação no `GET /api/ordens` (`?page=&limit=`) | Escala com volume crescente |
 | 9 | Backup: gravar `backup-status.json` + endpoint `/api/backup/status` | Observabilidade de falhas |
-| 15 | NF-e: fila com `nfe_status='emitindo'` | Bloquear duplicatas em emissão simultânea |
 | 16 | NF-e: Carta de Correção (CC-e) via `NFeRecepcaoEvento` `tpEvento:'110110'` | Correção sem reemissão |
 | 17 | NF-e: contingência DPEC/offline | Disponibilidade quando SEFAZ estiver fora |
-| 18 | NF-e: salvar XML em `backend/data/nfe_xmls/{chave}.xml` | Obrigação legal 5 anos |
 
 ---
 
@@ -470,34 +513,31 @@ Itens validados mas não implementados ainda (features novas, não bugs):
 
 ## Última sessão
 
-**Data:** 2026-05-15
-**Agente:** Perplexity
-**Tema:** Teste e homologação do cancelamento de NF-e
+**Data:** 2026-05-15  
+**Agente:** Perplexity  
+**Tema:** Correção de testes NF-e + Mutex de emissão simultânea
 
 ### O que foi feito
 
-**`git pull` após commits da sessão anterior (✅)**
-- Aplicados commits `d66177f` (migration v6) e `6d725f6` (refactor nfe.js) no servidor
-- Erro `wizard.NFeRecepcaoEvento is not a function` resolvido com `pm2 restart sistemaarte-backend` — PM2 estava rodando o código antigo em memória
+**Correção dos testes `nfe.test.js` (✅ commit `5a7eabd`)**
+- 4 testes falhando com `TypeError: Cannot read properties of undefined`
+- Causa raiz: testes acessavam `nfe.ide`, `nfe.dest`, etc. — mas `montarNFe()` retorna `{ infNFe: { ide, dest, ... } }`
+- Segundo problema: testes esperavam `ICMSSN400` e `PISAliq` — tags inexistentes no XSD da SEFAZ
+- Correção: testes atualizados para `infNFe.ide`, `ICMSSN102`, `PISNT`/`COFINSNT`
+- Resultado: **90/90 testes passando**
 
-**Diagnóstico do erro de prazo (✅)**
-- Primeira tentativa de cancelamento rejeitada: `cStat` não retornado, erro "Prazo de cancelamento superior ao previsto"
-- Causa: nota da OS#79 tinha mais de 24h — prazo SEFAZ expirado
-- Solução: reset do `nfe_status` via `node -e` direto no banco + reemissão imediata
-
-**Cancelamento homologado (✅)**
-- Nova nota emitida: chave `31260507500718000196550010000000261000000265`
-- Cancelamento aprovado pela SEFAZ: **cStat=135, protocolo=131260152114451**
-- Endpoint `POST /api/nfe/:chave/cancelar` validado end-to-end em homologação
+**Mutex `nfe_status='emitindo'` (✅ commit `a0d0550`)**
+- Implementado `UPDATE ... WHERE NOT IN ('emitindo','autorizado')` no `POST /emitir/:id`
+- `lock.changes === 0` → retorna 409 imediatamente sem chegar na SEFAZ
+- Guard timeout (40s) e bloco `catch` garantem que o mutex nunca fica preso em `'emitindo'`
 
 ### Próximos passos
 
 | Item | Status |
 |---|---|
-| Migration das colunas em `database.js` | ✅ Concluído (commit `d66177f`) |
-| Endpoint cancelamento implementado | ✅ Concluído (commit `2691384`) |
-| Cancelamento testado em homologação | ✅ **cStat=135** (2026-05-15) |
-| XML salvo em `nfe_xmls/{chave}.xml` | ⬜ Próxima tarefa |
-| Fila mutex `nfe_status='emitindo'` | ⬜ Pendente |
-| Carta de Correção (CC-e) | ⬜ Pendente |
+| Testes `nfe.test.js` | ✅ 90/90 passando (commit `5a7eabd`) |
+| XML salvo em `nfe_xmls/{chave}.xml` | ✅ Já implementado (commit anterior) |
+| Mutex `nfe_status='emitindo'` | ✅ Concluído (commit `a0d0550`) |
+| **Carta de Correção (CC-e)** | ⬜ **Próxima tarefa** |
 | 10 notas em homologação | ⬜ ~2 feitas, faltam ~8 |
+| Go-live (NFE_AMBIENTE_NUM=1) | ⬜ Aguarda 10 notas homologadas |
