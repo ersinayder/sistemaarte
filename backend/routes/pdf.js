@@ -1,6 +1,7 @@
 const router  = require("express").Router();
 const { getOne, getAll } = require("../database");
 const { auth } = require("../middlewares/auth");
+const { getResumoFinanceiroOS } = require("../domain/financeiroRules");
 
 const SEL_ORDEM = `
   SELECT o.*,
@@ -71,9 +72,11 @@ router.get("/:id/pdf", auth(), (req, res) => {
       [req.params.id]
     );
 
-    const saldo    = Number(os.saldoaberto)   || 0;
+    const resumo   = getResumoFinanceiroOS(req.params.id);
+    const saldo    = Number(resumo?.saldo ?? os.saldoaberto) || 0;
     const total    = Number(os.valortotal)    || 0;
-    const recebido = Number(os.valorrecebido) || 0;
+    const recebido = Number(resumo?.recebido ?? os.valorrecebido) || 0;
+    const entradaRecebida = Number(os.valorentrada) > 0 ? Number(os.valorentrada) : recebido;
 
     const logsHtml = logs.map(l => `
       <tr>
@@ -412,7 +415,7 @@ ${os.observacoes ? `
     </div>
     <div class="fin-row">
       <span class="fin-label">Entrada recebida</span>
-      <span class="amount">${fmt(os.valorentrada)}</span>
+      <span class="amount">${fmt(entradaRecebida)}</span>
     </div>
     <div class="fin-row">
       <span class="fin-label">Total recebido</span>
