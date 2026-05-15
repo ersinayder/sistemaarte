@@ -462,7 +462,7 @@ router.post('/emitir/:id', auth(), async (req, res) => {
       chave,
       tipo: 'autorizacao',
       protocolo,
-      cstat,
+      cstat: cStat,
       motivo: 'NF-e autorizada',
       xml: xmlAutorizacao,
       createdat: agora,
