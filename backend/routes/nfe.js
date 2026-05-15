@@ -8,6 +8,9 @@ const { auth }      = require('../middlewares/auth');
 const { getNFEWizard, callSEFAZ } = require('../utils/nfe');
 const { montarNFe } = require('../domain/nfeRules');
 
+// Diretório canônico para XMLs — obrigação legal 5 anos
+const NFE_XMLS_DIR = path.resolve(__dirname, '..', 'data', 'nfe_xmls');
+
 function pad(n, len) { return String(n).padStart(len, '0'); }
 
 function proximoNumero(db, serie = '1') {
@@ -42,20 +45,21 @@ function emitente() {
 }
 
 /**
- * Salva XML de evento (cancelamento, CC-e) no disco.
- * Pasta: xmls/cancelamentos/ relativo ao cwd do processo.
- * Nome: {chave}-canc.xml
+ * Salva XML de NF-e (autorização ou cancelamento) em backend/data/nfe_xmls/.
+ * Falha silenciosa — nunca deve interromper o fluxo principal.
+ * @param {string} nomeArquivo  Ex: "{chave}.xml" ou "{chave}-canc.xml"
+ * @param {string} xmlContent   Conteúdo XML ou JSON serializado
+ * @returns {string|null}       Caminho completo ou null em caso de falha
  */
-function salvarXmlCancelamento(chave, xmlContent) {
+function salvarXmlDisco(nomeArquivo, xmlContent) {
   try {
-    const dir = path.resolve(process.cwd(), 'xmls', 'cancelamentos');
-    fs.mkdirSync(dir, { recursive: true });
-    const arquivo = path.join(dir, `${chave}-canc.xml`);
+    fs.mkdirSync(NFE_XMLS_DIR, { recursive: true });
+    const arquivo = path.join(NFE_XMLS_DIR, nomeArquivo);
     fs.writeFileSync(arquivo, xmlContent, 'utf8');
-    console.log(`[NF-e] XML cancelamento salvo: ${arquivo}`);
+    console.log(`[NF-e] XML salvo: ${arquivo}`);
     return arquivo;
   } catch (err) {
-    console.error('[NF-e] Falha ao salvar XML cancelamento em disco:', err.message);
+    console.error(`[NF-e] Falha ao salvar XML em disco (${nomeArquivo}):`, err.message);
     return null;
   }
 }
@@ -204,6 +208,12 @@ router.post('/emitir/:id', auth(), async (req, res) => {
       return;
     }
 
+    // Serializar XML da resposta para armazenamento (obrigação legal 5 anos)
+    const xmlAutorizacao = typeof resultado === 'string'
+      ? resultado
+      : JSON.stringify(resultado, null, 2);
+
+    // Salvar em banco (campo nfe_xml) + arquivo em backend/data/nfe_xmls/{chave}.xml
     db.prepare(`
       UPDATE ordens SET
         nfe_status     = 'autorizado',
@@ -211,9 +221,14 @@ router.post('/emitir/:id', auth(), async (req, res) => {
         nfe_serie      = ?,
         nfe_chave      = ?,
         nfe_protocolo  = ?,
-        nfe_emitida_em = ?
+        nfe_emitida_em = ?,
+        nfe_xml        = ?
       WHERE id = ?
-    `).run(numero, serie, chave, protocolo, agora, os.id);
+    `).run(numero, serie, chave, protocolo, agora, xmlAutorizacao, os.id);
+
+    if (chave) {
+      salvarXmlDisco(`${chave}.xml`, xmlAutorizacao);
+    }
 
     console.log(`[NF-e] Autorizada OS#${os.id} chave=${chave} protocolo=${protocolo}`);
     if (!respondido) {
@@ -301,11 +316,8 @@ router.post('/:chave/cancelar', auth(), async (req, res) => {
     const brt      = new Date(now.getTime() - 3 * 60 * 60 * 1000);
     const dhEvento = brt.toISOString().replace(/\.\d{3}Z$/, '-03:00');
 
-    // Payload conforme interface Cancelamento do nfewizard-io:
-    // { idLote: number, modelo: '55'|'65', evento: EventoCancelamento[] }
-    // EventoCancelamento NÃO tem wrapper infEvento — campos diretos no objeto
     const eventoPayload = {
-      idLote: Date.now(),   // number único por chamada
+      idLote: Date.now(),
       modelo: '55',
       evento: [
         {
@@ -315,7 +327,7 @@ router.post('/:chave/cancelar', auth(), async (req, res) => {
           chNFe:      chave,
           dhEvento,
           tpEvento:  '110111',
-          nSeqEvento: 1,          // number, não string
+          nSeqEvento: 1,
           verEvento:  '1.00',
           detEvento: {
             descEvento: 'Cancelamento',
@@ -332,7 +344,6 @@ router.post('/:chave/cancelar', auth(), async (req, res) => {
     const wizard = await getNFEWizard();
     let resultado;
     try {
-      // Método correto: NFE_Cancelamento (não NFeRecepcaoEvento)
       resultado = await callSEFAZ(() => wizard.NFE_Cancelamento(eventoPayload));
     } catch (sefazErr) {
       console.error('[NF-e] Erro SEFAZ cancelamento:', sefazErr.message);
@@ -378,12 +389,12 @@ router.post('/:chave/cancelar', auth(), async (req, res) => {
       WHERE nfe_chave = ?
     `).run(dhEventoResp, nProtResp, motivoStr, chave);
 
-    const xmlEvento =
-      typeof resultado === 'string'
-        ? resultado
-        : JSON.stringify(resultado, null, 2);
+    const xmlEvento = typeof resultado === 'string'
+      ? resultado
+      : JSON.stringify(resultado, null, 2);
 
-    salvarXmlCancelamento(chave, xmlEvento);
+    // Salvar XML de cancelamento em backend/data/nfe_xmls/{chave}-canc.xml
+    salvarXmlDisco(`${chave}-canc.xml`, xmlEvento);
 
     console.log(`[NF-e] Cancelamento registrado chave=${chave} nProtCanc=${nProtResp}`);
 
