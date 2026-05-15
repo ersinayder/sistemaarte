@@ -543,7 +543,158 @@ Itens validados mas não implementados ainda (features novas, não bugs):
 
 ---
 
-## Última sessão
+## Sessão Codex — 2026-05-15 noite
+
+**Tema:** NF-e/CC-e em homologação, XML fiscal, impressão da OS, status inválido e preparação para continuar de outro local.
+
+### Estado Git/PR
+
+- PR #51 `feat: completa tela e eventos de NF-e` foi mergeado na `main`.
+- PR #52 `fix: corrige cStat no evento de autorização NF-e` foi mergeado na `main`.
+- Branch publicada e ainda pendente de merge/deploy: `codex/fix-nfe-xml-download`.
+  - Link: `https://github.com/ersinayder/sistemaarte/pull/new/codex/fix-nfe-xml-download`
+  - Inclui correção de XML real, impressão da OS e remoção do status `Recebido`.
+
+### Deploy e validação no servidor
+
+No servidor `C:\sistemaarte`, foi executado:
+
+```powershell
+git pull origin main
+cd C:\sistemaarte\backend
+npm install --omit=dev
+pm2 restart sistemaarte-backend
+```
+
+Resultado:
+- PM2 ficou `online`.
+- Migration validada em `C:\sistemaarte\backend`.
+- `PRAGMA table_info(nfe_eventos)` retornou:
+
+```txt
+id,ordemid,chave,tipo,nseqevento,protocolo,cstat,motivo,texto,xml,createdat
+```
+
+### NF-e e CC-e homologadas
+
+- NF-e homologação autorizada:
+  - número: `000000029`
+  - chave: `31260507500718000196550010000000291000000291`
+  - `cStat=100`
+  - XML salvo em `backend/data/nfe_xmls/31260507500718000196550010000000291000000291.xml`
+- A autorização foi aprovada pela SEFAZ, mas a rota retornou erro depois:
+  - erro: `ReferenceError: cstat is not defined`
+  - causa: evento de autorização usava `cstat` em vez de `cStat`
+  - corrigido no PR #52
+- CC-e homologada com sucesso para a NF-e `000000029`:
+  - `cStat=135`
+  - protocolo: `131260152119363`
+  - XML salvo em `backend/data/nfe_xmls/31260507500718000196550010000000291000000291-cce-01.xml`
+
+### XML fiscal quebrado
+
+Problema encontrado:
+
+```txt
+Start tag expected, '<' not found
+```
+
+Causa:
+- Alguns downloads `.xml` continham JSON da resposta da `nfewizard-io`, não XML puro.
+- O XML real vem dentro do campo `xml` retornado pela lib.
+
+Correção na branch `codex/fix-nfe-xml-download`:
+- `backend/routes/nfe.js`
+  - adicionados `extrairXmlFiscal()` e `serializarXmlFiscal()`
+  - novas emissões/eventos salvam XML puro quando houver campo `xml`
+  - downloads antigos tentam desembrulhar JSON salvo e retornar XML real
+- Endpoints afetados:
+  - `GET /api/nfe/:chave/xml/autorizacao`
+  - `GET /api/nfe/eventos/:eventoId/xml`
+
+### Impressão da OS
+
+Bug encontrado:
+- Na impressão da OS, `Entrada recebida` aparecia `R$ 0,00`, mesmo com pagamento já lançado no caixa.
+- Exemplo visto: OS `OS-0092`, total `R$ 164,00`, recebido `R$ 82,00`, saldo `R$ 82,00`.
+
+Causa:
+- `backend/routes/pdf.js` mostrava `ordens.valorentrada` diretamente.
+- Quando a OS era criada sem entrada e recebia pagamento depois pelo Caixa, `valorentrada` continuava zero.
+
+Correção na branch `codex/fix-nfe-xml-download`:
+- `pdf.js` passou a usar `getResumoFinanceiroOS()`.
+- `Total recebido` e `Saldo em aberto` usam a regra financeira oficial.
+- `Entrada recebida` mostra `valorentrada` se houver; se estiver zerado, mostra o valor já recebido.
+
+Resultado esperado para `OS-0092`:
+
+```txt
+Total: R$ 164,00
+Entrada recebida: R$ 82,00
+Total recebido: R$ 82,00
+Saldo em aberto: R$ 82,00
+```
+
+### Status `Recebido` removido da tela da OS
+
+Bug encontrado:
+- A tela de detalhe/oficina mostrava botão `Recebido`.
+- Backend rejeitava com `Status inválido. Permitidos: Aguardando, Em Produção, Pronto, Entregue, Cancelado`.
+
+Correção na branch `codex/fix-nfe-xml-download`:
+- `frontend/src/pages/OrdemDetalhe.jsx`
+  - `STATUS_FLOW` virou `['Aguardando','Em Produção','Pronto','Entregue']`
+  - removido o botão `Recebido`
+  - passo 1 do progresso agora é `Aguardando`
+
+### Limpeza de OS de teste em produção
+
+Como o sistema está em produção com caixa real:
+- OS criadas apenas para homologação/teste podem ser excluídas antes do fechamento de caixa.
+- Caminho seguro:
+  1. Excluir/mover para lixeira pelo sistema.
+  2. Ir na lixeira.
+  3. Fazer exclusão permanente.
+  4. Conferir se saiu do Caixa e da tela de Notas Fiscais.
+- Usuário confirmou que ao deletar OS de teste, saiu do caixa e da tela de NF-e.
+- Não deletar OS real.
+
+### Validações locais após hotfixes
+
+- `node --check backend/routes/nfe.js`: OK
+- `node --check backend/routes/pdf.js`: OK
+- `npm.cmd test` no backend: 90/90 passando
+- `npm.cmd run build` no frontend: OK
+
+### Próximos passos imediatos
+
+| Item | Status |
+|---|---|
+| Mergear `codex/fix-nfe-xml-download` | Pendente |
+| `git pull origin main` no servidor após merge | Pendente |
+| `pm2 restart sistemaarte-backend` após pull | Pendente |
+| Rebaixar XML autorização e XML CC-e e conferir que abrem como XML | Pendente |
+| Validar impressão da OS `OS-0092` | Pendente |
+| Confirmar que `Recebido` sumiu da tela da OS | Pendente |
+| Continuar NF-es homologadas até 10/10 | Pendente |
+| Implementar DANFE real | Backlog |
+| Go-live `NFE_AMBIENTE_NUM=1` | Aguardar homologação |
+
+### Acesso remoto ao servidor
+
+- Na mesma rede, `mstsc` funciona porque o cliente alcança o IP interno do servidor.
+- De outra rede, RDP só funciona se houver rota externa para o servidor.
+- Não recomendado expor RDP direto na internet via porta 3389.
+- Caminhos recomendados, em ordem:
+  1. VPN privada tipo Tailscale/ZeroTier entre seu PC de casa e o servidor.
+  2. VPN no roteador/firewall da empresa.
+  3. Cloudflare Tunnel/Access para acesso autenticado.
+  4. Port forwarding de RDP somente como último caso, com IP restrito, senha forte, NLA e firewall.
+
+---
+
+## Última sessão anterior
 
 **Data:** 2026-05-15  
 **Agente:** Codex  
