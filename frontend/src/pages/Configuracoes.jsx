@@ -32,6 +32,15 @@ const EMPTY_AUTXML = {
   ativo: true,
 }
 
+const EMPTY_WHATSAPP = {
+  enabled: false,
+  provider: 'meta',
+  phoneId: '',
+  token: '',
+  templatePronto: 'os_pronta',
+  templateConfirmacao: 'confirmacao_pedido',
+}
+
 const SECTIONS = [
   { id: 'empresa', label: 'Empresa', desc: 'Dados cadastrais e endereco do emitente.' },
   { id: 'fiscal', label: 'Fiscal', desc: 'Certificado, ambiente e numeracao fiscal.' },
@@ -40,29 +49,6 @@ const SECTIONS = [
   { id: 'seguranca', label: 'Seguranca', desc: 'Acesso, limites e protecoes da aplicacao.' },
   { id: 'sistema', label: 'Sistema', desc: 'Parametros gerais e saude operacional.' },
 ]
-
-const PLANNED_SECTIONS = {
-  whatsapp: [
-    ['Provedor', 'Configuracao da Evolution API ou outro provedor aprovado.'],
-    ['Mensagens', 'Templates para confirmacao, status e retirada.'],
-    ['Monitoramento', 'Status da instancia e ultima entrega registrada.'],
-  ],
-  backups: [
-    ['Backup local', 'Resumo da rotina diaria e ultimos arquivos gerados.'],
-    ['Backup offsite', 'Destino externo versionado para recuperacao segura.'],
-    ['Alertas', 'Aviso quando a rotina falhar ou ficar desatualizada.'],
-  ],
-  seguranca: [
-    ['Rate limits', 'Limites por rota para reduzir abuso e erro operacional.'],
-    ['Login', 'Lockout por usuario e politicas de senha.'],
-    ['Auditoria', 'Registro de acoes sensiveis para rastreabilidade.'],
-  ],
-  sistema: [
-    ['Versao', 'Identificacao da versao instalada e data do build.'],
-    ['Saude', 'Resumo de API, banco e servicos auxiliares.'],
-    ['Preferencias', 'Ajustes gerais da aplicacao para a loja.'],
-  ],
-}
 
 const digitFields = ['cnpj', 'inscricaoestadual', 'telefone', 'codigomunicipio', 'cep']
 
@@ -91,6 +77,18 @@ function normalizeAutXml(item = {}) {
   }
 }
 
+function normalizeLoadedWhatsapp(whatsapp = {}) {
+  return {
+    ...EMPTY_WHATSAPP,
+    enabled: Boolean(whatsapp.enabled),
+    provider: whatsapp.provider || 'meta',
+    phoneId: whatsapp.phoneId || '',
+    token: '',
+    templatePronto: whatsapp.templatePronto || EMPTY_WHATSAPP.templatePronto,
+    templateConfirmacao: whatsapp.templateConfirmacao || EMPTY_WHATSAPP.templateConfirmacao,
+  }
+}
+
 function cleanPayload(form) {
   const payload = { ...form }
   for (const field of digitFields) payload[field] = digits(payload[field])
@@ -107,7 +105,9 @@ function cleanPayload(form) {
 }
 
 function statusClass(status) {
-  return status === 'OK' ? 'badge-success' : 'badge-warning'
+  if (status === 'OK') return 'badge-success'
+  if (status === 'Inativo') return 'badge-secondary'
+  return 'badge-warning'
 }
 
 function StatusPill({ value }) {
@@ -146,29 +146,11 @@ function InfoRow({ label, value }) {
   )
 }
 
-function PlannedSection({ section }) {
-  const items = PLANNED_SECTIONS[section] || []
-
-  return (
-    <div className="card card-pad">
-      <div className="settings-section-head">
-        <div>
-          <h2>Etapa futura</h2>
-          <p className="text-muted">Esta area ja esta mapeada para as proximas etapas.</p>
-        </div>
-        <span className="badge badge-secondary">Planejado</span>
-      </div>
-
-      <div className="settings-planned-grid">
-        {items.map(([title, desc]) => (
-          <div className="settings-planned-item" key={title}>
-            <strong>{title}</strong>
-            <span>{desc}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
+function formatBytes(bytes) {
+  const n = Number(bytes || 0)
+  if (!n) return '0 KB'
+  if (n < 1024 * 1024) return `${Math.max(1, Math.round(n / 1024))} KB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
 }
 
 export default function Configuracoes() {
@@ -193,6 +175,18 @@ export default function Configuracoes() {
   const [autXmlErrors, setAutXmlErrors] = useState({})
   const [savingAutXml, setSavingAutXml] = useState(false)
   const [editingAutXmlId, setEditingAutXmlId] = useState(null)
+  const [whatsappInfo, setWhatsappInfo] = useState(null)
+  const [whatsappForm, setWhatsappForm] = useState(EMPTY_WHATSAPP)
+  const [whatsappErrors, setWhatsappErrors] = useState({})
+  const [loadingWhatsapp, setLoadingWhatsapp] = useState(false)
+  const [savingWhatsapp, setSavingWhatsapp] = useState(false)
+  const [backupsInfo, setBackupsInfo] = useState(null)
+  const [loadingBackups, setLoadingBackups] = useState(false)
+  const [runningBackup, setRunningBackup] = useState(false)
+  const [segurancaInfo, setSegurancaInfo] = useState(null)
+  const [loadingSeguranca, setLoadingSeguranca] = useState(false)
+  const [sistemaInfo, setSistemaInfo] = useState(null)
+  const [loadingSistema, setLoadingSistema] = useState(false)
 
   const active = useMemo(
     () => SECTIONS.find((section) => section.id === activeSection) || SECTIONS[0],
@@ -223,6 +217,13 @@ export default function Configuracoes() {
     setStatusMap((current) => ({ ...current, fiscal: fiscal.status || current.fiscal }))
   }, [])
 
+  const applyWhatsappResponse = useCallback((data = {}) => {
+    const whatsapp = data.whatsapp || {}
+    setWhatsappInfo(whatsapp)
+    setWhatsappForm(normalizeLoadedWhatsapp(whatsapp))
+    setStatusMap((current) => ({ ...current, whatsapp: whatsapp.status || current.whatsapp }))
+  }, [])
+
   const loadFiscal = useCallback(async () => {
     setLoadingFiscal(true)
     try {
@@ -237,6 +238,58 @@ export default function Configuracoes() {
     }
   }, [applyFiscalResponse])
 
+  const loadWhatsapp = useCallback(async () => {
+    setLoadingWhatsapp(true)
+    try {
+      const res = await api.get('/configuracoes/whatsapp')
+      applyWhatsappResponse(res.data)
+      setWhatsappErrors({})
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Erro ao carregar WhatsApp')
+    } finally {
+      setLoadingWhatsapp(false)
+    }
+  }, [applyWhatsappResponse])
+
+  const loadBackups = useCallback(async () => {
+    setLoadingBackups(true)
+    try {
+      const res = await api.get('/configuracoes/backups')
+      setBackupsInfo(res.data?.backups || null)
+      setStatusMap((current) => ({ ...current, backups: res.data?.backups?.status || current.backups }))
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Erro ao carregar backups')
+    } finally {
+      setLoadingBackups(false)
+    }
+  }, [])
+
+  const loadSeguranca = useCallback(async () => {
+    setLoadingSeguranca(true)
+    try {
+      const res = await api.get('/configuracoes/seguranca')
+      setSegurancaInfo(res.data?.seguranca || null)
+      setStatusMap((current) => ({ ...current, seguranca: res.data?.seguranca?.status || current.seguranca }))
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Erro ao carregar seguranca')
+    } finally {
+      setLoadingSeguranca(false)
+    }
+  }, [])
+
+  const loadSistema = useCallback(async () => {
+    setLoadingSistema(true)
+    try {
+      const res = await api.get('/configuracoes/sistema')
+      setSistemaInfo(res.data?.sistema || null)
+      setStatusMap((current) => ({ ...current, sistema: res.data?.sistema?.status || current.sistema }))
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Erro ao carregar sistema')
+    } finally {
+      setLoadingSistema(false)
+    }
+  }, [])
+
   useEffect(() => {
     document.title = 'Configuracoes - Arte & Molduras'
     loadConfiguracoes()
@@ -246,7 +299,36 @@ export default function Configuracoes() {
     if (activeSection === 'fiscal' && !fiscalInfo && !loadingFiscal) {
       loadFiscal()
     }
-  }, [activeSection, fiscalInfo, loadingFiscal, loadFiscal])
+    if (activeSection === 'whatsapp' && !whatsappInfo && !loadingWhatsapp) {
+      loadWhatsapp()
+    }
+    if (activeSection === 'backups' && !backupsInfo && !loadingBackups) {
+      loadBackups()
+    }
+    if (activeSection === 'seguranca' && !segurancaInfo && !loadingSeguranca) {
+      loadSeguranca()
+    }
+    if (activeSection === 'sistema' && !sistemaInfo && !loadingSistema) {
+      loadSistema()
+    }
+  }, [
+    activeSection,
+    fiscalInfo,
+    loadingFiscal,
+    loadFiscal,
+    whatsappInfo,
+    loadingWhatsapp,
+    loadWhatsapp,
+    backupsInfo,
+    loadingBackups,
+    loadBackups,
+    segurancaInfo,
+    loadingSeguranca,
+    loadSeguranca,
+    sistemaInfo,
+    loadingSistema,
+    loadSistema,
+  ])
 
   const setField = (field, value) => {
     setEmpresaForm((form) => ({ ...form, [field]: value }))
@@ -276,6 +358,16 @@ export default function Configuracoes() {
   const setAutXmlField = (field, value) => {
     setAutXmlForm((form) => ({ ...form, [field]: value }))
     setAutXmlErrors((current) => {
+      if (!current[field]) return current
+      const next = { ...current }
+      delete next[field]
+      return next
+    })
+  }
+
+  const setWhatsappField = (field, value) => {
+    setWhatsappForm((form) => ({ ...form, [field]: value }))
+    setWhatsappErrors((current) => {
       if (!current[field]) return current
       const next = { ...current }
       delete next[field]
@@ -453,6 +545,49 @@ export default function Configuracoes() {
     }
   }
 
+  const saveWhatsapp = async (event) => {
+    event.preventDefault()
+    setSavingWhatsapp(true)
+    setWhatsappErrors({})
+
+    try {
+      const payload = {
+        enabled: whatsappForm.enabled ? 1 : 0,
+        provider: whatsappForm.provider,
+        phoneId: whatsappForm.phoneId.trim(),
+        token: whatsappForm.token.trim(),
+        templatePronto: whatsappForm.templatePronto.trim(),
+        templateConfirmacao: whatsappForm.templateConfirmacao.trim(),
+      }
+      const res = await api.put('/configuracoes/whatsapp', payload)
+      applyWhatsappResponse(res.data)
+      toast.success('Configuracao do WhatsApp salva')
+    } catch (e) {
+      const fieldErrors = e.response?.data?.errors
+      if (fieldErrors) setWhatsappErrors(fieldErrors)
+      toast.error(e.response?.data?.error || 'Erro ao salvar WhatsApp')
+    } finally {
+      setSavingWhatsapp(false)
+    }
+  }
+
+  const runBackupManual = async () => {
+    const ok = window.confirm('Gerar um backup local agora?')
+    if (!ok) return
+
+    setRunningBackup(true)
+    try {
+      const res = await api.post('/configuracoes/backups/manual')
+      setBackupsInfo(res.data?.backups || null)
+      setStatusMap((current) => ({ ...current, backups: res.data?.backups?.status || current.backups }))
+      toast.success('Backup local gerado')
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Erro ao gerar backup')
+    } finally {
+      setRunningBackup(false)
+    }
+  }
+
   const renderFiscal = () => (
     <div className="settings-stack">
       <form className="card card-pad" onSubmit={saveFiscal}>
@@ -590,6 +725,238 @@ export default function Configuracoes() {
     </div>
   )
 
+  const renderWhatsapp = () => (
+    <div className="settings-stack">
+      <form className="card card-pad" onSubmit={saveWhatsapp}>
+        <div className="settings-section-head">
+          <div>
+            <h2>{active.label}</h2>
+            <p className="text-muted">{active.desc}</p>
+          </div>
+          <StatusPill value={statusMap.whatsapp} />
+        </div>
+
+        {loadingWhatsapp ? (
+          <div className="loading-center">
+            <div className="spinner" />
+            <span>Carregando WhatsApp...</span>
+          </div>
+        ) : (
+          <>
+            <div className="settings-info-grid">
+              <InfoRow label="Origem" value={whatsappInfo?.origem === 'banco' ? 'Tela de configuracao' : whatsappInfo?.origem || 'env'} />
+              <InfoRow label="Token" value={whatsappInfo?.tokenConfigurado ? 'Configurado' : 'Nao configurado'} />
+              <InfoRow label="Atualizado em" value={whatsappInfo?.updatedat} />
+            </div>
+
+            <div className="form-grid-2">
+              <Field label="Provedor" name="provider" form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField}>
+                <select id="provider" className="form-input" value={whatsappForm.provider} onChange={(e) => setWhatsappField('provider', e.target.value)}>
+                  <option value="meta">Meta Cloud API</option>
+                </select>
+              </Field>
+              <Field label="Phone Number ID" name="phoneId" form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField} />
+              <Field label="Novo token" name="token" form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField}>
+                <input id="token" className="form-input" type="password" value={whatsappForm.token} onChange={(e) => setWhatsappField('token', e.target.value)} placeholder={whatsappInfo?.tokenConfigurado ? 'Deixe em branco para manter o atual' : 'Token permanente'} />
+              </Field>
+              <label className="settings-check">
+                <input type="checkbox" checked={whatsappForm.enabled} onChange={(e) => setWhatsappField('enabled', e.target.checked)} />
+                Envio automatico ativo
+              </label>
+              <Field label="Template OS pronta" name="templatePronto" form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField} />
+              <Field label="Template confirmacao" name="templateConfirmacao" form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField} />
+            </div>
+
+            <div className="settings-actions">
+              <button type="button" className="btn btn-ghost" onClick={loadWhatsapp} disabled={savingWhatsapp}>Cancelar</button>
+              <button type="submit" className="btn btn-primary" disabled={savingWhatsapp}>
+                <SavingLabel saving={savingWhatsapp} idle="Salvar WhatsApp" />
+              </button>
+            </div>
+          </>
+        )}
+      </form>
+
+      <div className="settings-planned-grid">
+        <div className="settings-planned-item">
+          <strong>OS pronta</strong>
+          <span>Usa o template configurado quando a OS muda para Pronto.</span>
+        </div>
+        <div className="settings-planned-item">
+          <strong>Confirmacao</strong>
+          <span>Usa o template configurado no envio manual de confirmacao do pedido.</span>
+        </div>
+        <div className="settings-planned-item">
+          <strong>Segredo protegido</strong>
+          <span>O token pode ser trocado, mas nao aparece de volta na tela.</span>
+        </div>
+      </div>
+    </div>
+  )
+
+  const renderBackups = () => {
+    const local = backupsInfo?.local || {}
+    const arquivos = local.arquivos || []
+
+    return (
+      <div className="settings-stack">
+        <div className="card card-pad">
+          <div className="settings-section-head">
+            <div>
+              <h2>{active.label}</h2>
+              <p className="text-muted">{active.desc}</p>
+            </div>
+            <StatusPill value={statusMap.backups} />
+          </div>
+
+          {loadingBackups ? (
+            <div className="loading-center">
+              <div className="spinner" />
+              <span>Carregando backups...</span>
+            </div>
+          ) : (
+            <>
+              <div className="settings-info-grid">
+                <InfoRow label="Ultimo backup" value={local.ultimo?.nome || 'Nenhum backup local'} />
+                <InfoRow label="Tempo desde ultimo" value={local.horasDesdeUltimo === null || local.horasDesdeUltimo === undefined ? '-' : `${local.horasDesdeUltimo}h`} />
+                <InfoRow label="Retencao local" value={`${local.total || 0}/${local.retencao || 7} arquivos`} />
+              </div>
+
+              <div className="settings-actions">
+                <button type="button" className="btn btn-ghost" onClick={loadBackups} disabled={runningBackup}>Atualizar</button>
+                <button type="button" className="btn btn-primary" onClick={runBackupManual} disabled={runningBackup}>
+                  {runningBackup ? <><div className="spinner" style={{ width: 14, height: 14 }} /> Gerando...</> : 'Gerar backup agora'}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="settings-two-col">
+          <div className="card card-pad">
+            <div className="settings-section-head">
+              <div>
+                <h2>Arquivos locais</h2>
+                <p className="text-muted">{local.proximaRotina || 'Rotina diaria local.'}</p>
+              </div>
+              <span className="badge badge-secondary">{arquivos.length} recentes</span>
+            </div>
+            <div className="settings-list">
+              {arquivos.length === 0 ? (
+                <div className="empty-state">Nenhum backup local encontrado.</div>
+              ) : arquivos.map((file) => (
+                <div className="settings-list-item" key={file.nome}>
+                  <div>
+                    <strong>{file.nome}</strong>
+                    <span>{file.updatedat}</span>
+                  </div>
+                  <span className="badge badge-secondary">{formatBytes(file.bytes)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="card card-pad">
+            <div className="settings-section-head">
+              <div>
+                <h2>Backup offsite</h2>
+                <p className="text-muted">Destino externo versionado antes de venda SaaS.</p>
+              </div>
+              <span className="badge badge-warning">Pendente</span>
+            </div>
+            <div className="settings-planned-item">
+              <strong>Proximo passo operacional</strong>
+              <span>Configurar copia diaria fora do servidor, como storage versionado, OneDrive empresarial ou S3.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const renderSeguranca = () => (
+    <div className="settings-stack">
+      <div className="card card-pad">
+        <div className="settings-section-head">
+          <div>
+            <h2>{active.label}</h2>
+            <p className="text-muted">{active.desc}</p>
+          </div>
+          <StatusPill value={statusMap.seguranca} />
+        </div>
+
+        {loadingSeguranca ? (
+          <div className="loading-center">
+            <div className="spinner" />
+            <span>Carregando seguranca...</span>
+          </div>
+        ) : (
+          <>
+            <div className="settings-info-grid">
+              <InfoRow label="Rate limit API" value={`${segurancaInfo?.politicas?.rateLimitGlobalPorMinuto || 60} req/min`} />
+              <InfoRow label="Senha minima" value={`${segurancaInfo?.politicas?.senhaMinima || 8} caracteres`} />
+              <InfoRow label="Sessao" value={`${segurancaInfo?.politicas?.sessaoHoras || 12}h`} />
+            </div>
+            <div className="settings-planned-grid">
+              <div className="settings-planned-item">
+                <strong>Auto-bloqueio admin</strong>
+                <span>{segurancaInfo?.politicas?.protegeAutoDesativacaoAdmin ? 'Ativo: admin nao desativa nem troca o proprio perfil.' : 'Pendente'}</span>
+              </div>
+              <div className="settings-planned-item">
+                <strong>Login por IP</strong>
+                <span>{segurancaInfo?.politicas?.loginTentativasPorIp || 10} tentativas em {segurancaInfo?.politicas?.loginJanelaMinutos || 15} minutos.</span>
+              </div>
+              <div className="settings-planned-item">
+                <strong>Pendencias</strong>
+                <span>{(segurancaInfo?.pendencias || []).join(' | ') || 'Nenhuma pendencia critica.'}</span>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+
+  const renderSistema = () => (
+    <div className="settings-stack">
+      <div className="card card-pad">
+        <div className="settings-section-head">
+          <div>
+            <h2>{active.label}</h2>
+            <p className="text-muted">{active.desc}</p>
+          </div>
+          <StatusPill value={statusMap.sistema} />
+        </div>
+
+        {loadingSistema ? (
+          <div className="loading-center">
+            <div className="spinner" />
+            <span>Carregando sistema...</span>
+          </div>
+        ) : (
+          <>
+            <div className="settings-info-grid">
+              <InfoRow label="Versao" value={sistemaInfo?.app?.versao} />
+              <InfoRow label="Node.js" value={sistemaInfo?.app?.node} />
+              <InfoRow label="Ambiente" value={sistemaInfo?.app?.ambiente} />
+              <InfoRow label="Plataforma" value={sistemaInfo?.app?.plataforma} />
+              <InfoRow label="Timezone" value={sistemaInfo?.app?.timezone} />
+              <InfoRow label="API" value={sistemaInfo?.servicos?.api} />
+            </div>
+            <div className="settings-planned-grid">
+              {Object.entries(sistemaInfo?.servicos || {}).map(([key, value]) => (
+                <div className="settings-planned-item" key={key}>
+                  <strong>{key}</strong>
+                  <span>{value}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+
   return (
     <div className="page-content-wide">
       <div className="page-header">
@@ -672,8 +1039,16 @@ export default function Configuracoes() {
             </form>
           ) : activeSection === 'fiscal' ? (
             renderFiscal()
+          ) : activeSection === 'whatsapp' ? (
+            renderWhatsapp()
+          ) : activeSection === 'backups' ? (
+            renderBackups()
+          ) : activeSection === 'seguranca' ? (
+            renderSeguranca()
+          ) : activeSection === 'sistema' ? (
+            renderSistema()
           ) : (
-            <PlannedSection section={activeSection} />
+            null
           )}
         </section>
       </div>
