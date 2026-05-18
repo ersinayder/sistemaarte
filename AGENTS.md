@@ -530,6 +530,131 @@ Itens validados mas não implementados ainda (features novas, não bugs):
 | 9 | Backup: gravar `backup-status.json` + endpoint `/api/backup/status` | Observabilidade de falhas |
 | 17 | NF-e: contingência DPEC/offline | Disponibilidade quando SEFAZ estiver fora |
 
+### Roadmap estratégico por fases
+
+Ordem recomendada para evolução do sistema:
+
+1. **DANFE real** — menor escopo e ganho imediato. Usar o XML autorizado salvo em `ordens.nfe_xml` / `backend/data/nfe_xmls`, gerar DANFE em PDF/HTML e trocar o botão atual da tela de Notas Fiscais por uma ação real de imprimir/visualizar. Também adicionar botão de DANFE dentro da OS que já tem NF-e emitida.
+2. **Propostas + funil básico** — criar um módulo comercial separado das OS. A OS não deve nascer no orçamento; ela deve nascer somente quando a venda virar serviço aprovado.
+3. **Link público de proposta + WhatsApp** — cada proposta deve ter link público com token, por exemplo `https://arteemolduras.com.br/proposta/abc123`, enviado ao cliente pelo WhatsApp.
+4. **Aprovar proposta e gerar OS** — quando a proposta for aprovada, o sistema deve reaproveitar cliente, itens, total, observações e prazo para criar a OS com numeração `OS-XXXX`.
+5. **Contas a pagar/receber separado do caixa** — separar caixa diário, contas a receber e contas a pagar para dar visão de dinheiro realizado e previsto.
+6. **DRE simples** — criar visão de resultado por período, sem complexidade contábil excessiva.
+
+### Fase 1: Comercial — Propostas/Funil
+
+Criar um módulo de Propostas/Funil separado das Ordens de Serviço.
+
+Status do funil:
+
+```txt
+Novo lead -> Orçamento enviado -> Negociação -> Aprovado -> Perdido
+```
+
+Fluxo ideal:
+
+```txt
+Cliente pede orçamento
+-> cadastra proposta
+-> monta itens/valores
+-> envia link pelo WhatsApp
+-> cliente abre proposta
+-> cliente aprova
+-> sistema transforma em OS com um clique
+```
+
+Objetivo: proposta é venda; OS é produção. Isso evita que uma OS nasça cedo demais, antes de o cliente realmente aprovar o serviço.
+
+### Fase 2: Link público de proposta
+
+Cada proposta deve ter um link público com token, por exemplo:
+
+```txt
+https://arteemolduras.com.br/proposta/abc123
+```
+
+Nesse link o cliente deve ver:
+
+- Dados da loja
+- Descrição dos produtos/serviços
+- Valor total
+- Prazo estimado
+- Observações
+- Botão de aprovar
+- Botão de solicitar ajuste/negociar
+
+No sistema deve ficar registrado:
+
+- Enviado em
+- Visualizado em
+- Aprovado em
+- Perdido/cancelado em
+- Origem da proposta
+
+### Fase 3: Transformar proposta em OS
+
+Quando a proposta for aprovada, disponibilizar a ação:
+
+```txt
+Gerar Ordem de Serviço
+```
+
+Essa ação deve reaproveitar cliente, itens, total, observações e prazo. A numeração `OS-XXXX` só deve ser gerada nesse momento.
+
+### Fase 4: Financeiro melhor
+
+Separar claramente:
+
+- Caixa diário: dinheiro que entrou/saiu no dia
+- Contas a receber: valores futuros ou pendentes de clientes
+- Contas a pagar: despesas, fornecedores, boletos, aluguel, materiais etc.
+
+Com isso, o sistema deve permitir acompanhar:
+
+- Quanto há para receber
+- Quanto há para pagar
+- Saldo previsto
+- Pagamentos atrasados
+- Despesas por categoria
+- Lucro aproximado
+
+### Fase 5: DRE simples
+
+Criar uma visão inicial de DRE:
+
+```txt
+Receita bruta
+- descontos/cancelamentos
+= receita líquida
+
+- custos variáveis
+- despesas fixas
+- despesas operacionais
+= resultado do período
+```
+
+Filtros desejados:
+
+- Mês
+- Período personalizado
+- Categoria
+- Forma de pagamento
+- Pago/pendente
+
+Objetivo: dar visão de lucro, não apenas movimento de caixa.
+
+### Fase 6: DANFE real
+
+Prioridade alta porque a NF-e já está quase redonda.
+
+Caminho esperado:
+
+- Usar o XML autorizado salvo em `ordens.nfe_xml` / `backend/data/nfe_xmls`
+- Gerar DANFE em PDF/HTML
+- Adicionar botão real na tela de Notas Fiscais
+- Adicionar botão dentro da OS emitida
+- Ao clicar, o usuário deve conseguir visualizar/imprimir; o botão não deve ficar apenas como roadmap
+
 ---
 
 ## Protocolo para novas features
