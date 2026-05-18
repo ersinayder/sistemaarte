@@ -146,12 +146,16 @@ function contarAutXmlAtivos(excluirId = null) {
   return Number(row?.total || 0);
 }
 
+function obterSequenciaNFe(serie) {
+  return getOne("SELECT ultimo_numero FROM nfe_sequencias WHERE serie = ?", [serie]);
+}
+
 function garantirSequenciaNFe(serie) {
   run(
     "INSERT OR IGNORE INTO nfe_sequencias (serie, ultimo_numero) VALUES (?, 0)",
     [serie]
   );
-  return getOne("SELECT ultimo_numero FROM nfe_sequencias WHERE serie = ?", [serie]);
+  return obterSequenciaNFe(serie);
 }
 
 function fiscalAtualComAutXml() {
@@ -219,17 +223,7 @@ router.put("/fiscal", auth(["admin"]), (req, res, next) => {
       });
     }
 
-    run(
-      `INSERT INTO fiscal_config (id, ambiente, serie, updatedat)
-       VALUES (1, ?, ?, datetime('now','localtime'))
-       ON CONFLICT(id) DO UPDATE SET
-         ambiente=excluded.ambiente,
-         serie=excluded.serie,
-         updatedat=datetime('now','localtime')`,
-      [fiscal.ambiente, fiscal.serie]
-    );
-
-    const sequencia = garantirSequenciaNFe(fiscal.serie);
+    const sequencia = obterSequenciaNFe(fiscal.serie);
     const ultimoNumero = Number(sequencia?.ultimo_numero || 0);
     const currentNext = ultimoNumero + 1;
 
@@ -240,7 +234,21 @@ router.put("/fiscal", auth(["admin"]), (req, res, next) => {
           currentNext,
         });
       }
+    }
 
+    run(
+      `INSERT INTO fiscal_config (id, ambiente, serie, updatedat)
+       VALUES (1, ?, ?, datetime('now','localtime'))
+       ON CONFLICT(id) DO UPDATE SET
+         ambiente=excluded.ambiente,
+         serie=excluded.serie,
+         updatedat=datetime('now','localtime')`,
+      [fiscal.ambiente, fiscal.serie]
+    );
+
+    garantirSequenciaNFe(fiscal.serie);
+
+    if (fiscal.proximoNumero !== undefined) {
       run(
         "UPDATE nfe_sequencias SET ultimo_numero = ? WHERE serie = ?",
         [fiscal.proximoNumero - 1, fiscal.serie]
