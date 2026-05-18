@@ -116,6 +116,25 @@ CREATE TABLE IF NOT EXISTS sequencias (
   nome   TEXT PRIMARY KEY,
   ultimo INTEGER DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS empresa_config (
+  id                    INTEGER PRIMARY KEY CHECK (id = 1),
+  razaosocial           TEXT,
+  nomefantasia          TEXT,
+  cnpj                  TEXT,
+  inscricaoestadual     TEXT,
+  crt                   TEXT DEFAULT '1',
+  telefone              TEXT,
+  email                 TEXT,
+  logradouro            TEXT,
+  numero                TEXT,
+  bairro                TEXT,
+  municipio             TEXT,
+  codigomunicipio       TEXT,
+  uf                    TEXT,
+  cep                   TEXT,
+  updatedat             TEXT DEFAULT (datetime('now','localtime'))
+);
+INSERT OR IGNORE INTO empresa_config (id) VALUES (1);
 CREATE INDEX IF NOT EXISTS idx_ordens_status       ON ordens(status);
 CREATE INDEX IF NOT EXISTS idx_ordens_prazo        ON ordens(prazoentrega);
 CREATE INDEX IF NOT EXISTS idx_ordens_clienteid    ON ordens(clienteid);
@@ -226,6 +245,28 @@ function initDB() {
       ultimo_numero INTEGER DEFAULT 0
     );
     INSERT OR IGNORE INTO nfe_sequencias (serie, ultimo_numero) VALUES ('1', 0);
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS empresa_config (
+      id                    INTEGER PRIMARY KEY CHECK (id = 1),
+      razaosocial           TEXT,
+      nomefantasia          TEXT,
+      cnpj                  TEXT,
+      inscricaoestadual     TEXT,
+      crt                   TEXT DEFAULT '1',
+      telefone              TEXT,
+      email                 TEXT,
+      logradouro            TEXT,
+      numero                TEXT,
+      bairro                TEXT,
+      municipio             TEXT,
+      codigomunicipio       TEXT,
+      uf                    TEXT,
+      cep                   TEXT,
+      updatedat             TEXT DEFAULT (datetime('now','localtime'))
+    );
+    INSERT OR IGNORE INTO empresa_config (id) VALUES (1);
   `);
 
   // Normalizar status legados
