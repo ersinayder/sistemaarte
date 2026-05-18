@@ -135,6 +135,17 @@ CREATE TABLE IF NOT EXISTS empresa_config (
   updatedat             TEXT DEFAULT (datetime('now','localtime'))
 );
 INSERT OR IGNORE INTO empresa_config (id) VALUES (1);
+CREATE TABLE IF NOT EXISTS fiscal_config (
+  id                    INTEGER PRIMARY KEY CHECK (id = 1),
+  ambiente              INTEGER DEFAULT 2,
+  serie                 TEXT DEFAULT '1',
+  certificado_path      TEXT,
+  certificado_nome      TEXT,
+  certificado_senha     TEXT,
+  certificado_updatedat TEXT,
+  updatedat             TEXT DEFAULT (datetime('now','localtime'))
+);
+INSERT OR IGNORE INTO fiscal_config (id) VALUES (1);
 CREATE INDEX IF NOT EXISTS idx_ordens_status       ON ordens(status);
 CREATE INDEX IF NOT EXISTS idx_ordens_prazo        ON ordens(prazoentrega);
 CREATE INDEX IF NOT EXISTS idx_ordens_clienteid    ON ordens(clienteid);
@@ -144,6 +155,17 @@ CREATE INDEX IF NOT EXISTS idx_statuslog_ordemid   ON statuslog(ordemid);
 CREATE INDEX IF NOT EXISTS idx_produtos_nome       ON produtos(nome COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS idx_ordem_itens_ordemid ON ordem_itens(ordemid);
 CREATE INDEX IF NOT EXISTS idx_lancamentos_pago_del ON lancamentos(ordemid, pago, deletedat);
+CREATE TABLE IF NOT EXISTS nfe_autxml (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  nome      TEXT NOT NULL,
+  documento TEXT NOT NULL,
+  tipo      TEXT DEFAULT 'contador',
+  ativo     INTEGER DEFAULT 1,
+  createdat TEXT DEFAULT (datetime('now','localtime')),
+  updatedat TEXT DEFAULT (datetime('now','localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_nfe_autxml_documento ON nfe_autxml(documento);
+CREATE INDEX IF NOT EXISTS idx_nfe_autxml_ativo ON nfe_autxml(ativo);
 CREATE TABLE IF NOT EXISTS nfe_eventos (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   ordemid     INTEGER,
@@ -267,6 +289,32 @@ function initDB() {
       updatedat             TEXT DEFAULT (datetime('now','localtime'))
     );
     INSERT OR IGNORE INTO empresa_config (id) VALUES (1);
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS fiscal_config (
+      id                    INTEGER PRIMARY KEY CHECK (id = 1),
+      ambiente              INTEGER DEFAULT 2,
+      serie                 TEXT DEFAULT '1',
+      certificado_path      TEXT,
+      certificado_nome      TEXT,
+      certificado_senha     TEXT,
+      certificado_updatedat TEXT,
+      updatedat             TEXT DEFAULT (datetime('now','localtime'))
+    );
+    INSERT OR IGNORE INTO fiscal_config (id) VALUES (1);
+
+    CREATE TABLE IF NOT EXISTS nfe_autxml (
+      id        INTEGER PRIMARY KEY AUTOINCREMENT,
+      nome      TEXT NOT NULL,
+      documento TEXT NOT NULL,
+      tipo      TEXT DEFAULT 'contador',
+      ativo     INTEGER DEFAULT 1,
+      createdat TEXT DEFAULT (datetime('now','localtime')),
+      updatedat TEXT DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_nfe_autxml_documento ON nfe_autxml(documento);
+    CREATE INDEX IF NOT EXISTS idx_nfe_autxml_ativo ON nfe_autxml(ativo);
   `);
 
   // Normalizar status legados
