@@ -39,6 +39,14 @@ async function baixarArquivo(url, nomeArquivo) {
   URL.revokeObjectURL(href)
 }
 
+function abrirDanfe(chave) {
+  if (!chave) {
+    toast.error('Chave da NF-e indisponivel')
+    return
+  }
+  window.open(`/api/nfe/${chave}/danfe`, '_blank', 'noopener,noreferrer')
+}
+
 function StatusBadge({ status }) {
   const cfg = BADGE[status] || { bg: 'var(--color-surface-offset)', text: 'var(--color-text-muted)', label: status || '—' }
   return (
@@ -243,10 +251,6 @@ function ModalDetalhe({ nfe, onClose }) {
     }
   }
 
-  const danfeIndisponivel = () => {
-    toast('DANFE ainda esta no roadmap. Por enquanto use o XML fiscal.')
-  }
-
   return (
     <div
       style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'oklch(from var(--color-text) l c h / 0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-4)' }}
@@ -298,8 +302,8 @@ function ModalDetalhe({ nfe, onClose }) {
                   {nfe.nfe_chave && nfe.nfe_status !== 'rejeitado' && (
                     <button className="btn btn-ghost btn-sm" onClick={baixarXmlAutorizacao}>XML autorizacao</button>
                   )}
-                  {nfe.nfe_status === 'autorizado' && (
-                    <button className="btn btn-ghost btn-sm" onClick={danfeIndisponivel} title="DANFE ainda esta no roadmap">DANFE</button>
+                  {['autorizado', 'cancelado'].includes(nfe.nfe_status) && nfe.nfe_chave && (
+                    <button className="btn btn-ghost btn-sm" onClick={() => abrirDanfe(nfe.nfe_chave)} title="Abrir DANFE para impressao">DANFE</button>
                   )}
                 </div>
               </div>
@@ -518,10 +522,6 @@ export default function NotasFiscais() {
     }
   }
 
-  const danfeIndisponivel = () => {
-    toast('DANFE ainda esta no roadmap. O XML ja pode ser baixado pela tela.')
-  }
-
   const filtradas = notas.filter(n => {
     const matchQ = !q.trim() ||
       n.numero?.toLowerCase().includes(q.toLowerCase()) ||
@@ -675,12 +675,15 @@ export default function NotasFiscais() {
                         <>
                           <button className="btn btn-ghost btn-sm" onClick={() => setCceNota(n)} title="Emitir CC-e">CC-e</button>
                           <button className="btn btn-ghost btn-sm" onClick={() => baixarXmlAutorizacao(n)} title="Baixar XML autorizado">XML</button>
-                          <button className="btn btn-ghost btn-sm" onClick={danfeIndisponivel} title="DANFE ainda esta no roadmap">DANFE</button>
+                          <button className="btn btn-ghost btn-sm" onClick={() => abrirDanfe(n.nfe_chave)} title="Abrir DANFE para impressao">DANFE</button>
                           <button className="btn btn-ghost btn-sm" onClick={() => setCancelarNota(n)} title="Cancelar NF-e">Cancelar</button>
                         </>
                       )}
                       {n.nfe_status === 'cancelado' && n.nfe_chave && (
-                        <button className="btn btn-ghost btn-sm" onClick={() => baixarXmlAutorizacao(n)} title="Baixar XML autorizado">XML</button>
+                        <>
+                          <button className="btn btn-ghost btn-sm" onClick={() => baixarXmlAutorizacao(n)} title="Baixar XML autorizado">XML</button>
+                          <button className="btn btn-ghost btn-sm" onClick={() => abrirDanfe(n.nfe_chave)} title="Abrir DANFE para impressao">DANFE</button>
+                        </>
                       )}
                       {['rejeitado', 'cancelado'].includes(n.nfe_status) && ['Pronto', 'Entregue'].includes(n.status) && (
                         <button className="btn btn-ghost btn-sm" onClick={() => emitirNota(n)} title="Emitir novamente">Reemitir</button>

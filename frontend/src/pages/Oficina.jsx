@@ -85,6 +85,7 @@ export default function Oficina() {
   const [ordens,      setOrdens]      = useState([]);
   const [loading,     setLoading]     = useState(true);
   const [draggingId,  setDraggingId]  = useState(null);
+  const [draggingCardHeight, setDraggingCardHeight] = useState(92);
   const [dragOverCol, setDragOverCol] = useState(null);
   const [filterTipo,  setFilterTipo]  = useState('todos');
   const [filterPrio,  setFilterPrio]  = useState('todas');
@@ -147,8 +148,24 @@ export default function Oficina() {
 
   const onDragStart = useCallback((e, id) => {
     setDraggingId(id);
+    const card = e.currentTarget;
+    const rect = card.getBoundingClientRect();
+    setDraggingCardHeight(rect.height);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('ordemId', id);
+
+    const dragImage = card.cloneNode(true);
+    dragImage.classList.add('kanban-card-drag-image');
+    dragImage.style.width = `${rect.width}px`;
+    dragImage.style.height = `${rect.height}px`;
+    dragImage.style.position = 'fixed';
+    dragImage.style.top = '-1000px';
+    dragImage.style.left = '-1000px';
+    dragImage.style.pointerEvents = 'none';
+    dragImage.style.opacity = '1';
+    document.body.appendChild(dragImage);
+    e.dataTransfer.setDragImage(dragImage, rect.width * 0.45, Math.min(rect.height * 0.45, 42));
+    window.setTimeout(() => dragImage.remove(), 0);
   }, []);
 
   const onDragOver = useCallback((e, status) => {
@@ -270,9 +287,11 @@ export default function Oficina() {
           {COLUNAS.map(col => {
             const cards = porStatus(col);
             const isOver = dragOverCol === col.status;
+            const draggingOrdem = draggingId ? ordens.find(o => String(o.id) === String(draggingId)) : null;
+            const showDropSlot = Boolean(isOver && draggingOrdem && draggingOrdem.status !== col.status);
             return (
               <div key={col.status}
-                className={`kanban-col-${col.slug}`}
+                className={`kanban-col-${col.slug}${isOver ? ' kanban-column-over' : ''}`}
                 onDragOver={e => onDragOver(e, col.status)}
                 onDragLeave={onDragLeave}
                 onDrop={e => onDrop(e, col.status)}
@@ -320,7 +339,16 @@ export default function Oficina() {
                     background: isOver ? `${col.color}12` : 'transparent',
                     transition: 'background 0.15s',
                   }}>
-                    {cards.length === 0 ? (
+                    {showDropSlot && (
+                      <div
+                        className="kanban-drop-placeholder"
+                        style={{ minHeight: Math.max(70, draggingCardHeight), '--kanban-drop-color': col.color }}
+                      >
+                        <span>Soltar aqui</span>
+                      </div>
+                    )}
+
+                    {cards.length === 0 && !showDropSlot ? (
                       <div style={{ textAlign:'center', padding:'var(--space-8) var(--space-4)',
                         color: isOver ? col.color : 'var(--color-text-faint)',
                         fontSize:'var(--text-xs)', transition: 'color 0.15s',
@@ -344,7 +372,7 @@ export default function Oficina() {
 
                       return (
                         <div key={o.id}
-                          className="kanban-card"
+                          className={`kanban-card${draggingId === o.id ? ' kanban-card-dragging' : ''}`}
                           data-status={statusSlug}
                           draggable={canEdit}
                           onDragStart={e => onDragStart(e, o.id)}
@@ -352,7 +380,6 @@ export default function Oficina() {
                           onClick={() => navigate(`/ordens/${o.id}`)}
                           style={{
                             padding:'var(--space-3)',
-                            opacity: draggingId === o.id ? 0.45 : 1,
                             ...(vencida ? { borderLeftColor:'#EF4444 !important' } : {}),
                           }}
                         >

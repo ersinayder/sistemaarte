@@ -196,6 +196,13 @@ export default function OrdemDetalhe({ context }) {
   }
 
   const imprimirOS = () => window.open(`/api/ordens/${id}/pdf`, '_blank', 'noopener,noreferrer')
+  const abrirDanfe = () => {
+    if (!ordem?.nfe_chave) {
+      toast.error('Chave da NF-e indisponivel')
+      return
+    }
+    window.open(`/api/nfe/${ordem.nfe_chave}/danfe`, '_blank', 'noopener,noreferrer')
+  }
 
   // ── NF-e ──────────────────────────────────────────────────────────────────
   const handleEmitirNFe = async () => {
@@ -499,6 +506,23 @@ export default function OrdemDetalhe({ context }) {
                     </div>
                   )}
                 </div>
+                <button
+                  className="btn btn-sm"
+                  onClick={abrirDanfe}
+                  style={{
+                    width: '100%',
+                    marginTop: 'var(--space-3)',
+                    background: 'var(--color-success)',
+                    color: '#fff',
+                    border: 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 'var(--space-2)',
+                  }}
+                >
+                  <IconNFe /> Abrir DANFE
+                </button>
               </div>
             )}
 
