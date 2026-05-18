@@ -14,6 +14,7 @@ const today = () => new Date(Date.now()-3*60*60*1000).toISOString().slice(0,10)
 const STATUS_FLOW  = ['Aguardando','Em Produção','Pronto','Entregue']
 const STATUS_BADGE = { 'Aguardando':'secondary','Em Produção':'emproducao','Pronto':'pronto','Entregue':'entregue','Cancelado':'cancelado' }
 const STATUS_COLOR = { 'Aguardando':'var(--color-gold)','Em Produção':'var(--color-orange)','Pronto':'var(--color-primary)','Entregue':'var(--color-success)','Cancelado':'var(--color-text-faint)' }
+const STATUS_NFE_EMISSAO = ['Aguardando', 'Pronto', 'Entregue']
 const PAG_BADGE    = { Pix:'pix', Dinheiro:'dinheiro', Credito:'credito', Debito:'debito', Link:'link' }
 const PAG_LABEL    = { Credito:'Crédito', Débito:'Débito', Link:'Link Pag.' }
 const PAG_ICONE    = { Pix:'💠', Dinheiro:'💵', Credito:'💳', Debito:'💳', Link:'🔗' }
@@ -233,11 +234,11 @@ export default function OrdemDetalhe({ context }) {
   const wppUrl     = buildWppUrl(ordem)
   const wppLabel = ordem.status === 'Pronto' ? 'Avisar Pronto' : 'Confirmar Pedido'
 
-  // NF-e: visível para admin e caixa, OS em Pronto ou Entregue, ainda não emitida
+  // NF-e: algumas empresas exigem nota antes do pagamento, entao Aguardando tambem e elegivel.
   const podeEmitirNFe =
     (isAdmin || isCaixa) &&
     !isOficinaContext &&
-    ['Pronto', 'Entregue'].includes(ordem.status) &&
+    STATUS_NFE_EMISSAO.includes(ordem.status) &&
     !ordem.nfe_chave
 
   const nfeEmitida = !!ordem.nfe_chave

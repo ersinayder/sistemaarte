@@ -207,7 +207,7 @@ node -e "const db=require('better-sqlite3')('./data/oficina.db');db.prepare('UPD
 ### Script para emitir múltiplas notas em homologação
 
 > Usar para atingir o mínimo de 10 NF-es homologadas antes do go-live.  
-> Ajustar o array `$osIds` com IDs de OS no status `'Pronto'` ou `'Entregue'`.
+> Ajustar o array `$osIds` com IDs de OS no status `'Aguardando'`, `'Pronto'` ou `'Entregue'`.
 
 ```powershell
 $loginResp = Invoke-WebRequest -Uri "http://localhost:3001/api/auth/login" -Method POST -ContentType "application/json" -Body '{"username":"admin","password":"lojanova"}'
@@ -436,6 +436,7 @@ O backup diário às 2h BRT já cobre `backend/data/` — o diretório `nfe_xmls
 - Modal de detalhes busca eventos fiscais e mostra linha do tempo com XML por evento
 - Modal de CC-e mostra aviso do que não pode ser corrigido por Carta de Correção
 - Modal de cancelamento mostra resumo da nota, exige motivo mais detalhado e confirmação explícita
+- Emissão NF-e permite OS em `Aguardando`, `Pronto` ou `Entregue`, pois alguns clientes PJ exigem nota antes do pagamento e a loja só inicia o serviço mediante pagamento.
 
 ### Endpoints fiscais auxiliares
 

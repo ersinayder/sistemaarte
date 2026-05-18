@@ -26,6 +26,7 @@ const EVENTO_LABEL = {
 }
 
 const HOMOLOGACAO_ALVO = 10
+const STATUS_NFE_EMISSAO = ['Aguardando', 'Pronto', 'Entregue']
 
 async function baixarArquivo(url, nomeArquivo) {
   const r = await api.get(url, { responseType: 'blob', timeout: 45000 })
@@ -71,7 +72,7 @@ function ModalEmitir({ onClose, onSuccess }) {
     inputRef.current?.focus()
     api.get('/ordens').then(r => {
       const lista = (r.data?.ordens || r.data || []).filter(
-        o => ['Pronto', 'Entregue'].includes(o.status) && o.nfe_status !== 'autorizado'
+        o => STATUS_NFE_EMISSAO.includes(o.status) && o.nfe_status !== 'autorizado'
       )
       setOrdens(lista)
     }).catch(() => toast.error('Erro ao carregar ordens'))
@@ -122,7 +123,7 @@ function ModalEmitir({ onClose, onSuccess }) {
         <div style={{ padding: 'var(--space-5) var(--space-6)', borderBottom: '1px solid var(--color-divider)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, margin: 0 }}>Emitir NF-e</h2>
-            <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>Selecione uma OS com status Pronto ou Entregue</p>
+            <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>Selecione uma OS com status Aguardando, Pronto ou Entregue</p>
           </div>
           <button className="btn btn-icon btn-ghost" onClick={onClose} aria-label="Fechar">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
@@ -175,7 +176,11 @@ function ModalEmitir({ onClose, onSuccess }) {
                     {o.itens_resumo && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.itens_resumo}</div>}
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-                    <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, padding: '2px 8px', borderRadius: 'var(--radius-full)', background: o.status === 'Pronto' ? 'var(--color-primary-highlight)' : 'var(--color-success-highlight)', color: o.status === 'Pronto' ? 'var(--color-primary)' : 'var(--color-success)' }}>{o.status}</span>
+                    <span style={{
+                      fontSize: 'var(--text-xs)', fontWeight: 700, padding: '2px 8px', borderRadius: 'var(--radius-full)',
+                      background: o.status === 'Aguardando' ? 'var(--color-warning-highlight, var(--color-surface-offset))' : o.status === 'Pronto' ? 'var(--color-primary-highlight)' : 'var(--color-success-highlight)',
+                      color: o.status === 'Aguardando' ? 'var(--color-warning)' : o.status === 'Pronto' ? 'var(--color-primary)' : 'var(--color-success)'
+                    }}>{o.status}</span>
                     {sel && <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" strokeWidth="2.5"><path d="M20 6L9 17l-5-5"/></svg>}
                   </div>
                 </button>
@@ -685,7 +690,7 @@ export default function NotasFiscais() {
                           <button className="btn btn-ghost btn-sm" onClick={() => abrirDanfe(n.nfe_chave)} title="Abrir DANFE para impressao">DANFE</button>
                         </>
                       )}
-                      {['rejeitado', 'cancelado'].includes(n.nfe_status) && ['Pronto', 'Entregue'].includes(n.status) && (
+                      {['rejeitado', 'cancelado'].includes(n.nfe_status) && STATUS_NFE_EMISSAO.includes(n.status) && (
                         <button className="btn btn-ghost btn-sm" onClick={() => emitirNota(n)} title="Emitir novamente">Reemitir</button>
                       )}
                       {n.nfe_status === 'emitindo' && (
