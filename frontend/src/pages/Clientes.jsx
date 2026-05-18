@@ -20,6 +20,14 @@ const maskCNPJ = v => v.replace(/\D/g,'')
   .replace(/(\d{4})(\d{1,2})$/,'$1-$2')
   .slice(0,18);
 
+const onlyDigits = v => String(v || '').replace(/\D/g,'');
+const documentoTipo = (documento, ie = '') => {
+  const digits = onlyDigits(documento);
+  if (digits.length > 11 || (!digits && ie)) return 'PJ';
+  return 'PF';
+};
+const documentoLabel = documento => onlyDigits(documento).length > 11 ? 'CNPJ' : 'CPF';
+
 const validaCPF = cpf => {
   const n = cpf.replace(/\D/g,'');
   if (n.length !== 11 || /^(\d)\1{10}$/.test(n)) return false;
@@ -145,25 +153,40 @@ export default function Clientes() {
     finally { setCepLoading(false); }
   };
 
-  const handleCPF = (v) => {
-    const masked = maskCPF(v);
-    set('cpf', masked);
-    const digits = masked.replace(/\D/g,'');
-    if (digits.length === 11) {
+  const handleDocumento = (v) => {
+    const digits = onlyDigits(v).slice(0, 14);
+    const tipo = digits.length > 11 ? 'PJ' : 'PF';
+    const masked = tipo === 'PJ' ? maskCNPJ(digits) : maskCPF(digits);
+
+    setForm(f => ({
+      ...f,
+      tipo,
+      cpf: tipo === 'PF' ? masked : '',
+      cnpj: tipo === 'PJ' ? masked : '',
+      ie: tipo === 'PF' ? '' : f.ie,
+    }));
+
+    setCpfError('');
+    setCnpjError('');
+
+    if (tipo === 'PF' && digits.length === 11) {
       setCpfError(validaCPF(digits) ? '' : 'CPF inválido');
-    } else {
-      setCpfError('');
+    }
+
+    if (tipo === 'PJ' && digits.length === 14) {
+      buscarCNPJ(masked);
     }
   };
 
   const openEdit = (c) => {
     setEditId(c.id);
-    const tipo = c.ie ? 'PJ' : 'PF';
+    const tipo = documentoTipo(c.cpf, c.ie);
+    const documento = tipo === 'PJ' ? maskCNPJ(c.cpf || '') : maskCPF(c.cpf || '');
     setForm({
       tipo,
       nome:       c.name       || '',
-      cpf:        c.cpf        || '',
-      cnpj:       '',
+      cpf:        tipo === 'PF' ? documento : '',
+      cnpj:       tipo === 'PJ' ? documento : '',
       ie:         c.ie         || '',
       contato:    c.phone      || '',
       email:      c.email      || '',
@@ -186,13 +209,14 @@ export default function Clientes() {
     if (!form.nome.trim()) { toast.error('Nome é obrigatório'); return; }
     if (form.tipo === 'PF' && form.cpf && !validaCPF(form.cpf)) { toast.error('CPF inválido'); return; }
     if (form.tipo === 'PJ' && form.cnpj && !validaCNPJ(form.cnpj)) { toast.error('CNPJ inválido'); return; }
+    const documento = form.tipo === 'PJ' ? form.cnpj : form.cpf;
     setSaving(true);
     try {
       const payload = {
         name:       form.nome,
         phone:      form.contato,
         email:      form.email,
-        cpf:        form.tipo === 'PF' ? form.cpf : '',
+        cpf:        documento,
         ie:         form.ie,
         logradouro: form.logradouro,
         numero:     form.numero,
@@ -321,7 +345,7 @@ export default function Clientes() {
           <div style={{ fontWeight:800, fontSize:'var(--text-base)', marginBottom:'var(--space-1)' }}>{c.name}</div>
           {c.email   && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>✉ {c.email}</div>}
           {c.phone   && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>📞 {c.phone}</div>}
-          {c.cpf     && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>CPF: {c.cpf}</div>}
+          {c.cpf     && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>{documentoLabel(c.cpf)}: {c.cpf}</div>}
           {c.ie      && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>IE: {c.ie}</div>}
           {(addrParts || cityPart) && (
             <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginBottom:2 }}>
@@ -450,7 +474,7 @@ export default function Clientes() {
             ref={searchRef}
             className="form-input"
             style={{ paddingLeft:36 }}
-            placeholder="Buscar por nome, telefone, email ou CPF…"
+            placeholder="Buscar por nome, telefone, email, CPF ou CNPJ…"
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
@@ -480,7 +504,7 @@ export default function Clientes() {
                   <tr>
                     <th style={{ cursor:'pointer', userSelect:'none' }} onClick={() => toggleSort('nome')}>Nome <SortIcon f="nome"/></th>
                     <th>Contato</th>
-                    <th>CPF / IE</th>
+                    <th>Documento / IE</th>
                     <th>OS</th>
                     <th>Total gasto</th>
                     <th></th>
@@ -499,7 +523,7 @@ export default function Clientes() {
                       </td>
                       <td style={{ fontSize:'var(--text-xs)' }}>{c.phone||'—'}</td>
                       <td style={{ fontSize:'var(--text-xs)' }}>
-                        {c.cpf  && <div><span style={{color:'var(--color-text-faint)'}}>CPF </span>{c.cpf}</div>}
+                        {c.cpf  && <div><span style={{color:'var(--color-text-faint)'}}>{documentoLabel(c.cpf)} </span>{c.cpf}</div>}
                         {c.ie   && <div><span style={{color:'var(--color-text-faint)'}}>IE </span>{c.ie}</div>}
                         {!c.cpf && !c.ie && '—'}
                       </td>
@@ -554,30 +578,27 @@ export default function Clientes() {
             </div>
             <div className="modal-body">
               <div style={{ display:'flex', background:'var(--color-surface-offset)', borderRadius:'var(--radius-lg)', padding:3, gap:2, marginBottom:'var(--space-3)' }}>
-                <button style={tabStyle(form.tipo==='PF')} onClick={() => { set('tipo','PF'); setCnpjError(''); }}>👤 Pessoa Física</button>
-                <button style={tabStyle(form.tipo==='PJ')} onClick={() => { set('tipo','PJ'); setCpfError(''); }}>🏢 Pessoa Jurídica</button>
+                <div style={{ ...tabStyle(form.tipo==='PF'), cursor:'default', opacity: form.tipo==='PF' ? 1 : 0.68 }}>👤 Pessoa Física</div>
+                <div style={{ ...tabStyle(form.tipo==='PJ'), cursor:'default', opacity: form.tipo==='PJ' ? 1 : 0.68 }}>🏢 Pessoa Jurídica</div>
               </div>
 
               <div className="form-grid">
-                {form.tipo === 'PF' && (
-                  <div className="form-group">
-                    <label className="form-label">CPF</label>
-                    <input className="form-input" style={cpfError ? {borderColor:'var(--color-error)'} : {}} value={form.cpf} onChange={e => handleCPF(e.target.value)} placeholder="000.000.000-00" inputMode="numeric" />
-                    {cpfError && <span className="form-error">{cpfError}</span>}
-                  </div>
-                )}
-                {form.tipo === 'PJ' && (
-                  <div className="form-group">
-                    <label className="form-label" style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                      <span>CNPJ <span style={{fontWeight:400,color:'var(--color-text-faint)',fontSize:'var(--text-xs)'}}>— só para consulta</span></span>
-                      {cnpjLoading && <span style={{fontSize:'var(--text-xs)',color:'var(--color-text-muted)',fontWeight:400}}>🔍 buscando…</span>}
-                    </label>
-                    <input className="form-input" style={cnpjError ? {borderColor:'var(--color-error)'} : {}} value={form.cnpj}
-                      onChange={e => { const v = maskCNPJ(e.target.value); set('cnpj', v); setCnpjError(''); if (v.replace(/\D/g,'').length === 14) buscarCNPJ(v); }}
-                      placeholder="00.000.000/0000-00" inputMode="numeric" />
-                    {cnpjError && <span className="form-error">{cnpjError}</span>}
-                  </div>
-                )}
+                <div className="form-group">
+                  <label className="form-label" style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                    <span>CPF / CNPJ</span>
+                    {cnpjLoading && <span style={{fontSize:'var(--text-xs)',color:'var(--color-text-muted)',fontWeight:400}}>🔍 buscando…</span>}
+                  </label>
+                  <input
+                    className="form-input"
+                    style={(cpfError || cnpjError) ? {borderColor:'var(--color-error)'} : {}}
+                    value={form.tipo === 'PJ' ? form.cnpj : form.cpf}
+                    onChange={e => handleDocumento(e.target.value)}
+                    placeholder="CPF ou CNPJ"
+                    inputMode="numeric"
+                  />
+                  {cpfError && <span className="form-error">{cpfError}</span>}
+                  {cnpjError && <span className="form-error">{cnpjError}</span>}
+                </div>
                 {form.tipo === 'PJ' && (
                   <div className="form-group">
                     <label className="form-label">Inscrição Estadual</label>
