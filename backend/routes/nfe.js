@@ -15,6 +15,7 @@ const CCE_COND_USO =
   'A Carta de Correcao e disciplinada pelo paragrafo 1o-A do art. 7o do Convenio S/N, de 15 de dezembro de 1970 e pode ser utilizada para regularizacao de erro ocorrido na emissao de documento fiscal, desde que o erro nao esteja relacionado com: I - as variaveis que determinam o valor do imposto tais como: base de calculo, aliquota, diferenca de preco, quantidade, valor da operacao ou da prestacao; II - a correcao de dados cadastrais que implique mudanca do remetente ou do destinatario; III - a data de emissao ou de saida.';
 const STATUS_NFE_EMISSAO = ['Aguardando', 'Pronto', 'Entregue'];
 const NFE_ROUTE_TIMEOUT_MS = 75_000;
+const COD_MUNICIPIO_IPATINGA = '3131307';
 
 function pad(n, len) { return String(n).padStart(len, '0'); }
 
@@ -103,6 +104,13 @@ function proximoNumero(db, serie = '1') {
 }
 
 function emitente() {
+  const municipio = process.env.NFE_MUNICIPIO || 'IPATINGA';
+  const codigoMunicipioEnv = (process.env.NFE_COD_MUNICIPIO || '').replace(/\D/g, '');
+  const codigoMunicipio = municipio.trim().toUpperCase() === 'IPATINGA' &&
+    (!codigoMunicipioEnv || codigoMunicipioEnv === '3127701')
+    ? COD_MUNICIPIO_IPATINGA
+    : (codigoMunicipioEnv || COD_MUNICIPIO_IPATINGA);
+
   return {
     CNPJ:     (process.env.NFE_CNPJ_EMITENTE || '').replace(/\D/g, ''),
     xNome:    (process.env.NFE_RAZAO_SOCIAL   || 'EMITENTE').toUpperCase(),
@@ -111,8 +119,8 @@ function emitente() {
       xLgr:    process.env.NFE_LOGRADOURO    || '',
       nro:     process.env.NFE_NUMERO        || 'S/N',
       xBairro: process.env.NFE_BAIRRO        || '',
-      cMun:    process.env.NFE_COD_MUNICIPIO || '3127701',
-      xMun:    process.env.NFE_MUNICIPIO     || 'IPATINGA',
+      cMun:    codigoMunicipio,
+      xMun:    municipio,
       UF:      'MG',
       CEP:     (process.env.NFE_CEP  || '').replace(/\D/g, ''),
       fone:    (process.env.NFE_FONE || '').replace(/\D/g, ''),
