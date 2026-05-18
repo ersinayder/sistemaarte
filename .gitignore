@@ -29,3 +29,6 @@ Thumbs.db
 *.swp
 *.swo
 .vscode/
+
+# Brainstorm visual temporario
+.superpowers/
