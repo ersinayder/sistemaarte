@@ -51,6 +51,7 @@ app.use("/api/relatorios",  require("./routes/relatorios"));
 app.use("/api/consulta",    require("./routes/consulta"));
 app.use("/api/backup",      require("./routes/backup"));
 app.use("/api/produtos",    require("./routes/produtos"));
+app.use("/api/configuracoes", require("./routes/configuracoes"));
 app.use("/api/kpis",        require("./routes/kpis"));
 // ── NF-e ──────────────────────────────────────────────────────────────────────
 app.use("/api/nfe",         require("./routes/nfe"));
