@@ -48,6 +48,18 @@ function abrirDanfe(chave) {
   window.open(`/api/nfe/${chave}/danfe`, '_blank', 'noopener,noreferrer')
 }
 
+function mensagemErroNfe(e, fallback = 'Erro ao emitir NF-e') {
+  const data = e?.response?.data
+  if (data?.erro) return data.erro
+  if (e?.response?.status === 504) {
+    return 'SEFAZ demorou demais para responder. Aguarde alguns instantes, atualize a tela e tente reemitir.'
+  }
+  if (typeof data === 'string' && data.toLowerCase().includes('gateway timeout')) {
+    return 'SEFAZ demorou demais para responder. Aguarde alguns instantes, atualize a tela e tente reemitir.'
+  }
+  return fallback
+}
+
 function StatusBadge({ status }) {
   const cfg = BADGE[status] || { bg: 'var(--color-surface-offset)', text: 'var(--color-text-muted)', label: status || '—' }
   return (
@@ -91,12 +103,12 @@ function ModalEmitir({ onClose, onSuccess }) {
     if (!ordemSel) return
     setEmitindo(true)
     try {
-      await api.post(`/nfe/emitir/${ordemSel.id}`, null, { timeout: 45000 })
+      await api.post(`/nfe/emitir/${ordemSel.id}`, null, { timeout: 80000 })
       toast.success(`NF-e emitida com sucesso para ${ordemSel.numero}!`)
       onSuccess()
       onClose()
     } catch (e) {
-      toast.error(e.response?.data?.erro || 'Erro ao emitir NF-e')
+      toast.error(mensagemErroNfe(e))
     } finally {
       setEmitindo(false)
     }
@@ -510,11 +522,11 @@ export default function NotasFiscais() {
 
   const emitirNota = async (nota) => {
     try {
-      await api.post(`/nfe/emitir/${nota.id}`, null, { timeout: 45000 })
+      await api.post(`/nfe/emitir/${nota.id}`, null, { timeout: 80000 })
       toast.success(`NF-e emitida com sucesso para ${nota.numero}!`)
       carregar()
     } catch (e) {
-      toast.error(e.response?.data?.erro || 'Erro ao emitir NF-e')
+      toast.error(mensagemErroNfe(e))
       carregar()
     }
   }

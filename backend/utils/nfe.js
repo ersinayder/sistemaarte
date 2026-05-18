@@ -17,7 +17,7 @@ const path = require('path');
 
 let _wizard = null;
 
-const SEFAZ_TIMEOUT_MS = 30_000;
+const SEFAZ_TIMEOUT_MS = 60_000;
 
 async function getNFEWizard() {
   if (_wizard) return _wizard;
