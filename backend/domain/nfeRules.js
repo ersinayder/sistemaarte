@@ -54,28 +54,34 @@ function montarEnderecoDest(cliente) {
 }
 
 function montarDest(cliente) {
-  const dest = { xNome: (cliente?.clientenome || cliente?.name || 'CONSUMIDOR FINAL').toUpperCase() };
+  const xNome = (cliente?.clientenome || cliente?.name || 'CONSUMIDOR FINAL').toUpperCase();
   const documento = (cliente?.cpf || '').replace(/\D/g, '');
   const ie = String(cliente?.ie || '').trim();
 
   if (documento.length === 11 || documento.length === 14) {
-    dest.CNPJCPF = documento;
+    const dest = { CNPJCPF: documento, xNome };
     const endereco = montarEnderecoDest(cliente);
     if (endereco) dest.enderDest = endereco;
 
     if (documento.length === 14 && ie) {
-      dest.IE = ie;
-      dest.indIEDest = '1';
+      if (ie.toUpperCase() === 'ISENTO') {
+        dest.indIEDest = '2';
+      } else {
+        dest.indIEDest = '1';
+        dest.IE = ie;
+      }
     } else {
       dest.indIEDest = '9';
     }
+    return dest;
   } else {
     // Consumidor final sem CPF/CNPJ valido
-    dest.CNPJCPF   = '11111111111';
-    dest.indIEDest = '9';
+    return {
+      CNPJCPF:   '11111111111',
+      xNome,
+      indIEDest: '9',
+    };
   }
-
-  return dest;
 }
 
 function montarImpostoSimples(item) {
