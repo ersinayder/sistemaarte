@@ -32,7 +32,7 @@ app.use(cookieParser());
 
 const globalLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 200,
+  max: 60,
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => req.path.startsWith('/kpis/stream'),

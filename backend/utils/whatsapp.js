@@ -10,6 +10,7 @@
  */
 
 const https = require('https');
+const { getWhatsappRuntimeConfig } = require('./whatsappConfig');
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -64,10 +65,10 @@ function postCloudAPI(phoneId, token, body) {
 
 // ─── Dispatcher principal ────────────────────────────────────────────────────
 
-async function _dispatch(phone, templateName, components) {
-  const TOKEN    = process.env.WHATSAPP_TOKEN    || '';
-  const PHONE_ID = process.env.WHATSAPP_PHONE_ID || '';
-  const ENABLED  = process.env.WHATSAPP_ENABLED !== 'false';
+async function _dispatch(phone, templateName, components, runtime = getWhatsappRuntimeConfig()) {
+  const TOKEN    = runtime.token || '';
+  const PHONE_ID = runtime.phoneId || '';
+  const ENABLED  = runtime.enabled !== false;
 
   if (!TOKEN || !PHONE_ID || !ENABLED) {
     console.log('[WhatsApp] Desabilitado ou variáveis não configuradas — pulando envio.');
@@ -104,6 +105,7 @@ async function _dispatch(phone, templateName, components) {
 // Parâmetros: {{1}} nome, {{2}} numero_os, {{3}} servico, {{4}} saldo (ou "quitado")
 
 async function sendWhatsApp(os) {
+  const runtime = getWhatsappRuntimeConfig();
   const phone   = normalizePhone(os.clientetelefone || os.clientecontato);
   if (!phone) {
     console.warn(`[WhatsApp] OS ${os.numero} — telefone inválido ou ausente`);
@@ -128,7 +130,7 @@ async function sendWhatsApp(os) {
     },
   ];
 
-  return _dispatch(phone, 'os_pronta', components);
+  return _dispatch(phone, runtime.templatePronto || 'os_pronta', components, runtime);
 }
 
 // ─── Mensagem 2: Confirmação de Pedido (disparo manual) ──────────────────────
@@ -137,6 +139,7 @@ async function sendWhatsApp(os) {
 //             {{4}} valor_total, {{5}} entrada, {{6}} saldo_restante
 
 async function sendWhatsAppConfirmacao(os) {
+  const runtime = getWhatsappRuntimeConfig();
   const phone   = normalizePhone(os.clientetelefone || os.clientecontato);
   if (!phone) {
     console.warn(`[WhatsApp] OS ${os.numero} — telefone inválido ou ausente`);
@@ -164,7 +167,7 @@ async function sendWhatsAppConfirmacao(os) {
     },
   ];
 
-  return _dispatch(phone, 'confirmacao_pedido', components);
+  return _dispatch(phone, runtime.templateConfirmacao || 'confirmacao_pedido', components, runtime);
 }
 
 module.exports = { sendWhatsApp, sendWhatsAppConfirmacao, normalizePhone };

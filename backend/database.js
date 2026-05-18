@@ -147,6 +147,18 @@ CREATE TABLE IF NOT EXISTS fiscal_config (
   updatedat             TEXT DEFAULT (datetime('now','localtime'))
 );
 INSERT OR IGNORE INTO fiscal_config (id) VALUES (1);
+CREATE TABLE IF NOT EXISTS whatsapp_config (
+  id                    INTEGER PRIMARY KEY CHECK (id = 1),
+  enabled               INTEGER DEFAULT 0,
+  provider              TEXT DEFAULT 'meta',
+  phone_id              TEXT,
+  token                 TEXT,
+  template_pronto       TEXT DEFAULT 'os_pronta',
+  template_confirmacao  TEXT DEFAULT 'confirmacao_pedido',
+  configurado           INTEGER DEFAULT 0,
+  updatedat             TEXT DEFAULT (datetime('now','localtime'))
+);
+INSERT OR IGNORE INTO whatsapp_config (id) VALUES (1);
 CREATE INDEX IF NOT EXISTS idx_ordens_status       ON ordens(status);
 CREATE INDEX IF NOT EXISTS idx_ordens_prazo        ON ordens(prazoentrega);
 CREATE INDEX IF NOT EXISTS idx_ordens_clienteid    ON ordens(clienteid);
@@ -258,6 +270,19 @@ function initDB() {
     "CREATE INDEX IF NOT EXISTS idx_nfe_eventos_ordemid ON nfe_eventos(ordemid)",
     // v8 - marca quando fiscal_config foi salvo explicitamente pela tela/API
     "ALTER TABLE fiscal_config ADD COLUMN configurado INTEGER DEFAULT 0",
+    // v9 - configuracao operacional do WhatsApp pela tela
+    `CREATE TABLE IF NOT EXISTS whatsapp_config (
+      id                    INTEGER PRIMARY KEY CHECK (id = 1),
+      enabled               INTEGER DEFAULT 0,
+      provider              TEXT DEFAULT 'meta',
+      phone_id              TEXT,
+      token                 TEXT,
+      template_pronto       TEXT DEFAULT 'os_pronta',
+      template_confirmacao  TEXT DEFAULT 'confirmacao_pedido',
+      configurado           INTEGER DEFAULT 0,
+      updatedat             TEXT DEFAULT (datetime('now','localtime'))
+    )`,
+    "INSERT OR IGNORE INTO whatsapp_config (id) VALUES (1)",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {}
@@ -319,6 +344,19 @@ function initDB() {
     );
     CREATE INDEX IF NOT EXISTS idx_nfe_autxml_documento ON nfe_autxml(documento);
     CREATE INDEX IF NOT EXISTS idx_nfe_autxml_ativo ON nfe_autxml(ativo);
+
+    CREATE TABLE IF NOT EXISTS whatsapp_config (
+      id                    INTEGER PRIMARY KEY CHECK (id = 1),
+      enabled               INTEGER DEFAULT 0,
+      provider              TEXT DEFAULT 'meta',
+      phone_id              TEXT,
+      token                 TEXT,
+      template_pronto       TEXT DEFAULT 'os_pronta',
+      template_confirmacao  TEXT DEFAULT 'confirmacao_pedido',
+      configurado           INTEGER DEFAULT 0,
+      updatedat             TEXT DEFAULT (datetime('now','localtime'))
+    );
+    INSERT OR IGNORE INTO whatsapp_config (id) VALUES (1);
   `);
 
   // Normalizar status legados

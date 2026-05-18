@@ -2,7 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const multer = require("multer");
 const router = require("express").Router();
-const { getOne, getAll, run, runInsert } = require("../database");
+const { getOne, getAll, run, runInsert, backup } = require("../database");
 const { auth } = require("../middlewares/auth");
 const {
   normalizarEmpresaConfig,
@@ -21,6 +21,13 @@ const {
   getCnpjEmitente,
 } = require("../utils/nfeConfig");
 const { resetNFEWizard } = require("../utils/nfe");
+const {
+  normalizarWhatsappConfig,
+  validarWhatsappConfig,
+} = require("../domain/whatsappConfigRules");
+const { getWhatsappPublicConfig } = require("../utils/whatsappConfig");
+const { buildBackupStatus } = require("../utils/backupStatus");
+const pkg = require("../package.json");
 
 const EMPRESA_COLUMNS = [
   "razaosocial",
@@ -62,6 +69,7 @@ const SEL_EMPRESA = `
 
 const CERT_DIR = path.resolve(__dirname, "..", "certs");
 const CERT_PATH = path.resolve(CERT_DIR, "certificado-config.pfx");
+const BACKUPS_DIR = path.resolve(__dirname, "..", "data", "backups");
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -106,24 +114,69 @@ function empresaAtual() {
 
 function statusConfiguracoes(empresa) {
   const fiscal = getFiscalConfig();
+  const whatsapp = getWhatsappPublicConfig();
+  const backups = backupAtual();
+  const seguranca = segurancaAtual();
   return {
     empresa: statusEmpresaConfig(empresa),
     fiscal: fiscal.status,
-    whatsapp: {
+    whatsapp: whatsapp.status,
+    backups: backups.status,
+    seguranca: seguranca.status,
+    sistema: sistemaAtual().status,
+  };
+}
+
+function backupAtual() {
+  return buildBackupStatus(BACKUPS_DIR);
+}
+
+function whatsappRowAtual() {
+  return getOne(`
+    SELECT id, enabled, provider, phone_id, token, template_pronto,
+           template_confirmacao, configurado, updatedat
+    FROM whatsapp_config
+    WHERE id = 1
+  `);
+}
+
+function segurancaAtual() {
+  return {
+    status: {
       status: "Pendente",
-      missing: ["provedor", "token", "telefone"],
+      missing: ["helmet", "lockout-login"],
     },
-    backups: {
-      status: "Pendente",
-      missing: ["offsite", "monitoramento"],
+    politicas: {
+      rateLimitGlobalPorMinuto: 60,
+      loginTentativasPorIp: 10,
+      loginJanelaMinutos: 15,
+      senhaMinima: 8,
+      sessaoHoras: 12,
+      protegeAutoDesativacaoAdmin: true,
     },
-    seguranca: {
-      status: "Pendente",
-      missing: ["helmet", "rate-limit", "lockout-login"],
+    pendencias: [
+      "Instalar/configurar helmet",
+      "Adicionar lockout por usuario no login",
+      "Ativar backup offsite fora do servidor",
+    ],
+  };
+}
+
+function sistemaAtual() {
+  return {
+    status: { status: "OK", missing: [] },
+    app: {
+      nome: "Sistema Arte e Molduras",
+      versao: pkg.version,
+      node: process.versions.node,
+      ambiente: process.env.NODE_ENV || "production",
+      plataforma: `${process.platform} ${process.arch}`,
+      timezone: process.env.TZ || "America/Sao_Paulo",
     },
-    sistema: {
-      status: "OK",
-      missing: [],
+    servicos: {
+      api: "OK",
+      banco: "OK",
+      backups: "Configurado localmente",
     },
   };
 }
@@ -208,6 +261,80 @@ router.put("/empresa", auth(["admin"]), (req, res, next) => {
 router.get("/fiscal", auth(["admin"]), (_req, res, next) => {
   try {
     res.json(fiscalAtualComAutXml());
+  } catch (e) { next(e); }
+});
+
+router.get("/whatsapp", auth(["admin"]), (_req, res, next) => {
+  try {
+    res.json({ whatsapp: getWhatsappPublicConfig() });
+  } catch (e) { next(e); }
+});
+
+router.put("/whatsapp", auth(["admin"]), (req, res, next) => {
+  try {
+    const atual = whatsappRowAtual() || {};
+    const config = normalizarWhatsappConfig(req.body || {});
+    const validacao = validarWhatsappConfig(config, {
+      tokenConfigurado: Boolean(atual.token),
+    });
+
+    if (!validacao.ok) {
+      return res.status(400).json({
+        error: "Verifique os campos do WhatsApp",
+        errors: validacao.errors,
+      });
+    }
+
+    const token = config.token || atual.token || null;
+    run(
+      `INSERT INTO whatsapp_config
+        (id, enabled, provider, phone_id, token, template_pronto, template_confirmacao, configurado, updatedat)
+       VALUES (1, ?, ?, ?, ?, ?, ?, 1, datetime('now','localtime'))
+       ON CONFLICT(id) DO UPDATE SET
+         enabled=excluded.enabled,
+         provider=excluded.provider,
+         phone_id=excluded.phone_id,
+         token=excluded.token,
+         template_pronto=excluded.template_pronto,
+         template_confirmacao=excluded.template_confirmacao,
+         configurado=1,
+         updatedat=datetime('now','localtime')`,
+      [
+        config.enabled,
+        config.provider,
+        config.phoneId,
+        token,
+        config.templatePronto,
+        config.templateConfirmacao,
+      ]
+    );
+
+    res.json({ whatsapp: getWhatsappPublicConfig() });
+  } catch (e) { next(e); }
+});
+
+router.get("/backups", auth(["admin"]), (_req, res, next) => {
+  try {
+    res.json({ backups: backupAtual() });
+  } catch (e) { next(e); }
+});
+
+router.post("/backups/manual", auth(["admin"]), async (_req, res, next) => {
+  try {
+    await backup();
+    res.json({ ok: true, backups: backupAtual() });
+  } catch (e) { next(e); }
+});
+
+router.get("/seguranca", auth(["admin"]), (_req, res, next) => {
+  try {
+    res.json({ seguranca: segurancaAtual() });
+  } catch (e) { next(e); }
+});
+
+router.get("/sistema", auth(["admin"]), (_req, res, next) => {
+  try {
+    res.json({ sistema: sistemaAtual() });
   } catch (e) { next(e); }
 });
 
