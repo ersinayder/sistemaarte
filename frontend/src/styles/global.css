@@ -984,6 +984,12 @@ textarea.form-input { resize: vertical; min-height: 80px; }
   min-width: 0;
 }
 
+.settings-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
 .settings-section-head {
   display: flex;
   align-items: flex-start;
@@ -1003,6 +1009,110 @@ textarea.form-input { resize: vertical; min-height: 80px; }
   justify-content: flex-end;
   gap: var(--space-3);
   margin-top: var(--space-5);
+}
+
+.settings-info-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.settings-info-row {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+}
+
+.settings-info-row span {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.settings-info-row strong {
+  overflow-wrap: anywhere;
+  font-size: var(--text-sm);
+}
+
+.settings-two-col {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.settings-cert-box {
+  display: grid;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.settings-inline-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: center;
+  margin-top: var(--space-3);
+}
+
+.settings-check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  align-self: end;
+  min-height: 38px;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.settings-check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-primary);
+}
+
+.settings-autxml-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+}
+
+.settings-autxml-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+}
+
+.settings-autxml-item strong,
+.settings-autxml-item span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.settings-autxml-item span {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
+.settings-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  justify-content: flex-end;
 }
 
 .settings-planned-grid {
@@ -1049,6 +1159,20 @@ textarea.form-input { resize: vertical; min-height: 80px; }
   .settings-planned-grid {
     grid-template-columns: 1fr;
   }
+
+  .settings-info-grid,
+  .settings-two-col {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-autxml-item {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .settings-row-actions {
+    justify-content: flex-start;
+  }
 }
 
 @media (max-width: 640px) {
@@ -1068,6 +1192,10 @@ textarea.form-input { resize: vertical; min-height: 80px; }
 
   .settings-actions .btn {
     justify-content: center;
+  }
+
+  .settings-inline-form {
+    grid-template-columns: 1fr;
   }
 }
 
