@@ -166,8 +166,18 @@ function dhEmiBrasilia() {
   return brt.toISOString().replace(/\.\d{3}Z$/, '-03:00');
 }
 
-function montarNFe({ ordem, itens, cliente, emitente, numero, serie }) {
-  const tpAmb = process.env.NFE_AMBIENTE === 'producao' ? 1 : 2;
+function resolverTpAmb(ambiente) {
+  const informado = Number(ambiente);
+  if (informado === 1 || informado === 2) return informado;
+
+  const envAmbienteNum = Number(process.env.NFE_AMBIENTE_NUM);
+  if (envAmbienteNum === 1 || envAmbienteNum === 2) return envAmbienteNum;
+
+  return process.env.NFE_AMBIENTE === 'producao' ? 1 : 2;
+}
+
+function montarNFe({ ordem, itens, cliente, emitente, numero, serie, ambiente, autXML }) {
+  const tpAmb = resolverTpAmb(ambiente);
 
   // emit usa CNPJCPF — a lib valida e converte para a tag CNPJ ou CPF no XML
   const emit = {
@@ -179,42 +189,46 @@ function montarNFe({ ordem, itens, cliente, emitente, numero, serie }) {
     CRT:       emitente.CRT,
   };
 
-  return {
-    infNFe: {
-      ide: {
-        cUF:      '31',
-        cNF:      String(numero).slice(-8).padStart(8, '0'),
-        natOp:    'VENDA DE MERCADORIA',
-        mod:      '55',
-        serie:    String(serie || '1'),
-        nNF:      String(numero),
-        dhEmi:    dhEmiBrasilia(),
-        tpNF:     '1',
-        idDest:   '1',
-        cMunFG:   emitente.enderEmit?.cMun || COD_MUNICIPIO_IPATINGA,
-        tpImp:    '1',
-        tpEmis:   '1',
-        cDV:      '0',    // recalculado pela lib
-        tpAmb,            // number, nao string
-        finNFe:   '1',
-        indFinal: '1',
-        indPres:  '1',
-        procEmi:  '0',
-        verProc:  '1.0.0.0',
-      },
-      emit,
-      dest:   montarDest(cliente),
-      det:    itens.map((item) => montarItem(item)),
-      total:  calcularTotais(itens),
-      transp: { modFrete: '9' },
-      pag: {
-        detPag: [{
-          tPag: mapTpPag(ordem.pagamento),
-          vPag: Number(ordem.valortotal || 0).toFixed(2),
-        }],
-      },
+  const infNFe = {
+    ide: {
+      cUF:      '31',
+      cNF:      String(numero).slice(-8).padStart(8, '0'),
+      natOp:    'VENDA DE MERCADORIA',
+      mod:      '55',
+      serie:    String(serie || '1'),
+      nNF:      String(numero),
+      dhEmi:    dhEmiBrasilia(),
+      tpNF:     '1',
+      idDest:   '1',
+      cMunFG:   emitente.enderEmit?.cMun || COD_MUNICIPIO_IPATINGA,
+      tpImp:    '1',
+      tpEmis:   '1',
+      cDV:      '0',    // recalculado pela lib
+      tpAmb,            // number, nao string
+      finNFe:   '1',
+      indFinal: '1',
+      indPres:  '1',
+      procEmi:  '0',
+      verProc:  '1.0.0.0',
+    },
+    emit,
+    dest:   montarDest(cliente),
+    det:    itens.map((item) => montarItem(item)),
+    total:  calcularTotais(itens),
+    transp: { modFrete: '9' },
+    pag: {
+      detPag: [{
+        tPag: mapTpPag(ordem.pagamento),
+        vPag: Number(ordem.valortotal || 0).toFixed(2),
+      }],
     },
   };
+
+  if (Array.isArray(autXML) && autXML.length > 0) {
+    infNFe.autXML = autXML;
+  }
+
+  return { infNFe };
 }
 
 module.exports = { montarNFe };

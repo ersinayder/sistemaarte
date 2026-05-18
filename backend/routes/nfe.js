@@ -8,6 +8,14 @@ const { auth }      = require('../middlewares/auth');
 const { getNFEWizard, callSEFAZ } = require('../utils/nfe');
 const { montarNFe } = require('../domain/nfeRules');
 const { renderDanfeHtml } = require('../utils/danfe');
+const {
+  tpAmbAtual,
+  getCertificadoConfig,
+  getEmitenteConfig,
+  getAutXmlParaNFe,
+  getCnpjEmitente,
+  getSerieNFe,
+} = require('../utils/nfeConfig');
 
 // Diretório canônico para XMLs — obrigação legal 5 anos
 const NFE_XMLS_DIR = path.resolve(__dirname, '..', 'data', 'nfe_xmls');
@@ -15,7 +23,6 @@ const CCE_COND_USO =
   'A Carta de Correcao e disciplinada pelo paragrafo 1o-A do art. 7o do Convenio S/N, de 15 de dezembro de 1970 e pode ser utilizada para regularizacao de erro ocorrido na emissao de documento fiscal, desde que o erro nao esteja relacionado com: I - as variaveis que determinam o valor do imposto tais como: base de calculo, aliquota, diferenca de preco, quantidade, valor da operacao ou da prestacao; II - a correcao de dados cadastrais que implique mudanca do remetente ou do destinatario; III - a data de emissao ou de saida.';
 const STATUS_NFE_EMISSAO = ['Aguardando', 'Pronto', 'Entregue'];
 const NFE_ROUTE_TIMEOUT_MS = 75_000;
-const COD_MUNICIPIO_IPATINGA = '3131307';
 
 function pad(n, len) { return String(n).padStart(len, '0'); }
 
@@ -23,12 +30,6 @@ function dhEventoBRT() {
   const now = new Date();
   const brt = new Date(now.getTime() - 3 * 60 * 60 * 1000);
   return brt.toISOString().replace(/\.\d{3}Z$/, '-03:00');
-}
-
-function tpAmbAtual() {
-  const ambienteNum = Number(process.env.NFE_AMBIENTE_NUM);
-  if (ambienteNum === 1 || ambienteNum === 2) return ambienteNum;
-  return process.env.NFE_AMBIENTE === 'producao' ? 1 : 2;
 }
 
 function parseRetEvento(resultado, fallbackDhEvento) {
@@ -101,33 +102,6 @@ function proximoNumero(db, serie = '1') {
   const proximo = row.ultimo_numero + 1;
   db.prepare('UPDATE nfe_sequencias SET ultimo_numero = ? WHERE serie = ?').run(proximo, serie);
   return pad(proximo, 9);
-}
-
-function emitente() {
-  const municipio = process.env.NFE_MUNICIPIO || 'IPATINGA';
-  const codigoMunicipioEnv = (process.env.NFE_COD_MUNICIPIO || '').replace(/\D/g, '');
-  const codigoMunicipio = municipio.trim().toUpperCase() === 'IPATINGA' &&
-    (!codigoMunicipioEnv || codigoMunicipioEnv === '3127701')
-    ? COD_MUNICIPIO_IPATINGA
-    : (codigoMunicipioEnv || COD_MUNICIPIO_IPATINGA);
-
-  return {
-    CNPJ:     (process.env.NFE_CNPJ_EMITENTE || '').replace(/\D/g, ''),
-    xNome:    (process.env.NFE_RAZAO_SOCIAL   || 'EMITENTE').toUpperCase(),
-    xFant:    (process.env.NFE_NOME_FANTASIA  || '').toUpperCase(),
-    enderEmit: {
-      xLgr:    process.env.NFE_LOGRADOURO    || '',
-      nro:     process.env.NFE_NUMERO        || 'S/N',
-      xBairro: process.env.NFE_BAIRRO        || '',
-      cMun:    codigoMunicipio,
-      xMun:    municipio,
-      UF:      'MG',
-      CEP:     (process.env.NFE_CEP  || '').replace(/\D/g, ''),
-      fone:    (process.env.NFE_FONE || '').replace(/\D/g, ''),
-    },
-    IE:  (process.env.NFE_IE_EMITENTE || '').replace(/\D/g, ''),
-    CRT: process.env.NFE_CRT || '1',
-  };
 }
 
 /**
@@ -381,13 +355,14 @@ router.post('/emitir/:id', auth(), async (req, res) => {
   }, NFE_ROUTE_TIMEOUT_MS);
 
   try {
-    if (!process.env.NFE_CERT_PATH || !process.env.NFE_CERT_PASSWORD) {
+    const certificado = getCertificadoConfig();
+    if (!certificado.pathCertificado || !certificado.senhaCertificado) {
       clearTimeout(guardTimeout); respondido = true;
-      return res.status(500).json({ erro: 'NFE_CERT_PATH ou NFE_CERT_PASSWORD ausentes no .env' });
+      return res.status(500).json({ erro: 'Certificado NF-e nao configurado. Configure na tela fiscal ou no .env.' });
     }
-    if (!process.env.NFE_CNPJ_EMITENTE) {
+    if (!getCnpjEmitente()) {
       clearTimeout(guardTimeout); respondido = true;
-      return res.status(500).json({ erro: 'NFE_CNPJ_EMITENTE nao configurado no .env' });
+      return res.status(500).json({ erro: 'CNPJ do emitente nao configurado na tela fiscal ou no .env' });
     }
 
     const os = db.prepare(`
@@ -440,19 +415,22 @@ router.post('/emitir/:id', auth(), async (req, res) => {
     }
     // ── fim do mutex ───────────────────────────────────────────────────────────
 
-    const serie  = '1';
+    const serie  = getSerieNFe();
     const numero = proximoNumero(db, serie);
+    const ambiente = tpAmbAtual();
 
     const payload = montarNFe({
       ordem:    os,
       itens,
       cliente:  os,
-      emitente: emitente(),
+      emitente: getEmitenteConfig(),
       numero:   parseInt(numero, 10),
       serie,
+      ambiente,
+      autXML:   getAutXmlParaNFe(os.cpf),
     });
 
-    const tpAmbLabel = tpAmbAtual() === 1 ? '1(PROD)' : '2(HOMOL)';
+    const tpAmbLabel = ambiente === 1 ? '1(PROD)' : '2(HOMOL)';
     console.log(`[NF-e] Iniciando emissao OS#${os.id} numero=${numero} tpAmb=${tpAmbLabel}`);
     console.log('[NF-e] Payload ide:', JSON.stringify(payload.infNFe.ide));
     console.log('[NF-e] Payload dest:', JSON.stringify(payload.infNFe.dest));
@@ -594,8 +572,9 @@ router.post('/:chave/cce', auth(), async (req, res) => {
   if (correcao.length > 1000) {
     return res.status(400).json({ erro: 'Texto da Carta de Correcao deve ter no maximo 1000 caracteres.' });
   }
-  if (!process.env.NFE_CERT_PATH || !process.env.NFE_CERT_PASSWORD) {
-    return res.status(500).json({ erro: 'NFE_CERT_PATH ou NFE_CERT_PASSWORD ausentes no .env' });
+  const certificado = getCertificadoConfig();
+  if (!certificado.pathCertificado || !certificado.senhaCertificado) {
+    return res.status(500).json({ erro: 'Certificado NF-e nao configurado. Configure na tela fiscal ou no .env.' });
   }
 
   const db = getDB();
@@ -640,7 +619,7 @@ router.post('/:chave/cce', auth(), async (req, res) => {
   }, NFE_ROUTE_TIMEOUT_MS);
 
   try {
-    const cnpj = (process.env.NFE_CNPJ_EMITENTE || '').replace(/\D/g, '');
+    const cnpj = getCnpjEmitente();
     const cOrgao = Number(chave.substring(0, 2));
     const dhEvento = dhEventoBRT();
 
@@ -751,8 +730,9 @@ router.post('/:chave/cancelar', auth(), async (req, res) => {
     return res.status(400).json({ erro: 'Motivo do cancelamento deve ter no minimo 15 caracteres.' });
   }
 
-  if (!process.env.NFE_CERT_PATH || !process.env.NFE_CERT_PASSWORD) {
-    return res.status(500).json({ erro: 'NFE_CERT_PATH ou NFE_CERT_PASSWORD ausentes no .env' });
+  const certificado = getCertificadoConfig();
+  if (!certificado.pathCertificado || !certificado.senhaCertificado) {
+    return res.status(500).json({ erro: 'Certificado NF-e nao configurado. Configure na tela fiscal ou no .env.' });
   }
 
   const db = getDB();
@@ -792,7 +772,7 @@ router.post('/:chave/cancelar', auth(), async (req, res) => {
   }, NFE_ROUTE_TIMEOUT_MS);
 
   try {
-    const cnpj  = (process.env.NFE_CNPJ_EMITENTE || '').replace(/\D/g, '');
+    const cnpj  = getCnpjEmitente();
     const cOrgao = Number(chave.substring(0, 2));
     const dhEvento = dhEventoBRT();
 

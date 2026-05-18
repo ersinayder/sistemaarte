@@ -14,6 +14,7 @@
 
 const fs   = require('fs');
 const path = require('path');
+const { getCertificadoConfig, tpAmbAtual } = require('./nfeConfig');
 
 let _wizard = null;
 
@@ -22,11 +23,12 @@ const SEFAZ_TIMEOUT_MS = 60_000;
 async function getNFEWizard() {
   if (_wizard) return _wizard;
 
-  const certPath = process.env.NFE_CERT_PATH;
-  const certPass = process.env.NFE_CERT_PASSWORD;
+  const certConfig = getCertificadoConfig();
+  const certPath = certConfig.pathCertificado;
+  const certPass = certConfig.senhaCertificado;
 
   if (!certPath || !certPass)
-    throw new Error('NFE_CERT_PATH ou NFE_CERT_PASSWORD nao configurados no .env');
+    throw new Error('Certificado NF-e nao configurado. Configure na tela fiscal ou no .env.');
 
   const resolvedPath = path.resolve(certPath);
   if (!fs.existsSync(resolvedPath))
@@ -51,7 +53,7 @@ async function getNFEWizard() {
   console.log('[NF-e] nfewizard-io versao:', libVersion);
 
   const wizard = new NFEWizard();
-  const tpAmb  = process.env.NFE_AMBIENTE === 'producao' ? 1 : 2;
+  const tpAmb  = tpAmbAtual();
 
   const configObj = {
     dfe: {
