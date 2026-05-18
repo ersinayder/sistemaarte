@@ -139,6 +139,7 @@ CREATE TABLE IF NOT EXISTS fiscal_config (
   id                    INTEGER PRIMARY KEY CHECK (id = 1),
   ambiente              INTEGER DEFAULT 2,
   serie                 TEXT DEFAULT '1',
+  configurado           INTEGER DEFAULT 0,
   certificado_path      TEXT,
   certificado_nome      TEXT,
   certificado_senha     TEXT,
@@ -255,6 +256,8 @@ function initDB() {
     )`,
     "CREATE INDEX IF NOT EXISTS idx_nfe_eventos_chave_tipo ON nfe_eventos(chave, tipo)",
     "CREATE INDEX IF NOT EXISTS idx_nfe_eventos_ordemid ON nfe_eventos(ordemid)",
+    // v8 - marca quando fiscal_config foi salvo explicitamente pela tela/API
+    "ALTER TABLE fiscal_config ADD COLUMN configurado INTEGER DEFAULT 0",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {}
@@ -296,6 +299,7 @@ function initDB() {
       id                    INTEGER PRIMARY KEY CHECK (id = 1),
       ambiente              INTEGER DEFAULT 2,
       serie                 TEXT DEFAULT '1',
+      configurado           INTEGER DEFAULT 0,
       certificado_path      TEXT,
       certificado_nome      TEXT,
       certificado_senha     TEXT,

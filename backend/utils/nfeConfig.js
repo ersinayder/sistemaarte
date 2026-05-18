@@ -21,6 +21,10 @@ function validTpAmb(value) {
   return n === 1 || n === 2 ? n : null;
 }
 
+function fiscalConfigurado(fiscal) {
+  return Number(fiscal?.configurado || 0) === 1;
+}
+
 function warnSQL(label, err) {
   const msg = err?.message || String(err);
   if (/no such table/i.test(msg)) return;
@@ -61,7 +65,7 @@ function getAllSafe(sql, params = [], label = 'consulta') {
 
 function fiscalRow() {
   return getOneSafe(
-    `SELECT ambiente, serie, certificado_path, certificado_nome,
+    `SELECT ambiente, serie, configurado, certificado_path, certificado_nome,
             certificado_senha, certificado_updatedat, updatedat
        FROM fiscal_config
       WHERE id = 1`,
@@ -83,14 +87,29 @@ function empresaRow() {
 }
 
 function tpAmbAtual() {
-  const fiscal = fiscalRow();
-  const dbAmbiente = validTpAmb(fiscal?.ambiente);
-  if (dbAmbiente) return dbAmbiente;
+  return resolverAmbiente().ambiente;
+}
 
+function ambienteEnvAtual() {
   const envAmbienteNum = validTpAmb(process.env.NFE_AMBIENTE_NUM);
   if (envAmbienteNum) return envAmbienteNum;
 
-  return process.env.NFE_AMBIENTE === 'producao' ? 1 : 2;
+  if (process.env.NFE_AMBIENTE === 'producao') return 1;
+  if (process.env.NFE_AMBIENTE === 'homologacao') return 2;
+
+  return null;
+}
+
+function resolverAmbiente(fiscal = fiscalRow()) {
+  const dbAmbiente = validTpAmb(fiscal?.ambiente);
+  if (fiscalConfigurado(fiscal) && dbAmbiente) {
+    return { ambiente: dbAmbiente, origem: 'banco' };
+  }
+
+  const envAmbiente = ambienteEnvAtual();
+  if (envAmbiente) return { ambiente: envAmbiente, origem: 'env' };
+
+  return { ambiente: 2, origem: 'padrao' };
 }
 
 function getSerieNFe() {
@@ -143,7 +162,8 @@ function getCertificadoConfig() {
 
 function getFiscalConfig() {
   const fiscal = fiscalRow() || {};
-  const ambiente = validTpAmb(fiscal.ambiente) || tpAmbAtual();
+  const ambienteResolvido = resolverAmbiente(fiscal);
+  const ambiente = ambienteResolvido.ambiente;
   const serie = cleanText(fiscal.serie, '1');
   const proximoNumero = getProximoNumero(serie);
   const cert = getCertificadoConfig();
@@ -160,6 +180,8 @@ function getFiscalConfig() {
 
   return {
     ambiente,
+    ambienteOrigem: ambienteResolvido.origem,
+    configurado: fiscalConfigurado(fiscal),
     serie,
     proximoNumero,
     certificado,
@@ -218,6 +240,7 @@ function getAutXmlParaNFe(destinatarioDocumento) {
 
 module.exports = {
   tpAmbAtual,
+  resolverAmbiente,
   getFiscalConfig,
   getCertificadoConfig,
   getEmitenteConfig,

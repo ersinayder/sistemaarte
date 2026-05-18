@@ -237,11 +237,12 @@ router.put("/fiscal", auth(["admin"]), (req, res, next) => {
     }
 
     run(
-      `INSERT INTO fiscal_config (id, ambiente, serie, updatedat)
-       VALUES (1, ?, ?, datetime('now','localtime'))
+      `INSERT INTO fiscal_config (id, ambiente, serie, configurado, updatedat)
+       VALUES (1, ?, ?, 1, datetime('now','localtime'))
        ON CONFLICT(id) DO UPDATE SET
          ambiente=excluded.ambiente,
          serie=excluded.serie,
+         configurado=1,
          updatedat=datetime('now','localtime')`,
       [fiscal.ambiente, fiscal.serie]
     );
