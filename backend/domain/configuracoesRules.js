@@ -44,7 +44,7 @@ function normalizarEmpresaConfig(input = {}) {
     nomefantasia: cleanText(input.nomefantasia, 200),
     cnpj: onlyDigits(input.cnpj, 14),
     inscricaoestadual: onlyDigits(input.inscricaoestadual, 20),
-    crt: cleanText(input.crt || '1', 1),
+    crt: cleanText(input.crt, 1),
     telefone: onlyDigits(input.telefone, 20),
     email: cleanText(input.email, 180).toLowerCase(),
     logradouro: cleanText(input.logradouro, 200),
@@ -93,14 +93,11 @@ function pickEmpresaConfig(row = {}) {
   const out = {};
 
   for (const key of FIELD_KEYS) out[key] = row[key] ?? '';
-  out.updatedat = row.updatedat ?? null;
 
   return out;
 }
 
 module.exports = {
-  FIELD_KEYS,
-  REQUIRED_EMPRESA_FIELDS,
   normalizarEmpresaConfig,
   validarEmpresaConfig,
   statusEmpresaConfig,

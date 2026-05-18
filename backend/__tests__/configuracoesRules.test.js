@@ -59,6 +59,37 @@ describe('configuracoesRules', () => {
     expect(result.errors.cep).toBe('CEP e obrigatorio');
   });
 
+  it('keeps missing or blank CRT invalid after normalization', () => {
+    const missing = validarEmpresaConfig(normalizarEmpresaConfig({
+      razaosocial: 'Arte e Molduras Ltda',
+      cnpj: '07500718000196',
+      logradouro: 'Rua A',
+      numero: '123',
+      bairro: 'Centro',
+      municipio: 'Ipatinga',
+      codigomunicipio: '3131307',
+      uf: 'MG',
+      cep: '35160000',
+    }));
+    const blank = validarEmpresaConfig(normalizarEmpresaConfig({
+      razaosocial: 'Arte e Molduras Ltda',
+      cnpj: '07500718000196',
+      crt: '   ',
+      logradouro: 'Rua A',
+      numero: '123',
+      bairro: 'Centro',
+      municipio: 'Ipatinga',
+      codigomunicipio: '3131307',
+      uf: 'MG',
+      cep: '35160000',
+    }));
+
+    expect(missing.ok).toBe(false);
+    expect(missing.errors.crt).toBe('CRT deve ser 1, 2 ou 3');
+    expect(blank.ok).toBe(false);
+    expect(blank.errors.crt).toBe('CRT deve ser 1, 2 ou 3');
+  });
+
   it('returns status OK with all required fields', () => {
     const status = statusEmpresaConfig({
       razaosocial: 'Arte e Molduras Ltda',
@@ -86,7 +117,7 @@ describe('configuracoesRules', () => {
     expect(status.missing).toContain('cep');
   });
 
-  it('picks only empresa config keys plus updatedat', () => {
+  it('picks only empresa config keys', () => {
     const picked = pickEmpresaConfig({
       razaosocial: 'Arte',
       cnpj: '07500718000196',
@@ -98,6 +129,6 @@ describe('configuracoesRules', () => {
     expect(picked.cnpj).toBe('07500718000196');
     expect(picked.extra).toBeUndefined();
     expect(picked.nomefantasia).toBe('');
-    expect(picked.updatedat).toBe('2026-05-18 10:00:00');
+    expect(picked.updatedat).toBeUndefined();
   });
 });
