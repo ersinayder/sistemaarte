@@ -1,3 +1,6 @@
+const fs = require('fs');
+const path = require('path');
+
 function esc(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -5,6 +8,26 @@ function esc(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+let logoDataUriCache = null;
+function logoDataUri() {
+  if (logoDataUriCache !== null) return logoDataUriCache;
+  const candidates = [
+    path.resolve(__dirname, '..', '..', 'frontend', 'dist', 'logo preta.png'),
+    path.resolve(__dirname, '..', '..', 'frontend', 'public', 'logo preta.png'),
+    path.resolve(__dirname, '..', '..', 'frontend', 'dist', 'logo.png'),
+    path.resolve(__dirname, '..', '..', 'frontend', 'public', 'logo.png'),
+  ];
+  const file = candidates.find(p => fs.existsSync(p));
+  if (!file) {
+    logoDataUriCache = '';
+    return logoDataUriCache;
+  }
+  const ext = path.extname(file).toLowerCase();
+  const mime = ext === '.svg' ? 'image/svg+xml' : ext === '.webp' ? 'image/webp' : ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : 'image/png';
+  logoDataUriCache = `data:${mime};base64,${fs.readFileSync(file).toString('base64')}`;
+  return logoDataUriCache;
 }
 
 function firstTag(xml, tag) {
@@ -338,6 +361,7 @@ function renderDanfeHtml(xml) {
 
   const ambienteHomologacao = d.ide.tpAmb === '2';
   const barcode = barcode128C(d.chave);
+  const logo = logoDataUri();
   const dataSaida = dateOnly(d.ide.dhSaiEnt || d.ide.dhEmi);
   const horaSaida = dateTime(d.ide.dhSaiEnt || d.ide.dhEmi).split(' ')[1] || '';
 
@@ -377,7 +401,12 @@ function renderDanfeHtml(xml) {
     .top { display: grid; grid-template-columns: 69mm 42mm 1fr; border: 1px solid #000; min-height: 44mm; }
     .box { border-right: 1px solid #000; padding: 1.6mm; overflow: hidden; }
     .box:last-child { border-right: 0; }
-    .logo { min-height: 18mm; display: flex; align-items: center; justify-content: center; text-align: center; border-bottom: 1px solid #000; margin: -1.6mm -1.6mm 1.2mm; padding: 1.5mm; font-size: 13pt; font-weight: 800; text-transform: uppercase; letter-spacing: .01em; }
+    .emitente-box { padding: 0; display: grid; grid-template-columns: 29mm 1fr; min-height: 44mm; }
+    .logo-pane { border-right: 1px solid #000; display: flex; align-items: center; justify-content: center; padding: 1.8mm; }
+    .logo-img { max-width: 25mm; max-height: 28mm; object-fit: contain; display: block; }
+    .logo-text { font-size: 9pt; font-weight: 900; text-align: center; line-height: 1.1; }
+    .emitente-info { padding: 1.6mm 1.8mm; text-align: center; display: flex; flex-direction: column; justify-content: center; gap: .8mm; }
+    .emitente-nome { font-size: 7.8pt; font-weight: 900; line-height: 1.12; text-transform: uppercase; }
     .small { font-size: 6.5pt; line-height: 1.22; }
     .center { text-align: center; }
     .danfe-title { font-size: 18pt; font-weight: 900; line-height: 1; margin: 1mm 0 1mm; }
@@ -412,6 +441,10 @@ function renderDanfeHtml(xml) {
     .cod { width: 17mm; }
     .desc { width: 49mm; }
     .num { text-align: right; white-space: nowrap; }
+    .products-wrap { border: 1px solid #000; border-top: 0; }
+    .products-wrap .products { border: 0; }
+    .products-fill { min-height: 48mm; border-top: 0; }
+    .issqn { margin-top: 1.4mm; }
     .additional { display: grid; grid-template-columns: 1fr 58mm; border: 1px solid #000; min-height: 28mm; }
     .additional > div { padding: 1.3mm; border-right: 1px solid #000; font-size: 7pt; line-height: 1.32; }
     .additional > div:last-child { border-right: 0; }
@@ -444,13 +477,17 @@ function renderDanfeHtml(xml) {
       </div>
 
       <div class="top">
-        <div class="box">
-          <div class="logo">${esc(d.emit.xFant || d.emit.xNome)}</div>
-          <div class="small"><strong>${esc(d.emit.xNome)}</strong></div>
-          <div class="small">${esc(d.emit.xLgr)} ${esc(d.emit.nro)} - ${esc(d.emit.xBairro)}</div>
-          <div class="small">${esc(d.emit.xMun)} - ${esc(d.emit.uf)} - CEP ${esc(d.emit.cep)}</div>
-          <div class="small">CNPJ: ${esc(formatDoc(d.emit.cnpj))}</div>
-          <div class="small">IE: ${esc(d.emit.ie)} ${d.emit.fone ? `- Fone: ${esc(formatPhone(d.emit.fone))}` : ''}</div>
+        <div class="box emitente-box">
+          <div class="logo-pane">
+            ${logo ? `<img class="logo-img" src="${logo}" alt="Arte e Molduras">` : `<div class="logo-text">${esc(d.emit.xFant || d.emit.xNome)}</div>`}
+          </div>
+          <div class="emitente-info">
+            <div class="emitente-nome">${esc(d.emit.xFant || d.emit.xNome)}</div>
+            <div class="small">${esc(d.emit.xLgr)}, ${esc(d.emit.nro)}</div>
+            <div class="small">${esc(d.emit.xBairro)} - ${esc(d.emit.xMun)} - ${esc(d.emit.uf)}</div>
+            <div class="small">CEP ${esc(d.emit.cep)}</div>
+            ${d.emit.fone ? `<div class="small">Fone: ${esc(formatPhone(d.emit.fone))}</div>` : ''}
+          </div>
         </div>
         <div class="box center">
           <div class="danfe-title">DANFE</div>
@@ -534,14 +571,25 @@ function renderDanfeHtml(xml) {
       </div>
 
       <div class="section-title">Dados dos produtos / servicos</div>
-      <table class="products">
-        <thead>
-          <tr>
-            <th>CÓD.</th><th>DESCRIÇÃO DOS PRODUTOS / SERVIÇOS</th><th>NCM/SH</th><th>CST</th><th>CFOP</th><th>UN</th><th>QTD.</th><th>VLR. UNIT.</th><th>VLR. TOTAL</th><th>BC ICMS</th><th>VLR. ICMS</th><th>VLR. IPI</th><th>ALIQ. ICMS</th><th>ALIQ. IPI</th>
-          </tr>
-        </thead>
-        <tbody>${itensRows || '<tr><td colspan="14">Nenhum item encontrado no XML.</td></tr>'}</tbody>
-      </table>
+      <div class="products-wrap">
+        <table class="products">
+          <thead>
+            <tr>
+              <th>CÓD.</th><th>DESCRIÇÃO DOS PRODUTOS / SERVIÇOS</th><th>NCM/SH</th><th>CST</th><th>CFOP</th><th>UN</th><th>QTD.</th><th>VLR. UNIT.</th><th>VLR. TOTAL</th><th>BC ICMS</th><th>VLR. ICMS</th><th>VLR. IPI</th><th>ALIQ. ICMS</th><th>ALIQ. IPI</th>
+            </tr>
+          </thead>
+          <tbody>${itensRows || '<tr><td colspan="14">Nenhum item encontrado no XML.</td></tr>'}</tbody>
+        </table>
+        <div class="products-fill"></div>
+      </div>
+
+      <div class="section-title issqn">Calculo do ISSQN</div>
+      <div class="grid g4 last">
+        <div class="field"><span class="label">INSCRIÇÃO MUNICIPAL</span><span class="value"></span></div>
+        <div class="field"><span class="label">VALOR TOTAL DOS SERVIÇOS</span><span class="value">0,00</span></div>
+        <div class="field"><span class="label">BASE DE CÁLCULO DO ISSQN</span><span class="value">0,00</span></div>
+        <div class="field"><span class="label">VALOR DO ISSQN</span><span class="value">0,00</span></div>
+      </div>
 
       <div class="section-title">Dados adicionais</div>
       <div class="additional">
