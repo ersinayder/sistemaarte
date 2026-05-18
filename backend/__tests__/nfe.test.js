@@ -55,6 +55,7 @@ describe('montarNFe', () => {
     expect(infNFe.dest.CNPJCPF).toBe('07500718000196');
     expect(infNFe.dest.IE).toBe('123456789');
     expect(infNFe.dest.indIEDest).toBe('1');
+    expect(Object.keys(infNFe.dest).indexOf('indIEDest')).toBeLessThan(Object.keys(infNFe.dest).indexOf('IE'));
   });
 
   it('calcula vNF corretamente', () => {
