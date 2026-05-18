@@ -103,10 +103,11 @@ router.put("/empresa", auth(["admin"]), (req, res, next) => {
     }
 
     run(
-      `UPDATE empresa_config
-       SET ${EMPRESA_COLUMNS.map((column) => `${column}=?`).join(", ")},
-           updatedat=datetime('now','localtime')
-       WHERE id=1`,
+      `INSERT INTO empresa_config (id, ${EMPRESA_COLUMNS.join(", ")}, updatedat)
+       VALUES (1, ${EMPRESA_COLUMNS.map(() => "?").join(", ")}, datetime('now','localtime'))
+       ON CONFLICT(id) DO UPDATE SET
+         ${EMPRESA_COLUMNS.map((column) => `${column}=excluded.${column}`).join(", ")},
+         updatedat=datetime('now','localtime')`,
       EMPRESA_COLUMNS.map((column) => empresa[column])
     );
 
