@@ -38,28 +38,39 @@ function mapTpPag(pagamento) {
   return mapa[pagamento] || '01';
 }
 
+function montarEnderecoDest(cliente) {
+  if (!cliente?.logradouro) return null;
+  return {
+    xLgr:    (cliente.logradouro || '').toUpperCase(),
+    nro:     (cliente.c_numero   || cliente.numero || 'S/N').toUpperCase(),
+    xBairro: (cliente.bairro     || 'CENTRO').toUpperCase(),
+    cMun:    cliente.cod_municipio || '3127701',
+    xMun:    (cliente.cidade     || 'IPATINGA').toUpperCase(),
+    UF:      (cliente.uf         || 'MG').toUpperCase(),
+    CEP:     (cliente.cep        || '').replace(/\D/g, ''),
+    cPais:   '1058',
+    xPais:   'BRASIL',
+  };
+}
+
 function montarDest(cliente) {
   const dest = { xNome: (cliente?.clientenome || cliente?.name || 'CONSUMIDOR FINAL').toUpperCase() };
-  const cpf  = (cliente?.cpf || '').replace(/\D/g, '');
+  const documento = (cliente?.cpf || '').replace(/\D/g, '');
+  const ie = String(cliente?.ie || '').trim();
 
-  if (cpf.length === 11) {
-    dest.CNPJCPF = cpf;
-    if (cliente?.logradouro) {
-      dest.enderDest = {
-        xLgr:    (cliente.logradouro || '').toUpperCase(),
-        nro:     (cliente.c_numero   || cliente.numero || 'S/N').toUpperCase(),
-        xBairro: (cliente.bairro     || 'CENTRO').toUpperCase(),
-        cMun:    cliente.cod_municipio || '3127701',
-        xMun:    (cliente.cidade     || 'IPATINGA').toUpperCase(),
-        UF:      (cliente.uf         || 'MG').toUpperCase(),
-        CEP:     (cliente.cep        || '').replace(/\D/g, ''),
-        cPais:   '1058',
-        xPais:   'BRASIL',
-      };
+  if (documento.length === 11 || documento.length === 14) {
+    dest.CNPJCPF = documento;
+    const endereco = montarEnderecoDest(cliente);
+    if (endereco) dest.enderDest = endereco;
+
+    if (documento.length === 14 && ie) {
+      dest.IE = ie;
+      dest.indIEDest = '1';
+    } else {
+      dest.indIEDest = '9';
     }
-    dest.indIEDest = '9';
   } else {
-    // Consumidor final sem CPF valido
+    // Consumidor final sem CPF/CNPJ valido
     dest.CNPJCPF   = '11111111111';
     dest.indIEDest = '9';
   }
