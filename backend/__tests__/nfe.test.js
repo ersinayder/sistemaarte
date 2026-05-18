@@ -43,6 +43,20 @@ describe('montarNFe', () => {
     expect(infNFe.dest.xNome).toBe('CONSUMIDOR');
   });
 
+  it('dest aceita CNPJ de pessoa juridica', () => {
+    const { infNFe } = montarNFe({
+      ordem,
+      itens,
+      cliente: { name: 'TREM DAS CORES MATERIAIS PARA PINTURA LTDA', cpf: '07.500.718/0001-96', ie: '123456789' },
+      emitente,
+      numero: 5,
+      serie: '1',
+    });
+    expect(infNFe.dest.CNPJCPF).toBe('07500718000196');
+    expect(infNFe.dest.IE).toBe('123456789');
+    expect(infNFe.dest.indIEDest).toBe('1');
+  });
+
   it('calcula vNF corretamente', () => {
     const { infNFe } = montarNFe({ ordem, itens, cliente, emitente, numero: 3, serie: '1' });
     expect(Number(infNFe.total.ICMSTot.vNF)).toBeCloseTo(150.00, 2);

@@ -110,9 +110,7 @@ export default function Clientes() {
     setCnpjError('');
     setCnpjLoading(true);
     try {
-      const r = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${n}`);
-      if (!r.ok) throw new Error('não encontrado');
-      const d = await r.json();
+      const { data: d } = await api.get(`/clientes/cnpj/${n}`);
       setForm(f => ({
         ...f,
         nome:       f.nome.trim()       ? f.nome       : (d.razao_social || d.nome_fantasia || f.nome),

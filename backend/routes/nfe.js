@@ -382,7 +382,7 @@ router.post('/emitir/:id', auth(), async (req, res) => {
     }
 
     const os = db.prepare(`
-      SELECT o.*, c.name AS clientenome, c.cpf, c.logradouro,
+      SELECT o.*, c.name AS clientenome, c.cpf, c.ie, c.logradouro,
              c.numero AS c_numero, c.bairro, c.cidade, c.uf, c.cep
       FROM ordens o
       LEFT JOIN clientes c ON o.clienteid = c.id
