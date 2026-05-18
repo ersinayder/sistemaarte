@@ -603,7 +603,7 @@ export default function Ordens() {
                 Nenhuma ordem encontrada
               </td></tr>
             ) : paginated.map(o => {
-              const vencida = o.prazoentrega && o.prazoentrega < today && o.status !== 'Entregue' && o.status !== 'Cancelado';
+              const vencida = o.prazoentrega && o.prazoentrega < today && !['Pronto', 'Entregue', 'Cancelado'].includes(o.status);
               const saldo = Number(o.saldoaberto ?? 0);
               const quitado = saldo <= 0.009;
               return (

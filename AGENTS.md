@@ -429,7 +429,7 @@ O backup diário às 2h BRT já cobre `backend/data/` — o diretório `nfe_xmls
 - Mostra indicador temporario de homologacao: notas autorizadas X/10 e ambiente atual
 - Mostra motivo persistido da última rejeição quando `nfe_status='rejeitado'`
 - Permite ações por status:
-  - `autorizado`: CC-e, baixar XML de autorização, DANFE (roadmap), cancelar, detalhes
+  - `autorizado`: CC-e, baixar XML de autorização, DANFE real em HTML imprimível, cancelar, detalhes
   - `rejeitado`: reemitir, detalhes
   - `cancelado`: baixar XML de autorização, reemitir, detalhes
   - `emitindo`: atualizar andamento, detalhes
@@ -477,7 +477,7 @@ Implementar contingência real é backlog — documentar para o usuário que a e
 - [ ] Mínimo **10 NF-es bem-sucedidas** em homologação (`NFE_AMBIENTE_NUM=2`) — contador atual: ~2
 - [x] Implementar Carta de Correção (CC-e) — `tpEvento: '110110'` (pendente teste SEFAZ em homologação)
 - [x] Tela de NF-e com histórico de eventos, motivo de rejeição, reemissão, download de XML, aviso de CC-e, confirmação forte de cancelamento e contador X/10 homologação
-- [ ] DANFE na tela NF-e — hoje aparece como ação/roadmap, mas ainda não gera impressão/visualização
+- [x] DANFE na tela NF-e — endpoint `GET /api/nfe/:chave/danfe` gera HTML imprimível a partir do XML autorizado salvo
 - [ ] Alterar `NFE_AMBIENTE_NUM=1` no `.env` do servidor
 - [ ] Reiniciar PM2: `pm2 restart sistemaarte-backend` (necessário para recarregar vars do `.env`)
 - [ ] Emitir primeira nota real de baixo valor para validar
@@ -530,11 +530,85 @@ Itens validados mas não implementados ainda (features novas, não bugs):
 | 9 | Backup: gravar `backup-status.json` + endpoint `/api/backup/status` | Observabilidade de falhas |
 | 17 | NF-e: contingência DPEC/offline | Disponibilidade quando SEFAZ estiver fora |
 
+### Roadmap de segurança, estabilidade e SaaS
+
+Conferência do estado atual do código:
+
+- `server.js` já tem rate limit global em `/api`, mas hoje está em `200 req/min`; reduzir para `60 req/min` continua pendente.
+- `routes/auth.js` já tem rate limit de login por IP (`10` tentativas em `15min`, ignorando sucessos), mas ainda não tem lockout por usuário/conta.
+- `helmet()` ainda não está instalado/configurado.
+- `routes/users.js` ainda aceita senha curta no `PUT` (`>=4`) e não impede admin de alterar o próprio `role` ou `active`.
+- `routes/kpis.js` limita SSE a `10` conexões globais; falta limite por usuário (`3` por `userId`).
+- `GET /api/ordens` não tem paginação; `GET /api/clientes` tem `LIMIT 100/20`, mas ainda não tem paginação formal com `page`/`limit`.
+- `resolveClienteData()` ainda faz lookup por `clientenome` sem `trim().slice(0, 200)`.
+- `GET /api/caixa` já filtra lançamentos deletados e OS deletadas com `(l.ordemid IS NULL OR o.deletedat IS NULL)`; manter item apenas para teste/regressão.
+- A numeração da NF-e (`nfe_sequencias`) é incrementada antes da autorização; rejeições da SEFAZ hoje consomem número. Reversão só deve ser implementada após validar regra fiscal/operacional, pois em NF-e real número inutilizado/rejeitado pode exigir tratamento cuidadoso.
+- Cloudflare Free já oferece um conjunto gerenciado básico de WAF, mas plano Pro ou superior libera WAF gerenciado mais completo. Para produção comercial, manter como recomendação avaliar/ativar Pro.
+
+#### Fase 1: Segurança básica — ação imediata
+
+Infraestrutura:
+
+- Desabilitar RDP exposto na internet ou restringir acesso por allowlist de IPs no firewall.
+- Garantir que a porta `3001` responda apenas ao Cloudflare, bloqueando requisições diretas ao origin sempre que o DNS estiver proxied.
+- Ativar/configurar Cloudflare WAF. Recomendado avaliar plano Pro ou superior para regras gerenciadas mais completas; no mínimo, habilitar e revisar o Free Managed Ruleset disponível.
+- Configurar Windows Defender, Windows Firewall e Windows Update automático no servidor.
+
+Código e aplicação:
+
+- Adicionar `helmet()` em `server.js`.
+- Reduzir rate limit global em `server.js` de `200 req/min` para `60 req/min`.
+- Implementar lockout no login por usuário/conta: exemplo, `5` falhas bloqueiam por `15min`.
+- Exigir senha mínima de `8` caracteres nas rotas `POST /api/users` e `PUT /api/users/:id`.
+- Criar guard em `PUT /api/users/:id` para impedir que o admin altere o próprio `role` ou desative o próprio usuário (`active=0`).
+
+Dados:
+
+- Configurar backup offsite diário automático para fora do servidor, por exemplo S3, Google Drive, OneDrive empresarial ou outro storage versionado.
+- Manter backup local diário, mas tratar offsite como obrigatório antes de avançar para uso SaaS/comercial.
+
+#### Fase 2: Estabilidade e escala — curto prazo
+
+Performance:
+
+- Implementar paginação em `GET /api/ordens` com `?page=&limit=`.
+- Implementar paginação em `GET /api/clientes` com `?page=&limit=`, preservando busca rápida por `q`.
+- Limitar SSE de KPIs em `routes/kpis.js` a no máximo `3` conexões simultâneas por usuário, além do limite global.
+- Adicionar `trim().slice(0, 200)` antes do lookup de clientes por nome em `resolveClienteData()`, preservando o comportamento intencional de buscar por nome quando `clienteid` não for informado.
+
+Regras de negócio e integrações:
+
+- Avaliar regra fiscal correta para numeração de NF-e rejeitada. Se aplicável ao ambiente atual, implementar transação/reversão de `nfe_sequencias` em rejeições antes de autorização; se não for seguro reverter, registrar explicitamente como número consumido/inutilizável.
+- Alinhar variáveis do WhatsApp no `.env` com a integração definitiva escolhida: Evolution API ou Meta Cloud API.
+- Cobrir `GET /api/caixa` com teste de regressão para garantir que OS deletadas/lixeira não apareçam no caixa nem nos saldos.
+
+#### Fase 3: Multi-tenancy inicial — médio prazo
+
+- Mapear processo de criação de subdomínios independentes, por exemplo `cliente.sistema.com.br`.
+- Estruturar VPS/Windows Server com PM2 para rodar instâncias isoladas do sistema.
+- Separar bancos de dados por cliente, com um `oficina.db` por instância, garantindo isolamento total de dados.
+- Definir padrão de pastas por cliente: aplicação, `.env`, banco, backups, XMLs fiscais e logs.
+
+#### Fase 4: Produto comercial — longo prazo
+
+Segurança e auditoria:
+
+- Implementar autenticação 2FA/TOTP para administradores.
+- Criar visualização de sessões ativas/dispositivos conectados, com opção de revogação.
+- Criar tabela de log de auditoria detalhada para ações sensíveis: login, troca de senha, exclusão, restauração, emissão/cancelamento NF-e, alterações de usuário e alterações financeiras.
+
+Operações SaaS e LGPD:
+
+- Automatizar onboarding de clientes com script para provisionar pasta, `.env`, banco, build/deploy e processo PM2.
+- Desenvolver Painel Administrativo Matriz (`Master Admin`) para monitorar instâncias ativas, saúde, versão, backups e uso.
+- Redigir Termos de Uso e Política de Privacidade da plataforma.
+- Criar endpoints/processos de portabilidade, exportação, anonimização e exclusão de dados conforme LGPD.
+
 ### Roadmap estratégico por fases
 
 Ordem recomendada para evolução do sistema:
 
-1. **DANFE real** — menor escopo e ganho imediato. Usar o XML autorizado salvo em `ordens.nfe_xml` / `backend/data/nfe_xmls`, gerar DANFE em PDF/HTML e trocar o botão atual da tela de Notas Fiscais por uma ação real de imprimir/visualizar. Também adicionar botão de DANFE dentro da OS que já tem NF-e emitida.
+1. **DANFE real** — concluído localmente nesta sessão. Usa o XML autorizado salvo em `ordens.nfe_xml` / `backend/data/nfe_xmls`, gera DANFE em HTML imprimível e troca o botão da tela de Notas Fiscais por uma ação real de imprimir/visualizar. Também há botão de DANFE dentro da OS que já tem NF-e emitida.
 2. **Propostas + funil básico** — criar um módulo comercial separado das OS. A OS não deve nascer no orçamento; ela deve nascer somente quando a venda virar serviço aprovado.
 3. **Link público de proposta + WhatsApp** — cada proposta deve ter link público com token, por exemplo `https://arteemolduras.com.br/proposta/abc123`, enviado ao cliente pelo WhatsApp.
 4. **Aprovar proposta e gerar OS** — quando a proposta for aprovada, o sistema deve reaproveitar cliente, itens, total, observações e prazo para criar a OS com numeração `OS-XXXX`.
@@ -645,15 +719,15 @@ Objetivo: dar visão de lucro, não apenas movimento de caixa.
 
 ### Fase 6: DANFE real
 
-Prioridade alta porque a NF-e já está quase redonda.
+Concluído localmente nesta sessão; falta validar com XML autorizado real no servidor após deploy.
 
 Caminho esperado:
 
 - Usar o XML autorizado salvo em `ordens.nfe_xml` / `backend/data/nfe_xmls`
-- Gerar DANFE em PDF/HTML
+- Gerar DANFE em HTML imprimível pelo endpoint `GET /api/nfe/:chave/danfe`
 - Adicionar botão real na tela de Notas Fiscais
 - Adicionar botão dentro da OS emitida
-- Ao clicar, o usuário deve conseguir visualizar/imprimir; o botão não deve ficar apenas como roadmap
+- Ao clicar, o usuário consegue visualizar/imprimir e salvar como PDF pelo navegador
 
 ---
 
@@ -803,7 +877,7 @@ Como o sistema está em produção com caixa real:
 | Validar impressão da OS `OS-0092` | Pendente |
 | Confirmar que `Recebido` sumiu da tela da OS | Pendente |
 | Continuar NF-es homologadas até 10/10 | Pendente |
-| Implementar DANFE real | Backlog |
+| Implementar DANFE real | Concluído localmente nesta sessão; falta validar com XML autorizado real no servidor |
 | Go-live `NFE_AMBIENTE_NUM=1` | Aguardar homologação |
 
 ### Acesso remoto ao servidor
@@ -860,6 +934,6 @@ Como o sistema está em produção com caixa real:
 | Mutex `nfe_status='emitindo'` | ✅ Concluído (commit `a0d0550`) |
 | **Carta de Correção (CC-e)** | ✅ Implementada; falta teste SEFAZ em homologação |
 | Histórico/XML/avisos/contador na tela NF-e | ✅ Implementado localmente; falta validar no servidor |
-| DANFE | ⬜ Roadmap visível na tela; geração/visualização ainda pendente |
+| DANFE | ✅ Implementado localmente; falta validar no servidor com XML autorizado real |
 | 10 notas em homologação | ⬜ ~2 feitas, faltam ~8 |
 | Go-live (NFE_AMBIENTE_NUM=1) | ⬜ Aguarda 10 notas homologadas |

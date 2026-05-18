@@ -7,6 +7,7 @@ const { getDB }     = require('../database');
 const { auth }      = require('../middlewares/auth');
 const { getNFEWizard, callSEFAZ } = require('../utils/nfe');
 const { montarNFe } = require('../domain/nfeRules');
+const { renderDanfeHtml } = require('../utils/danfe');
 
 // Diretório canônico para XMLs — obrigação legal 5 anos
 const NFE_XMLS_DIR = path.resolve(__dirname, '..', 'data', 'nfe_xmls');
@@ -282,6 +283,37 @@ router.get('/:chave/xml/autorizacao', auth(), (req, res) => {
   } catch (e) {
     console.error('[NF-e] GET /:chave/xml/autorizacao:', e.message);
     res.status(500).json({ erro: 'Erro ao baixar XML de autorizacao' });
+  }
+});
+
+// GET /api/nfe/:chave/danfe
+router.get('/:chave/danfe', auth(), (req, res) => {
+  const { chave } = req.params;
+  if (!chave || !/^\d{44}$/.test(chave)) {
+    return res.status(400).json({ erro: 'Chave NF-e invalida. Deve conter exatamente 44 digitos.' });
+  }
+
+  try {
+    const os = getDB().prepare('SELECT nfe_xml FROM ordens WHERE nfe_chave = ?').get(chave);
+    if (!os) {
+      return res.status(404).json({ erro: 'NF-e nao encontrada para esta chave' });
+    }
+    if (!os.nfe_xml) {
+      return res.status(404).json({ erro: 'XML de autorizacao nao encontrado para esta NF-e' });
+    }
+
+    const xml = extrairXmlFiscal(os.nfe_xml);
+    if (!xml) {
+      return res.status(422).json({ erro: 'XML de autorizacao salvo em formato invalido para esta NF-e' });
+    }
+
+    const html = renderDanfeHtml(xml);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Content-Disposition', `inline; filename="danfe-${filenameSeguro(chave)}.html"`);
+    res.send(html);
+  } catch (e) {
+    console.error('[NF-e] GET /:chave/danfe:', e.message);
+    res.status(e.statusCode || 500).json({ erro: e.statusCode ? e.message : 'Erro ao gerar DANFE' });
   }
 });
 
