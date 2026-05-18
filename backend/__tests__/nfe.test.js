@@ -17,7 +17,7 @@ const cliente  = { name: 'João Teste', cpf: '123.456.789-09' };
 const emitente = {
   CNPJ: '00000000000000', xNome: 'ARTE E MOLDURAS LTDA',
   xFant: 'Arte e Molduras', IE: '0000000000', CRT: '1',
-  enderEmit: { xLgr:'Rua', nro:'1', xBairro:'Centro', cMun:'3127701', xMun:'Ipatinga', UF:'MG', CEP:'35160000', cPais:'1058', xPais:'Brasil' },
+  enderEmit: { xLgr:'Rua', nro:'1', xBairro:'Centro', cMun:'3131307', xMun:'Ipatinga', UF:'MG', CEP:'35160000', cPais:'1058', xPais:'Brasil' },
 };
 const itens = [
   { produto_id: 1, nome: 'Moldura MDF',           quantidade: 2, preco_unitario: 50, ncm: '44140000', cfop: '5102', csosn: '400', unidade: 'UN', origem_fiscal: 0 },
@@ -32,6 +32,8 @@ describe('montarNFe', () => {
     const { infNFe } = montarNFe({ ordem, itens, cliente, emitente, numero: 1, serie: '1' });
     expect(infNFe.ide.mod).toBe('55');
     expect(infNFe.ide.nNF).toBe('1');
+    expect(infNFe.ide.cMunFG).toBe('3131307');
+    expect(infNFe.emit.enderEmit.cMun).toBe('3131307');
     expect(infNFe.det).toHaveLength(2);
     expect(infNFe.dest.xNome).toBe('JOÃO TESTE');
   });

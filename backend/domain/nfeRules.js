@@ -38,13 +38,15 @@ function mapTpPag(pagamento) {
   return mapa[pagamento] || '01';
 }
 
+const COD_MUNICIPIO_IPATINGA = '3131307';
+
 function montarEnderecoDest(cliente) {
   if (!cliente?.logradouro) return null;
   return {
     xLgr:    (cliente.logradouro || '').toUpperCase(),
     nro:     (cliente.c_numero   || cliente.numero || 'S/N').toUpperCase(),
     xBairro: (cliente.bairro     || 'CENTRO').toUpperCase(),
-    cMun:    cliente.cod_municipio || '3127701',
+    cMun:    cliente.cod_municipio || COD_MUNICIPIO_IPATINGA,
     xMun:    (cliente.cidade     || 'IPATINGA').toUpperCase(),
     UF:      (cliente.uf         || 'MG').toUpperCase(),
     CEP:     (cliente.cep        || '').replace(/\D/g, ''),
@@ -189,7 +191,7 @@ function montarNFe({ ordem, itens, cliente, emitente, numero, serie }) {
         dhEmi:    dhEmiBrasilia(),
         tpNF:     '1',
         idDest:   '1',
-        cMunFG:   '3127701',
+        cMunFG:   emitente.enderEmit?.cMun || COD_MUNICIPIO_IPATINGA,
         tpImp:    '1',
         tpEmis:   '1',
         cDV:      '0',    // recalculado pela lib
