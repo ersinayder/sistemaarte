@@ -13,6 +13,7 @@ const { renderDanfeHtml } = require('../utils/danfe');
 const NFE_XMLS_DIR = path.resolve(__dirname, '..', 'data', 'nfe_xmls');
 const CCE_COND_USO =
   'A Carta de Correcao e disciplinada pelo paragrafo 1o-A do art. 7o do Convenio S/N, de 15 de dezembro de 1970 e pode ser utilizada para regularizacao de erro ocorrido na emissao de documento fiscal, desde que o erro nao esteja relacionado com: I - as variaveis que determinam o valor do imposto tais como: base de calculo, aliquota, diferenca de preco, quantidade, valor da operacao ou da prestacao; II - a correcao de dados cadastrais que implique mudanca do remetente ou do destinatario; III - a data de emissao ou de saida.';
+const STATUS_NFE_EMISSAO = ['Aguardando', 'Pronto', 'Entregue'];
 
 function pad(n, len) { return String(n).padStart(len, '0'); }
 
@@ -396,7 +397,7 @@ router.post('/emitir/:id', auth(), async (req, res) => {
       clearTimeout(guardTimeout); respondido = true;
       return res.status(409).json({ erro: 'NF-e ja autorizada para esta OS' });
     }
-    if (!['Pronto', 'Entregue'].includes(os.status)) {
+    if (!STATUS_NFE_EMISSAO.includes(os.status)) {
       clearTimeout(guardTimeout); respondido = true;
       return res.status(422).json({ erro: `Status invalido para emissao: ${os.status}` });
     }
