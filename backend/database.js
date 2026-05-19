@@ -2,6 +2,7 @@ const Database = require("better-sqlite3");
 const bcrypt    = require("bcryptjs");
 const path      = require("path");
 const fs        = require("fs");
+const { buildBackupStatus, writeBackupStatus } = require("./utils/backupStatus");
 
 const DATA_DIR = path.join(__dirname, "data");
 const DB_FILE  = path.join(DATA_DIR, "oficina.db");
@@ -412,8 +413,22 @@ function backup() {
   return db.backup(dest).then(()=>{
     const files = fs.readdirSync(bdir).filter(f=>f.endsWith(".db")).sort();
     while (files.length > 7) fs.unlinkSync(path.join(bdir,files.shift()));
+    const status = buildBackupStatus(bdir);
+    writeBackupStatus(bdir, status);
     console.log("[Backup] Salvo:",dest);
-  }).catch(e=>console.error("[Backup] Erro:",e.message));
+    return { ok: true, arquivo: dest, status };
+  }).catch(e=>{
+    const status = buildBackupStatus(bdir);
+    status.status.status = "Pendente";
+    status.status.missing = Array.from(new Set([...(status.status.missing || []), "backup-falhou"]));
+    status.ultimoErro = {
+      mensagem: e.message,
+      createdat: new Date().toISOString(),
+    };
+    writeBackupStatus(bdir, status);
+    console.error("[Backup] Erro:",e.message);
+    throw e;
+  });
 }
 
 module.exports = { initDB, run, runInsert, getAll, getOne, transaction, backup, getDB: () => db };

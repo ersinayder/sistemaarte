@@ -3,7 +3,13 @@ import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-const { buildBackupStatus } = await import('../utils/backupStatus.js');
+const {
+  BACKUP_STATUS_FILE,
+  backupStatusPath,
+  buildBackupStatus,
+  readBackupStatus,
+  writeBackupStatus,
+} = await import('../utils/backupStatus.js');
 
 let tmpDir;
 
@@ -72,5 +78,31 @@ describe('backupStatus', () => {
     expect(status.local.total).toBe(8);
     expect(status.status.status).toBe('Pendente');
     expect(status.status.missing).toContain('retencao-local');
+  });
+
+  it('writes and reads backup-status.json beside local backup files', () => {
+    const status = buildBackupStatus(tmpDir, {
+      now: new Date('2026-05-18T15:00:00-03:00'),
+    });
+
+    const file = writeBackupStatus(tmpDir, status);
+    const loaded = readBackupStatus(tmpDir);
+
+    expect(path.basename(file)).toBe(BACKUP_STATUS_FILE);
+    expect(file).toBe(backupStatusPath(tmpDir));
+    expect(fs.existsSync(file)).toBe(true);
+    expect(loaded).toEqual(status);
+  });
+
+  it('reads a live status snapshot when backup-status.json does not exist yet', () => {
+    touchBackup('backup-2026-05-18T14-00-00.db', new Date('2026-05-18T14:00:00-03:00'));
+
+    const loaded = readBackupStatus(tmpDir, {
+      now: new Date('2026-05-18T15:00:00-03:00'),
+    });
+
+    expect(loaded.status.status).toBe('OK');
+    expect(loaded.local.ultimo.nome).toBe('backup-2026-05-18T14-00-00.db');
+    expect(fs.existsSync(backupStatusPath(tmpDir))).toBe(false);
   });
 });

@@ -535,7 +535,6 @@ Itens validados mas não implementados ainda (features novas, não bugs):
 | # | Item | Impacto |
 |---|---|---|
 | 10 | `criadopor` + `updatedat` em `ordem_itens` | Rastreabilidade por operador |
-| 9 | Backup: gravar `backup-status.json` + endpoint `/api/backup/status` | Observabilidade de falhas |
 | 17 | NF-e: contingência DPEC/offline | Disponibilidade quando SEFAZ estiver fora |
 
 Itens concluídos em 2026-05-19:
@@ -552,6 +551,7 @@ Itens concluídos em 2026-05-19:
 | SSE KPIs | Limite global `10` e limite por usuário `3` |
 | Paginação de Ordens | `GET /api/ordens?page=&limit=` com filtros `status`, `tipo`, `q`, `vencidas` e fallback legado sem paginação |
 | Paginação de Clientes | `GET /api/clientes?page=&limit=&q=` com meta de paginação e fallback legado `LIMIT 100/20` |
+| Status de backup | Backup local grava `backup-status.json`; `GET /api/backup/status` expõe saúde local para admin |
 | `resolveClienteData()` | Lookup por nome preservado, agora com `trim().slice(0, 200)` |
 | Rotas sensíveis | Leituras fiscais/financeiras/clientes/produtos restritas a `admin`/`caixa` |
 
@@ -565,6 +565,7 @@ Conferência do estado atual do código:
 - `middlewares/auth.js` revalida usuário/role/active a cada request; se o usuário ficar inativo ou mudar de role, a sessão antiga cai.
 - `routes/kpis.js` limita SSE a `10` conexões globais e `3` por usuário.
 - `GET /api/ordens` e `GET /api/clientes` têm paginação formal com `page`/`limit` e continuam compatíveis com chamadas legadas sem paginação.
+- `POST /api/backup` grava `backend/data/backups/backup-status.json`; `GET /api/backup/status` retorna o último snapshot ou calcula o estado local se o JSON ainda não existir.
 - `resolveClienteData()` preserva lookup por `clientenome`, agora normalizado com `trim().slice(0, 200)`.
 - `GET /api/caixa` já filtra lançamentos deletados e OS deletadas com `(l.ordemid IS NULL OR o.deletedat IS NULL)`; manter item apenas para teste/regressão.
 - A numeração da NF-e (`nfe_sequencias`) é incrementada antes da autorização; rejeições da SEFAZ hoje consomem número. Reversão só deve ser implementada após validar regra fiscal/operacional, pois em NF-e real número inutilizado/rejeitado pode exigir tratamento cuidadoso.
@@ -600,6 +601,7 @@ Performance:
 - [x] Implementar paginação em `GET /api/clientes` com `?page=&limit=`, preservando busca rápida por `q`.
 - [x] Limitar SSE de KPIs em `routes/kpis.js` a no máximo `3` conexões simultâneas por usuário, além do limite global.
 - [x] Adicionar `trim().slice(0, 200)` antes do lookup de clientes por nome em `resolveClienteData()`, preservando o comportamento intencional de buscar por nome quando `clienteid` não for informado.
+- [x] Gravar `backup-status.json` e expor `GET /api/backup/status` para observabilidade local dos backups.
 
 Regras de negócio e integrações:
 
@@ -817,15 +819,15 @@ Isso é esperado com a CSP padrão do Helmet e não indica falha da aplicação.
 
 ### Validação local antes do push
 
-- `npm.cmd test` no backend: **18 arquivos, 146 testes passando**.
+- `npm.cmd test` no backend: **18 arquivos, 150 testes passando**.
 - `npm.cmd run build` no frontend: OK com `vite v8.0.13`.
 - `npm audit --omit=dev` no backend: **0 vulnerabilidades**.
 - `npm audit --omit=dev` no frontend: **0 vulnerabilidades**.
 
 ### Próximo foco recomendado do roadmap
 
-1. Criar `backup-status.json` e endpoint/status de backup para observabilidade.
-2. Depois disso, iniciar o módulo comercial: **Propostas/Funil**, separado das OS.
+1. Iniciar o módulo comercial: **Propostas/Funil**, separado das OS.
+2. Avaliar backup offsite versionado e alertas operacionais de falha.
 3. Manter contingência NF-e DPEC/offline como backlog fiscal posterior ao MVP.
 
 ---

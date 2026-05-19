@@ -167,3 +167,24 @@ describe('pagination route contracts', () => {
     expect(source).toMatch(/res\.json\(\{\s*data:\s*rows,\s*meta:/);
   });
 });
+
+describe('backup route contracts', () => {
+  it('exposes admin-only backup status and returns full manual backup result', async () => {
+    const backupRouter = await loadRouter('../routes/backup.js');
+    const source = fs.readFileSync(new URL('../routes/backup.js', import.meta.url), 'utf8');
+
+    expect(routeRoles(backupRouter, 'get', '/status')).toEqual(['admin']);
+    expect(routeRoles(backupRouter, 'post', '/')).toEqual(['admin']);
+    expect(source).toMatch(/readBackupStatus/);
+    expect(source).toMatch(/res\.json\(result\)/);
+    expect(source).not.toMatch(/res\.json\(\{\s*ok:\s*true\s*\}\)/);
+  });
+
+  it('writes backup-status.json after backup attempts', () => {
+    const source = fs.readFileSync(new URL('../database.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/utils\/backupStatus/);
+    expect(source).toMatch(/writeBackupStatus/);
+    expect(source).toMatch(/buildBackupStatus/);
+  });
+});

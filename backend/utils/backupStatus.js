@@ -1,6 +1,8 @@
 const fs = require("fs");
 const path = require("path");
 
+const BACKUP_STATUS_FILE = "backup-status.json";
+
 function fileInfo(dir, name) {
   const full = path.join(dir, name);
   const stat = fs.statSync(full);
@@ -10,6 +12,10 @@ function fileInfo(dir, name) {
     updatedat: stat.mtime.toISOString(),
     mtimeMs: stat.mtimeMs,
   };
+}
+
+function backupStatusPath(backupsDir) {
+  return path.join(backupsDir, BACKUP_STATUS_FILE);
 }
 
 function buildBackupStatus(backupsDir, { now = new Date() } = {}) {
@@ -55,4 +61,28 @@ function buildBackupStatus(backupsDir, { now = new Date() } = {}) {
   };
 }
 
-module.exports = { buildBackupStatus };
+function writeBackupStatus(backupsDir, status) {
+  fs.mkdirSync(backupsDir, { recursive: true });
+  const file = backupStatusPath(backupsDir);
+  fs.writeFileSync(file, JSON.stringify(status, null, 2));
+  return file;
+}
+
+function readBackupStatus(backupsDir, options = {}) {
+  const file = backupStatusPath(backupsDir);
+  if (!fs.existsSync(file)) return buildBackupStatus(backupsDir, options);
+
+  try {
+    return JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch {
+    return buildBackupStatus(backupsDir, options);
+  }
+}
+
+module.exports = {
+  BACKUP_STATUS_FILE,
+  backupStatusPath,
+  buildBackupStatus,
+  readBackupStatus,
+  writeBackupStatus,
+};
