@@ -34,7 +34,24 @@ function validarAlteracaoProprioUsuario({
   return { ok: true };
 }
 
+function validarSessaoUsuario(payload, usuarioAtual) {
+  if (!usuarioAtual) {
+    return { ok: false, status: 401, error: "Usuario nao encontrado" };
+  }
+
+  if (Number(usuarioAtual.active) !== 1) {
+    return { ok: false, status: 401, error: "Usuario inativo" };
+  }
+
+  if (usuarioAtual.role !== payload?.role) {
+    return { ok: false, status: 401, error: "Sessao desatualizada. Entre novamente." };
+  }
+
+  return { ok: true };
+}
+
 module.exports = {
   validarSenhaUsuario,
   validarAlteracaoProprioUsuario,
+  validarSessaoUsuario,
 };

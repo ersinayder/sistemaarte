@@ -143,20 +143,20 @@ function whatsappRowAtual() {
 function segurancaAtual() {
   return {
     status: {
-      status: "Pendente",
-      missing: ["helmet", "lockout-login"],
+      status: "OK",
+      missing: [],
     },
     politicas: {
+      helmet: true,
       rateLimitGlobalPorMinuto: 60,
       loginTentativasPorIp: 10,
+      lockoutLoginPorUsuario: true,
       loginJanelaMinutos: 15,
       senhaMinima: 8,
       sessaoHoras: 12,
       protegeAutoDesativacaoAdmin: true,
     },
     pendencias: [
-      "Instalar/configurar helmet",
-      "Adicionar lockout por usuario no login",
       "Ativar backup offsite fora do servidor",
     ],
   };

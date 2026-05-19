@@ -6,7 +6,7 @@ const { getResumoFinanceiroOS } = require("../domain/financeiroRules");
 const { descricaoRestanteOS } = require("../domain/ordensRules");
 
 // GET /api/caixa
-router.get("/", auth(), (req, res, next) => {
+router.get("/", auth(["admin","caixa"]), (req, res, next) => {
   try {
     const { data, mes } = req.query;
     let sql = `SELECT l.*, o.numero AS ordemnumero
@@ -25,13 +25,14 @@ router.get("/", auth(), (req, res, next) => {
 // POST /api/caixa
 router.post("/", auth(["admin","caixa"]), (req, res, next) => {
   try {
-    const { data, tipo, descricao, pagamento, valor, pago, ordemid } = req.body ?? {};
+    const { data, tipo, categoria, descricao, pagamento, valor, pago, ordemid } = req.body ?? {};
     if (!data || !pagamento || valor == null)
       return res.status(400).json({ error: "data, pagamento e valor sao obrigatorios" });
 
     const nValor = toNumber(valor);
     let origem = "manual";
     let descFinal = descricao;
+    let categoriaFinal = categoria || null;
     let pagoFinal = pago ? 1 : 0;
 
     if (ordemid) {
@@ -41,6 +42,7 @@ router.post("/", auth(["admin","caixa"]), (req, res, next) => {
       if (nValor > resumo.saldo + 0.0001)
         return res.status(400).json({ error: `Saldo disponivel para a ${resumo.ordem.numero}: R$ ${resumo.saldo.toFixed(2)}` });
       origem = "saldoos";
+      categoriaFinal = categoria || "Pagamento OS";
       pagoFinal = 1;
       descFinal = descricaoRestanteOS(resumo.ordem.numero, resumo.ordem.clientenome, resumo.ordem.servico);
     }
@@ -49,8 +51,8 @@ router.post("/", auth(["admin","caixa"]), (req, res, next) => {
       return res.status(400).json({ error: "descricao e obrigatoria" });
 
     const id = runInsert(
-      "INSERT INTO lancamentos (data,tipo,descricao,pagamento,valor,pago,ordemid,criadopor,origem) VALUES (?,?,?,?,?,?,?,?,?)",
-      [data, tipo||"Diversos", descFinal, pagamento, nValor, pagoFinal, ordemid||null, req.user.id, origem]
+      "INSERT INTO lancamentos (data,tipo,categoria,descricao,pagamento,valor,pago,ordemid,criadopor,origem) VALUES (?,?,?,?,?,?,?,?,?,?)",
+      [data, tipo||"Diversos", categoriaFinal, descFinal, pagamento, nValor, pagoFinal, ordemid||null, req.user.id, origem]
     );
     res.json({ id, origem });
   } catch(e) { next(e); }
@@ -65,7 +67,7 @@ router.put("/:id", auth(["admin","caixa"]), (req, res, next) => {
     if (old.origem === "entradaos" && req.user.role !== "admin")
       return res.status(400).json({ error: "A entrada vinculada a OS deve ser alterada pela propria OS." });
 
-    const { data, tipo, descricao, pagamento, valor, pago, ordemid } = req.body ?? {};
+    const { data, tipo, categoria, descricao, pagamento, valor, pago, ordemid } = req.body ?? {};
 
     // Admin editando apenas data/pagamento de entradaos
     if (old.origem === "entradaos" && req.user.role === "admin") {
@@ -80,6 +82,7 @@ router.put("/:id", auth(["admin","caixa"]), (req, res, next) => {
     const nValor = toNumber(valor);
     let origem = novoOrdemId ? "saldoos" : "manual";
     let descFinal = descricao;
+    let categoriaFinal = categoria || null;
     let pagoFinal = novoOrdemId ? 1 : (pago ? 1 : 0);
 
     if (novoOrdemId) {
@@ -98,11 +101,12 @@ router.put("/:id", auth(["admin","caixa"]), (req, res, next) => {
         return res.status(400).json({ error: `Saldo disponivel para ${resumo.ordem.numero}: R$ ${saldoDisponivel.toFixed(2)}` });
 
       descFinal = descricaoRestanteOS(resumo.ordem.numero, resumo.ordem.clientenome, resumo.ordem.servico);
+      categoriaFinal = categoria || "Pagamento OS";
     }
 
     run(
-      "UPDATE lancamentos SET data=?,tipo=?,descricao=?,pagamento=?,valor=?,pago=?,ordemid=?,origem=? WHERE id=?",
-      [data, tipo||"Diversos", descFinal, pagamento, nValor, pagoFinal, novoOrdemId, origem, req.params.id]
+      "UPDATE lancamentos SET data=?,tipo=?,categoria=?,descricao=?,pagamento=?,valor=?,pago=?,ordemid=?,origem=? WHERE id=?",
+      [data, tipo||"Diversos", categoriaFinal, descFinal, pagamento, nValor, pagoFinal, novoOrdemId, origem, req.params.id]
     );
     res.json({ ok: true });
   } catch(e) { next(e); }

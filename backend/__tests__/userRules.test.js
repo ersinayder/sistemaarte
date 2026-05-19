@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 const {
   validarSenhaUsuario,
   validarAlteracaoProprioUsuario,
+  validarSessaoUsuario,
 } = await import('../domain/userRules.js');
 
 describe('userRules', () => {
@@ -61,5 +62,30 @@ describe('userRules', () => {
       nextRole: 'caixa',
       nextActive: 0,
     })).toEqual({ ok: true });
+  });
+
+  it('rejects sessions when user is inactive or role changed after token issue', () => {
+    expect(validarSessaoUsuario(
+      { id: 1, role: 'admin' },
+      { id: 1, role: 'admin', active: 1 }
+    )).toEqual({ ok: true });
+
+    expect(validarSessaoUsuario(
+      { id: 1, role: 'admin' },
+      { id: 1, role: 'admin', active: 0 }
+    )).toEqual({
+      ok: false,
+      status: 401,
+      error: 'Usuario inativo',
+    });
+
+    expect(validarSessaoUsuario(
+      { id: 1, role: 'admin' },
+      { id: 1, role: 'caixa', active: 1 }
+    )).toEqual({
+      ok: false,
+      status: 401,
+      error: 'Sessao desatualizada. Entre novamente.',
+    });
   });
 });

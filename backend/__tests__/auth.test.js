@@ -11,8 +11,18 @@ import jwt from 'jsonwebtoken';
 const TEST_SECRET = 'test-secret-fase2';
 process.env.JWT_SECRET = TEST_SECRET;
 
+const dbMock = {
+  getOne: vi.fn((_sql, params) => ({
+    id: params?.[0] || 1,
+    role: 'admin',
+    active: 1,
+  })),
+};
+vi.mock('../database', () => dbMock);
+vi.mock('../database.js', () => dbMock);
+
 // Importa DEPOIS de setar o env
-const { auth } = await import('../middlewares/auth.js');
+const { auth, setSessionUserLookupForTests } = await import('../middlewares/auth.js');
 
 function makeRes() {
   const res = {};
@@ -30,6 +40,11 @@ describe('auth middleware', () => {
 
   beforeEach(() => {
     next = vi.fn();
+    setSessionUserLookupForTests((payload) => ({
+      id: payload.id,
+      role: payload.role,
+      active: 1,
+    }));
   });
 
   describe('extracao de token', () => {

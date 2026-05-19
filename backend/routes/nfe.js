@@ -150,7 +150,7 @@ function filenameSeguro(value) {
 }
 
 // GET /api/nfe
-router.get('/', auth(), (req, res) => {
+router.get('/', auth(['admin', 'caixa']), (req, res) => {
   try {
     const rows = getDB().prepare(`
       SELECT o.id, o.numero, o.clienteid, COALESCE(c.name, o.clientenome) AS clientenome, o.servico, o.valortotal, o.status,
@@ -163,7 +163,7 @@ router.get('/', auth(), (req, res) => {
              (SELECT COUNT(*) FROM nfe_eventos e WHERE e.chave = o.nfe_chave OR (o.nfe_chave IS NULL AND e.ordemid = o.id)) AS nfe_eventos_count
       FROM ordens o
       LEFT JOIN clientes c ON o.clienteid = c.id
-      WHERE o.nfe_status IS NOT NULL
+      WHERE o.nfe_status IS NOT NULL AND o.deletedat IS NULL
       ORDER BY o.nfe_emitida_em DESC
     `).all();
     const alvoHomologacao = Number(process.env.NFE_HOMOLOGACAO_ALVO || 10);
@@ -183,7 +183,7 @@ router.get('/', auth(), (req, res) => {
 });
 
 // GET /api/nfe/:chave/eventos
-router.get('/:chave/eventos', auth(), (req, res) => {
+router.get('/:chave/eventos', auth(['admin', 'caixa']), (req, res) => {
   const { chave } = req.params;
   if (!chave || !/^\d{44}$/.test(chave)) {
     return res.status(400).json({ erro: 'Chave NF-e invalida. Deve conter exatamente 44 digitos.' });
@@ -191,7 +191,7 @@ router.get('/:chave/eventos', auth(), (req, res) => {
 
   try {
     const db = getDB();
-    const os = db.prepare('SELECT id, nfe_chave, nfe_status FROM ordens WHERE nfe_chave = ?').get(chave);
+    const os = db.prepare('SELECT id, nfe_chave, nfe_status FROM ordens WHERE nfe_chave = ? AND deletedat IS NULL').get(chave);
     if (!os) {
       return res.status(404).json({ erro: 'NF-e nao encontrada para esta chave' });
     }
@@ -212,7 +212,7 @@ router.get('/:chave/eventos', auth(), (req, res) => {
 });
 
 // GET /api/nfe/ordem/:ordemId/eventos
-router.get('/ordem/:ordemId/eventos', auth(), (req, res) => {
+router.get('/ordem/:ordemId/eventos', auth(['admin', 'caixa']), (req, res) => {
   const ordemId = Number(req.params.ordemId);
   if (!Number.isInteger(ordemId) || ordemId <= 0) {
     return res.status(400).json({ erro: 'OS invalida.' });
@@ -220,7 +220,7 @@ router.get('/ordem/:ordemId/eventos', auth(), (req, res) => {
 
   try {
     const db = getDB();
-    const os = db.prepare('SELECT id FROM ordens WHERE id = ?').get(ordemId);
+    const os = db.prepare('SELECT id FROM ordens WHERE id = ? AND deletedat IS NULL').get(ordemId);
     if (!os) {
       return res.status(404).json({ erro: 'OS nao encontrada.' });
     }
@@ -241,14 +241,14 @@ router.get('/ordem/:ordemId/eventos', auth(), (req, res) => {
 });
 
 // GET /api/nfe/:chave/xml/autorizacao
-router.get('/:chave/xml/autorizacao', auth(), (req, res) => {
+router.get('/:chave/xml/autorizacao', auth(['admin', 'caixa']), (req, res) => {
   const { chave } = req.params;
   if (!chave || !/^\d{44}$/.test(chave)) {
     return res.status(400).json({ erro: 'Chave NF-e invalida. Deve conter exatamente 44 digitos.' });
   }
 
   try {
-    const os = getDB().prepare('SELECT nfe_xml FROM ordens WHERE nfe_chave = ?').get(chave);
+    const os = getDB().prepare('SELECT nfe_xml FROM ordens WHERE nfe_chave = ? AND deletedat IS NULL').get(chave);
     if (!os) {
       return res.status(404).json({ erro: 'NF-e nao encontrada para esta chave' });
     }
@@ -271,14 +271,14 @@ router.get('/:chave/xml/autorizacao', auth(), (req, res) => {
 });
 
 // GET /api/nfe/:chave/danfe
-router.get('/:chave/danfe', auth(), (req, res) => {
+router.get('/:chave/danfe', auth(['admin', 'caixa']), (req, res) => {
   const { chave } = req.params;
   if (!chave || !/^\d{44}$/.test(chave)) {
     return res.status(400).json({ erro: 'Chave NF-e invalida. Deve conter exatamente 44 digitos.' });
   }
 
   try {
-    const os = getDB().prepare('SELECT nfe_xml FROM ordens WHERE nfe_chave = ?').get(chave);
+    const os = getDB().prepare('SELECT nfe_xml FROM ordens WHERE nfe_chave = ? AND deletedat IS NULL').get(chave);
     if (!os) {
       return res.status(404).json({ erro: 'NF-e nao encontrada para esta chave' });
     }
@@ -302,7 +302,7 @@ router.get('/:chave/danfe', auth(), (req, res) => {
 });
 
 // GET /api/nfe/eventos/:eventoId/xml
-router.get('/eventos/:eventoId/xml', auth(), (req, res) => {
+router.get('/eventos/:eventoId/xml', auth(['admin', 'caixa']), (req, res) => {
   const eventoId = Number(req.params.eventoId);
   if (!Number.isInteger(eventoId) || eventoId <= 0) {
     return res.status(400).json({ erro: 'Evento fiscal invalido.' });
@@ -339,7 +339,7 @@ router.get('/eventos/:eventoId/xml', auth(), (req, res) => {
 });
 
 // POST /api/nfe/emitir/:id
-router.post('/emitir/:id', auth(), async (req, res) => {
+router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
   let respondido = false;
   const db = getDB();
   const osId = req.params.id;
@@ -370,7 +370,7 @@ router.post('/emitir/:id', auth(), async (req, res) => {
              c.numero AS c_numero, c.bairro, c.cidade, c.uf, c.cep
       FROM ordens o
       LEFT JOIN clientes c ON o.clienteid = c.id
-      WHERE o.id = ?
+      WHERE o.id = ? AND o.deletedat IS NULL
     `).get(osId);
 
     if (!os) {
@@ -559,7 +559,7 @@ router.post('/emitir/:id', auth(), async (req, res) => {
 
 // POST /api/nfe/:chave/cce
 // Body: { correcao: string (15 a 1000 chars) }
-router.post('/:chave/cce', auth(), async (req, res) => {
+router.post('/:chave/cce', auth(['admin', 'caixa']), async (req, res) => {
   const { chave } = req.params;
   const correcao = String(req.body?.correcao || req.body?.texto || '').trim();
 
@@ -578,7 +578,7 @@ router.post('/:chave/cce', auth(), async (req, res) => {
   }
 
   const db = getDB();
-  const os = db.prepare(`SELECT * FROM ordens WHERE nfe_chave = ?`).get(chave);
+  const os = db.prepare(`SELECT * FROM ordens WHERE nfe_chave = ? AND deletedat IS NULL`).get(chave);
 
   if (!os) {
     return res.status(404).json({ erro: 'NF-e nao encontrada para esta chave' });
@@ -717,7 +717,7 @@ router.post('/:chave/cce', auth(), async (req, res) => {
 
 // POST /api/nfe/:chave/cancelar
 // Body: { motivo: string (min 15 chars) }
-router.post('/:chave/cancelar', auth(), async (req, res) => {
+router.post('/:chave/cancelar', auth(['admin', 'caixa']), async (req, res) => {
   const { chave } = req.params;
   const { motivo } = req.body || {};
 
@@ -737,7 +737,7 @@ router.post('/:chave/cancelar', auth(), async (req, res) => {
 
   const db = getDB();
 
-  const os = db.prepare(`SELECT * FROM ordens WHERE nfe_chave = ?`).get(chave);
+  const os = db.prepare(`SELECT * FROM ordens WHERE nfe_chave = ? AND deletedat IS NULL`).get(chave);
 
   if (!os) {
     return res.status(404).json({ erro: 'NF-e nao encontrada para esta chave' });

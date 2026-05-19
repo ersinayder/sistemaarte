@@ -16,7 +16,7 @@ function fetchJson(url, ms = 7000) {
 }
 
 // GET /api/consulta/cnpj/:cnpj
-router.get("/cnpj/:cnpj", auth(), async (req, res) => {
+router.get("/cnpj/:cnpj", auth(["admin","caixa"]), async (req, res) => {
   const digits = req.params.cnpj.replace(/\D/g, "");
   if (digits.length !== 14) return res.status(400).json({ error: "CNPJ inválido" });
 
@@ -43,7 +43,7 @@ router.get("/cnpj/:cnpj", auth(), async (req, res) => {
 });
 
 // GET /api/consulta/cpf/:cpf  — requer certificado digital (não implementado)
-router.get("/cpf/:cpf", auth(), (_req, res) =>
+router.get("/cpf/:cpf", auth(["admin","caixa"]), (_req, res) =>
   res.status(501).json({ error: "Consulta CPF requer certificado digital." })
 );
 

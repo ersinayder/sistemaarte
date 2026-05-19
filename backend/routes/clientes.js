@@ -10,7 +10,7 @@ const SEL_CLIENTE = `
   WHERE c.deletedat IS NULL
 `;
 
-router.get("/", auth(), (req, res, next) => {
+router.get("/", auth(["admin","caixa"]), (req, res, next) => {
   try {
     const q = req.query.q;
     if (q) {
@@ -53,7 +53,7 @@ router.get("/cnpj/:cnpj", auth(["admin","caixa"]), async (req, res, next) => {
   }
 });
 
-router.get("/:id", auth(), (req, res, next) => {
+router.get("/:id", auth(["admin","caixa"]), (req, res, next) => {
   try {
     const id = req.params.id;
     const c = getOne("SELECT * FROM clientes WHERE id=? AND deletedat IS NULL", [id]);
@@ -99,7 +99,7 @@ router.get("/:id", auth(), (req, res, next) => {
   } catch(e) { next(e); }
 });
 
-router.get("/:id/ordens", auth(), (req, res, next) => {
+router.get("/:id/ordens", auth(["admin","caixa"]), (req, res, next) => {
   try {
     res.json(getAll(
       "SELECT * FROM ordens WHERE clienteid=? AND deletedat IS NULL ORDER BY createdat DESC",

@@ -22,7 +22,7 @@ function normalizarPagamento(str) {
   return str;
 }
 
-router.get("/resumo", auth(), (req, res, next) => {
+router.get("/resumo", auth(["admin","caixa"]), (req, res, next) => {
   try {
     const { mes } = req.query;
     if (!mes) return res.status(400).json({ error: "Informe o mês YYYY-MM" });

@@ -3,6 +3,7 @@ const express      = require("express");
 const cors         = require("cors");
 const cookieParser = require("cookie-parser");
 const rateLimit    = require("express-rate-limit");
+const helmet       = require("helmet");
 const path         = require("path");
 const fs           = require("fs");
 
@@ -26,6 +27,7 @@ const PORT = process.env.PORT || 3001;
 
 app.set("trust proxy", 1);
 
+app.use(helmet());
 app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json());
 app.use(cookieParser());
