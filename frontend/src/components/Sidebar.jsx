@@ -15,6 +15,7 @@ const ICONS = {
   caixa:     { d: 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z' },
   ordens:    { d: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2', d2: 'M9 3h6a1 1 0 011 1v1H8V4a1 1 0 011-1zM9 12h6M9 16h4' },
   orcamento: { d: 'M12 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z', d2: 'M14 2v6h6M9 13h6M9 17h4M9 9h1' },
+  propostas: { d: 'M4 5a2 2 0 012-2h12a2 2 0 012 2v14l-4-2-4 2-4-2-4 2V5z', d2: 'M8 8h8M8 12h8M8 16h5' },
   oficina:   { d: 'M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z' },
   relat:     { d: 'M18 20V10M12 20V4M6 20v-6' },
   usuarios:  { d: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2', d2: 'M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75M9 11a4 4 0 100-8 4 4 0 000 8z' },
@@ -130,7 +131,8 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
               {navItem('/dashboard', 'Resumo', 'resumo')}
               {navItem('/caixa', 'Caixa', 'caixa')}
               {navItemBadge('/ordens', 'Ordens de Serviço', 'ordens', vencidas)}
-              {navItem('/orcamento', 'Orçamento', 'orcamento')}
+              {navItem('/orcamento', 'Orçamento Rápido', 'orcamento')}
+              {navItem('/propostas', 'Propostas', 'propostas')}
 
               {section('Fiscal')}
               {navItem('/nfe', 'Notas Fiscais', 'nfe')}

@@ -811,6 +811,7 @@ export default function Orcamento() {
   const [showClienteList, setShowClienteList] = useState(false)
   const [showConfirm, setShowConfirm]         = useState(false)
   const [showNovaOS, setShowNovaOS]           = useState(false)
+  const [savingProposta, setSavingProposta]   = useState(false)
   const [activeTab, setActiveTab]             = useState('quadros')
   const [precos, setPrecos]                   = useState({ moldura: 60, nomes: 35, trid: 80 })
   const clienteRef = useRef(null)
@@ -856,6 +857,32 @@ export default function Orcamento() {
     (c.nome || c.name).toLowerCase().includes(cliente.toLowerCase())
   )
 
+  const salvarProposta = async () => {
+    if (!items.length) { toast.error('Adicione ao menos um item'); return }
+    if (!cliente.trim()) { toast.error('Informe o cliente para salvar a proposta'); return }
+    setSavingProposta(true)
+    try {
+      await api.post('/propostas', {
+        cliente_id: clienteId || null,
+        clientenome: cliente.trim(),
+        status: 'Novo lead',
+        origem: 'balcao',
+        descricao: 'Orcamento rapido',
+        valortotal: produtosParaOS.reduce((acc, p) => acc + Number(p.preco_unitario || 0) * Number(p.quantidade || 1), 0),
+        produtos: produtosParaOS,
+      })
+      toast.success('Proposta salva')
+      setItems([])
+      setCliente('')
+      setClienteId(null)
+      navigate('/propostas')
+    } catch (e) {
+      toast.error(e?.response?.data?.error || 'Erro ao salvar proposta')
+    } finally {
+      setSavingProposta(false)
+    }
+  }
+
   return (
     <div className="page-content">
       {showConfirm && (
@@ -886,7 +913,7 @@ export default function Orcamento() {
 
       <div className="page-header">
         <div>
-          <div className="page-title">Orçamento</div>
+          <div className="page-title">Orçamento Rápido</div>
           <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)', marginTop: 2 }}>Monte itens e calcule o preço final</div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -897,9 +924,15 @@ export default function Orcamento() {
             </button>
           )}
           {items.length > 0 && (
+            <button className="btn btn-secondary btn-sm" onClick={salvarProposta} disabled={savingProposta}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>
+              {savingProposta ? 'Salvando...' : 'Salvar proposta'}
+            </button>
+          )}
+          {items.length > 0 && (
             <button className="btn btn-primary btn-sm" onClick={() => setShowNovaOS(true)}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
-              Criar OS
+              Gerar OS agora
             </button>
           )}
         </div>

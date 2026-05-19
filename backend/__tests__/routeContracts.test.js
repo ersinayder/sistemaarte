@@ -188,3 +188,26 @@ describe('backup route contracts', () => {
     expect(source).toMatch(/buildBackupStatus/);
   });
 });
+
+describe('propostas route contracts', () => {
+  it('mounts propostas API and keeps it restricted to admin and caixa', async () => {
+    const source = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/app\.use\(["']\/api\/propostas["'],\s*require\(["']\.\/routes\/propostas["']\)\)/);
+
+    const propostasRouter = await loadRouter('../routes/propostas.js');
+    expect(routeRoles(propostasRouter, 'get', '/')).toEqual(['admin', 'caixa']);
+    expect(routeRoles(propostasRouter, 'post', '/')).toEqual(['admin', 'caixa']);
+    expect(routeRoles(propostasRouter, 'patch', '/:id/status')).toEqual(['admin', 'caixa']);
+    expect(routeRoles(propostasRouter, 'post', '/:id/gerar-os')).toEqual(['admin', 'caixa']);
+  });
+
+  it('implements proposal conversion without generating OS numbers before approval', () => {
+    const source = fs.readFileSync(new URL('../routes/propostas.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/podeGerarOS/);
+    expect(source).toMatch(/gerarNumeroOS/);
+    expect(source).toMatch(/INSERT INTO ordens/);
+    expect(source).toMatch(/UPDATE propostas SET ordemid=\?/);
+  });
+});

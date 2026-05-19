@@ -14,6 +14,7 @@ const Relatorios   = React.lazy(() => import('./pages/Relatorios'))
 const Usuarios     = React.lazy(() => import('./pages/Usuarios'))
 const Clientes     = React.lazy(() => import('./pages/Clientes'))
 const Orcamento    = React.lazy(() => import('./pages/Orcamento'))
+const Propostas    = React.lazy(() => import('./pages/Propostas'))
 const Produtos     = React.lazy(() => import('./pages/Produtos'))
 const NotasFiscais = React.lazy(() => import('./pages/NotasFiscais'))
 const Configuracoes = React.lazy(() => import('./pages/Configuracoes'))
@@ -51,6 +52,7 @@ function AppRoutes() {
           <Route path="/clientes/:id" element={<PrivateRoute roles={['admin','caixa']}><Clientes /></PrivateRoute>}/>
           <Route path="/relatorios" element={<PrivateRoute roles={['admin','caixa']}><Relatorios /></PrivateRoute>}/>
           <Route path="/orcamento" element={<PrivateRoute roles={['admin','caixa']}><Orcamento /></PrivateRoute>}/>
+          <Route path="/propostas" element={<PrivateRoute roles={['admin','caixa']}><Propostas /></PrivateRoute>}/>
           <Route path="/produtos" element={<PrivateRoute roles={['admin','caixa']}><Produtos /></PrivateRoute>}/>
           <Route path="/usuarios" element={<PrivateRoute roles={['admin']}><Usuarios /></PrivateRoute>}/>
           <Route path="/configuracoes" element={<PrivateRoute roles={['admin']}><Configuracoes /></PrivateRoute>}/>

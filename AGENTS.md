@@ -120,6 +120,7 @@ backend/
 ├── domain/
 │   ├── ordensRules.js       # STATUSES_VALIDOS, TRANSICOES_VALIDAS, validarStatus, normalizarStatus
 │   ├── financeiroRules.js   # getResumoFinanceiroOS — UNICA fonte de verdade para saldo de OS
+│   ├── propostasRules.js    # Status do funil comercial e regra para gerar OS
 │   └── nfeRules.js          # montarNFe() — retorna { infNFe: { ide, emit, dest, det[], total, transp, pag } }
 ├── middlewares/
 │   ├── auth.js              # Middleware JWT — lê cookie > header Authorization
@@ -127,6 +128,7 @@ backend/
 ├── routes/
 │   ├── auth.js              # POST /login, POST /logout, GET /me
 │   ├── ordens.js            # CRUD OS + status + WhatsApp
+│   ├── propostas.js         # Funil comercial; gera OS somente após aprovação
 │   ├── caixa.js             # Lançamentos financeiros
 │   ├── kpis.js              # GET /kpis + SSE /kpis/stream (máx 10 conexões)
 │   ├── pdf.js               # Geração de PDF das OS
@@ -152,7 +154,8 @@ frontend/src/
 ├── context/                 # AuthContext — handshake via GET /api/auth/me
 └── pages/
     ├── Ordens.jsx           # Lista de OS com filtros (status, vencidas, busca)
-    ├── Orcamento.jsx        # Criação/edição de OS (maior arquivo: ~55kb)
+    ├── Orcamento.jsx        # Orçamento rápido/calculadora; pode salvar proposta ou gerar OS imediata
+    ├── Propostas.jsx        # Funil comercial separado das OS
     ├── OrdemDetalhe.jsx     # Detalhe + histórico de status
     ├── Caixa.jsx            # Lançamentos do caixa
     ├── Dashboard.jsx        # KPIs em tempo real via SSE
@@ -636,7 +639,7 @@ Operações SaaS e LGPD:
 Ordem recomendada para evolução do sistema:
 
 1. **DANFE real** — concluído e validado em produção após deploy. Usa o XML autorizado salvo em `ordens.nfe_xml` / `backend/data/nfe_xmls`, gera DANFE em HTML imprimível e troca o botão da tela de Notas Fiscais por uma ação real de imprimir/visualizar. Também há botão de DANFE dentro da OS que já tem NF-e emitida.
-2. **Propostas + funil básico** — criar um módulo comercial separado das OS. A OS não deve nascer no orçamento; ela deve nascer somente quando a venda virar serviço aprovado.
+2. **Propostas + funil básico** — concluído nesta sessão. A tela `/orcamento` continua como calculadora rápida de balcão e pode salvar proposta; a OS só nasce por `Gerar OS` em proposta aprovada ou por venda imediata.
 3. **Link público de proposta + WhatsApp** — cada proposta deve ter link público com token, por exemplo `https://arteemolduras.com.br/proposta/abc123`, enviado ao cliente pelo WhatsApp.
 4. **Aprovar proposta e gerar OS** — quando a proposta for aprovada, o sistema deve reaproveitar cliente, itens, total, observações e prazo para criar a OS com numeração `OS-XXXX`.
 5. **Contas a pagar/receber separado do caixa** — separar caixa diário, contas a receber e contas a pagar para dar visão de dinheiro realizado e previsto.
@@ -644,27 +647,35 @@ Ordem recomendada para evolução do sistema:
 
 ### Fase 1: Comercial — Propostas/Funil
 
-Criar um módulo de Propostas/Funil separado das Ordens de Serviço.
+Módulo de Propostas/Funil separado das Ordens de Serviço implementado.
 
 Status do funil:
 
 ```txt
-Novo lead -> Orçamento enviado -> Negociação -> Aprovado -> Perdido
+Novo lead -> Orcamento enviado -> Negociacao -> Aprovado -> Perdido
 ```
 
-Fluxo ideal:
+Fluxo implementado nesta fase:
 
 ```txt
 Cliente pede orçamento
--> cadastra proposta
--> monta itens/valores
--> envia link pelo WhatsApp
--> cliente abre proposta
--> cliente aprova
--> sistema transforma em OS com um clique
+-> operador calcula em Orçamento Rápido
+-> salva proposta
+-> acompanha no funil
+-> marca como Aprovado
+-> gera OS com um clique
 ```
 
 Objetivo: proposta é venda; OS é produção. Isso evita que uma OS nasça cedo demais, antes de o cliente realmente aprovar o serviço.
+
+Implementado:
+
+- `GET/POST /api/propostas`, `GET /api/propostas/:id`, `PATCH /api/propostas/:id/status`
+- `POST /api/propostas/:id/gerar-os`
+- tabelas `propostas` e `proposta_itens`
+- tela `/propostas` com kanban interno
+- menu `Propostas`
+- botão `Salvar proposta` em `/orcamento`
 
 ### Fase 2: Link público de proposta
 
@@ -819,16 +830,17 @@ Isso é esperado com a CSP padrão do Helmet e não indica falha da aplicação.
 
 ### Validação local antes do push
 
-- `npm.cmd test` no backend: **18 arquivos, 150 testes passando**.
+- `npm.cmd test` no backend: **19 arquivos, 156 testes passando**.
 - `npm.cmd run build` no frontend: OK com `vite v8.0.13`.
 - `npm audit --omit=dev` no backend: **0 vulnerabilidades**.
 - `npm audit --omit=dev` no frontend: **0 vulnerabilidades**.
 
 ### Próximo foco recomendado do roadmap
 
-1. Iniciar o módulo comercial: **Propostas/Funil**, separado das OS.
-2. Avaliar backup offsite versionado e alertas operacionais de falha.
-3. Manter contingência NF-e DPEC/offline como backlog fiscal posterior ao MVP.
+1. Implementar link público de proposta com token e aprovação pelo cliente.
+2. Integrar envio de proposta por WhatsApp.
+3. Avaliar backup offsite versionado e alertas operacionais de falha.
+4. Manter contingência NF-e DPEC/offline como backlog fiscal posterior ao MVP.
 
 ---
 
