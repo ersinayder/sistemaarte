@@ -145,3 +145,25 @@ describe('ordens route input contracts', () => {
     expect(source).toMatch(/WHERE name=\? LIMIT 1", \[nomeBusca\]/);
   });
 });
+
+describe('pagination route contracts', () => {
+  it('paginates ordens with matching count metadata', () => {
+    const source = fs.readFileSync(new URL('../routes/ordens.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/normalizarPaginacao/);
+    expect(source).toMatch(/montarMetaPaginacao/);
+    expect(source).toMatch(/COUNT\(\*\) AS total[\s\S]+FROM ordens o/);
+    expect(source).toMatch(/LIMIT \? OFFSET \?/);
+    expect(source).toMatch(/res\.json\(\{\s*data:\s*rows,\s*meta:/);
+  });
+
+  it('paginates clientes with matching count metadata', () => {
+    const source = fs.readFileSync(new URL('../routes/clientes.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/normalizarPaginacao/);
+    expect(source).toMatch(/montarMetaPaginacao/);
+    expect(source).toMatch(/COUNT\(\*\) AS total[\s\S]+FROM clientes c/);
+    expect(source).toMatch(/LIMIT \? OFFSET \?/);
+    expect(source).toMatch(/res\.json\(\{\s*data:\s*rows,\s*meta:/);
+  });
+});

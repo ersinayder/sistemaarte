@@ -38,9 +38,9 @@ Cloudflare → Windows Server (PM2)
 | Framework backend | Express 4 |
 | Banco | SQLite via `better-sqlite3` (síncrono) |
 | WAL mode | Ativado em `initDB()` — `db.pragma('journal_mode = WAL')` |
-| Frontend | React 18 + Vite + TailwindCSS |
+| Frontend | React 18 + Vite 8 + TailwindCSS |
 | Auth | JWT (`jsonwebtoken`) + cookie HttpOnly |
-| Testes | Vitest 1.6 |
+| Testes | Vitest 4.1 |
 | Deploy | PM2 (fork, 1 instância) + GitHub Actions self-hosted |
 | Notificações | Evolution API (WhatsApp) — toggle `WHATSAPP_ENABLED` |
 
@@ -169,9 +169,18 @@ frontend/src/
 
 - **Branch protegida:** `main` — requer PR + testes passando
 - **Branch de trabalho:** `develop` — commits diretos permitidos
-- **Fluxo:** `develop` → PR → testes (Vitest, 90 testes) → merge → deploy automático
+- **Fluxo:** `develop` → PR → testes (Vitest, 142 testes) → merge → deploy automático
 - **Deploy:** `robocopy` sincroniza `backend/` e `frontend/dist/` no servidor, PM2 reinicia via `ecosystem.config.js`
 - **O `.env` nunca é copiado pelo deploy** (`/XF .env` no robocopy)
+
+### Estado de producao validado em 2026-05-19
+
+- `main` atualizada no servidor `C:\sistemaarte`.
+- `npm audit --omit=dev` no backend: **0 vulnerabilidades**.
+- `npm audit --omit=dev` no frontend: **0 vulnerabilidades**.
+- Frontend buildado e servido em producao; build esperado usa `vite v8.0.13`.
+- Backend reiniciado via PM2 apos pull/install/build.
+- O aviso de console do Cloudflare Insights bloqueado por CSP vem do `helmet()` e nao indica falha da aplicacao.
 
 ---
 
@@ -264,7 +273,7 @@ Invoke-RestMethod -Uri "http://localhost:3001/api/nfe/CHAVE44DIGITOS/cancelar" `
 
 ## NF-e — nfewizard-io (homologado ✅)
 
-> Integração testada e com nota aprovada na SEFAZ. Versão: `nfewizard-io@1.0.4`.
+> Integração testada e com nota aprovada na SEFAZ. Versão atual: `nfewizard-io@1.1.0` com overrides `@nfewizard/shared@1.1.0` e `@nfewizard/types@1.0.4`.
 
 ### Estrutura de retorno de `montarNFe()`
 
@@ -526,22 +535,37 @@ Itens validados mas não implementados ainda (features novas, não bugs):
 | # | Item | Impacto |
 |---|---|---|
 | 10 | `criadopor` + `updatedat` em `ordem_itens` | Rastreabilidade por operador |
-| 12 | SSE: limitar por `userId` (máx 3/usuário) | Evitar monopolização de conexões |
-| 13 | Paginação no `GET /api/ordens` (`?page=&limit=`) | Escala com volume crescente |
 | 9 | Backup: gravar `backup-status.json` + endpoint `/api/backup/status` | Observabilidade de falhas |
 | 17 | NF-e: contingência DPEC/offline | Disponibilidade quando SEFAZ estiver fora |
+
+Itens concluídos em 2026-05-19:
+
+| Item | Estado |
+|---|---|
+| `nfewizard-io` | Atualizado para `1.1.0`; audit backend/frontend zerado |
+| `helmet()` | Ativo em `server.js`; CSP bloqueia Cloudflare Insights por padrão |
+| Rate limit global | Reduzido para `60 req/min` |
+| Lockout por usuário no login | `5` falhas bloqueiam por `15min` |
+| Senha mínima | `8` caracteres em criação/edição de usuário |
+| Proteção do próprio admin | Admin não altera o próprio `role` nem desativa o próprio usuário |
+| Sessão JWT | Middleware invalida sessão se usuário ficar inativo ou trocar de role |
+| SSE KPIs | Limite global `10` e limite por usuário `3` |
+| Paginação de Ordens | `GET /api/ordens?page=&limit=` com filtros `status`, `tipo`, `q`, `vencidas` e fallback legado sem paginação |
+| Paginação de Clientes | `GET /api/clientes?page=&limit=&q=` com meta de paginação e fallback legado `LIMIT 100/20` |
+| `resolveClienteData()` | Lookup por nome preservado, agora com `trim().slice(0, 200)` |
+| Rotas sensíveis | Leituras fiscais/financeiras/clientes/produtos restritas a `admin`/`caixa` |
 
 ### Roadmap de segurança, estabilidade e SaaS
 
 Conferência do estado atual do código:
 
-- `server.js` já tem rate limit global em `/api`, mas hoje está em `200 req/min`; reduzir para `60 req/min` continua pendente.
-- `routes/auth.js` já tem rate limit de login por IP (`10` tentativas em `15min`, ignorando sucessos), mas ainda não tem lockout por usuário/conta.
-- `helmet()` ainda não está instalado/configurado.
-- `routes/users.js` ainda aceita senha curta no `PUT` (`>=4`) e não impede admin de alterar o próprio `role` ou `active`.
-- `routes/kpis.js` limita SSE a `10` conexões globais; falta limite por usuário (`3` por `userId`).
-- `GET /api/ordens` não tem paginação; `GET /api/clientes` tem `LIMIT 100/20`, mas ainda não tem paginação formal com `page`/`limit`.
-- `resolveClienteData()` ainda faz lookup por `clientenome` sem `trim().slice(0, 200)`.
+- `server.js` tem `helmet()` ativo e rate limit global em `/api` de `60 req/min`.
+- `routes/auth.js` tem rate limit por IP (`10` tentativas em `15min`) e lockout por usuário (`5` falhas bloqueiam por `15min`).
+- `routes/users.js` exige senha mínima de `8` caracteres e impede admin de alterar o próprio `role` ou desativar o próprio usuário.
+- `middlewares/auth.js` revalida usuário/role/active a cada request; se o usuário ficar inativo ou mudar de role, a sessão antiga cai.
+- `routes/kpis.js` limita SSE a `10` conexões globais e `3` por usuário.
+- `GET /api/ordens` e `GET /api/clientes` têm paginação formal com `page`/`limit` e continuam compatíveis com chamadas legadas sem paginação.
+- `resolveClienteData()` preserva lookup por `clientenome`, agora normalizado com `trim().slice(0, 200)`.
 - `GET /api/caixa` já filtra lançamentos deletados e OS deletadas com `(l.ordemid IS NULL OR o.deletedat IS NULL)`; manter item apenas para teste/regressão.
 - A numeração da NF-e (`nfe_sequencias`) é incrementada antes da autorização; rejeições da SEFAZ hoje consomem número. Reversão só deve ser implementada após validar regra fiscal/operacional, pois em NF-e real número inutilizado/rejeitado pode exigir tratamento cuidadoso.
 - Cloudflare Free já oferece um conjunto gerenciado básico de WAF, mas plano Pro ou superior libera WAF gerenciado mais completo. Para produção comercial, manter como recomendação avaliar/ativar Pro.
@@ -557,11 +581,11 @@ Infraestrutura:
 
 Código e aplicação:
 
-- Adicionar `helmet()` em `server.js`.
-- Reduzir rate limit global em `server.js` de `200 req/min` para `60 req/min`.
-- Implementar lockout no login por usuário/conta: exemplo, `5` falhas bloqueiam por `15min`.
-- Exigir senha mínima de `8` caracteres nas rotas `POST /api/users` e `PUT /api/users/:id`.
-- Criar guard em `PUT /api/users/:id` para impedir que o admin altere o próprio `role` ou desative o próprio usuário (`active=0`).
+- [x] Adicionar `helmet()` em `server.js`.
+- [x] Reduzir rate limit global em `server.js` de `200 req/min` para `60 req/min`.
+- [x] Implementar lockout no login por usuário/conta: `5` falhas bloqueiam por `15min`.
+- [x] Exigir senha mínima de `8` caracteres nas rotas `POST /api/users` e `PUT /api/users/:id`.
+- [x] Criar guard em `PUT /api/users/:id` para impedir que o admin altere o próprio `role` ou desative o próprio usuário (`active=0`).
 
 Dados:
 
@@ -572,10 +596,10 @@ Dados:
 
 Performance:
 
-- Implementar paginação em `GET /api/ordens` com `?page=&limit=`.
-- Implementar paginação em `GET /api/clientes` com `?page=&limit=`, preservando busca rápida por `q`.
-- Limitar SSE de KPIs em `routes/kpis.js` a no máximo `3` conexões simultâneas por usuário, além do limite global.
-- Adicionar `trim().slice(0, 200)` antes do lookup de clientes por nome em `resolveClienteData()`, preservando o comportamento intencional de buscar por nome quando `clienteid` não for informado.
+- [x] Implementar paginação em `GET /api/ordens` com `?page=&limit=`.
+- [x] Implementar paginação em `GET /api/clientes` com `?page=&limit=`, preservando busca rápida por `q`.
+- [x] Limitar SSE de KPIs em `routes/kpis.js` a no máximo `3` conexões simultâneas por usuário, além do limite global.
+- [x] Adicionar `trim().slice(0, 200)` antes do lookup de clientes por nome em `resolveClienteData()`, preservando o comportamento intencional de buscar por nome quando `clienteid` não for informado.
 
 Regras de negócio e integrações:
 
@@ -609,7 +633,7 @@ Operações SaaS e LGPD:
 
 Ordem recomendada para evolução do sistema:
 
-1. **DANFE real** — concluído localmente nesta sessão. Usa o XML autorizado salvo em `ordens.nfe_xml` / `backend/data/nfe_xmls`, gera DANFE em HTML imprimível e troca o botão da tela de Notas Fiscais por uma ação real de imprimir/visualizar. Também há botão de DANFE dentro da OS que já tem NF-e emitida.
+1. **DANFE real** — concluído e validado em produção após deploy. Usa o XML autorizado salvo em `ordens.nfe_xml` / `backend/data/nfe_xmls`, gera DANFE em HTML imprimível e troca o botão da tela de Notas Fiscais por uma ação real de imprimir/visualizar. Também há botão de DANFE dentro da OS que já tem NF-e emitida.
 2. **Propostas + funil básico** — criar um módulo comercial separado das OS. A OS não deve nascer no orçamento; ela deve nascer somente quando a venda virar serviço aprovado.
 3. **Link público de proposta + WhatsApp** — cada proposta deve ter link público com token, por exemplo `https://arteemolduras.com.br/proposta/abc123`, enviado ao cliente pelo WhatsApp.
 4. **Aprovar proposta e gerar OS** — quando a proposta for aprovada, o sistema deve reaproveitar cliente, itens, total, observações e prazo para criar a OS com numeração `OS-XXXX`.
@@ -720,7 +744,7 @@ Objetivo: dar visão de lucro, não apenas movimento de caixa.
 
 ### Fase 6: DANFE real
 
-Concluído localmente nesta sessão; falta validar com XML autorizado real no servidor após deploy.
+Concluído e validado em produção após deploy de 2026-05-19.
 
 Caminho esperado:
 
@@ -740,6 +764,69 @@ Caminho esperado:
 4. Cobrir com testes em `backend/__tests__/`
 5. PR de `develop` → `main` (testes obrigatórios)
 6. Nunca commitar `.env`, `*.db`, `node_modules`, `data/`
+
+---
+
+## Sessão Codex — 2026-05-19
+
+**Tema:** atualização pós-`npm audit`, `nfewizard-io`, hardening básico e validação em produção.
+
+### Estado confirmado
+
+- Branch publicada: `codex/kanban-drag-feel`.
+- Commit relevante: `4f1106f chore: harden app and update dependencies`.
+- `main` foi atualizada no servidor `C:\sistemaarte`.
+- `npm audit --omit=dev` no backend e frontend retornou **0 vulnerabilidades**.
+- Frontend buildado e servido corretamente em produção.
+- `nfewizard-io` atualizado para `1.1.0`.
+- Overrides fiscais fixados:
+  - `@nfewizard/shared@1.1.0`
+  - `@nfewizard/types@1.0.4`
+- `frontend/dist/` e `frontend/node_modules/` foram removidos do versionamento; ambos são gerados/instalados no deploy.
+- `backend/package-lock.json` e `frontend/package-lock.json` são a fonte versionada correta para reproduzir dependências.
+
+### Hardening aplicado
+
+- `helmet()` ativo no Express.
+- Rate limit global em `/api`: `60 req/min`.
+- Login:
+  - rate limit por IP: `10` tentativas em `15min`
+  - lockout por usuário: `5` falhas bloqueiam por `15min`
+- Usuários:
+  - senha mínima de `8` caracteres em criação e edição
+  - admin não pode alterar o próprio `role`
+  - admin não pode desativar o próprio usuário
+- Sessões:
+  - `auth()` revalida `users.active` e `users.role` a cada request
+  - sessão antiga cai se usuário ficar inativo ou mudar de role
+- SSE KPIs:
+  - limite global continua `10`
+  - limite por usuário agora é `3`
+- Rotas sensíveis de leitura fiscal/financeira/cadastro foram restringidas para `admin`/`caixa`, mantendo `oficina` focada em status de OS.
+
+### Observação Cloudflare/Helmet
+
+Após ativar `helmet()`, o console do navegador pode mostrar bloqueio do script:
+
+```txt
+https://static.cloudflareinsights.com/beacon.min.js
+violates Content Security Policy: "script-src 'self'"
+```
+
+Isso é esperado com a CSP padrão do Helmet e não indica falha da aplicação. Se o Cloudflare Insights for necessário, liberar explicitamente `static.cloudflareinsights.com` em `script-src` numa mudança pequena e testada.
+
+### Validação local antes do push
+
+- `npm.cmd test` no backend: **18 arquivos, 146 testes passando**.
+- `npm.cmd run build` no frontend: OK com `vite v8.0.13`.
+- `npm audit --omit=dev` no backend: **0 vulnerabilidades**.
+- `npm audit --omit=dev` no frontend: **0 vulnerabilidades**.
+
+### Próximo foco recomendado do roadmap
+
+1. Criar `backup-status.json` e endpoint/status de backup para observabilidade.
+2. Depois disso, iniciar o módulo comercial: **Propostas/Funil**, separado das OS.
+3. Manter contingência NF-e DPEC/offline como backlog fiscal posterior ao MVP.
 
 ---
 
@@ -871,14 +958,14 @@ Como o sistema está em produção com caixa real:
 
 | Item | Status |
 |---|---|
-| Mergear `codex/fix-nfe-xml-download` | Pendente |
-| `git pull origin main` no servidor após merge | Pendente |
-| `pm2 restart sistemaarte-backend` após pull | Pendente |
-| Rebaixar XML autorização e XML CC-e e conferir que abrem como XML | Pendente |
-| Validar impressão da OS `OS-0092` | Pendente |
-| Confirmar que `Recebido` sumiu da tela da OS | Pendente |
+| Mergear `codex/fix-nfe-xml-download` | Concluído |
+| `git pull origin main` no servidor após merge | Concluído |
+| `pm2 restart sistemaarte-backend` após pull | Concluído |
+| Rebaixar XML autorização e XML CC-e e conferir que abrem como XML | Validado em fluxo fiscal anterior; manter como regressão quando emitir novas NF-es |
+| Validar impressão da OS `OS-0092` | Concluído pelo DANFE/OS pós-deploy |
+| Confirmar que `Recebido` sumiu da tela da OS | Concluído |
 | Continuar NF-es homologadas até 10/10 | Pendente |
-| Implementar DANFE real | Concluído localmente nesta sessão; falta validar com XML autorizado real no servidor |
+| Implementar DANFE real | Concluído e validado em produção |
 | Go-live `NFE_AMBIENTE_NUM=1` | Aguardar homologação |
 
 ### Acesso remoto ao servidor
