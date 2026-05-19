@@ -73,11 +73,13 @@ describe('route authorization contracts', () => {
   it('restricts sensitive read routes away from oficina', async () => {
     const caixaRouter = await loadRouter('../routes/caixa.js');
     const relatoriosRouter = await loadRouter('../routes/relatorios.js');
+    const financeiroRouter = await loadRouter('../routes/financeiro.js');
     const clientesRouter = await loadRouter('../routes/clientes.js');
     const produtosRouter = await loadRouter('../routes/produtos.js');
 
     expect(routeRoles(caixaRouter, 'get', '/')).toEqual(['admin', 'caixa']);
     expect(routeRoles(relatoriosRouter, 'get', '/resumo')).toEqual(['admin', 'caixa']);
+    expect(routeRoles(financeiroRouter, 'get', '/resumo')).toEqual(['admin']);
     expect(routeRoles(clientesRouter, 'get', '/')).toEqual(['admin', 'caixa']);
     expect(routeRoles(clientesRouter, 'get', '/:id')).toEqual(['admin', 'caixa']);
     expect(routeRoles(clientesRouter, 'get', '/:id/ordens')).toEqual(['admin', 'caixa']);
@@ -109,6 +111,23 @@ describe('route persistence contracts', () => {
     expect(source).toMatch(/const\s*\{[^}]*categoria/s);
     expect(source).toMatch(/INSERT INTO lancamentos\s*\([^)]*categoria/s);
     expect(source).toMatch(/UPDATE lancamentos SET[^"]*categoria=\?/s);
+  });
+
+  it('mounts admin financeiro API and paying accounts creates a caixa output', async () => {
+    const serverSource = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+    const source = fs.readFileSync(new URL('../routes/financeiro.js', import.meta.url), 'utf8');
+    const financeiroRouter = await loadRouter('../routes/financeiro.js');
+
+    expect(serverSource).toMatch(/app\.use\(["']\/api\/financeiro["'],\s*require\(["']\.\/routes\/financeiro["']\)\)/);
+    expect(routeRoles(financeiroRouter, 'get', '/resumo')).toEqual(['admin']);
+    expect(routeRoles(financeiroRouter, 'get', '/contas-pagar')).toEqual(['admin']);
+    expect(routeRoles(financeiroRouter, 'post', '/contas-pagar')).toEqual(['admin']);
+    expect(routeRoles(financeiroRouter, 'patch', '/contas-pagar/:id/pagar')).toEqual(['admin']);
+    expect(routeRoles(financeiroRouter, 'get', '/contas-receber')).toEqual(['admin']);
+    expect(routeRoles(financeiroRouter, 'get', '/dre')).toEqual(['admin']);
+    expect(source).toMatch(/INSERT INTO lancamentos/);
+    expect(source).toMatch(/tipo,\s*categoria,\s*descricao,\s*pagamento,\s*valor/);
+    expect(source).toMatch(/UPDATE contas_pagar SET status='Pago'/);
   });
 });
 

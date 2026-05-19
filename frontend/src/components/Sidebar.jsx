@@ -140,8 +140,8 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
               {section('Produção')}
               {navItem('/oficina', 'Fila da Oficina', 'oficina')}
 
-              {section('Análise')}
-              {navItem('/relatorios', 'Relatórios', 'relat')}
+              {section('Administração')}
+              {isAdmin && navItem('/financeiro', 'Financeiro', 'relat')}
 
               {section('Cadastros')}
               {navItem('/clientes', 'Clientes', 'clientes')}

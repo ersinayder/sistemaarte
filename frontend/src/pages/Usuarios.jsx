@@ -98,8 +98,8 @@ function ModalUsuario({ open, onClose, onSaved, editData }) {
 
             <div style={{ padding:'var(--space-3)', background:'var(--color-surface-dynamic)', borderRadius:'var(--radius-md)', fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>
               {{
-                admin:   '✅ Acesso total — caixa, ordens, relatórios, fila oficina e gestão de usuários.',
-                caixa:   '✅ Caixa, ordens, clientes, relatórios e fila. ❌ Não gerencia usuários.',
+                admin:   '✅ Acesso total — caixa, ordens, financeiro, fila oficina e gestão de usuários.',
+                caixa:   '✅ Caixa, ordens, clientes e fila. ❌ Não acessa financeiro nem gerencia usuários.',
                 oficina: '✅ Apenas a fila da oficina — visualiza e avança status das OS.',
               }[form.role]}
             </div>

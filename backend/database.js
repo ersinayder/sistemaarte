@@ -145,6 +145,24 @@ CREATE TABLE IF NOT EXISTS proposta_itens (
   avulso          INTEGER DEFAULT 0,
   createdat       TEXT DEFAULT (datetime('now','localtime'))
 );
+CREATE TABLE IF NOT EXISTS contas_pagar (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  fornecedor    TEXT NOT NULL,
+  descricao     TEXT NOT NULL,
+  categoria     TEXT DEFAULT 'Outros',
+  valor         REAL NOT NULL DEFAULT 0,
+  vencimento    TEXT NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'Pendente',
+  pagamento     TEXT,
+  pagoem        TEXT,
+  lancamentoid  INTEGER,
+  observacoes   TEXT,
+  criadopor     INTEGER,
+  deletedat     TEXT DEFAULT NULL,
+  deletedpor    INTEGER DEFAULT NULL,
+  createdat     TEXT DEFAULT (datetime('now','localtime')),
+  updatedat     TEXT DEFAULT (datetime('now','localtime'))
+);
 CREATE TABLE IF NOT EXISTS sequencias (
   nome   TEXT PRIMARY KEY,
   ultimo INTEGER DEFAULT 0
@@ -204,6 +222,8 @@ CREATE INDEX IF NOT EXISTS idx_lancamentos_pago_del ON lancamentos(ordemid, pago
 CREATE INDEX IF NOT EXISTS idx_propostas_status ON propostas(status);
 CREATE INDEX IF NOT EXISTS idx_propostas_clienteid ON propostas(clienteid);
 CREATE INDEX IF NOT EXISTS idx_proposta_itens_propostaid ON proposta_itens(propostaid);
+CREATE INDEX IF NOT EXISTS idx_contas_pagar_status ON contas_pagar(status);
+CREATE INDEX IF NOT EXISTS idx_contas_pagar_vencimento ON contas_pagar(vencimento);
 CREATE TABLE IF NOT EXISTS nfe_autxml (
   id        INTEGER PRIMARY KEY AUTOINCREMENT,
   nome      TEXT NOT NULL,
@@ -355,6 +375,27 @@ function initDB() {
     "CREATE INDEX IF NOT EXISTS idx_propostas_status ON propostas(status)",
     "CREATE INDEX IF NOT EXISTS idx_propostas_clienteid ON propostas(clienteid)",
     "CREATE INDEX IF NOT EXISTS idx_proposta_itens_propostaid ON proposta_itens(propostaid)",
+    // v11 - contas a pagar administrativas
+    `CREATE TABLE IF NOT EXISTS contas_pagar (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      fornecedor    TEXT NOT NULL,
+      descricao     TEXT NOT NULL,
+      categoria     TEXT DEFAULT 'Outros',
+      valor         REAL NOT NULL DEFAULT 0,
+      vencimento    TEXT NOT NULL,
+      status        TEXT NOT NULL DEFAULT 'Pendente',
+      pagamento     TEXT,
+      pagoem        TEXT,
+      lancamentoid  INTEGER,
+      observacoes   TEXT,
+      criadopor     INTEGER,
+      deletedat     TEXT DEFAULT NULL,
+      deletedpor    INTEGER DEFAULT NULL,
+      createdat     TEXT DEFAULT (datetime('now','localtime')),
+      updatedat     TEXT DEFAULT (datetime('now','localtime'))
+    )`,
+    "CREATE INDEX IF NOT EXISTS idx_contas_pagar_status ON contas_pagar(status)",
+    "CREATE INDEX IF NOT EXISTS idx_contas_pagar_vencimento ON contas_pagar(vencimento)",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {}

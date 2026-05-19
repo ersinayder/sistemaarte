@@ -797,6 +797,8 @@ export default function Configuracoes() {
   const renderBackups = () => {
     const local = backupsInfo?.local || {}
     const arquivos = local.arquivos || []
+    const alertas = backupsInfo?.alertas || []
+    const offsite = backupsInfo?.offsite || {}
 
     return (
       <div className="settings-stack">
@@ -827,6 +829,20 @@ export default function Configuracoes() {
                 <button type="button" className="btn btn-primary" onClick={runBackupManual} disabled={runningBackup}>
                   {runningBackup ? <><div className="spinner" style={{ width: 14, height: 14 }} /> Gerando...</> : 'Gerar backup agora'}
                 </button>
+              </div>
+
+              <div className="settings-planned-grid">
+                {alertas.length === 0 ? (
+                  <div className="settings-planned-item">
+                    <strong>Alertas operacionais</strong>
+                    <span>Nenhuma pendencia local detectada.</span>
+                  </div>
+                ) : alertas.map((alerta) => (
+                  <div className="settings-planned-item" key={alerta.codigo}>
+                    <strong>{alerta.nivel === 'critico' ? 'Critico' : 'Atencao'}: {alerta.codigo}</strong>
+                    <span>{alerta.mensagem}</span>
+                  </div>
+                ))}
               </div>
             </>
           )}
@@ -862,11 +878,11 @@ export default function Configuracoes() {
                 <h2>Backup offsite</h2>
                 <p className="text-muted">Destino externo versionado antes de venda SaaS.</p>
               </div>
-              <span className="badge badge-warning">Pendente</span>
+              <span className="badge badge-warning">{offsite.status || 'Pendente'}</span>
             </div>
             <div className="settings-planned-item">
               <strong>Proximo passo operacional</strong>
-              <span>Configurar copia diaria fora do servidor, como storage versionado, OneDrive empresarial ou S3.</span>
+              <span>{offsite.missing?.includes('destino-offsite') ? 'Configurar copia diaria fora do servidor, como storage versionado, OneDrive empresarial ou S3.' : 'Destino offsite configurado.'}</span>
             </div>
           </div>
         </div>

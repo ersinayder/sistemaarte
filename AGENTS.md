@@ -120,6 +120,7 @@ backend/
 ├── domain/
 │   ├── ordensRules.js       # STATUSES_VALIDOS, TRANSICOES_VALIDAS, validarStatus, normalizarStatus
 │   ├── financeiroRules.js   # getResumoFinanceiroOS — UNICA fonte de verdade para saldo de OS
+│   ├── financeiroAdminRules.js # Regras do Financeiro admin e contas a pagar
 │   ├── propostasRules.js    # Status do funil comercial e regra para gerar OS
 │   └── nfeRules.js          # montarNFe() — retorna { infNFe: { ide, emit, dest, det[], total, transp, pag } }
 ├── middlewares/
@@ -134,12 +135,14 @@ backend/
 │   ├── pdf.js               # Geração de PDF das OS
 │   ├── clientes.js          # CRUD clientes
 │   ├── produtos.js          # CRUD produtos/estoque
-│   ├── relatorios.js        # Relatórios financeiros
+│   ├── relatorios.js        # API legado de resumo usada pelo Dashboard
+│   ├── financeiro.js        # Financeiro admin: resumo, contas a pagar, receber e DRE
 │   ├── nfe.js               # Emissão de NF-e via nfewizard-io
 │   └── backup.js            # Trigger manual de backup
 ├── utils/
 │   ├── dates.js             # hoje() — retorna YYYY-MM-DD no fuso America/Sao_Paulo
 │   ├── numbers.js           # toNumber(), validarNaoNegativo()
+│   ├── propostaPdf.js       # Renderer HTML imprimível para propostas comerciais
 │   └── whatsapp.js          # sendWhatsApp(), sendWhatsAppConfirmacao()
 ├── data/
 │   ├── oficina.db           # banco principal (não commitado)
@@ -161,7 +164,7 @@ frontend/src/
     ├── Dashboard.jsx        # KPIs em tempo real via SSE
     ├── Clientes.jsx         # CRUD clientes
     ├── Produtos.jsx         # CRUD produtos
-    ├── Relatorios.jsx       # Relatórios
+    ├── Financeiro.jsx       # Painel financeiro admin com abas
     ├── Oficina.jsx          # Visão da oficina (só troca status)
     └── Usuarios.jsx         # Gestão de usuários (admin only)
 ```
@@ -554,7 +557,7 @@ Itens concluídos em 2026-05-19:
 | SSE KPIs | Limite global `10` e limite por usuário `3` |
 | Paginação de Ordens | `GET /api/ordens?page=&limit=` com filtros `status`, `tipo`, `q`, `vencidas` e fallback legado sem paginação |
 | Paginação de Clientes | `GET /api/clientes?page=&limit=&q=` com meta de paginação e fallback legado `LIMIT 100/20` |
-| Status de backup | Backup local grava `backup-status.json`; `GET /api/backup/status` expõe saúde local para admin |
+| Status de backup | Backup local grava `backup-status.json`; `GET /api/backup/status` expõe saúde local e alertas operacionais para admin |
 | `resolveClienteData()` | Lookup por nome preservado, agora com `trim().slice(0, 200)` |
 | Rotas sensíveis | Leituras fiscais/financeiras/clientes/produtos restritas a `admin`/`caixa` |
 
@@ -568,7 +571,7 @@ Conferência do estado atual do código:
 - `middlewares/auth.js` revalida usuário/role/active a cada request; se o usuário ficar inativo ou mudar de role, a sessão antiga cai.
 - `routes/kpis.js` limita SSE a `10` conexões globais e `3` por usuário.
 - `GET /api/ordens` e `GET /api/clientes` têm paginação formal com `page`/`limit` e continuam compatíveis com chamadas legadas sem paginação.
-- `POST /api/backup` grava `backend/data/backups/backup-status.json`; `GET /api/backup/status` retorna o último snapshot ou calcula o estado local se o JSON ainda não existir.
+- `POST /api/backup` grava `backend/data/backups/backup-status.json`; `GET /api/backup/status` retorna o último snapshot ou calcula o estado local se o JSON ainda não existir. O snapshot também inclui `alertas` legíveis para backup local ausente/atrasado, retenção fora do esperado e offsite pendente.
 - `resolveClienteData()` preserva lookup por `clientenome`, agora normalizado com `trim().slice(0, 200)`.
 - `GET /api/caixa` já filtra lançamentos deletados e OS deletadas com `(l.ordemid IS NULL OR o.deletedat IS NULL)`; manter item apenas para teste/regressão.
 - A numeração da NF-e (`nfe_sequencias`) é incrementada antes da autorização; rejeições da SEFAZ hoje consomem número. Reversão só deve ser implementada após validar regra fiscal/operacional, pois em NF-e real número inutilizado/rejeitado pode exigir tratamento cuidadoso.
@@ -605,6 +608,7 @@ Performance:
 - [x] Limitar SSE de KPIs em `routes/kpis.js` a no máximo `3` conexões simultâneas por usuário, além do limite global.
 - [x] Adicionar `trim().slice(0, 200)` antes do lookup de clientes por nome em `resolveClienteData()`, preservando o comportamento intencional de buscar por nome quando `clienteid` não for informado.
 - [x] Gravar `backup-status.json` e expor `GET /api/backup/status` para observabilidade local dos backups.
+- [x] Expor alertas operacionais de backup na aba Backups de `/configuracoes`, incluindo offsite pendente.
 
 Regras de negócio e integrações:
 
@@ -640,10 +644,11 @@ Ordem recomendada para evolução do sistema:
 
 1. **DANFE real** — concluído e validado em produção após deploy. Usa o XML autorizado salvo em `ordens.nfe_xml` / `backend/data/nfe_xmls`, gera DANFE em HTML imprimível e troca o botão da tela de Notas Fiscais por uma ação real de imprimir/visualizar. Também há botão de DANFE dentro da OS que já tem NF-e emitida.
 2. **Propostas + funil básico** — concluído nesta sessão. A tela `/orcamento` continua como calculadora rápida de balcão e pode salvar proposta; a OS só nasce por `Gerar OS` em proposta aprovada ou por venda imediata.
-3. **PDF de proposta para WhatsApp/balcão** — prioridade atual: gerar HTML imprimível da proposta para salvar PDF, imprimir ou enviar manualmente pelo WhatsApp.
-4. **Aprovar proposta e gerar OS** — quando a proposta for aprovada internamente, o sistema reaproveita cliente, itens, total, observações e prazo para criar a OS com numeração `OS-XXXX`.
-5. **Contas a pagar/receber separado do caixa** — separar caixa diário, contas a receber e contas a pagar para dar visão de dinheiro realizado e previsto.
-6. **DRE simples** — criar visão de resultado por período, sem complexidade contábil excessiva.
+3. **PDF de proposta para WhatsApp/balcão** — concluído. Gera HTML imprimível autenticado da proposta para salvar PDF, imprimir ou enviar manualmente pelo WhatsApp.
+4. **Aprovar proposta e gerar OS** — concluído. Quando a proposta é aprovada internamente, o sistema reaproveita cliente, itens, total, observações e prazo para criar a OS com numeração `OS-XXXX`.
+5. **Envio manual por WhatsApp da proposta** — concluído nesta sessão. O botão na tela `/propostas` abre WhatsApp com mensagem pronta e mantém o PDF como anexo manual, sem link público.
+6. **Financeiro admin separado do caixa** — concluído nesta sessão. `/financeiro` é exclusivo do admin e separa resumo mensal, contas a pagar, contas a receber e DRE gerencial.
+7. **Aprimorar DRE e recorrências** — próxima evolução: recorrência de contas, centros de custo e DRE mais detalhado.
 
 ### Fase 1: Comercial — Propostas/Funil
 
@@ -674,6 +679,7 @@ Implementado:
 - `POST /api/propostas/:id/gerar-os`
 - `GET /api/propostas/:id/pdf`
 - tabelas `propostas` e `proposta_itens`
+- renderer `backend/utils/propostaPdf.js`
 - tela `/propostas` com kanban interno
 - menu `Propostas`
 - botão `Salvar proposta` em `/orcamento`
@@ -692,19 +698,42 @@ O documento mostra:
 - Dados da loja
 - Número da proposta
 - Cliente
+- Status
 - Itens, quantidades, valores unitários e subtotais
 - Total
 - Prazo previsto
 - Observações
 - Validade textual e aviso comercial
+- Botão `Imprimir / salvar PDF`
 
-O operador abre em nova aba e usa `Imprimir / salvar PDF` do navegador. Link público e aprovação online ficam fora do roadmap imediato e podem ser reconsiderados futuramente.
+O operador abre em nova aba e usa `Imprimir / salvar PDF` do navegador. Link público e aprovação online ficam fora do foco imediato e podem ser reconsiderados futuramente.
 
 ### Fase 3: Envio por WhatsApp
 
-Próximo passo possível: facilitar envio do PDF pelo WhatsApp, mantendo aprovação e geração de OS sob controle interno do operador.
+Próximo passo implementado nesta sessão: facilitar envio manual pelo WhatsApp mantendo aprovação e geração de OS sob controle interno do operador.
 
-### Fase 4: Financeiro melhor
+Fluxo:
+
+- botão `WhatsApp` no modal de proposta em `/propostas`
+- helper `frontend/src/utils/propostaWhatsapp.js` monta o link `wa.me` com telefone, número da proposta, cliente, total, prazo previsto e aviso de PDF em anexo
+- o PDF continua sendo gerado por `GET /api/propostas/:id/pdf` e anexado manualmente pelo operador
+- não há link público de proposta nem aprovação online nesta fase
+
+### Fase 4: Financeiro administrativo
+
+Implementado nesta sessão:
+
+- `/financeiro` substitui a antiga página `/relatorios` no frontend
+- `/financeiro` é exclusivo de `admin`
+- `/api/financeiro` é exclusivo de `admin`
+- `/api/relatorios/resumo` permanece como legado para o Dashboard usado por `admin`/`caixa`
+- tabela `contas_pagar`
+- aba `Resumo mensal`
+- aba `Contas a pagar`
+- aba `Contas a receber` derivada de OS com saldo aberto
+- aba `DRE gerencial`
+- ao marcar uma conta como paga, o backend cria automaticamente uma `Saída` em `lancamentos`
+- o caixa continua focado em movimento operacional do dia, vendas, recebimentos e devoluções/estornos simples
 
 Separar claramente:
 
@@ -721,7 +750,7 @@ Com isso, o sistema deve permitir acompanhar:
 - Despesas por categoria
 - Lucro aproximado
 
-### Fase 5: DRE simples
+### Fase 5: DRE e recorrências
 
 Criar uma visão inicial de DRE:
 
@@ -826,10 +855,19 @@ Isso é esperado com a CSP padrão do Helmet e não indica falha da aplicação.
 - `npm audit --omit=dev` no backend: **0 vulnerabilidades**.
 - `npm audit --omit=dev` no frontend: **0 vulnerabilidades**.
 
+### Continuação: Propostas, PDF e WhatsApp
+
+- Commit relevante do último chat: `0e067fb feat: add proposal pdf`.
+- `GET /api/propostas/:id/pdf` foi adicionado em `backend/routes/propostas.js`, autenticado para `admin` e `caixa`.
+- `backend/utils/propostaPdf.js` renderiza HTML imprimível com logo, número da proposta, cliente, status, prazo, itens, subtotais, total, observações, validade e botão `Imprimir / salvar PDF`.
+- A tela `/propostas` ganhou botão `PDF` no modal da proposta.
+- Docs/Superpowers foram atualizados para deixar link público e aprovação online apenas como possibilidade futura, fora do foco imediato.
+- Nesta continuação, a tela `/propostas` ganhou botão `WhatsApp` no modal, usando `frontend/src/utils/propostaWhatsapp.js` para abrir `wa.me` com mensagem pronta e orientar o envio manual do PDF em anexo.
+
 ### Próximo foco recomendado do roadmap
 
-1. Facilitar envio de proposta por WhatsApp usando o PDF/HTML imprimível.
-2. Avaliar backup offsite versionado e alertas operacionais de falha.
+1. Escolher e configurar o destino real do backup offsite versionado (OneDrive empresarial, S3 ou equivalente).
+2. Iniciar separação de Contas a Receber/Contas a Pagar do caixa diário.
 3. Manter contingência NF-e DPEC/offline como backlog fiscal posterior ao MVP.
 
 ---

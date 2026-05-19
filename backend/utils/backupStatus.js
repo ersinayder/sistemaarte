@@ -18,6 +18,35 @@ function backupStatusPath(backupsDir) {
   return path.join(backupsDir, BACKUP_STATUS_FILE);
 }
 
+const ALERTAS_BACKUP = {
+  "backup-local": {
+    nivel: "critico",
+    codigo: "backup-local",
+    mensagem: "Nenhum backup local encontrado.",
+  },
+  "backup-recente": {
+    nivel: "critico",
+    codigo: "backup-recente",
+    mensagem: "Ultimo backup local esta atrasado.",
+  },
+  "retencao-local": {
+    nivel: "atencao",
+    codigo: "retencao-local",
+    mensagem: "Ha mais backups locais que o limite de retencao esperado.",
+  },
+  "destino-offsite": {
+    nivel: "atencao",
+    codigo: "destino-offsite",
+    mensagem: "Backup offsite ainda nao configurado.",
+  },
+};
+
+function buildAlertas(codigos = []) {
+  return codigos
+    .map((codigo) => ALERTAS_BACKUP[codigo])
+    .filter(Boolean);
+}
+
 function buildBackupStatus(backupsDir, { now = new Date() } = {}) {
   fs.mkdirSync(backupsDir, { recursive: true });
 
@@ -36,11 +65,14 @@ function buildBackupStatus(backupsDir, { now = new Date() } = {}) {
   if (horasDesdeUltimo !== null && horasDesdeUltimo > 30) missing.push("backup-recente");
   if (arquivos.length > 7) missing.push("retencao-local");
 
+  const offsiteMissing = ["destino-offsite"];
+
   return {
     status: {
       status: missing.length ? "Pendente" : "OK",
       missing,
     },
+    alertas: buildAlertas([...missing, ...offsiteMissing]),
     local: {
       diretorio: backupsDir,
       total: arquivos.length,
@@ -56,7 +88,7 @@ function buildBackupStatus(backupsDir, { now = new Date() } = {}) {
     },
     offsite: {
       status: "Pendente",
-      missing: ["destino-offsite"],
+      missing: offsiteMissing,
     },
   };
 }
@@ -81,6 +113,7 @@ function readBackupStatus(backupsDir, options = {}) {
 
 module.exports = {
   BACKUP_STATUS_FILE,
+  buildAlertas,
   backupStatusPath,
   buildBackupStatus,
   readBackupStatus,

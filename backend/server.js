@@ -51,6 +51,7 @@ app.use("/api/ordens",      require("./routes/pdf"));
 app.use("/api/propostas",   require("./routes/propostas"));
 app.use("/api/caixa",       require("./routes/caixa"));
 app.use("/api/relatorios",  require("./routes/relatorios"));
+app.use("/api/financeiro",  require("./routes/financeiro"));
 app.use("/api/consulta",    require("./routes/consulta"));
 app.use("/api/backup",      require("./routes/backup"));
 app.use("/api/produtos",    require("./routes/produtos"));

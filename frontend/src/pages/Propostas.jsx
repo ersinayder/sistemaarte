@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import api from '../services/api';
+import { buildPropostaWhatsappUrl } from '../utils/propostaWhatsapp';
 
 const STATUS = [
   { id: 'Novo lead', label: 'Novo lead', color: '#38BDF8' },
@@ -32,7 +33,7 @@ function StatusBadge({ status }) {
   );
 }
 
-function PropostaModal({ proposta, onClose, onMove, onGerarOS, onOpenPdf }) {
+function PropostaModal({ proposta, onClose, onMove, onGerarOS, onOpenPdf, onOpenWhatsapp }) {
   if (!proposta) return null;
   const podeGerar = proposta.status === 'Aprovado' && !proposta.ordemid;
 
@@ -92,7 +93,10 @@ function PropostaModal({ proposta, onClose, onMove, onGerarOS, onOpenPdf }) {
               </button>
             ))}
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <button className="btn btn-secondary" onClick={() => onOpenWhatsapp(proposta)}>
+              WhatsApp
+            </button>
             <button className="btn btn-secondary" onClick={() => onOpenPdf(proposta)}>
               PDF
             </button>
@@ -170,6 +174,15 @@ export default function Propostas() {
     window.open(`/api/propostas/${proposta.id}/pdf`, '_blank', 'noopener,noreferrer');
   };
 
+  const openWhatsapp = (proposta) => {
+    const url = buildPropostaWhatsappUrl(proposta);
+    if (!url) {
+      toast.error('Cliente sem telefone cadastrado.');
+      return;
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       <div style={{
@@ -230,7 +243,7 @@ export default function Propostas() {
         </div>
       )}
 
-      <PropostaModal proposta={detail} onClose={() => setDetail(null)} onMove={move} onGerarOS={gerarOS} onOpenPdf={openPdf} />
+      <PropostaModal proposta={detail} onClose={() => setDetail(null)} onMove={move} onGerarOS={gerarOS} onOpenPdf={openPdf} onOpenWhatsapp={openWhatsapp} />
     </div>
   );
 }

@@ -36,6 +36,16 @@ describe('backupStatus', () => {
 
     expect(status.status.status).toBe('Pendente');
     expect(status.status.missing).toContain('backup-local');
+    expect(status.alertas).toContainEqual({
+      nivel: 'critico',
+      codigo: 'backup-local',
+      mensagem: 'Nenhum backup local encontrado.',
+    });
+    expect(status.alertas).toContainEqual({
+      nivel: 'atencao',
+      codigo: 'destino-offsite',
+      mensagem: 'Backup offsite ainda nao configurado.',
+    });
     expect(status.local.total).toBe(0);
     expect(status.local.ultimo).toBeNull();
   });
@@ -78,6 +88,11 @@ describe('backupStatus', () => {
     expect(status.local.total).toBe(8);
     expect(status.status.status).toBe('Pendente');
     expect(status.status.missing).toContain('retencao-local');
+    expect(status.alertas).toContainEqual({
+      nivel: 'atencao',
+      codigo: 'retencao-local',
+      mensagem: 'Ha mais backups locais que o limite de retencao esperado.',
+    });
   });
 
   it('writes and reads backup-status.json beside local backup files', () => {
