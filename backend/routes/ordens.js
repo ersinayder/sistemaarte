@@ -47,6 +47,10 @@ function getEntradaOS(ordemId) {
   );
 }
 
+function normalizarNomeClienteBusca(clientenome) {
+  return String(clientenome ?? "").trim().slice(0, 200);
+}
+
 function resolveClienteData(clienteid, clientenome, telefoneFornecido, cpfFornecido) {
   let telefone = telefoneFornecido || null;
   let cpf = cpfFornecido || null;
@@ -57,8 +61,9 @@ function resolveClienteData(clienteid, clientenome, telefoneFornecido, cpfFornec
       if (!cpf && cli.cpf) cpf = cli.cpf;
     }
   }
-  if (!telefone && clientenome) {
-    const cli = getOne("SELECT phone, cpf FROM clientes WHERE name=? LIMIT 1", [clientenome]);
+  const nomeBusca = normalizarNomeClienteBusca(clientenome);
+  if ((!telefone || !cpf) && nomeBusca) {
+    const cli = getOne("SELECT phone, cpf FROM clientes WHERE name=? LIMIT 1", [nomeBusca]);
     if (cli) {
       if (!telefone && cli.phone) telefone = cli.phone;
       if (!cpf && cli.cpf) cpf = cli.cpf;
@@ -126,7 +131,7 @@ router.get("/", auth(), (req, res, next) => {
 // GET /api/ordens/:id
 router.get("/:id", auth(), (req, res, next) => {
   try {
-    const o = getOne(SEL_ORDEM + " WHERE o.id=?", [req.params.id]);
+    const o = getOne(SEL_ORDEM + " WHERE o.id=? AND o.deletedat IS NULL", [req.params.id]);
     if (!o) return res.status(404).json({ error: "Nao encontrado" });
     const logs = getAll(
       "SELECT sl.*, u.name AS usuarionome FROM statuslog sl LEFT JOIN users u ON u.id=sl.usuarioid WHERE sl.ordemid=? ORDER BY sl.createdat ASC",
@@ -172,8 +177,9 @@ router.post("/", auth(["admin","caixa"]), (req, res, next) => {
   const createdatOS = `${dataLanc} 00:00:00`;
 
   let cidResolvido = clienteid || null;
-  if (!cidResolvido && clientenome) {
-    const cli = getOne("SELECT id FROM clientes WHERE name=? LIMIT 1", [clientenome]);
+  const nomeBusca = normalizarNomeClienteBusca(clientenome);
+  if (!cidResolvido && nomeBusca) {
+    const cli = getOne("SELECT id FROM clientes WHERE name=? LIMIT 1", [nomeBusca]);
     if (cli) cidResolvido = cli.id;
   }
 
@@ -276,8 +282,9 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
     }
 
     let novoCid = clienteid !== undefined ? (clienteid || null) : old.clienteid;
-    if (!novoCid && novoCliente) {
-      const cli = getOne("SELECT id FROM clientes WHERE name=? LIMIT 1", [novoCliente]);
+    const nomeBusca = normalizarNomeClienteBusca(novoCliente);
+    if (!novoCid && nomeBusca) {
+      const cli = getOne("SELECT id FROM clientes WHERE name=? LIMIT 1", [nomeBusca]);
       if (cli) novoCid = cli.id;
     }
 

@@ -1,7 +1,8 @@
-const router   = require("express").Router();
-const { getAll, getOne } = require("../database");
+const router = require("express").Router();
+const { getOne } = require("../database");
 const { auth } = require("../middlewares/auth");
 const { hoje } = require("../utils/dates");
+const { criarSseConnectionTracker } = require("../domain/sseConnectionRules");
 
 function calcKpis() {
   const hj = hoje();
@@ -56,12 +57,11 @@ function calcKpis() {
     vencidas,
     entreguesHoje,
     abertasHoje,
-    ts: Date.now()
+    ts: Date.now(),
   };
 }
 
-// REST snapshot unico
-router.get("/", auth(), (req, res, next) => {
+router.get("/", auth(["admin","caixa"]), (_req, res, next) => {
   try {
     res.json(calcKpis());
   } catch (e) {
@@ -69,28 +69,29 @@ router.get("/", auth(), (req, res, next) => {
   }
 });
 
-// SSE stream continuo a cada 15s com limite de conexoes
-const SSE_INTERVAL_MS     = 15000;
-const SSE_HEARTBEAT_MS    = 30000;
+const SSE_INTERVAL_MS = 15000;
+const SSE_HEARTBEAT_MS = 30000;
 const SSE_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
-let activeSSE = 0;
 const MAX_SSE = 10;
+const MAX_SSE_PER_USER = 3;
+const sseTracker = criarSseConnectionTracker({
+  maxGlobal: MAX_SSE,
+  maxPerUser: MAX_SSE_PER_USER,
+});
 
-router.get("/stream", auth(), (req, res) => {
-  if (activeSSE >= MAX_SSE) {
-    return res.status(429).json({ error: `Limite de streams atingido (máx ${MAX_SSE})` });
-  }
+router.get("/stream", auth(["admin","caixa"]), (req, res) => {
+  const slot = sseTracker.tryAcquire(req.user?.id);
+  if (!slot.ok) return res.status(429).json({ error: slot.message });
 
-  activeSSE++;
-  res.setHeader("Content-Type",  "text/event-stream");
+  res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("Connection",    "keep-alive");
+  res.setHeader("Connection", "keep-alive");
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
 
-  let closed       = false;
-  let idleTimer    = null;
-  let dataTimer    = null;
+  let closed = false;
+  let idleTimer = null;
+  let dataTimer = null;
   let heartbeatTimer = null;
 
   const cleanup = () => {
@@ -99,12 +100,15 @@ router.get("/stream", auth(), (req, res) => {
     clearInterval(dataTimer);
     clearInterval(heartbeatTimer);
     clearTimeout(idleTimer);
-    activeSSE--;
+    slot.release();
   };
 
   const resetIdle = () => {
     clearTimeout(idleTimer);
-    idleTimer = setTimeout(() => { res.end(); cleanup(); }, SSE_IDLE_TIMEOUT_MS);
+    idleTimer = setTimeout(() => {
+      res.end();
+      cleanup();
+    }, SSE_IDLE_TIMEOUT_MS);
   };
 
   const send = () => {
@@ -121,7 +125,7 @@ router.get("/stream", auth(), (req, res) => {
   req.on("close", cleanup);
 
   send();
-  dataTimer      = setInterval(send, SSE_INTERVAL_MS);
+  dataTimer = setInterval(send, SSE_INTERVAL_MS);
   heartbeatTimer = setInterval(() => {
     if (!closed) res.write(": ping\n\n");
   }, SSE_HEARTBEAT_MS);

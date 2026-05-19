@@ -116,6 +116,49 @@ CREATE TABLE IF NOT EXISTS sequencias (
   nome   TEXT PRIMARY KEY,
   ultimo INTEGER DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS empresa_config (
+  id                    INTEGER PRIMARY KEY CHECK (id = 1),
+  razaosocial           TEXT,
+  nomefantasia          TEXT,
+  cnpj                  TEXT,
+  inscricaoestadual     TEXT,
+  crt                   TEXT DEFAULT '1',
+  telefone              TEXT,
+  email                 TEXT,
+  logradouro            TEXT,
+  numero                TEXT,
+  bairro                TEXT,
+  municipio             TEXT,
+  codigomunicipio       TEXT,
+  uf                    TEXT,
+  cep                   TEXT,
+  updatedat             TEXT DEFAULT (datetime('now','localtime'))
+);
+INSERT OR IGNORE INTO empresa_config (id) VALUES (1);
+CREATE TABLE IF NOT EXISTS fiscal_config (
+  id                    INTEGER PRIMARY KEY CHECK (id = 1),
+  ambiente              INTEGER DEFAULT 2,
+  serie                 TEXT DEFAULT '1',
+  configurado           INTEGER DEFAULT 0,
+  certificado_path      TEXT,
+  certificado_nome      TEXT,
+  certificado_senha     TEXT,
+  certificado_updatedat TEXT,
+  updatedat             TEXT DEFAULT (datetime('now','localtime'))
+);
+INSERT OR IGNORE INTO fiscal_config (id) VALUES (1);
+CREATE TABLE IF NOT EXISTS whatsapp_config (
+  id                    INTEGER PRIMARY KEY CHECK (id = 1),
+  enabled               INTEGER DEFAULT 0,
+  provider              TEXT DEFAULT 'meta',
+  phone_id              TEXT,
+  token                 TEXT,
+  template_pronto       TEXT DEFAULT 'os_pronta',
+  template_confirmacao  TEXT DEFAULT 'confirmacao_pedido',
+  configurado           INTEGER DEFAULT 0,
+  updatedat             TEXT DEFAULT (datetime('now','localtime'))
+);
+INSERT OR IGNORE INTO whatsapp_config (id) VALUES (1);
 CREATE INDEX IF NOT EXISTS idx_ordens_status       ON ordens(status);
 CREATE INDEX IF NOT EXISTS idx_ordens_prazo        ON ordens(prazoentrega);
 CREATE INDEX IF NOT EXISTS idx_ordens_clienteid    ON ordens(clienteid);
@@ -125,6 +168,17 @@ CREATE INDEX IF NOT EXISTS idx_statuslog_ordemid   ON statuslog(ordemid);
 CREATE INDEX IF NOT EXISTS idx_produtos_nome       ON produtos(nome COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS idx_ordem_itens_ordemid ON ordem_itens(ordemid);
 CREATE INDEX IF NOT EXISTS idx_lancamentos_pago_del ON lancamentos(ordemid, pago, deletedat);
+CREATE TABLE IF NOT EXISTS nfe_autxml (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  nome      TEXT NOT NULL,
+  documento TEXT NOT NULL,
+  tipo      TEXT DEFAULT 'contador',
+  ativo     INTEGER DEFAULT 1,
+  createdat TEXT DEFAULT (datetime('now','localtime')),
+  updatedat TEXT DEFAULT (datetime('now','localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_nfe_autxml_documento ON nfe_autxml(documento);
+CREATE INDEX IF NOT EXISTS idx_nfe_autxml_ativo ON nfe_autxml(ativo);
 CREATE TABLE IF NOT EXISTS nfe_eventos (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   ordemid     INTEGER,
@@ -214,6 +268,21 @@ function initDB() {
     )`,
     "CREATE INDEX IF NOT EXISTS idx_nfe_eventos_chave_tipo ON nfe_eventos(chave, tipo)",
     "CREATE INDEX IF NOT EXISTS idx_nfe_eventos_ordemid ON nfe_eventos(ordemid)",
+    // v8 - marca quando fiscal_config foi salvo explicitamente pela tela/API
+    "ALTER TABLE fiscal_config ADD COLUMN configurado INTEGER DEFAULT 0",
+    // v9 - configuracao operacional do WhatsApp pela tela
+    `CREATE TABLE IF NOT EXISTS whatsapp_config (
+      id                    INTEGER PRIMARY KEY CHECK (id = 1),
+      enabled               INTEGER DEFAULT 0,
+      provider              TEXT DEFAULT 'meta',
+      phone_id              TEXT,
+      token                 TEXT,
+      template_pronto       TEXT DEFAULT 'os_pronta',
+      template_confirmacao  TEXT DEFAULT 'confirmacao_pedido',
+      configurado           INTEGER DEFAULT 0,
+      updatedat             TEXT DEFAULT (datetime('now','localtime'))
+    )`,
+    "INSERT OR IGNORE INTO whatsapp_config (id) VALUES (1)",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {}
@@ -226,6 +295,68 @@ function initDB() {
       ultimo_numero INTEGER DEFAULT 0
     );
     INSERT OR IGNORE INTO nfe_sequencias (serie, ultimo_numero) VALUES ('1', 0);
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS empresa_config (
+      id                    INTEGER PRIMARY KEY CHECK (id = 1),
+      razaosocial           TEXT,
+      nomefantasia          TEXT,
+      cnpj                  TEXT,
+      inscricaoestadual     TEXT,
+      crt                   TEXT DEFAULT '1',
+      telefone              TEXT,
+      email                 TEXT,
+      logradouro            TEXT,
+      numero                TEXT,
+      bairro                TEXT,
+      municipio             TEXT,
+      codigomunicipio       TEXT,
+      uf                    TEXT,
+      cep                   TEXT,
+      updatedat             TEXT DEFAULT (datetime('now','localtime'))
+    );
+    INSERT OR IGNORE INTO empresa_config (id) VALUES (1);
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS fiscal_config (
+      id                    INTEGER PRIMARY KEY CHECK (id = 1),
+      ambiente              INTEGER DEFAULT 2,
+      serie                 TEXT DEFAULT '1',
+      configurado           INTEGER DEFAULT 0,
+      certificado_path      TEXT,
+      certificado_nome      TEXT,
+      certificado_senha     TEXT,
+      certificado_updatedat TEXT,
+      updatedat             TEXT DEFAULT (datetime('now','localtime'))
+    );
+    INSERT OR IGNORE INTO fiscal_config (id) VALUES (1);
+
+    CREATE TABLE IF NOT EXISTS nfe_autxml (
+      id        INTEGER PRIMARY KEY AUTOINCREMENT,
+      nome      TEXT NOT NULL,
+      documento TEXT NOT NULL,
+      tipo      TEXT DEFAULT 'contador',
+      ativo     INTEGER DEFAULT 1,
+      createdat TEXT DEFAULT (datetime('now','localtime')),
+      updatedat TEXT DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_nfe_autxml_documento ON nfe_autxml(documento);
+    CREATE INDEX IF NOT EXISTS idx_nfe_autxml_ativo ON nfe_autxml(ativo);
+
+    CREATE TABLE IF NOT EXISTS whatsapp_config (
+      id                    INTEGER PRIMARY KEY CHECK (id = 1),
+      enabled               INTEGER DEFAULT 0,
+      provider              TEXT DEFAULT 'meta',
+      phone_id              TEXT,
+      token                 TEXT,
+      template_pronto       TEXT DEFAULT 'os_pronta',
+      template_confirmacao  TEXT DEFAULT 'confirmacao_pedido',
+      configurado           INTEGER DEFAULT 0,
+      updatedat             TEXT DEFAULT (datetime('now','localtime'))
+    );
+    INSERT OR IGNORE INTO whatsapp_config (id) VALUES (1);
   `);
 
   // Normalizar status legados

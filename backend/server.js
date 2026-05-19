@@ -3,6 +3,7 @@ const express      = require("express");
 const cors         = require("cors");
 const cookieParser = require("cookie-parser");
 const rateLimit    = require("express-rate-limit");
+const helmet       = require("helmet");
 const path         = require("path");
 const fs           = require("fs");
 
@@ -26,13 +27,14 @@ const PORT = process.env.PORT || 3001;
 
 app.set("trust proxy", 1);
 
+app.use(helmet());
 app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json());
 app.use(cookieParser());
 
 const globalLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 200,
+  max: 60,
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => req.path.startsWith('/kpis/stream'),
@@ -51,6 +53,7 @@ app.use("/api/relatorios",  require("./routes/relatorios"));
 app.use("/api/consulta",    require("./routes/consulta"));
 app.use("/api/backup",      require("./routes/backup"));
 app.use("/api/produtos",    require("./routes/produtos"));
+app.use("/api/configuracoes", require("./routes/configuracoes"));
 app.use("/api/kpis",        require("./routes/kpis"));
 // ── NF-e ──────────────────────────────────────────────────────────────────────
 app.use("/api/nfe",         require("./routes/nfe"));

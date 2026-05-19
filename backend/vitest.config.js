@@ -6,7 +6,6 @@ export default defineConfig({
     // setupFiles removido: cada suite de integracao gerencia seu proprio banco
     // Os testes unitarios existentes nao dependem do setup global
     pool: 'forks',
-    poolOptions: { forks: { isolate: true } },
     testTimeout: 15000,
     reporters: process.env.CI ? ['verbose'] : ['default'],
   }

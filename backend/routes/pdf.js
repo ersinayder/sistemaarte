@@ -59,7 +59,7 @@ function statusColor(s) {
 }
 
 // GET /api/ordens/:id/pdf
-router.get("/:id/pdf", auth(), (req, res) => {
+router.get("/:id/pdf", auth(["admin","caixa"]), (req, res) => {
   try {
     const os = getOne(SEL_ORDEM + " WHERE o.id=? AND o.deletedat IS NULL", [req.params.id]);
     if (!os) return res.status(404).json({ error: "OS nao encontrada" });
