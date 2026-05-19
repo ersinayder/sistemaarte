@@ -640,8 +640,8 @@ Ordem recomendada para evolução do sistema:
 
 1. **DANFE real** — concluído e validado em produção após deploy. Usa o XML autorizado salvo em `ordens.nfe_xml` / `backend/data/nfe_xmls`, gera DANFE em HTML imprimível e troca o botão da tela de Notas Fiscais por uma ação real de imprimir/visualizar. Também há botão de DANFE dentro da OS que já tem NF-e emitida.
 2. **Propostas + funil básico** — concluído nesta sessão. A tela `/orcamento` continua como calculadora rápida de balcão e pode salvar proposta; a OS só nasce por `Gerar OS` em proposta aprovada ou por venda imediata.
-3. **Link público de proposta + WhatsApp** — cada proposta deve ter link público com token, por exemplo `https://arteemolduras.com.br/proposta/abc123`, enviado ao cliente pelo WhatsApp.
-4. **Aprovar proposta e gerar OS** — quando a proposta for aprovada, o sistema deve reaproveitar cliente, itens, total, observações e prazo para criar a OS com numeração `OS-XXXX`.
+3. **PDF de proposta para WhatsApp/balcão** — prioridade atual: gerar HTML imprimível da proposta para salvar PDF, imprimir ou enviar manualmente pelo WhatsApp.
+4. **Aprovar proposta e gerar OS** — quando a proposta for aprovada internamente, o sistema reaproveita cliente, itens, total, observações e prazo para criar a OS com numeração `OS-XXXX`.
 5. **Contas a pagar/receber separado do caixa** — separar caixa diário, contas a receber e contas a pagar para dar visão de dinheiro realizado e previsto.
 6. **DRE simples** — criar visão de resultado por período, sem complexidade contábil excessiva.
 
@@ -672,46 +672,37 @@ Implementado:
 
 - `GET/POST /api/propostas`, `GET /api/propostas/:id`, `PATCH /api/propostas/:id/status`
 - `POST /api/propostas/:id/gerar-os`
+- `GET /api/propostas/:id/pdf`
 - tabelas `propostas` e `proposta_itens`
 - tela `/propostas` com kanban interno
 - menu `Propostas`
 - botão `Salvar proposta` em `/orcamento`
+- botão `PDF` no detalhe da proposta
 
-### Fase 2: Link público de proposta
+### Fase 2: PDF de proposta
 
-Cada proposta deve ter um link público com token, por exemplo:
+Cada proposta pode ser aberta como HTML imprimível autenticado:
 
 ```txt
-https://arteemolduras.com.br/proposta/abc123
+GET /api/propostas/:id/pdf
 ```
 
-Nesse link o cliente deve ver:
+O documento mostra:
 
 - Dados da loja
-- Descrição dos produtos/serviços
-- Valor total
-- Prazo estimado
+- Número da proposta
+- Cliente
+- Itens, quantidades, valores unitários e subtotais
+- Total
+- Prazo previsto
 - Observações
-- Botão de aprovar
-- Botão de solicitar ajuste/negociar
+- Validade textual e aviso comercial
 
-No sistema deve ficar registrado:
+O operador abre em nova aba e usa `Imprimir / salvar PDF` do navegador. Link público e aprovação online ficam fora do roadmap imediato e podem ser reconsiderados futuramente.
 
-- Enviado em
-- Visualizado em
-- Aprovado em
-- Perdido/cancelado em
-- Origem da proposta
+### Fase 3: Envio por WhatsApp
 
-### Fase 3: Transformar proposta em OS
-
-Quando a proposta for aprovada, disponibilizar a ação:
-
-```txt
-Gerar Ordem de Serviço
-```
-
-Essa ação deve reaproveitar cliente, itens, total, observações e prazo. A numeração `OS-XXXX` só deve ser gerada nesse momento.
+Próximo passo possível: facilitar envio do PDF pelo WhatsApp, mantendo aprovação e geração de OS sob controle interno do operador.
 
 ### Fase 4: Financeiro melhor
 
@@ -830,17 +821,16 @@ Isso é esperado com a CSP padrão do Helmet e não indica falha da aplicação.
 
 ### Validação local antes do push
 
-- `npm.cmd test` no backend: **19 arquivos, 156 testes passando**.
+- `npm.cmd test` no backend: **20 arquivos, 159 testes passando**.
 - `npm.cmd run build` no frontend: OK com `vite v8.0.13`.
 - `npm audit --omit=dev` no backend: **0 vulnerabilidades**.
 - `npm audit --omit=dev` no frontend: **0 vulnerabilidades**.
 
 ### Próximo foco recomendado do roadmap
 
-1. Implementar link público de proposta com token e aprovação pelo cliente.
-2. Integrar envio de proposta por WhatsApp.
-3. Avaliar backup offsite versionado e alertas operacionais de falha.
-4. Manter contingência NF-e DPEC/offline como backlog fiscal posterior ao MVP.
+1. Facilitar envio de proposta por WhatsApp usando o PDF/HTML imprimível.
+2. Avaliar backup offsite versionado e alertas operacionais de falha.
+3. Manter contingência NF-e DPEC/offline como backlog fiscal posterior ao MVP.
 
 ---
 

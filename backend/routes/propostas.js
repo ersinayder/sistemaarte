@@ -6,6 +6,7 @@ const {
   validarStatusProposta,
   podeGerarOS,
 } = require("../domain/propostasRules");
+const { renderPropostaHtml } = require("../utils/propostaPdf");
 
 const SEL_PROPOSTA = `
   SELECT p.*,
@@ -85,6 +86,17 @@ router.get("/:id", auth(["admin", "caixa"]), (req, res, next) => {
     const proposta = getOne(`${SEL_PROPOSTA} WHERE p.id=?`, [req.params.id]);
     if (!proposta) return res.status(404).json({ error: "Proposta nao encontrada" });
     res.json({ ...proposta, itens: itensProposta(req.params.id) });
+  } catch (e) { next(e); }
+});
+
+router.get("/:id/pdf", auth(["admin", "caixa"]), (req, res, next) => {
+  try {
+    const proposta = getOne(`${SEL_PROPOSTA} WHERE p.id=?`, [req.params.id]);
+    if (!proposta) return res.status(404).json({ error: "Proposta nao encontrada" });
+    const html = renderPropostaHtml({ proposta, itens: itensProposta(req.params.id) });
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Content-Disposition", `inline; filename="proposta-${proposta.numero || proposta.id}.html"`);
+    res.send(html);
   } catch (e) { next(e); }
 });
 

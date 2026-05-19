@@ -210,4 +210,13 @@ describe('propostas route contracts', () => {
     expect(source).toMatch(/INSERT INTO ordens/);
     expect(source).toMatch(/UPDATE propostas SET ordemid=\?/);
   });
+
+  it('exposes printable proposal PDF only to admin and caixa', async () => {
+    const propostasRouter = await loadRouter('../routes/propostas.js');
+    const source = fs.readFileSync(new URL('../routes/propostas.js', import.meta.url), 'utf8');
+
+    expect(routeRoles(propostasRouter, 'get', '/:id/pdf')).toEqual(['admin', 'caixa']);
+    expect(source).toMatch(/renderPropostaHtml/);
+    expect(source).toMatch(/Content-Type["'],\s*["']text\/html; charset=utf-8/);
+  });
 });

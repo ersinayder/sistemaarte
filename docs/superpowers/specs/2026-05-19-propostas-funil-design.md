@@ -59,7 +59,7 @@ Tela `/orcamento`:
 
 ## Fora do Escopo Desta Fase
 
-- Link publico `/proposta/:token`.
+- Link publico `/proposta/:token` nao e prioridade atual; pode ser reconsiderado no futuro.
 - Aprovacao online pelo cliente.
 - Envio automatico pelo WhatsApp.
 - Versoes de proposta e anexos/fotos.

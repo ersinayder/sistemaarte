@@ -32,7 +32,7 @@ function StatusBadge({ status }) {
   );
 }
 
-function PropostaModal({ proposta, onClose, onMove, onGerarOS }) {
+function PropostaModal({ proposta, onClose, onMove, onGerarOS, onOpenPdf }) {
   if (!proposta) return null;
   const podeGerar = proposta.status === 'Aprovado' && !proposta.ordemid;
 
@@ -92,9 +92,14 @@ function PropostaModal({ proposta, onClose, onMove, onGerarOS }) {
               </button>
             ))}
           </div>
-          <button className="btn btn-primary" disabled={!podeGerar} onClick={() => onGerarOS(proposta)}>
-            Gerar OS
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-secondary" onClick={() => onOpenPdf(proposta)}>
+              PDF
+            </button>
+            <button className="btn btn-primary" disabled={!podeGerar} onClick={() => onGerarOS(proposta)}>
+              Gerar OS
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -161,6 +166,10 @@ export default function Propostas() {
     }
   };
 
+  const openPdf = (proposta) => {
+    window.open(`/api/propostas/${proposta.id}/pdf`, '_blank', 'noopener,noreferrer');
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       <div style={{
@@ -221,7 +230,7 @@ export default function Propostas() {
         </div>
       )}
 
-      <PropostaModal proposta={detail} onClose={() => setDetail(null)} onMove={move} onGerarOS={gerarOS} />
+      <PropostaModal proposta={detail} onClose={() => setDetail(null)} onMove={move} onGerarOS={gerarOS} onOpenPdf={openPdf} />
     </div>
   );
 }
