@@ -9,6 +9,7 @@ const {
 } = require("../domain/ordensRules");
 const { sendWhatsApp, sendWhatsAppConfirmacao } = require("../utils/whatsapp");
 const { getResumoFinanceiroOS } = require('../domain/financeiroRules');
+const { normalizarPaginacao, montarMetaPaginacao } = require("../domain/paginationRules");
 
 const SEL_ORDEM = `
   SELECT o.*,
@@ -107,24 +108,36 @@ function saveItens(ordemId, produtos) {
 // GET /api/ordens
 router.get("/", auth(), (req, res, next) => {
   try {
-    const { status, q, vencidas, lixeira } = req.query;
+    const { status, q, vencidas, lixeira, tipo } = req.query;
+    const querPaginacao = req.query.page !== undefined || req.query.limit !== undefined;
+    const { page, limit, offset } = normalizarPaginacao(req.query, { defaultLimit: 14, maxLimit: 100 });
     const isLixeira = lixeira === "1" && req.user.role === "admin";
-    let sql = SEL_ORDEM + (isLixeira ? " WHERE o.deletedat IS NOT NULL" : " WHERE o.deletedat IS NULL");
+    const where = [isLixeira ? "o.deletedat IS NOT NULL" : "o.deletedat IS NULL"];
     const p = [];
     if (!isLixeira) {
-      if (status && status !== "todos") { sql += " AND o.status=?"; p.push(status); }
+      if (status && status !== "todos") { where.push("o.status=?"); p.push(status); }
+      if (tipo && tipo !== "todos") { where.push("o.servico=?"); p.push(tipo); }
       if (vencidas == "1") {
-        sql += " AND o.prazoentrega < ? AND o.status NOT IN ('Pronto','Entregue','Cancelado')";
+        where.push("o.prazoentrega < ? AND o.status NOT IN ('Pronto','Entregue','Cancelado')");
         p.push(hoje());
       }
     }
     if (q) {
-      sql += " AND (o.numero LIKE ? OR o.clientenome LIKE ? OR o.servico LIKE ?)";
+      where.push(`(o.numero LIKE ? OR o.clientenome LIKE ? OR o.servico LIKE ? OR o.observacoes LIKE ? OR o.descricao LIKE ?
+        OR EXISTS (SELECT 1 FROM ordem_itens oi WHERE oi.ordemid=o.id AND oi.nome LIKE ?))`);
       const s = `%${q}%`;
-      p.push(s, s, s);
+      p.push(s, s, s, s, s, s);
     }
-    sql += " ORDER BY o.id DESC";
-    res.json(getAll(sql, p));
+    const whereSql = ` WHERE ${where.join(" AND ")}`;
+    if (!querPaginacao) {
+      return res.json(getAll(`${SEL_ORDEM}${whereSql} ORDER BY o.id DESC`, p));
+    }
+    const total = getOne(`SELECT COUNT(*) AS total FROM ordens o${whereSql}`, p)?.total ?? 0;
+    const rows = getAll(`${SEL_ORDEM}${whereSql} ORDER BY o.id DESC LIMIT ? OFFSET ?`, [...p, limit, offset]);
+    res.json({
+      data: rows,
+      meta: montarMetaPaginacao({ page, limit, total }),
+    });
   } catch(e) { next(e); }
 });
 

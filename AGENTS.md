@@ -38,9 +38,9 @@ Cloudflare → Windows Server (PM2)
 | Framework backend | Express 4 |
 | Banco | SQLite via `better-sqlite3` (síncrono) |
 | WAL mode | Ativado em `initDB()` — `db.pragma('journal_mode = WAL')` |
-| Frontend | React 18 + Vite + TailwindCSS |
+| Frontend | React 18 + Vite 8 + TailwindCSS |
 | Auth | JWT (`jsonwebtoken`) + cookie HttpOnly |
-| Testes | Vitest 1.6 |
+| Testes | Vitest 4.1 |
 | Deploy | PM2 (fork, 1 instância) + GitHub Actions self-hosted |
 | Notificações | Evolution API (WhatsApp) — toggle `WHATSAPP_ENABLED` |
 
@@ -120,6 +120,8 @@ backend/
 ├── domain/
 │   ├── ordensRules.js       # STATUSES_VALIDOS, TRANSICOES_VALIDAS, validarStatus, normalizarStatus
 │   ├── financeiroRules.js   # getResumoFinanceiroOS — UNICA fonte de verdade para saldo de OS
+│   ├── financeiroAdminRules.js # Regras do Financeiro admin e contas a pagar
+│   ├── propostasRules.js    # Status do funil comercial e regra para gerar OS
 │   └── nfeRules.js          # montarNFe() — retorna { infNFe: { ide, emit, dest, det[], total, transp, pag } }
 ├── middlewares/
 │   ├── auth.js              # Middleware JWT — lê cookie > header Authorization
@@ -127,17 +129,20 @@ backend/
 ├── routes/
 │   ├── auth.js              # POST /login, POST /logout, GET /me
 │   ├── ordens.js            # CRUD OS + status + WhatsApp
+│   ├── propostas.js         # Funil comercial; gera OS somente após aprovação
 │   ├── caixa.js             # Lançamentos financeiros
 │   ├── kpis.js              # GET /kpis + SSE /kpis/stream (máx 10 conexões)
 │   ├── pdf.js               # Geração de PDF das OS
 │   ├── clientes.js          # CRUD clientes
 │   ├── produtos.js          # CRUD produtos/estoque
-│   ├── relatorios.js        # Relatórios financeiros
+│   ├── relatorios.js        # API legado de resumo usada pelo Dashboard
+│   ├── financeiro.js        # Financeiro admin: resumo, contas a pagar, receber e DRE
 │   ├── nfe.js               # Emissão de NF-e via nfewizard-io
 │   └── backup.js            # Trigger manual de backup
 ├── utils/
 │   ├── dates.js             # hoje() — retorna YYYY-MM-DD no fuso America/Sao_Paulo
 │   ├── numbers.js           # toNumber(), validarNaoNegativo()
+│   ├── propostaPdf.js       # Renderer HTML imprimível para propostas comerciais
 │   └── whatsapp.js          # sendWhatsApp(), sendWhatsAppConfirmacao()
 ├── data/
 │   ├── oficina.db           # banco principal (não commitado)
@@ -152,13 +157,14 @@ frontend/src/
 ├── context/                 # AuthContext — handshake via GET /api/auth/me
 └── pages/
     ├── Ordens.jsx           # Lista de OS com filtros (status, vencidas, busca)
-    ├── Orcamento.jsx        # Criação/edição de OS (maior arquivo: ~55kb)
+    ├── Orcamento.jsx        # Orçamento rápido/calculadora; pode salvar proposta ou gerar OS imediata
+    ├── Propostas.jsx        # Funil comercial separado das OS
     ├── OrdemDetalhe.jsx     # Detalhe + histórico de status
     ├── Caixa.jsx            # Lançamentos do caixa
     ├── Dashboard.jsx        # KPIs em tempo real via SSE
     ├── Clientes.jsx         # CRUD clientes
     ├── Produtos.jsx         # CRUD produtos
-    ├── Relatorios.jsx       # Relatórios
+    ├── Financeiro.jsx       # Painel financeiro admin com abas
     ├── Oficina.jsx          # Visão da oficina (só troca status)
     └── Usuarios.jsx         # Gestão de usuários (admin only)
 ```
@@ -169,9 +175,18 @@ frontend/src/
 
 - **Branch protegida:** `main` — requer PR + testes passando
 - **Branch de trabalho:** `develop` — commits diretos permitidos
-- **Fluxo:** `develop` → PR → testes (Vitest, 90 testes) → merge → deploy automático
+- **Fluxo:** `develop` → PR → testes (Vitest, 142 testes) → merge → deploy automático
 - **Deploy:** `robocopy` sincroniza `backend/` e `frontend/dist/` no servidor, PM2 reinicia via `ecosystem.config.js`
 - **O `.env` nunca é copiado pelo deploy** (`/XF .env` no robocopy)
+
+### Estado de producao validado em 2026-05-19
+
+- `main` atualizada no servidor `C:\sistemaarte`.
+- `npm audit --omit=dev` no backend: **0 vulnerabilidades**.
+- `npm audit --omit=dev` no frontend: **0 vulnerabilidades**.
+- Frontend buildado e servido em producao; build esperado usa `vite v8.0.13`.
+- Backend reiniciado via PM2 apos pull/install/build.
+- O aviso de console do Cloudflare Insights bloqueado por CSP vem do `helmet()` e nao indica falha da aplicacao.
 
 ---
 
@@ -264,7 +279,7 @@ Invoke-RestMethod -Uri "http://localhost:3001/api/nfe/CHAVE44DIGITOS/cancelar" `
 
 ## NF-e — nfewizard-io (homologado ✅)
 
-> Integração testada e com nota aprovada na SEFAZ. Versão: `nfewizard-io@1.0.4`.
+> Integração testada e com nota aprovada na SEFAZ. Versão atual: `nfewizard-io@1.1.0` com overrides `@nfewizard/shared@1.1.0` e `@nfewizard/types@1.0.4`.
 
 ### Estrutura de retorno de `montarNFe()`
 
@@ -526,22 +541,38 @@ Itens validados mas não implementados ainda (features novas, não bugs):
 | # | Item | Impacto |
 |---|---|---|
 | 10 | `criadopor` + `updatedat` em `ordem_itens` | Rastreabilidade por operador |
-| 12 | SSE: limitar por `userId` (máx 3/usuário) | Evitar monopolização de conexões |
-| 13 | Paginação no `GET /api/ordens` (`?page=&limit=`) | Escala com volume crescente |
-| 9 | Backup: gravar `backup-status.json` + endpoint `/api/backup/status` | Observabilidade de falhas |
 | 17 | NF-e: contingência DPEC/offline | Disponibilidade quando SEFAZ estiver fora |
+
+Itens concluídos em 2026-05-19:
+
+| Item | Estado |
+|---|---|
+| `nfewizard-io` | Atualizado para `1.1.0`; audit backend/frontend zerado |
+| `helmet()` | Ativo em `server.js`; CSP bloqueia Cloudflare Insights por padrão |
+| Rate limit global | Reduzido para `60 req/min` |
+| Lockout por usuário no login | `5` falhas bloqueiam por `15min` |
+| Senha mínima | `8` caracteres em criação/edição de usuário |
+| Proteção do próprio admin | Admin não altera o próprio `role` nem desativa o próprio usuário |
+| Sessão JWT | Middleware invalida sessão se usuário ficar inativo ou trocar de role |
+| SSE KPIs | Limite global `10` e limite por usuário `3` |
+| Paginação de Ordens | `GET /api/ordens?page=&limit=` com filtros `status`, `tipo`, `q`, `vencidas` e fallback legado sem paginação |
+| Paginação de Clientes | `GET /api/clientes?page=&limit=&q=` com meta de paginação e fallback legado `LIMIT 100/20` |
+| Status de backup | Backup local grava `backup-status.json`; `GET /api/backup/status` expõe saúde local e alertas operacionais para admin |
+| `resolveClienteData()` | Lookup por nome preservado, agora com `trim().slice(0, 200)` |
+| Rotas sensíveis | Leituras fiscais/financeiras/clientes/produtos restritas a `admin`/`caixa` |
 
 ### Roadmap de segurança, estabilidade e SaaS
 
 Conferência do estado atual do código:
 
-- `server.js` já tem rate limit global em `/api`, mas hoje está em `200 req/min`; reduzir para `60 req/min` continua pendente.
-- `routes/auth.js` já tem rate limit de login por IP (`10` tentativas em `15min`, ignorando sucessos), mas ainda não tem lockout por usuário/conta.
-- `helmet()` ainda não está instalado/configurado.
-- `routes/users.js` ainda aceita senha curta no `PUT` (`>=4`) e não impede admin de alterar o próprio `role` ou `active`.
-- `routes/kpis.js` limita SSE a `10` conexões globais; falta limite por usuário (`3` por `userId`).
-- `GET /api/ordens` não tem paginação; `GET /api/clientes` tem `LIMIT 100/20`, mas ainda não tem paginação formal com `page`/`limit`.
-- `resolveClienteData()` ainda faz lookup por `clientenome` sem `trim().slice(0, 200)`.
+- `server.js` tem `helmet()` ativo e rate limit global em `/api` de `60 req/min`.
+- `routes/auth.js` tem rate limit por IP (`10` tentativas em `15min`) e lockout por usuário (`5` falhas bloqueiam por `15min`).
+- `routes/users.js` exige senha mínima de `8` caracteres e impede admin de alterar o próprio `role` ou desativar o próprio usuário.
+- `middlewares/auth.js` revalida usuário/role/active a cada request; se o usuário ficar inativo ou mudar de role, a sessão antiga cai.
+- `routes/kpis.js` limita SSE a `10` conexões globais e `3` por usuário.
+- `GET /api/ordens` e `GET /api/clientes` têm paginação formal com `page`/`limit` e continuam compatíveis com chamadas legadas sem paginação.
+- `POST /api/backup` grava `backend/data/backups/backup-status.json`; `GET /api/backup/status` retorna o último snapshot ou calcula o estado local se o JSON ainda não existir. O snapshot também inclui `alertas` legíveis para backup local ausente/atrasado, retenção fora do esperado e offsite pendente.
+- `resolveClienteData()` preserva lookup por `clientenome`, agora normalizado com `trim().slice(0, 200)`.
 - `GET /api/caixa` já filtra lançamentos deletados e OS deletadas com `(l.ordemid IS NULL OR o.deletedat IS NULL)`; manter item apenas para teste/regressão.
 - A numeração da NF-e (`nfe_sequencias`) é incrementada antes da autorização; rejeições da SEFAZ hoje consomem número. Reversão só deve ser implementada após validar regra fiscal/operacional, pois em NF-e real número inutilizado/rejeitado pode exigir tratamento cuidadoso.
 - Cloudflare Free já oferece um conjunto gerenciado básico de WAF, mas plano Pro ou superior libera WAF gerenciado mais completo. Para produção comercial, manter como recomendação avaliar/ativar Pro.
@@ -557,11 +588,11 @@ Infraestrutura:
 
 Código e aplicação:
 
-- Adicionar `helmet()` em `server.js`.
-- Reduzir rate limit global em `server.js` de `200 req/min` para `60 req/min`.
-- Implementar lockout no login por usuário/conta: exemplo, `5` falhas bloqueiam por `15min`.
-- Exigir senha mínima de `8` caracteres nas rotas `POST /api/users` e `PUT /api/users/:id`.
-- Criar guard em `PUT /api/users/:id` para impedir que o admin altere o próprio `role` ou desative o próprio usuário (`active=0`).
+- [x] Adicionar `helmet()` em `server.js`.
+- [x] Reduzir rate limit global em `server.js` de `200 req/min` para `60 req/min`.
+- [x] Implementar lockout no login por usuário/conta: `5` falhas bloqueiam por `15min`.
+- [x] Exigir senha mínima de `8` caracteres nas rotas `POST /api/users` e `PUT /api/users/:id`.
+- [x] Criar guard em `PUT /api/users/:id` para impedir que o admin altere o próprio `role` ou desative o próprio usuário (`active=0`).
 
 Dados:
 
@@ -572,10 +603,12 @@ Dados:
 
 Performance:
 
-- Implementar paginação em `GET /api/ordens` com `?page=&limit=`.
-- Implementar paginação em `GET /api/clientes` com `?page=&limit=`, preservando busca rápida por `q`.
-- Limitar SSE de KPIs em `routes/kpis.js` a no máximo `3` conexões simultâneas por usuário, além do limite global.
-- Adicionar `trim().slice(0, 200)` antes do lookup de clientes por nome em `resolveClienteData()`, preservando o comportamento intencional de buscar por nome quando `clienteid` não for informado.
+- [x] Implementar paginação em `GET /api/ordens` com `?page=&limit=`.
+- [x] Implementar paginação em `GET /api/clientes` com `?page=&limit=`, preservando busca rápida por `q`.
+- [x] Limitar SSE de KPIs em `routes/kpis.js` a no máximo `3` conexões simultâneas por usuário, além do limite global.
+- [x] Adicionar `trim().slice(0, 200)` antes do lookup de clientes por nome em `resolveClienteData()`, preservando o comportamento intencional de buscar por nome quando `clienteid` não for informado.
+- [x] Gravar `backup-status.json` e expor `GET /api/backup/status` para observabilidade local dos backups.
+- [x] Expor alertas operacionais de backup na aba Backups de `/configuracoes`, incluindo offsite pendente.
 
 Regras de negócio e integrações:
 
@@ -609,74 +642,98 @@ Operações SaaS e LGPD:
 
 Ordem recomendada para evolução do sistema:
 
-1. **DANFE real** — concluído localmente nesta sessão. Usa o XML autorizado salvo em `ordens.nfe_xml` / `backend/data/nfe_xmls`, gera DANFE em HTML imprimível e troca o botão da tela de Notas Fiscais por uma ação real de imprimir/visualizar. Também há botão de DANFE dentro da OS que já tem NF-e emitida.
-2. **Propostas + funil básico** — criar um módulo comercial separado das OS. A OS não deve nascer no orçamento; ela deve nascer somente quando a venda virar serviço aprovado.
-3. **Link público de proposta + WhatsApp** — cada proposta deve ter link público com token, por exemplo `https://arteemolduras.com.br/proposta/abc123`, enviado ao cliente pelo WhatsApp.
-4. **Aprovar proposta e gerar OS** — quando a proposta for aprovada, o sistema deve reaproveitar cliente, itens, total, observações e prazo para criar a OS com numeração `OS-XXXX`.
-5. **Contas a pagar/receber separado do caixa** — separar caixa diário, contas a receber e contas a pagar para dar visão de dinheiro realizado e previsto.
-6. **DRE simples** — criar visão de resultado por período, sem complexidade contábil excessiva.
+1. **DANFE real** — concluído e validado em produção após deploy. Usa o XML autorizado salvo em `ordens.nfe_xml` / `backend/data/nfe_xmls`, gera DANFE em HTML imprimível e troca o botão da tela de Notas Fiscais por uma ação real de imprimir/visualizar. Também há botão de DANFE dentro da OS que já tem NF-e emitida.
+2. **Propostas + funil básico** — concluído nesta sessão. A tela `/orcamento` continua como calculadora rápida de balcão e pode salvar proposta; a OS só nasce por `Gerar OS` em proposta aprovada ou por venda imediata.
+3. **PDF de proposta para WhatsApp/balcão** — concluído. Gera HTML imprimível autenticado da proposta para salvar PDF, imprimir ou enviar manualmente pelo WhatsApp.
+4. **Aprovar proposta e gerar OS** — concluído. Quando a proposta é aprovada internamente, o sistema reaproveita cliente, itens, total, observações e prazo para criar a OS com numeração `OS-XXXX`.
+5. **Envio manual por WhatsApp da proposta** — concluído nesta sessão. O botão na tela `/propostas` abre WhatsApp com mensagem pronta e mantém o PDF como anexo manual, sem link público.
+6. **Financeiro admin separado do caixa** — concluído nesta sessão. `/financeiro` é exclusivo do admin e separa resumo mensal, contas a pagar, contas a receber e DRE gerencial.
+7. **Aprimorar DRE e recorrências** — próxima evolução: recorrência de contas, centros de custo e DRE mais detalhado.
 
 ### Fase 1: Comercial — Propostas/Funil
 
-Criar um módulo de Propostas/Funil separado das Ordens de Serviço.
+Módulo de Propostas/Funil separado das Ordens de Serviço implementado.
 
 Status do funil:
 
 ```txt
-Novo lead -> Orçamento enviado -> Negociação -> Aprovado -> Perdido
+Novo lead -> Orcamento enviado -> Negociacao -> Aprovado -> Perdido
 ```
 
-Fluxo ideal:
+Fluxo implementado nesta fase:
 
 ```txt
 Cliente pede orçamento
--> cadastra proposta
--> monta itens/valores
--> envia link pelo WhatsApp
--> cliente abre proposta
--> cliente aprova
--> sistema transforma em OS com um clique
+-> operador calcula em Orçamento Rápido
+-> salva proposta
+-> acompanha no funil
+-> marca como Aprovado
+-> gera OS com um clique
 ```
 
 Objetivo: proposta é venda; OS é produção. Isso evita que uma OS nasça cedo demais, antes de o cliente realmente aprovar o serviço.
 
-### Fase 2: Link público de proposta
+Implementado:
 
-Cada proposta deve ter um link público com token, por exemplo:
+- `GET/POST /api/propostas`, `GET /api/propostas/:id`, `PATCH /api/propostas/:id/status`
+- `POST /api/propostas/:id/gerar-os`
+- `GET /api/propostas/:id/pdf`
+- tabelas `propostas` e `proposta_itens`
+- renderer `backend/utils/propostaPdf.js`
+- tela `/propostas` com kanban interno
+- menu `Propostas`
+- botão `Salvar proposta` em `/orcamento`
+- botão `PDF` no detalhe da proposta
+
+### Fase 2: PDF de proposta
+
+Cada proposta pode ser aberta como HTML imprimível autenticado:
 
 ```txt
-https://arteemolduras.com.br/proposta/abc123
+GET /api/propostas/:id/pdf
 ```
 
-Nesse link o cliente deve ver:
+O documento mostra:
 
 - Dados da loja
-- Descrição dos produtos/serviços
-- Valor total
-- Prazo estimado
+- Número da proposta
+- Cliente
+- Status
+- Itens, quantidades, valores unitários e subtotais
+- Total
+- Prazo previsto
 - Observações
-- Botão de aprovar
-- Botão de solicitar ajuste/negociar
+- Validade textual e aviso comercial
+- Botão `Imprimir / salvar PDF`
 
-No sistema deve ficar registrado:
+O operador abre em nova aba e usa `Imprimir / salvar PDF` do navegador. Link público e aprovação online ficam fora do foco imediato e podem ser reconsiderados futuramente.
 
-- Enviado em
-- Visualizado em
-- Aprovado em
-- Perdido/cancelado em
-- Origem da proposta
+### Fase 3: Envio por WhatsApp
 
-### Fase 3: Transformar proposta em OS
+Próximo passo implementado nesta sessão: facilitar envio manual pelo WhatsApp mantendo aprovação e geração de OS sob controle interno do operador.
 
-Quando a proposta for aprovada, disponibilizar a ação:
+Fluxo:
 
-```txt
-Gerar Ordem de Serviço
-```
+- botão `WhatsApp` no modal de proposta em `/propostas`
+- helper `frontend/src/utils/propostaWhatsapp.js` monta o link `wa.me` com telefone, número da proposta, cliente, total, prazo previsto e aviso de PDF em anexo
+- o PDF continua sendo gerado por `GET /api/propostas/:id/pdf` e anexado manualmente pelo operador
+- não há link público de proposta nem aprovação online nesta fase
 
-Essa ação deve reaproveitar cliente, itens, total, observações e prazo. A numeração `OS-XXXX` só deve ser gerada nesse momento.
+### Fase 4: Financeiro administrativo
 
-### Fase 4: Financeiro melhor
+Implementado nesta sessão:
+
+- `/financeiro` substitui a antiga página `/relatorios` no frontend
+- `/financeiro` é exclusivo de `admin`
+- `/api/financeiro` é exclusivo de `admin`
+- `/api/relatorios/resumo` permanece como legado para o Dashboard usado por `admin`/`caixa`
+- tabela `contas_pagar`
+- aba `Resumo mensal`
+- aba `Contas a pagar`
+- aba `Contas a receber` derivada de OS com saldo aberto
+- aba `DRE gerencial`
+- ao marcar uma conta como paga, o backend cria automaticamente uma `Saída` em `lancamentos`
+- o caixa continua focado em movimento operacional do dia, vendas, recebimentos e devoluções/estornos simples
 
 Separar claramente:
 
@@ -693,7 +750,7 @@ Com isso, o sistema deve permitir acompanhar:
 - Despesas por categoria
 - Lucro aproximado
 
-### Fase 5: DRE simples
+### Fase 5: DRE e recorrências
 
 Criar uma visão inicial de DRE:
 
@@ -720,7 +777,7 @@ Objetivo: dar visão de lucro, não apenas movimento de caixa.
 
 ### Fase 6: DANFE real
 
-Concluído localmente nesta sessão; falta validar com XML autorizado real no servidor após deploy.
+Concluído e validado em produção após deploy de 2026-05-19.
 
 Caminho esperado:
 
@@ -740,6 +797,78 @@ Caminho esperado:
 4. Cobrir com testes em `backend/__tests__/`
 5. PR de `develop` → `main` (testes obrigatórios)
 6. Nunca commitar `.env`, `*.db`, `node_modules`, `data/`
+
+---
+
+## Sessão Codex — 2026-05-19
+
+**Tema:** atualização pós-`npm audit`, `nfewizard-io`, hardening básico e validação em produção.
+
+### Estado confirmado
+
+- Branch publicada: `codex/kanban-drag-feel`.
+- Commit relevante: `4f1106f chore: harden app and update dependencies`.
+- `main` foi atualizada no servidor `C:\sistemaarte`.
+- `npm audit --omit=dev` no backend e frontend retornou **0 vulnerabilidades**.
+- Frontend buildado e servido corretamente em produção.
+- `nfewizard-io` atualizado para `1.1.0`.
+- Overrides fiscais fixados:
+  - `@nfewizard/shared@1.1.0`
+  - `@nfewizard/types@1.0.4`
+- `frontend/dist/` e `frontend/node_modules/` foram removidos do versionamento; ambos são gerados/instalados no deploy.
+- `backend/package-lock.json` e `frontend/package-lock.json` são a fonte versionada correta para reproduzir dependências.
+
+### Hardening aplicado
+
+- `helmet()` ativo no Express.
+- Rate limit global em `/api`: `60 req/min`.
+- Login:
+  - rate limit por IP: `10` tentativas em `15min`
+  - lockout por usuário: `5` falhas bloqueiam por `15min`
+- Usuários:
+  - senha mínima de `8` caracteres em criação e edição
+  - admin não pode alterar o próprio `role`
+  - admin não pode desativar o próprio usuário
+- Sessões:
+  - `auth()` revalida `users.active` e `users.role` a cada request
+  - sessão antiga cai se usuário ficar inativo ou mudar de role
+- SSE KPIs:
+  - limite global continua `10`
+  - limite por usuário agora é `3`
+- Rotas sensíveis de leitura fiscal/financeira/cadastro foram restringidas para `admin`/`caixa`, mantendo `oficina` focada em status de OS.
+
+### Observação Cloudflare/Helmet
+
+Após ativar `helmet()`, o console do navegador pode mostrar bloqueio do script:
+
+```txt
+https://static.cloudflareinsights.com/beacon.min.js
+violates Content Security Policy: "script-src 'self'"
+```
+
+Isso é esperado com a CSP padrão do Helmet e não indica falha da aplicação. Se o Cloudflare Insights for necessário, liberar explicitamente `static.cloudflareinsights.com` em `script-src` numa mudança pequena e testada.
+
+### Validação local antes do push
+
+- `npm.cmd test` no backend: **20 arquivos, 159 testes passando**.
+- `npm.cmd run build` no frontend: OK com `vite v8.0.13`.
+- `npm audit --omit=dev` no backend: **0 vulnerabilidades**.
+- `npm audit --omit=dev` no frontend: **0 vulnerabilidades**.
+
+### Continuação: Propostas, PDF e WhatsApp
+
+- Commit relevante do último chat: `0e067fb feat: add proposal pdf`.
+- `GET /api/propostas/:id/pdf` foi adicionado em `backend/routes/propostas.js`, autenticado para `admin` e `caixa`.
+- `backend/utils/propostaPdf.js` renderiza HTML imprimível com logo, número da proposta, cliente, status, prazo, itens, subtotais, total, observações, validade e botão `Imprimir / salvar PDF`.
+- A tela `/propostas` ganhou botão `PDF` no modal da proposta.
+- Docs/Superpowers foram atualizados para deixar link público e aprovação online apenas como possibilidade futura, fora do foco imediato.
+- Nesta continuação, a tela `/propostas` ganhou botão `WhatsApp` no modal, usando `frontend/src/utils/propostaWhatsapp.js` para abrir `wa.me` com mensagem pronta e orientar o envio manual do PDF em anexo.
+
+### Próximo foco recomendado do roadmap
+
+1. Escolher e configurar o destino real do backup offsite versionado (OneDrive empresarial, S3 ou equivalente).
+2. Iniciar separação de Contas a Receber/Contas a Pagar do caixa diário.
+3. Manter contingência NF-e DPEC/offline como backlog fiscal posterior ao MVP.
 
 ---
 
@@ -871,14 +1000,14 @@ Como o sistema está em produção com caixa real:
 
 | Item | Status |
 |---|---|
-| Mergear `codex/fix-nfe-xml-download` | Pendente |
-| `git pull origin main` no servidor após merge | Pendente |
-| `pm2 restart sistemaarte-backend` após pull | Pendente |
-| Rebaixar XML autorização e XML CC-e e conferir que abrem como XML | Pendente |
-| Validar impressão da OS `OS-0092` | Pendente |
-| Confirmar que `Recebido` sumiu da tela da OS | Pendente |
+| Mergear `codex/fix-nfe-xml-download` | Concluído |
+| `git pull origin main` no servidor após merge | Concluído |
+| `pm2 restart sistemaarte-backend` após pull | Concluído |
+| Rebaixar XML autorização e XML CC-e e conferir que abrem como XML | Validado em fluxo fiscal anterior; manter como regressão quando emitir novas NF-es |
+| Validar impressão da OS `OS-0092` | Concluído pelo DANFE/OS pós-deploy |
+| Confirmar que `Recebido` sumiu da tela da OS | Concluído |
 | Continuar NF-es homologadas até 10/10 | Pendente |
-| Implementar DANFE real | Concluído localmente nesta sessão; falta validar com XML autorizado real no servidor |
+| Implementar DANFE real | Concluído e validado em produção |
 | Go-live `NFE_AMBIENTE_NUM=1` | Aguardar homologação |
 
 ### Acesso remoto ao servidor

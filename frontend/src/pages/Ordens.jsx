@@ -412,6 +412,7 @@ export default function Ordens() {
   const canEditFinanceiro = user?.role === 'admin' || user?.role === 'caixa';
 
   const [ordens,       setOrdens]       = useState([]);
+  const [ordensMeta,   setOrdensMeta]   = useState({ page: 1, limit: 14, total: 0, totalPages: 1 });
   const [clientes,     setClientes]     = useState([]);
   const [todosProdutos,setTodosProdutos]= useState([]);
   const [loading,      setLoading]      = useState(true);
@@ -426,16 +427,25 @@ export default function Ordens() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(PER_PAGE),
+      });
+      if (filterStatus !== 'todos') params.set('status', filterStatus);
+      if (filterTipo !== 'todos') params.set('tipo', filterTipo);
+      if (busca.trim()) params.set('q', busca.trim());
+
       const [ro, rc, rp] = await Promise.all([
-        api.get('/ordens'), api.get('/clientes'), api.get('/produtos'),
+        api.get(`/ordens?${params.toString()}`), api.get('/clientes'), api.get('/produtos'),
       ]);
-      setOrdens(ro.data || []);
-      setClientes(rc.data || []);
+      setOrdens(Array.isArray(ro.data) ? ro.data : (ro.data?.data || []));
+      setOrdensMeta(Array.isArray(ro.data) ? { page: 1, limit: PER_PAGE, total: ro.data.length, totalPages: 1 } : (ro.data?.meta || { page: 1, limit: PER_PAGE, total: 0, totalPages: 1 }));
+      setClientes(Array.isArray(rc.data) ? rc.data : (rc.data?.data || []));
       setTodosProdutos(rp.data || []);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [busca, filterStatus, filterTipo, page]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -464,35 +474,21 @@ export default function Ordens() {
     } catch { toast.error('Erro ao remover'); }
   }, [load]);
 
-  const q = busca.toLowerCase().trim();
-  const ordensFiltradas = useMemo(() => ordens.filter(o => {
-    if (filterStatus !== 'todos' && o.status !== filterStatus) return false;
-    if (filterTipo   !== 'todos' && o.servico !== filterTipo)  return false;
-    if (q && !(
-      (o.numero||'').toLowerCase().includes(q) ||
-      (o.clientenome||'').toLowerCase().includes(q) ||
-      (o.descricao||'').toLowerCase().includes(q) ||
-      (o.observacoes||'').toLowerCase().includes(q) ||
-      (o.itens_resumo||'').toLowerCase().includes(q)
-    )) return false;
-    return true;
-  }), [ordens, filterStatus, filterTipo, q]);
-
-  const totalOrdens = ordensFiltradas.length;
+  const ordensFiltradas = ordens;
+  const totalOrdens = ordensMeta.total ?? ordens.length;
   const totalAberto = ordensFiltradas.filter(o => o.status !== 'Entregue' && o.status !== 'Cancelado').length;
   const totalSaldo  = ordensFiltradas.reduce((s,o) => s + Number(o.saldoaberto||0), 0);
 
-  const totalPages = Math.max(1, Math.ceil(ordensFiltradas.length / PER_PAGE));
-  const paginated  = ordensFiltradas.slice((page-1)*PER_PAGE, page*PER_PAGE);
+  const totalPages = Math.max(1, ordensMeta.totalPages || 1);
+  const paginated  = ordensFiltradas;
 
   useEffect(() => { setPage(1); }, [filterStatus, filterTipo, busca]);
 
   const today = toDateInputValue();
 
   const tiposDisponiveis = useMemo(() => {
-    const s = new Set(ordens.map(o => o.servico).filter(Boolean));
-    return ['todos', ...Array.from(s)];
-  }, [ordens]);
+    return ['todos', 'Quadro', 'Corte a Laser', 'Sublimacao', 'Diversos'];
+  }, []);
 
   if (loading) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'60vh', color:'var(--color-text-muted)' }}>
@@ -540,9 +536,9 @@ export default function Ordens() {
         gap:'var(--space-2)', padding:'var(--space-2) var(--space-6)',
         borderBottom:'1px solid var(--color-border)', flexShrink:0 }}>
         {[
-          { label:'Total OS', value:totalOrdens, icon:'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2', color:'var(--color-primary)' },
-          { label:'Em Aberto', value:totalAberto, icon:'M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0z', color:'var(--color-warning)' },
-          { label:'Saldo a Receber', value:fmt(totalSaldo), icon:'M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6', color:'var(--color-success)' },
+          { label:'Total filtrado', value:totalOrdens, icon:'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2', color:'var(--color-primary)' },
+          { label:'Em Aberto na página', value:totalAberto, icon:'M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0z', color:'var(--color-warning)' },
+          { label:'Saldo da página', value:fmt(totalSaldo), icon:'M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6', color:'var(--color-success)' },
         ].map(k => (
           <div key={k.label} style={{ background:'var(--color-surface)', border:'1px solid var(--color-border)',
             borderRadius:'var(--radius-md)', padding:'var(--space-2) var(--space-3)',
@@ -674,7 +670,7 @@ export default function Ordens() {
         <div style={{ padding:'var(--space-2) var(--space-6)', borderTop:'1px solid var(--color-border)',
           display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0,
           background:'var(--color-surface)', fontSize:'var(--text-xs)' }}>
-          <span style={{ color:'var(--color-text-muted)' }}>Pagina {page} de {totalPages}</span>
+          <span style={{ color:'var(--color-text-muted)' }}>Pagina {page} de {totalPages} • {totalOrdens} registro{totalOrdens!==1?'s':''}</span>
           <div style={{ display:'flex', gap:'var(--space-2)' }}>
             <button className="btn btn-secondary" onClick={()=>setPage(p=>Math.max(1,p-1))}
               disabled={page===1} style={{ fontSize:'var(--text-xs)', padding:'var(--space-1) var(--space-3)' }}>← Anterior</button>

@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const { getAll, getOne, run, runInsert, transaction } = require("../database");
 const { auth } = require("../middlewares/auth");
+const { normalizarPaginacao, montarMetaPaginacao } = require("../domain/paginationRules");
 
 const SEL_CLIENTE = `
   SELECT c.*,
@@ -12,15 +13,41 @@ const SEL_CLIENTE = `
 
 router.get("/", auth(["admin","caixa"]), (req, res, next) => {
   try {
-    const q = req.query.q;
+    const querPaginacao = req.query.page !== undefined || req.query.limit !== undefined;
+    const { page, limit, offset } = normalizarPaginacao(req.query, { defaultLimit: 25, maxLimit: 100 });
+    const q = String(req.query.q || "").trim();
+    const where = ["c.deletedat IS NULL"];
+    const params = [];
     if (q) {
       const lk = `%${q}%`;
-      return res.json(getAll(
-        SEL_CLIENTE + " AND (c.name LIKE ? OR c.phone LIKE ? OR c.cpf LIKE ? OR c.ie LIKE ? OR c.cidade LIKE ?) ORDER BY c.name LIMIT 20",
-        [lk,lk,lk,lk,lk]
-      ));
+      where.push("(c.name LIKE ? OR c.phone LIKE ? OR c.cpf LIKE ? OR c.ie LIKE ? OR c.cidade LIKE ?)");
+      params.push(lk, lk, lk, lk, lk);
     }
-    res.json(getAll(SEL_CLIENTE + " ORDER BY c.name LIMIT 100"));
+    if (!querPaginacao) {
+      if (q) {
+        return res.json(getAll(
+          SEL_CLIENTE + " AND (c.name LIKE ? OR c.phone LIKE ? OR c.cpf LIKE ? OR c.ie LIKE ? OR c.cidade LIKE ?) ORDER BY c.name LIMIT 20",
+          params
+        ));
+      }
+      return res.json(getAll(SEL_CLIENTE + " ORDER BY c.name LIMIT 100"));
+    }
+    const whereSql = ` WHERE ${where.join(" AND ")}`;
+    const total = getOne(`SELECT COUNT(*) AS total FROM clientes c${whereSql}`, params)?.total ?? 0;
+    const rows = getAll(
+      `SELECT c.*,
+        (SELECT COUNT(*) FROM ordens WHERE clienteid=c.id AND deletedat IS NULL) AS totalordens,
+        (SELECT COALESCE(SUM(valortotal),0) FROM ordens WHERE clienteid=c.id AND deletedat IS NULL) AS gastototal
+       FROM clientes c
+       ${whereSql}
+       ORDER BY c.name COLLATE NOCASE
+       LIMIT ? OFFSET ?`,
+      [...params, limit, offset]
+    );
+    res.json({
+      data: rows,
+      meta: montarMetaPaginacao({ page, limit, total }),
+    });
   } catch(e) { next(e); }
 });
 

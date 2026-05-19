@@ -71,8 +71,10 @@ export default function Clientes() {
   };
 
   const [clientes,      setClientes]      = useState([]);
+  const [clientesMeta,  setClientesMeta]  = useState({ page: 1, limit: 25, total: 0, totalPages: 1 });
   const [loading,       setLoading]       = useState(true);
   const [search,        setSearch]        = useState('');
+  const [page,          setPage]          = useState(1);
   const [form,          setForm]          = useState(blank);
   const [editId,        setEditId]        = useState(null);
   const [showForm,      setShowForm]      = useState(false);
@@ -89,17 +91,25 @@ export default function Clientes() {
   const [detailData,    setDetailData]    = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const searchRef = useRef(null);
+  const PER_PAGE = 25;
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await api.get('/clientes');
-      setClientes(data);
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(PER_PAGE),
+      });
+      if (search.trim()) params.set('q', search.trim());
+      const { data } = await api.get(`/clientes?${params.toString()}`);
+      setClientes(Array.isArray(data) ? data : (data?.data || []));
+      setClientesMeta(Array.isArray(data) ? { page: 1, limit: PER_PAGE, total: data.length, totalPages: 1 } : (data?.meta || { page: 1, limit: PER_PAGE, total: 0, totalPages: 1 }));
     } catch { toast.error('Erro ao carregar clientes'); }
     finally { setLoading(false); }
-  }, []);
+  }, [page, search]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { setPage(1); }, [search]);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -277,14 +287,6 @@ export default function Clientes() {
   };
 
   const sorted = [...clientes]
-    .filter(c => {
-      const q = search.toLowerCase();
-      return !q || (c.name||'').toLowerCase().includes(q)
-        || (c.phone||'').includes(q)
-        || (c.email||'').toLowerCase().includes(q)
-        || (c.cpf||'').includes(q)
-        || (c.ie||'').includes(q);
-    })
     .sort((a,b) => {
       let va = a[sortField === 'nome' ? 'name' : sortField] || '';
       let vb = b[sortField === 'nome' ? 'name' : sortField] || '';
@@ -455,7 +457,7 @@ export default function Clientes() {
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'var(--space-4)', flexShrink:0 }}>
         <div>
           <h1 style={{ fontSize:'var(--text-xl)', fontWeight:800, margin:0 }}>Clientes</h1>
-          <p style={{ margin:0, fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>{clientes.length} cadastrado{clientes.length!==1?'s':''}</p>
+          <p style={{ margin:0, fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>{clientesMeta.total ?? clientes.length} cadastrado{(clientesMeta.total ?? clientes.length)!==1?'s':''}</p>
         </div>
         {canEdit && (
           <button className="btn btn-primary" onClick={openNew}>
@@ -545,6 +547,21 @@ export default function Clientes() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+          {!loading && (clientesMeta.totalPages || 1) > 1 && (
+            <div style={{ padding:'var(--space-2) var(--space-3)', borderTop:'1px solid var(--color-border)',
+              display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0,
+              background:'var(--color-surface)', fontSize:'var(--text-xs)' }}>
+              <span style={{ color:'var(--color-text-muted)' }}>
+                Pagina {page} de {clientesMeta.totalPages || 1} • {clientesMeta.total || 0} registro{(clientesMeta.total || 0)!==1?'s':''}
+              </span>
+              <div style={{ display:'flex', gap:'var(--space-2)' }}>
+                <button className="btn btn-secondary" onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page <= 1} style={{ fontSize:'var(--text-xs)', padding:'var(--space-1) var(--space-3)' }}>Anterior</button>
+                <button className="btn btn-secondary" onClick={() => setPage(p => Math.min(clientesMeta.totalPages || 1, p + 1))}
+                  disabled={page >= (clientesMeta.totalPages || 1)} style={{ fontSize:'var(--text-xs)', padding:'var(--space-1) var(--space-3)' }}>Proximo</button>
+              </div>
             </div>
           )}
         </div>

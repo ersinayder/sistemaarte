@@ -73,11 +73,13 @@ describe('route authorization contracts', () => {
   it('restricts sensitive read routes away from oficina', async () => {
     const caixaRouter = await loadRouter('../routes/caixa.js');
     const relatoriosRouter = await loadRouter('../routes/relatorios.js');
+    const financeiroRouter = await loadRouter('../routes/financeiro.js');
     const clientesRouter = await loadRouter('../routes/clientes.js');
     const produtosRouter = await loadRouter('../routes/produtos.js');
 
     expect(routeRoles(caixaRouter, 'get', '/')).toEqual(['admin', 'caixa']);
     expect(routeRoles(relatoriosRouter, 'get', '/resumo')).toEqual(['admin', 'caixa']);
+    expect(routeRoles(financeiroRouter, 'get', '/resumo')).toEqual(['admin']);
     expect(routeRoles(clientesRouter, 'get', '/')).toEqual(['admin', 'caixa']);
     expect(routeRoles(clientesRouter, 'get', '/:id')).toEqual(['admin', 'caixa']);
     expect(routeRoles(clientesRouter, 'get', '/:id/ordens')).toEqual(['admin', 'caixa']);
@@ -109,6 +111,23 @@ describe('route persistence contracts', () => {
     expect(source).toMatch(/const\s*\{[^}]*categoria/s);
     expect(source).toMatch(/INSERT INTO lancamentos\s*\([^)]*categoria/s);
     expect(source).toMatch(/UPDATE lancamentos SET[^"]*categoria=\?/s);
+  });
+
+  it('mounts admin financeiro API and paying accounts creates a caixa output', async () => {
+    const serverSource = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+    const source = fs.readFileSync(new URL('../routes/financeiro.js', import.meta.url), 'utf8');
+    const financeiroRouter = await loadRouter('../routes/financeiro.js');
+
+    expect(serverSource).toMatch(/app\.use\(["']\/api\/financeiro["'],\s*require\(["']\.\/routes\/financeiro["']\)\)/);
+    expect(routeRoles(financeiroRouter, 'get', '/resumo')).toEqual(['admin']);
+    expect(routeRoles(financeiroRouter, 'get', '/contas-pagar')).toEqual(['admin']);
+    expect(routeRoles(financeiroRouter, 'post', '/contas-pagar')).toEqual(['admin']);
+    expect(routeRoles(financeiroRouter, 'patch', '/contas-pagar/:id/pagar')).toEqual(['admin']);
+    expect(routeRoles(financeiroRouter, 'get', '/contas-receber')).toEqual(['admin']);
+    expect(routeRoles(financeiroRouter, 'get', '/dre')).toEqual(['admin']);
+    expect(source).toMatch(/INSERT INTO lancamentos/);
+    expect(source).toMatch(/tipo,\s*categoria,\s*descricao,\s*pagamento,\s*valor/);
+    expect(source).toMatch(/UPDATE contas_pagar SET status='Pago'/);
   });
 });
 
@@ -143,5 +162,80 @@ describe('ordens route input contracts', () => {
 
     expect(source).toMatch(/String\(clientenome\s*\?\?\s*["']["']\)\.trim\(\)\.slice\(0,\s*200\)/);
     expect(source).toMatch(/WHERE name=\? LIMIT 1", \[nomeBusca\]/);
+  });
+});
+
+describe('pagination route contracts', () => {
+  it('paginates ordens with matching count metadata', () => {
+    const source = fs.readFileSync(new URL('../routes/ordens.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/normalizarPaginacao/);
+    expect(source).toMatch(/montarMetaPaginacao/);
+    expect(source).toMatch(/COUNT\(\*\) AS total[\s\S]+FROM ordens o/);
+    expect(source).toMatch(/LIMIT \? OFFSET \?/);
+    expect(source).toMatch(/res\.json\(\{\s*data:\s*rows,\s*meta:/);
+  });
+
+  it('paginates clientes with matching count metadata', () => {
+    const source = fs.readFileSync(new URL('../routes/clientes.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/normalizarPaginacao/);
+    expect(source).toMatch(/montarMetaPaginacao/);
+    expect(source).toMatch(/COUNT\(\*\) AS total[\s\S]+FROM clientes c/);
+    expect(source).toMatch(/LIMIT \? OFFSET \?/);
+    expect(source).toMatch(/res\.json\(\{\s*data:\s*rows,\s*meta:/);
+  });
+});
+
+describe('backup route contracts', () => {
+  it('exposes admin-only backup status and returns full manual backup result', async () => {
+    const backupRouter = await loadRouter('../routes/backup.js');
+    const source = fs.readFileSync(new URL('../routes/backup.js', import.meta.url), 'utf8');
+
+    expect(routeRoles(backupRouter, 'get', '/status')).toEqual(['admin']);
+    expect(routeRoles(backupRouter, 'post', '/')).toEqual(['admin']);
+    expect(source).toMatch(/readBackupStatus/);
+    expect(source).toMatch(/res\.json\(result\)/);
+    expect(source).not.toMatch(/res\.json\(\{\s*ok:\s*true\s*\}\)/);
+  });
+
+  it('writes backup-status.json after backup attempts', () => {
+    const source = fs.readFileSync(new URL('../database.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/utils\/backupStatus/);
+    expect(source).toMatch(/writeBackupStatus/);
+    expect(source).toMatch(/buildBackupStatus/);
+  });
+});
+
+describe('propostas route contracts', () => {
+  it('mounts propostas API and keeps it restricted to admin and caixa', async () => {
+    const source = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/app\.use\(["']\/api\/propostas["'],\s*require\(["']\.\/routes\/propostas["']\)\)/);
+
+    const propostasRouter = await loadRouter('../routes/propostas.js');
+    expect(routeRoles(propostasRouter, 'get', '/')).toEqual(['admin', 'caixa']);
+    expect(routeRoles(propostasRouter, 'post', '/')).toEqual(['admin', 'caixa']);
+    expect(routeRoles(propostasRouter, 'patch', '/:id/status')).toEqual(['admin', 'caixa']);
+    expect(routeRoles(propostasRouter, 'post', '/:id/gerar-os')).toEqual(['admin', 'caixa']);
+  });
+
+  it('implements proposal conversion without generating OS numbers before approval', () => {
+    const source = fs.readFileSync(new URL('../routes/propostas.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/podeGerarOS/);
+    expect(source).toMatch(/gerarNumeroOS/);
+    expect(source).toMatch(/INSERT INTO ordens/);
+    expect(source).toMatch(/UPDATE propostas SET ordemid=\?/);
+  });
+
+  it('exposes printable proposal PDF only to admin and caixa', async () => {
+    const propostasRouter = await loadRouter('../routes/propostas.js');
+    const source = fs.readFileSync(new URL('../routes/propostas.js', import.meta.url), 'utf8');
+
+    expect(routeRoles(propostasRouter, 'get', '/:id/pdf')).toEqual(['admin', 'caixa']);
+    expect(source).toMatch(/renderPropostaHtml/);
+    expect(source).toMatch(/Content-Type["'],\s*["']text\/html; charset=utf-8/);
   });
 });

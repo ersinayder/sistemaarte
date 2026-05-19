@@ -2,6 +2,7 @@ const Database = require("better-sqlite3");
 const bcrypt    = require("bcryptjs");
 const path      = require("path");
 const fs        = require("fs");
+const { buildBackupStatus, writeBackupStatus } = require("./utils/backupStatus");
 
 const DATA_DIR = path.join(__dirname, "data");
 const DB_FILE  = path.join(DATA_DIR, "oficina.db");
@@ -112,6 +113,56 @@ CREATE TABLE IF NOT EXISTS ordem_itens (
   avulso          INTEGER DEFAULT 0,
   createdat       TEXT DEFAULT (datetime('now','localtime'))
 );
+CREATE TABLE IF NOT EXISTS propostas (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  numero          TEXT UNIQUE,
+  clienteid       INTEGER,
+  clientenome     TEXT NOT NULL,
+  clientetelefone TEXT,
+  clientecpf      TEXT,
+  status          TEXT NOT NULL DEFAULT 'Novo lead',
+  origem          TEXT DEFAULT 'balcao',
+  descricao       TEXT,
+  valortotal      REAL NOT NULL DEFAULT 0,
+  prazoentrega    TEXT,
+  observacoes     TEXT,
+  ordemid         INTEGER DEFAULT NULL,
+  criadopor       INTEGER,
+  enviadoem       TEXT,
+  aprovadoem      TEXT,
+  perdidoem       TEXT,
+  createdat       TEXT DEFAULT (datetime('now','localtime')),
+  updatedat       TEXT DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS proposta_itens (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  propostaid      INTEGER NOT NULL,
+  produto_id      INTEGER DEFAULT NULL,
+  nome            TEXT NOT NULL,
+  quantidade      REAL NOT NULL DEFAULT 1,
+  preco_unitario  REAL NOT NULL DEFAULT 0,
+  subtotal        REAL GENERATED ALWAYS AS (quantidade * preco_unitario) STORED,
+  avulso          INTEGER DEFAULT 0,
+  createdat       TEXT DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS contas_pagar (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  fornecedor    TEXT NOT NULL,
+  descricao     TEXT NOT NULL,
+  categoria     TEXT DEFAULT 'Outros',
+  valor         REAL NOT NULL DEFAULT 0,
+  vencimento    TEXT NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'Pendente',
+  pagamento     TEXT,
+  pagoem        TEXT,
+  lancamentoid  INTEGER,
+  observacoes   TEXT,
+  criadopor     INTEGER,
+  deletedat     TEXT DEFAULT NULL,
+  deletedpor    INTEGER DEFAULT NULL,
+  createdat     TEXT DEFAULT (datetime('now','localtime')),
+  updatedat     TEXT DEFAULT (datetime('now','localtime'))
+);
 CREATE TABLE IF NOT EXISTS sequencias (
   nome   TEXT PRIMARY KEY,
   ultimo INTEGER DEFAULT 0
@@ -168,6 +219,11 @@ CREATE INDEX IF NOT EXISTS idx_statuslog_ordemid   ON statuslog(ordemid);
 CREATE INDEX IF NOT EXISTS idx_produtos_nome       ON produtos(nome COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS idx_ordem_itens_ordemid ON ordem_itens(ordemid);
 CREATE INDEX IF NOT EXISTS idx_lancamentos_pago_del ON lancamentos(ordemid, pago, deletedat);
+CREATE INDEX IF NOT EXISTS idx_propostas_status ON propostas(status);
+CREATE INDEX IF NOT EXISTS idx_propostas_clienteid ON propostas(clienteid);
+CREATE INDEX IF NOT EXISTS idx_proposta_itens_propostaid ON proposta_itens(propostaid);
+CREATE INDEX IF NOT EXISTS idx_contas_pagar_status ON contas_pagar(status);
+CREATE INDEX IF NOT EXISTS idx_contas_pagar_vencimento ON contas_pagar(vencimento);
 CREATE TABLE IF NOT EXISTS nfe_autxml (
   id        INTEGER PRIMARY KEY AUTOINCREMENT,
   nome      TEXT NOT NULL,
@@ -283,6 +339,63 @@ function initDB() {
       updatedat             TEXT DEFAULT (datetime('now','localtime'))
     )`,
     "INSERT OR IGNORE INTO whatsapp_config (id) VALUES (1)",
+    // v10 - propostas comerciais separadas das ordens de servico
+    `CREATE TABLE IF NOT EXISTS propostas (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      numero          TEXT UNIQUE,
+      clienteid       INTEGER,
+      clientenome     TEXT NOT NULL,
+      clientetelefone TEXT,
+      clientecpf      TEXT,
+      status          TEXT NOT NULL DEFAULT 'Novo lead',
+      origem          TEXT DEFAULT 'balcao',
+      descricao       TEXT,
+      valortotal      REAL NOT NULL DEFAULT 0,
+      prazoentrega    TEXT,
+      observacoes     TEXT,
+      ordemid         INTEGER DEFAULT NULL,
+      criadopor       INTEGER,
+      enviadoem       TEXT,
+      aprovadoem      TEXT,
+      perdidoem       TEXT,
+      createdat       TEXT DEFAULT (datetime('now','localtime')),
+      updatedat       TEXT DEFAULT (datetime('now','localtime'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS proposta_itens (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      propostaid      INTEGER NOT NULL,
+      produto_id      INTEGER DEFAULT NULL,
+      nome            TEXT NOT NULL,
+      quantidade      REAL NOT NULL DEFAULT 1,
+      preco_unitario  REAL NOT NULL DEFAULT 0,
+      subtotal        REAL GENERATED ALWAYS AS (quantidade * preco_unitario) STORED,
+      avulso          INTEGER DEFAULT 0,
+      createdat       TEXT DEFAULT (datetime('now','localtime'))
+    )`,
+    "CREATE INDEX IF NOT EXISTS idx_propostas_status ON propostas(status)",
+    "CREATE INDEX IF NOT EXISTS idx_propostas_clienteid ON propostas(clienteid)",
+    "CREATE INDEX IF NOT EXISTS idx_proposta_itens_propostaid ON proposta_itens(propostaid)",
+    // v11 - contas a pagar administrativas
+    `CREATE TABLE IF NOT EXISTS contas_pagar (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      fornecedor    TEXT NOT NULL,
+      descricao     TEXT NOT NULL,
+      categoria     TEXT DEFAULT 'Outros',
+      valor         REAL NOT NULL DEFAULT 0,
+      vencimento    TEXT NOT NULL,
+      status        TEXT NOT NULL DEFAULT 'Pendente',
+      pagamento     TEXT,
+      pagoem        TEXT,
+      lancamentoid  INTEGER,
+      observacoes   TEXT,
+      criadopor     INTEGER,
+      deletedat     TEXT DEFAULT NULL,
+      deletedpor    INTEGER DEFAULT NULL,
+      createdat     TEXT DEFAULT (datetime('now','localtime')),
+      updatedat     TEXT DEFAULT (datetime('now','localtime'))
+    )`,
+    "CREATE INDEX IF NOT EXISTS idx_contas_pagar_status ON contas_pagar(status)",
+    "CREATE INDEX IF NOT EXISTS idx_contas_pagar_vencimento ON contas_pagar(vencimento)",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {}
@@ -376,6 +489,7 @@ function initDB() {
 
   // Seed sequencias
   db.prepare("INSERT OR IGNORE INTO sequencias (nome, ultimo) VALUES ('os', 0)").run();
+  db.prepare("INSERT OR IGNORE INTO sequencias (nome, ultimo) VALUES ('proposta', 0)").run();
   const maxOS = db.prepare("SELECT MAX(CAST(SUBSTR(numero,4) AS INTEGER)) AS maxn FROM ordens").get();
   const maxN  = maxOS?.maxn ?? 0;
   db.prepare("UPDATE sequencias SET ultimo=MAX(ultimo,?) WHERE nome='os'").run(maxN);
@@ -412,8 +526,22 @@ function backup() {
   return db.backup(dest).then(()=>{
     const files = fs.readdirSync(bdir).filter(f=>f.endsWith(".db")).sort();
     while (files.length > 7) fs.unlinkSync(path.join(bdir,files.shift()));
+    const status = buildBackupStatus(bdir);
+    writeBackupStatus(bdir, status);
     console.log("[Backup] Salvo:",dest);
-  }).catch(e=>console.error("[Backup] Erro:",e.message));
+    return { ok: true, arquivo: dest, status };
+  }).catch(e=>{
+    const status = buildBackupStatus(bdir);
+    status.status.status = "Pendente";
+    status.status.missing = Array.from(new Set([...(status.status.missing || []), "backup-falhou"]));
+    status.ultimoErro = {
+      mensagem: e.message,
+      createdat: new Date().toISOString(),
+    };
+    writeBackupStatus(bdir, status);
+    console.error("[Backup] Erro:",e.message);
+    throw e;
+  });
 }
 
 module.exports = { initDB, run, runInsert, getAll, getOne, transaction, backup, getDB: () => db };
