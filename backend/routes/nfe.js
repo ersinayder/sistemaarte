@@ -5,7 +5,11 @@ const path          = require('path');
 const fs            = require('fs');
 const { getDB }     = require('../database');
 const { auth }      = require('../middlewares/auth');
-const { getNFEWizard, callSEFAZ } = require('../utils/nfe');
+const {
+  getNFEWizard,
+  callSEFAZ,
+  getSefazErrorInfo,
+} = require('../utils/nfe');
 const { montarNFe } = require('../domain/nfeRules');
 const { renderDanfeHtml } = require('../utils/danfe');
 const {
@@ -447,17 +451,23 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
     } catch (sefazErr) {
       console.error('[NF-e] Erro na chamada SEFAZ:', sefazErr.message);
       db.prepare(`UPDATE ordens SET nfe_status='rejeitado' WHERE id=? AND nfe_status='emitindo'`).run(osId);
+      const sefazInfo = getSefazErrorInfo(sefazErr);
       registrarEventoFiscal(db, {
         ordemid: os.id,
         chave: os.nfe_chave || `OS-${os.id}`,
         tipo: 'rejeicao',
-        cstat: 'timeout',
-        motivo: sefazErr.message,
+        cstat: sefazInfo.cstat,
+        motivo: sefazInfo.mensagem,
         texto: 'Erro de comunicacao com a SEFAZ durante emissao',
       });
       if (!respondido) {
         clearTimeout(guardTimeout); respondido = true;
-        return res.status(504).json({ erro: 'Sem resposta da SEFAZ', detalhe: sefazErr.message });
+        return res.status(504).json({
+          erro: sefazInfo.mensagem,
+          tipo: sefazInfo.tipo,
+          detalhe: sefazErr.message,
+          contingencia: false,
+        });
       }
       return;
     }

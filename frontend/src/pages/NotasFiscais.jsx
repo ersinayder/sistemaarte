@@ -103,7 +103,7 @@ function ModalEmitir({ onClose, onSuccess }) {
     if (!ordemSel) return
     setEmitindo(true)
     try {
-      await api.post(`/nfe/emitir/${ordemSel.id}`, null, { timeout: 80000 })
+      await api.post(`/nfe/emitir/${ordemSel.id}`, null, { timeout: 80000, skipGlobalErrorToast: true })
       toast.success(`NF-e emitida com sucesso para ${ordemSel.numero}!`)
       onSuccess()
       onClose()
@@ -179,15 +179,15 @@ function ModalEmitir({ onClose, onSuccess }) {
                     border: `2px solid ${sel ? 'var(--color-primary)' : 'var(--color-border)'}`,
                     background: sel ? 'var(--color-primary-highlight)' : 'var(--color-surface-offset)',
                     cursor: 'pointer', transition: 'all var(--transition-interactive)',
-                    display: 'grid', gridTemplateColumns: '1fr auto', gap: 'var(--space-2)', alignItems: 'center',
+                    display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 'var(--space-2)', alignItems: 'start',
                   }}
                 >
-                  <div>
+                  <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>{o.numero} — {o.clientenome}</div>
                     <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: 2 }}>{o.servico} · {fmt(o.valortotal)}</div>
                     {o.itens_resumo && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.itens_resumo}</div>}
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, minWidth: 86 }}>
                     <span style={{
                       fontSize: 'var(--text-xs)', fontWeight: 700, padding: '2px 8px', borderRadius: 'var(--radius-full)',
                       background: o.status === 'Aguardando' ? 'var(--color-warning-highlight, var(--color-surface-offset))' : o.status === 'Pronto' ? 'var(--color-primary-highlight)' : 'var(--color-success-highlight)',
@@ -382,7 +382,7 @@ function ModalCancelamento({ nfe, onClose, onSuccess }) {
     }
     setEnviando(true)
     try {
-      const r = await api.post(`/nfe/${nfe.nfe_chave}/cancelar`, { motivo: texto }, { timeout: 45000 })
+      const r = await api.post(`/nfe/${nfe.nfe_chave}/cancelar`, { motivo: texto }, { timeout: 45000, skipGlobalErrorToast: true })
       toast.success(`NF-e cancelada. Protocolo ${r.data?.protocolo || ''}`.trim())
       onSuccess()
       onClose()
@@ -447,7 +447,7 @@ function ModalCCE({ nfe, onClose, onSuccess }) {
     }
     setEnviando(true)
     try {
-      const r = await api.post(`/nfe/${nfe.nfe_chave}/cce`, { correcao: texto }, { timeout: 45000 })
+      const r = await api.post(`/nfe/${nfe.nfe_chave}/cce`, { correcao: texto }, { timeout: 45000, skipGlobalErrorToast: true })
       toast.success(`CC-e emitida. Seq. ${r.data?.sequencia || ''}`.trim())
       onSuccess()
       onClose()
@@ -522,7 +522,7 @@ export default function NotasFiscais() {
 
   const emitirNota = async (nota) => {
     try {
-      await api.post(`/nfe/emitir/${nota.id}`, null, { timeout: 80000 })
+      await api.post(`/nfe/emitir/${nota.id}`, null, { timeout: 80000, skipGlobalErrorToast: true })
       toast.success(`NF-e emitida com sucesso para ${nota.numero}!`)
       carregar()
     } catch (e) {

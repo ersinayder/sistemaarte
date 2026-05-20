@@ -16,7 +16,7 @@ api.interceptors.response.use(
   (res) => res,
   (err) => {
     const status  = err.response?.status;
-    const message = err.response?.data?.error || err.response?.data?.message;
+    const message = err.response?.data?.erro || err.response?.data?.error || err.response?.data?.message;
     const url     = err.config?.url || "";
 
     // 401 — sessão expirada
@@ -43,7 +43,7 @@ api.interceptors.response.use(
     // Suprime o toast genérico em chamadas de inicialização (auth/me, clientes seed)
     // para evitar toasts falsos no carregamento inicial com sessão expirada.
     if (status >= 500) {
-      const isSilent = url.includes("/auth/me");
+      const isSilent = url.includes("/auth/me") || err.config?.skipGlobalErrorToast;
       if (!isSilent) {
         toast.error(
           message || "Erro interno do servidor. Tente novamente em instantes.",
