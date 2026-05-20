@@ -153,6 +153,18 @@ function filenameSeguro(value) {
   return String(value || 'nfe').replace(/[^a-zA-Z0-9._-]/g, '_');
 }
 
+function resumirStatusServico(resultado) {
+  const status = resultado?.retConsStatServ || resultado?.consStatServ || resultado || {};
+  return {
+    cStat: String(status.cStat || resultado?.cStat || ''),
+    xMotivo: status.xMotivo || resultado?.xMotivo || '',
+    tpAmb: String(status.tpAmb || resultado?.tpAmb || ''),
+    verAplic: status.verAplic || resultado?.verAplic || '',
+    dhRecbto: status.dhRecbto || resultado?.dhRecbto || '',
+    raw: resultado,
+  };
+}
+
 // GET /api/nfe
 router.get('/', auth(['admin', 'caixa']), (req, res) => {
   try {
@@ -183,6 +195,38 @@ router.get('/', auth(['admin', 'caixa']), (req, res) => {
   } catch (e) {
     console.error('[NF-e] GET /:', e.message);
     res.status(500).json({ erro: 'Erro ao listar notas fiscais' });
+  }
+});
+
+// GET /api/nfe/status-servico
+// Diagnostico: consulta o status do webservice sem emitir nota nem consumir numeracao.
+router.get('/status-servico', auth(['admin', 'caixa']), async (req, res) => {
+  const ambiente = tpAmbAtual();
+  const inicio = Date.now();
+
+  try {
+    const wizard = await getNFEWizard();
+    const resultado = await callSEFAZ(() => wizard.NFE_ConsultaStatusServico());
+    const status = resumirStatusServico(resultado);
+    console.log(`[NF-e] Status servico SEFAZ ambiente=${ambiente} cStat=${status.cStat || '-'} motivo=${status.xMotivo || '-'}`);
+    res.json({
+      ok: true,
+      ambiente,
+      duracao_ms: Date.now() - inicio,
+      status,
+    });
+  } catch (err) {
+    const sefazInfo = getSefazErrorInfo(err);
+    console.error(`[NF-e] Status servico falhou ambiente=${ambiente}:`, err.message);
+    res.status(504).json({
+      ok: false,
+      ambiente,
+      duracao_ms: Date.now() - inicio,
+      erro: sefazInfo.mensagem,
+      tipo: sefazInfo.tipo,
+      detalhe: err.message,
+      contingencia: false,
+    });
   }
 });
 

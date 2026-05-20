@@ -28,6 +28,7 @@ vi.mock('../utils/nfe.js', () => ({
   getNFEWizard: vi.fn(),
   callSEFAZ: vi.fn(),
   resetNFEWizard: vi.fn(),
+  getSefazErrorInfo: vi.fn(() => ({ tipo: 'comunicacao', cstat: 'comunicacao', mensagem: 'Falha SEFAZ' })),
 }));
 
 function makeRes() {
@@ -65,6 +66,7 @@ describe('route authorization contracts', () => {
   it('restricts fiscal write routes to admin and caixa', async () => {
     const nfeRouter = await loadRouter('../routes/nfe.js');
 
+    expect(routeRoles(nfeRouter, 'get', '/status-servico')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'post', '/emitir/:id')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'post', '/:chave/cce')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'post', '/:chave/cancelar')).toEqual(['admin', 'caixa']);
