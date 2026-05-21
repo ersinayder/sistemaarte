@@ -115,6 +115,21 @@ describe('route persistence contracts', () => {
     expect(source).toMatch(/UPDATE lancamentos SET[^"]*categoria=\?/s);
   });
 
+  it('persists structured standalone sale items in caixa launches', () => {
+    const databaseSource = fs.readFileSync(new URL('../database.js', import.meta.url), 'utf8');
+    const source = fs.readFileSync(new URL('../routes/caixa.js', import.meta.url), 'utf8');
+
+    expect(databaseSource).toMatch(/CREATE TABLE IF NOT EXISTS lancamento_itens/);
+    expect(databaseSource).toMatch(/idx_lancamento_itens_lancamentoid/);
+    expect(source).toMatch(/normalizarItensVendaAvulsa/);
+    expect(source).toMatch(/origem = "vendaavulsa"/);
+    expect(source).toMatch(/INSERT INTO lancamento_itens/);
+    expect(source).toMatch(/itens_resumo/);
+    expect(source).toMatch(/transaction\(\(\) =>/);
+    expect(source).toMatch(/origem === "vendaavulsa" \? "Entrada"/);
+    expect(source).toMatch(/pagoFinal = 1/);
+  });
+
   it('mounts admin financeiro API and paying accounts creates a caixa output', async () => {
     const serverSource = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
     const source = fs.readFileSync(new URL('../routes/financeiro.js', import.meta.url), 'utf8');

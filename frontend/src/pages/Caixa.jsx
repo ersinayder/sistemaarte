@@ -190,6 +190,7 @@ export default function Caixa() {
   const [filterTipo,  setFilterTipo]  = useState('todos');
   const [filterPag,   setFilterPag]   = useState('todos');
   const [filterCat,   setFilterCat]   = useState('todos');
+  const [filterOrigem,setFilterOrigem]= useState('todos');
   const [busca,       setBusca]       = useState('');
   const [page,        setPage]        = useState(1);
   const [selectedDay, setSelectedDay] = useState(getToday());
@@ -216,16 +217,18 @@ export default function Caixa() {
     if (filterTipo !== 'todos') items = items.filter(l => l.tipo === filterTipo);
     if (filterPag  !== 'todos') items = items.filter(l => l.pagamento === filterPag);
     if (filterCat  !== 'todos') items = items.filter(l => l.categoria === filterCat);
+    if (filterOrigem !== 'todos') items = items.filter(l => (l.origem || 'manual') === filterOrigem);
     if (busca.trim()) {
       const q = busca.toLowerCase();
       items = items.filter(l =>
         (l.descricao||'').toLowerCase().includes(q) ||
+        (l.itens_resumo||'').toLowerCase().includes(q) ||
         (l.categoria||'').toLowerCase().includes(q) ||
         (l.ordemnumero||'').toLowerCase().includes(q)
       );
     }
     return items.sort((a,b) => normalizeDate(b.data).localeCompare(normalizeDate(a.data)));
-  }, [lancamentos, filterTipo, filterPag, filterCat, busca]);
+  }, [lancamentos, filterTipo, filterPag, filterCat, filterOrigem, busca]);
 
   const { entrada, saida, saldo } = useMemo(() => {
     const e  = lancamentosFiltrados.filter(l => l.tipo==='Entrada').reduce((s,l) => s+Number(l.valor||0), 0);
@@ -240,7 +243,7 @@ export default function Caixa() {
   const totalPages = Math.max(1, Math.ceil(lancamentosFiltrados.length / PER_PAGE));
   const paginated  = lancamentosFiltrados.slice((page-1)*PER_PAGE, page*PER_PAGE);
 
-  useEffect(() => { setPage(1); }, [filterTipo, filterPag, filterCat, busca, selectedDay, viewMode]);
+  useEffect(() => { setPage(1); }, [filterTipo, filterPag, filterCat, filterOrigem, busca, selectedDay, viewMode]);
 
   const handleSave = async (form) => {
     try {
@@ -341,7 +344,7 @@ export default function Caixa() {
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <path d="M12 5v14M5 12h14"/>
             </svg>
-            Novo
+            Novo manual
           </button>
         </div>
       </div>
@@ -401,6 +404,14 @@ export default function Caixa() {
           style={{ fontSize:'var(--text-xs)', height:28, padding:'0 var(--space-2)', minWidth:110 }}>
           {categorias.map(c=><option key={c} value={c}>{c==='todos'?'Categoria':c}</option>)}
         </select>
+        <select className="form-input" value={filterOrigem} onChange={e=>setFilterOrigem(e.target.value)}
+          style={{ fontSize:'var(--text-xs)', height:28, padding:'0 var(--space-2)', minWidth:130 }}>
+          <option value="todos">Origem</option>
+          <option value="manual">Manual</option>
+          <option value="entradaos">Entrada OS</option>
+          <option value="saldoos">Recebimento OS</option>
+          <option value="vendaavulsa">Venda avulsa</option>
+        </select>
       </div>
 
       {/* Tabela */}
@@ -437,9 +448,14 @@ export default function Caixa() {
                 <td style={{ padding:'var(--space-2) var(--space-3)', color:'var(--color-primary)', fontWeight:600 }}>
                   {l.ordemnumero ? <span style={{ cursor:'pointer' }}>{l.ordemnumero}</span> : '—'}
                 </td>
-                <td style={{ padding:'var(--space-2) var(--space-3)', maxWidth:200, overflow:'hidden',
-                  textOverflow:'ellipsis', whiteSpace:'nowrap', color:'var(--color-text-muted)' }}
-                  title={l.descricao}>{l.descricao||'—'}</td>
+                <td style={{ padding:'var(--space-2) var(--space-3)', maxWidth:240, color:'var(--color-text-muted)' }}
+                  title={[l.descricao, l.itens_resumo].filter(Boolean).join(' - ')}>
+                  <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{l.descricao||'—'}</div>
+                  {l.itens_resumo && (
+                    <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+                      fontSize:10, color:'var(--color-text-faint)', marginTop:2 }}>{l.itens_resumo}</div>
+                  )}
+                </td>
                 <td style={{ padding:'var(--space-2) var(--space-3)', textAlign:'right', fontFamily:'monospace',
                   fontWeight:700, color: l.tipo==='Entrada' ? 'var(--color-success)' : 'var(--color-error)' }}>
                   {l.tipo==='Entrada' ? '+' : '−'} {fmt(l.valor)}

@@ -5,6 +5,7 @@ import Layout from './components/Layout'
 import LoginPage from './pages/Login'
 
 const Dashboard    = React.lazy(() => import('./pages/Dashboard'))
+const Atendimento  = React.lazy(() => import('./pages/Atendimento'))
 const Caixa        = React.lazy(() => import('./pages/Caixa'))
 const Ordens       = React.lazy(() => import('./pages/Ordens'))
 const OrdemDetalhe = React.lazy(() => import('./pages/OrdemDetalhe'))
@@ -32,7 +33,7 @@ function AppRoutes() {
   if (loading) return <div className="loading-center"><div className="spinner"/></div>
   if (!user)   return <Routes><Route path="*" element={<LoginPage />} /></Routes>
 
-  const defaultRoute = user.role === 'oficina' ? '/oficina' : '/dashboard'
+  const defaultRoute = user.role === 'oficina' ? '/oficina' : '/atendimento'
 
   return (
     <React.Suspense fallback={<div className="loading-center"><div className="spinner"/></div>}>
@@ -42,6 +43,7 @@ function AppRoutes() {
           <Route index element={<Navigate to={defaultRoute} replace />} />
           <Route path="/oficina" element={<PrivateRoute><Oficina /></PrivateRoute>}/>
           <Route path="/oficina/:id" element={<PrivateRoute><OrdemDetalhe context="oficina" /></PrivateRoute>}/>
+          <Route path="/atendimento" element={<PrivateRoute roles={['admin','caixa']}><Atendimento /></PrivateRoute>}/>
           <Route path="/dashboard" element={<PrivateRoute roles={['admin','caixa']}><Dashboard /></PrivateRoute>}/>
           <Route path="/ordens" element={<PrivateRoute roles={['admin','caixa']}><Ordens /></PrivateRoute>}/>
           <Route path="/ordens/lixeira" element={<PrivateRoute roles={['admin']}><OrdemLixeira /></PrivateRoute>}/>
