@@ -15,6 +15,111 @@ import { emit } from '../services/eventBus'
 
 const PAGAMENTOS = ['Pix', 'Dinheiro', 'Cartão de Débito', 'Cartão de Crédito', 'Transferência', 'Outros']
 const SERVICOS = ['Quadro', 'Caixas', 'Corte a Laser', 'Sublimacao', 'Diversos']
+const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']
+
+const onlyDigits = v => String(v || '').replace(/\D/g, '')
+const maskCPF  = v => onlyDigits(v)
+  .replace(/(\d{3})(\d)/,'$1.$2')
+  .replace(/(\d{3})(\d)/,'$1.$2')
+  .replace(/(\d{3})(\d{1,2})$/,'$1-$2')
+  .slice(0,14)
+const maskCNPJ = v => onlyDigits(v)
+  .replace(/(\d{2})(\d)/,'$1.$2')
+  .replace(/(\d{3})(\d)/,'$1.$2')
+  .replace(/(\d{3})(\d)/,'$1/$2')
+  .replace(/(\d{4})(\d{1,2})$/,'$1-$2')
+  .slice(0,18)
+
+const validaCPF = cpf => {
+  const n = onlyDigits(cpf)
+  if (n.length !== 11 || /^(\d)\1{10}$/.test(n)) return false
+  let s = 0
+  for (let i = 0; i < 9; i++) s += parseInt(n[i]) * (10 - i)
+  let r = (s * 10) % 11
+  if (r === 10 || r === 11) r = 0
+  if (r !== parseInt(n[9])) return false
+  s = 0
+  for (let i = 0; i < 10; i++) s += parseInt(n[i]) * (11 - i)
+  r = (s * 10) % 11
+  if (r === 10 || r === 11) r = 0
+  return r === parseInt(n[10])
+}
+
+const validaCNPJ = cnpj => {
+  const n = onlyDigits(cnpj)
+  if (n.length !== 14 || /^(\d)\1{13}$/.test(n)) return false
+  const calc = s => {
+    let sum = 0
+    let pos = s - 7
+    for (let i = s; i >= 1; i--) {
+      sum += parseInt(n[s - i]) * pos--
+      if (pos < 2) pos = 9
+    }
+    return sum % 11 < 2 ? 0 : 11 - (sum % 11)
+  }
+  return calc(12) === parseInt(n[12]) && calc(13) === parseInt(n[13])
+}
+
+function documentoTipo(documento, ie = '') {
+  const digits = onlyDigits(documento)
+  if (digits.length > 11 || (!digits && ie)) return 'PJ'
+  return 'PF'
+}
+
+function clienteFiscalCompleto(cliente) {
+  if (!cliente) return false
+  return Boolean(
+    cliente.name &&
+    onlyDigits(cliente.cpf).length >= 11 &&
+    cliente.cep &&
+    cliente.logradouro &&
+    cliente.numero &&
+    cliente.bairro &&
+    cliente.cidade &&
+    cliente.uf
+  )
+}
+
+function blankClienteFiscal(nome = '') {
+  return {
+    tipo: 'PF',
+    nome,
+    cpf: '',
+    cnpj: '',
+    ie: '',
+    contato: '',
+    email: '',
+    cep: '',
+    logradouro: '',
+    numero: '',
+    bairro: '',
+    cidade: '',
+    uf: '',
+    obs: '',
+  }
+}
+
+function clienteParaFiscalForm(cliente, fallbackName = '') {
+  if (!cliente) return blankClienteFiscal(fallbackName)
+  const tipo = documentoTipo(cliente.cpf, cliente.ie)
+  const documento = tipo === 'PJ' ? maskCNPJ(cliente.cpf || '') : maskCPF(cliente.cpf || '')
+  return {
+    tipo,
+    nome: cliente.name || fallbackName,
+    cpf: tipo === 'PF' ? documento : '',
+    cnpj: tipo === 'PJ' ? documento : '',
+    ie: cliente.ie || '',
+    contato: cliente.phone || '',
+    email: cliente.email || '',
+    cep: cliente.cep || '',
+    logradouro: cliente.logradouro || '',
+    numero: cliente.numero || '',
+    bairro: cliente.bairro || '',
+    cidade: cliente.cidade || '',
+    uf: cliente.uf || '',
+    obs: cliente.notes || '',
+  }
+}
 
 function hoje() {
   const d = new Date()
@@ -283,6 +388,268 @@ function Campo({ label, children }) {
   )
 }
 
+function QuickClientModal({ open, cliente, initialName, onClose, onSaved }) {
+  const [form, setForm] = useState(blankClienteFiscal(initialName))
+  const [saving, setSaving] = useState(false)
+  const [cepLoading, setCepLoading] = useState(false)
+  const [cnpjLoading, setCnpjLoading] = useState(false)
+  const [cpfError, setCpfError] = useState('')
+  const [cnpjError, setCnpjError] = useState('')
+
+  useEffect(() => {
+    if (!open) return
+    setForm(clienteParaFiscalForm(cliente, initialName))
+    setCpfError('')
+    setCnpjError('')
+  }, [open, cliente, initialName])
+
+  if (!open) return null
+
+  const set = (key, value) => setForm(f => ({ ...f, [key]: value }))
+
+  const buscarCNPJ = async raw => {
+    const n = onlyDigits(raw)
+    if (n.length !== 14) return
+    if (!validaCNPJ(n)) {
+      setCnpjError('CNPJ inválido')
+      return
+    }
+    setCnpjError('')
+    setCnpjLoading(true)
+    try {
+      const { data: d } = await api.get(`/clientes/cnpj/${n}`)
+      setForm(f => ({
+        ...f,
+        nome: f.nome.trim() ? f.nome : (d.razao_social || d.nome_fantasia || f.nome),
+        email: f.email.trim() ? f.email : (d.email?.toLowerCase() || f.email),
+        contato: f.contato.trim() ? f.contato : (d.ddd_telefone_1 ? d.ddd_telefone_1.replace(/[^\d]/g,'').replace(/(\d{2})(\d+)/,'($1) $2') : f.contato),
+        cep: f.cep.trim() ? f.cep : (d.cep?.replace(/\D/g,'').replace(/(\d{5})(\d{3})/,'$1-$2') || f.cep),
+        logradouro: f.logradouro.trim() ? f.logradouro : (d.logradouro || f.logradouro),
+        numero: f.numero.trim() ? f.numero : (d.numero || f.numero),
+        bairro: f.bairro.trim() ? f.bairro : (d.bairro || f.bairro),
+        cidade: f.cidade.trim() ? f.cidade : (d.municipio || f.cidade),
+        uf: f.uf.trim() ? f.uf : (d.uf || f.uf),
+      }))
+      toast.success('Dados do CNPJ carregados')
+    } catch {
+      setCnpjError('CNPJ não encontrado')
+    } finally {
+      setCnpjLoading(false)
+    }
+  }
+
+  const buscarCep = async raw => {
+    const cep = onlyDigits(raw)
+    if (cep.length !== 8) return
+    setCepLoading(true)
+    try {
+      const r = await fetch(`https://viacep.com.br/ws/${cep}/json/`)
+      const d = await r.json()
+      if (!d.erro) {
+        setForm(f => ({
+          ...f,
+          logradouro: f.logradouro.trim() ? f.logradouro : (d.logradouro || ''),
+          bairro: f.bairro.trim() ? f.bairro : (d.bairro || ''),
+          cidade: f.cidade.trim() ? f.cidade : (d.localidade || ''),
+          uf: f.uf.trim() ? f.uf : (d.uf || ''),
+        }))
+      }
+    } catch {}
+    finally {
+      setCepLoading(false)
+    }
+  }
+
+  const handleDocumento = value => {
+    const digits = onlyDigits(value).slice(0, 14)
+    const tipo = digits.length > 11 ? 'PJ' : form.tipo
+    const nextTipo = tipo === 'PJ' ? 'PJ' : 'PF'
+    const masked = nextTipo === 'PJ' ? maskCNPJ(digits) : maskCPF(digits)
+
+    setForm(f => ({
+      ...f,
+      tipo: nextTipo,
+      cpf: nextTipo === 'PF' ? masked : '',
+      cnpj: nextTipo === 'PJ' ? masked : '',
+      ie: nextTipo === 'PF' ? '' : f.ie,
+    }))
+
+    setCpfError('')
+    setCnpjError('')
+    if (nextTipo === 'PF' && digits.length === 11) setCpfError(validaCPF(digits) ? '' : 'CPF inválido')
+    if (nextTipo === 'PJ' && digits.length === 14) buscarCNPJ(masked)
+  }
+
+  const changeTipo = tipo => {
+    setForm(f => ({ ...f, tipo, cpf: '', cnpj: '', ie: tipo === 'PF' ? '' : f.ie }))
+    setCpfError('')
+    setCnpjError('')
+  }
+
+  const handleSave = async () => {
+    const documento = form.tipo === 'PJ' ? form.cnpj : form.cpf
+    const required = [
+      [form.nome.trim(), 'Nome/Razão social'],
+      [onlyDigits(documento), form.tipo === 'PJ' ? 'CNPJ' : 'CPF'],
+      [form.cep.trim(), 'CEP'],
+      [form.logradouro.trim(), 'Logradouro'],
+      [form.numero.trim(), 'Número'],
+      [form.bairro.trim(), 'Bairro'],
+      [form.cidade.trim(), 'Cidade'],
+      [form.uf.trim(), 'UF'],
+    ]
+    const missing = required.find(([value]) => !value)
+    if (missing) return toast.error(`${missing[1]} é obrigatório para dados fiscais.`)
+    if (form.tipo === 'PF' && !validaCPF(documento)) return toast.error('CPF inválido')
+    if (form.tipo === 'PJ' && !validaCNPJ(documento)) return toast.error('CNPJ inválido')
+
+    const payload = {
+      name: form.nome.trim(),
+      phone: form.contato.trim(),
+      email: form.email.trim(),
+      cpf: documento,
+      ie: form.ie.trim(),
+      logradouro: form.logradouro.trim(),
+      numero: form.numero.trim(),
+      bairro: form.bairro.trim(),
+      cidade: form.cidade.trim(),
+      uf: form.uf.trim(),
+      cep: form.cep.trim(),
+      notes: form.obs.trim(),
+    }
+
+    setSaving(true)
+    try {
+      const { data } = cliente?.id
+        ? await api.put(`/clientes/${cliente.id}`, payload)
+        : await api.post('/clientes', payload)
+      onSaved({
+        ...payload,
+        id: cliente?.id || data.id,
+        name: payload.name,
+      })
+      toast.success(cliente?.id ? 'Cliente atualizado' : 'Cliente cadastrado')
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Erro ao salvar cliente')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{ maxWidth: 660 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="modal-title">{cliente?.id ? 'Dados fiscais do cliente' : 'Cadastrar cliente'}</h2>
+          <button className="btn btn-icon btn-ghost" onClick={onClose}><X size={18} /></button>
+        </div>
+        <div className="modal-body" style={{ display: 'grid', gap: 'var(--space-4)' }}>
+          <div style={{ display: 'flex', background: 'var(--color-surface-offset)', borderRadius: 'var(--radius-lg)', padding: 3, gap: 3 }}>
+            {['PF', 'PJ'].map(tipo => (
+              <button
+                key={tipo}
+                type="button"
+                onClick={() => changeTipo(tipo)}
+                style={{
+                  flex: 1,
+                  border: 'none',
+                  borderRadius: 'var(--radius-md)',
+                  padding: 'var(--space-2) var(--space-3)',
+                  background: form.tipo === tipo ? 'var(--color-primary)' : 'transparent',
+                  color: form.tipo === tipo ? '#fff' : 'var(--color-text-muted)',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                }}
+              >
+                {tipo === 'PF' ? 'Pessoa Física' : 'Pessoa Jurídica'}
+              </button>
+            ))}
+          </div>
+
+          <div className="atendimento-grid-2">
+            <Campo label={form.tipo === 'PJ' ? 'CNPJ' : 'CPF'}>
+              <input
+                className="form-input"
+                style={(cpfError || cnpjError) ? { borderColor: 'var(--color-error)' } : {}}
+                value={form.tipo === 'PJ' ? form.cnpj : form.cpf}
+                onChange={e => handleDocumento(e.target.value)}
+                placeholder={form.tipo === 'PJ' ? '00.000.000/0000-00' : '000.000.000-00'}
+                inputMode="numeric"
+              />
+              {(cpfError || cnpjError) && <span className="form-error">{cpfError || cnpjError}</span>}
+            </Campo>
+            {form.tipo === 'PJ' ? (
+              <Campo label="Inscrição Estadual">
+                <input className="form-input" value={form.ie} onChange={e => set('ie', e.target.value)} placeholder="Opcional" />
+              </Campo>
+            ) : (
+              <Campo label="Telefone / WhatsApp">
+                <input className="form-input" value={form.contato} onChange={e => set('contato', e.target.value)} placeholder="(31) 99999-9999" />
+              </Campo>
+            )}
+          </div>
+
+          <Campo label="Nome / Razão social">
+            <input className="form-input" value={form.nome} onChange={e => set('nome', e.target.value)} placeholder={form.tipo === 'PJ' ? 'Razão social ou nome fantasia' : 'Nome completo'} />
+          </Campo>
+
+          <div className="atendimento-grid-2">
+            {form.tipo === 'PJ' && (
+              <Campo label="Telefone / WhatsApp">
+                <input className="form-input" value={form.contato} onChange={e => set('contato', e.target.value)} placeholder="(31) 99999-9999" />
+              </Campo>
+            )}
+            <Campo label="E-mail">
+              <input className="form-input" type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="email@exemplo.com" />
+            </Campo>
+          </div>
+
+          <div className="atendimento-grid-3">
+            <Campo label="CEP">
+              <input className="form-input" value={form.cep} onChange={e => { set('cep', e.target.value); buscarCep(e.target.value) }} placeholder="00000-000" inputMode="numeric" />
+              {cepLoading && <span style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>buscando CEP...</span>}
+            </Campo>
+            <Campo label="Número">
+              <input className="form-input" value={form.numero} onChange={e => set('numero', e.target.value)} placeholder="123 ou S/N" />
+            </Campo>
+            <Campo label="UF">
+              <select className="form-input" value={form.uf} onChange={e => set('uf', e.target.value)}>
+                <option value="" />
+                {UFS.map(uf => <option key={uf}>{uf}</option>)}
+              </select>
+            </Campo>
+          </div>
+
+          <Campo label="Logradouro">
+            <input className="form-input" value={form.logradouro} onChange={e => set('logradouro', e.target.value)} placeholder="Rua, avenida, travessa..." />
+          </Campo>
+
+          <div className="atendimento-grid-2">
+            <Campo label="Bairro">
+              <input className="form-input" value={form.bairro} onChange={e => set('bairro', e.target.value)} placeholder="Bairro" />
+            </Campo>
+            <Campo label="Cidade">
+              <input className="form-input" value={form.cidade} onChange={e => set('cidade', e.target.value)} placeholder="Cidade" />
+            </Campo>
+          </div>
+
+          <Campo label="Observações">
+            <textarea className="form-input" rows={2} value={form.obs} onChange={e => set('obs', e.target.value)} placeholder="Referências, preferências ou observações do cliente..." />
+          </Campo>
+
+          {cnpjLoading && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>Buscando dados do CNPJ...</div>}
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
+            {saving ? 'Salvando...' : 'Salvar e usar na OS'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Atendimento() {
   const [mode, setMode] = useState('home')
   const [loading, setLoading] = useState(true)
@@ -295,6 +662,9 @@ export default function Atendimento() {
   const [osForm, setOsForm] = useState(formInicialOS)
   const [clienteQuery, setClienteQuery] = useState('')
   const [clienteOpen, setClienteOpen] = useState(false)
+  const [clienteSelecionado, setClienteSelecionado] = useState(null)
+  const [clientModalOpen, setClientModalOpen] = useState(false)
+  const [clientModalCliente, setClientModalCliente] = useState(null)
   const clienteRef = useRef(null)
 
   const [receiveQuery, setReceiveQuery] = useState('')
@@ -370,6 +740,7 @@ export default function Atendimento() {
   }
 
   const selectCliente = c => {
+    setClienteSelecionado(c)
     setClienteQuery(c.name || '')
     setOsForm(f => ({
       ...f,
@@ -381,25 +752,28 @@ export default function Atendimento() {
     setClienteOpen(false)
   }
 
-  const quickCreateClient = async () => {
-    const nome = osForm.clientenome.trim()
-    if (!nome) return toast.error('Informe o nome do cliente.')
-    setSaving(true)
-    try {
-      const { data } = await api.post('/clientes', {
-        name: nome,
-        phone: osForm.clientetelefone || null,
-        cpf: osForm.clientecpf || null,
-      })
-      const novo = { id: data.id, name: data.name || nome, phone: osForm.clientetelefone, cpf: osForm.clientecpf }
-      setClientes(prev => [novo, ...prev])
-      setOsForm(f => ({ ...f, clienteid: data.id }))
-      toast.success('Cliente cadastrado')
-    } catch (e) {
-      toast.error(e.response?.data?.error || 'Erro ao cadastrar cliente')
-    } finally {
-      setSaving(false)
-    }
+  const openClientModal = (cliente = null) => {
+    setClientModalCliente(cliente)
+    setClientModalOpen(true)
+    setClienteOpen(false)
+  }
+
+  const handleClientSaved = cliente => {
+    setClientes(prev => {
+      const exists = prev.some(c => c.id === cliente.id)
+      return exists ? prev.map(c => c.id === cliente.id ? { ...c, ...cliente } : c) : [cliente, ...prev]
+    })
+    setClienteSelecionado(cliente)
+    setClienteQuery(cliente.name || '')
+    setOsForm(f => ({
+      ...f,
+      clienteid: cliente.id || '',
+      clientenome: cliente.name || '',
+      clientetelefone: cliente.phone || '',
+      clientecpf: cliente.cpf || '',
+    }))
+    setClientModalOpen(false)
+    setClientModalCliente(null)
   }
 
   const createOS = async e => {
@@ -429,6 +803,7 @@ export default function Atendimento() {
       if (numero(osForm.valorentrada) > 0) emit('caixaUpdated')
       setOsForm(formInicialOS())
       setClienteQuery('')
+      setClienteSelecionado(null)
       await loadBase()
     } catch (err) {
       toast.error(err.response?.data?.error || 'Erro ao criar OS')
@@ -577,9 +952,10 @@ export default function Atendimento() {
                 const value = e.target.value
                 setClienteQuery(value)
                 setClienteOpen(true)
-                setOsForm(f => ({ ...f, clientenome: value, clienteid: '' }))
+                setClienteSelecionado(null)
+                setOsForm(f => ({ ...f, clientenome: value, clienteid: '', clientetelefone: '', clientecpf: '' }))
               }}
-              placeholder="Digite o nome ou telefone"
+              placeholder="Digite nome, telefone ou CPF/CNPJ"
               autoComplete="off"
               style={{ height: 40 }}
             />
@@ -599,21 +975,33 @@ export default function Atendimento() {
             </div>
           )}
         </div>
-        <div className="atendimento-grid-2">
-          <Campo label="Telefone">
-            <input className="form-input" value={osForm.clientetelefone} onChange={e => setOsForm(f => ({ ...f, clientetelefone: e.target.value }))} placeholder="(31) 99999-9999" />
-          </Campo>
-          <Campo label="CPF/CNPJ">
-            <input className="form-input" value={osForm.clientecpf} onChange={e => setOsForm(f => ({ ...f, clientecpf: e.target.value }))} placeholder="Opcional" />
-          </Campo>
-        </div>
+        {clienteSelecionado && (
+          <div className="atendimento-inline-callout" style={{
+            borderColor: clienteFiscalCompleto(clienteSelecionado) ? 'var(--color-success)' : 'var(--color-warning)',
+            background: clienteFiscalCompleto(clienteSelecionado)
+              ? 'color-mix(in oklab, var(--color-success) 10%, var(--color-surface))'
+              : 'color-mix(in oklab, var(--color-warning) 12%, var(--color-surface))',
+          }}>
+            <div>
+              <strong>{clienteSelecionado.name}</strong>
+              <span>
+                {clienteFiscalCompleto(clienteSelecionado)
+                  ? 'Dados fiscais completos'
+                  : 'Dados fiscais incompletos para NF-e'}
+              </span>
+            </div>
+            <button type="button" className="btn btn-secondary" onClick={() => openClientModal(clienteSelecionado)}>
+              {clienteFiscalCompleto(clienteSelecionado) ? 'Editar dados' : 'Completar'}
+            </button>
+          </div>
+        )}
         {osForm.clientenome.trim().length > 2 && !clienteExiste && !osForm.clienteid && (
           <div className="atendimento-inline-callout">
             <div>
               <strong>Novo cliente</strong>
-              <span>{osForm.clientenome.trim()}</span>
+              <span>Cadastre os dados fiscais sem sair da OS</span>
             </div>
-            <button type="button" className="btn btn-secondary" onClick={quickCreateClient} disabled={saving}>Cadastrar</button>
+            <button type="button" className="btn btn-secondary" onClick={() => openClientModal(null)} disabled={saving}>Cadastrar cliente</button>
           </div>
         )}
       </section>
@@ -935,6 +1323,17 @@ export default function Atendimento() {
           </div>
         </div>
       )}
+
+      <QuickClientModal
+        open={clientModalOpen}
+        cliente={clientModalCliente}
+        initialName={osForm.clientenome}
+        onClose={() => {
+          setClientModalOpen(false)
+          setClientModalCliente(null)
+        }}
+        onSaved={handleClientSaved}
+      />
     </div>
   )
 }
