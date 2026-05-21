@@ -1227,7 +1227,7 @@ export default function Atendimento() {
         .atendimento-os-row { width:100%; border:1px solid var(--color-border); border-radius:var(--radius-md); padding:var(--space-3); color:var(--color-text); display:flex; justify-content:space-between; align-items:center; gap:var(--space-3); text-align:left; cursor:pointer; }
         .atendimento-os-row div { display:grid; gap:3px; min-width:0; }
         .atendimento-os-row span { color:var(--color-text-muted); font-size:var(--text-xs); }
-        .atendimento-results-list { min-height:82px; max-height:min(48vh, 540px); overflow:auto; display:grid; gap:var(--space-2); align-content:start; padding-right:2px; }
+        .atendimento-results-list { min-height:82px; max-height:min(32vh, 420px); overflow:auto; display:grid; gap:var(--space-2); align-content:start; padding-right:2px; }
         .atendimento-selected-os { display:flex; justify-content:space-between; gap:var(--space-3); padding:var(--space-3); border:1px solid var(--color-primary); border-radius:var(--radius-md); background:color-mix(in oklab, var(--color-primary) 10%, var(--color-surface)); }
         .atendimento-selected-os div { display:grid; gap:2px; }
         .atendimento-selected-os span { color:var(--color-text-muted); font-size:10px; font-weight:900; text-transform:uppercase; letter-spacing:0.06em; }
@@ -1255,12 +1255,14 @@ export default function Atendimento() {
         </div>
       </div>
 
-      <div className="atendimento-kpis">
-        <Kpi icon={ClipboardList} label="OS abertas" value={resumo.ativas} color="var(--color-primary)" />
-        <Kpi icon={CheckCircle2} label="Prontas" value={resumo.prontas} color="var(--color-success)" />
-        <Kpi icon={DollarSign} label="Recebido hoje" value={moeda(resumo.recebido)} color="var(--color-success)" />
-        <Kpi icon={Search} label="Vencidas" value={resumo.vencidas} color="var(--color-warning)" />
-      </div>
+      {mode === 'home' && (
+        <div className="atendimento-kpis">
+          <Kpi icon={ClipboardList} label="OS abertas" value={resumo.ativas} color="var(--color-primary)" />
+          <Kpi icon={CheckCircle2} label="Prontas" value={resumo.prontas} color="var(--color-success)" />
+          <Kpi icon={DollarSign} label="Recebido hoje" value={moeda(resumo.recebido)} color="var(--color-success)" />
+          <Kpi icon={Search} label="Vencidas" value={resumo.vencidas} color="var(--color-warning)" />
+        </div>
+      )}
 
       <div className="atendimento-wide-workspace">
         <main className="card" style={{ overflow: 'hidden' }}>

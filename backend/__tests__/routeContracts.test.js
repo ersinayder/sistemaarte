@@ -135,8 +135,10 @@ describe('route persistence contracts', () => {
 
     expect(source).not.toMatch(/Pr[oó]ximas a[cç][oõ]es/i);
     expect(source).toMatch(/atendimento-wide-workspace/);
+    expect(source).toMatch(/mode === 'home' && \(\s*<div className="atendimento-kpis">/);
     expect(source).toMatch(/atendimento-nova-grid/);
     expect(source).toMatch(/atendimento-receber-grid/);
+    expect(source).toMatch(/atendimento-results-list \{[^}]*max-height:min\(32vh, 420px\)/);
     expect(source).toMatch(/atendimento-venda-grid/);
   });
 
