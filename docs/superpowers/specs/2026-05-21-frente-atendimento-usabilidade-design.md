@@ -61,8 +61,8 @@ O prototipo aprovado removeu os botoes repetidos no canto superior da pagina. A 
 - Cabecalho da pagina: titulo `Frente de Atendimento`, subtitulo curto e KPIs operacionais.
 - KPIs: OS abertas, vencidas, recebido hoje e prontas.
 - Painel principal: `O que voce vai fazer agora?`
-- Painel lateral: `Proximas acoes`, com atalhos para OS prontas com saldo, vencidas e caixa do dia.
-- Bloco inferior: atalhos do balcao para receber OS urgentes/prontas e criar OS rapidamente.
+- Workspace principal largo: o fluxo selecionado usa toda a largura disponivel.
+- Nao manter painel lateral de `Proximas acoes`; os KPIs ja resumem o que importa no topo.
 
 ### Cards iniciais
 
@@ -82,9 +82,6 @@ Substitui o modal de 3 abas por uma tela unica dentro de `/atendimento`.
 Campos principais:
 
 - Cliente: busca por nome, telefone ou CPF/CNPJ.
-- Telefone/WhatsApp.
-- CPF/CNPJ.
-- Tipo de cliente: PF/PJ.
 - Servico.
 - Prioridade.
 - Prazo.
@@ -97,10 +94,11 @@ Campos principais:
 Comportamento de cliente:
 
 - Buscar clientes com `GET /api/clientes?q=...`.
-- Quando houver cliente selecionado, preencher telefone e CPF/CNPJ.
+- Quando houver cliente selecionado, exibir resumo fiscal compacto e acao para completar/editar dados.
 - Quando nao houver cliente correspondente, mostrar painel inline `Cliente nao encontrado`.
-- O painel oferece cadastro rapido sem sair da OS.
-- O cadastro rapido cria o cliente com `POST /api/clientes` e usa o `id` retornado na OS.
+- O painel oferece cadastro rapido fiscal sem sair da OS.
+- O modal rapido de cliente concentra PF/PJ, documento, telefone, email, IE e endereco necessario para NF-e.
+- O cadastro rapido cria/atualiza o cliente com `POST /api/clientes` ou `PUT /api/clientes/:id` e usa o `id` retornado na OS.
 - Se o operador nao cadastrar o cliente, a OS ainda pode ser criada com `clientenome`, `clientetelefone` e `clientecpf`, preservando o comportamento atual de `resolveClienteData()`.
 
 Comportamento de itens:
@@ -111,15 +109,12 @@ Comportamento de itens:
 - O campo `servico` continua existindo, porque ele e usado por status, filtros, caixa e PDF.
 - A OS e criada com `POST /api/ordens`, reaproveitando a logica atual de `ordem_itens` e lancamento automatico de entrada.
 
-Resumo fixo:
+Layout desktop:
 
-- Cliente.
-- Quantidade de itens.
-- Total.
-- Entrada.
-- Saldo.
-- Valor que sera registrado no caixa.
-- Botao `Criar OS`.
+- Usar duas colunas visiveis sem accordion.
+- Coluna esquerda: cliente e servico.
+- Coluna direita: itens e pagamento.
+- Manter campos confortaveis e totais/acao de criacao visiveis sem rolagem excessiva.
 
 ## Fluxo `Receber OS`
 
@@ -138,6 +133,11 @@ Pagamento:
 - Forma de pagamento.
 - Data.
 - Resumo da OS selecionada.
+
+Layout desktop:
+
+- Coluna esquerda: busca e lista de OS com saldo.
+- Coluna direita: OS selecionada, valor, forma de pagamento, total e acao de recebimento.
 
 Persistencia:
 
@@ -171,6 +171,12 @@ Campos:
 - Forma de pagamento.
 - Data.
 - Resumo da venda.
+
+Layout desktop:
+
+- Coluna esquerda: busca e itens da venda.
+- Coluna direita: forma de pagamento, total e acao `Registrar venda`.
+- Em telas menores, os tres fluxos voltam para uma coluna.
 
 Backend:
 

@@ -21,6 +21,7 @@
 - Modify `frontend/src/App.jsx`: lazy-load route `/atendimento` and default admin/caixa to it.
 - Modify `frontend/src/components/Sidebar.jsx`: add `Atendimento` first and keep `Caixa`.
 - Modify `frontend/src/pages/Caixa.jsx`: add origin filter, show item summary for `vendaavulsa`, and label the manual-entry button clearly.
+- Modify `frontend/src/pages/Atendimento.jsx`: keep quick fiscal client modal and refine selected flows into a wide no-sidebar workspace.
 
 ## Task 1: Caixa Sale Rules
 
@@ -366,4 +367,51 @@ Start backend and frontend dev server if not already running, open `/atendimento
 ## Self-Review Notes
 
 - The plan covers `/atendimento`, structured sale items, Caixa preservation, compact mode switcher, and delivery confirmation.
+
+## Task 7: Refine Wide Atendimento Workspace
+
+**Files:**
+- Modify: `frontend/src/pages/Atendimento.jsx`
+- Modify: `backend/__tests__/routeContracts.test.js`
+
+- [ ] **Step 1: Add a failing source contract**
+
+Add a contract that loads `frontend/src/pages/Atendimento.jsx` and asserts:
+
+```js
+expect(source).not.toMatch(/Pr[oó]ximas a[cç][oõ]es/i);
+expect(source).toMatch(/atendimento-wide-workspace/);
+expect(source).toMatch(/atendimento-nova-grid/);
+expect(source).toMatch(/atendimento-receber-grid/);
+expect(source).toMatch(/atendimento-venda-grid/);
+```
+
+- [ ] **Step 2: Run contract and verify RED**
+
+Run: `npm.cmd test -- routeContracts.test.js` from `backend/`.
+Expected: fail because the side panel and wide workspace class names still reflect the first implementation.
+
+- [ ] **Step 3: Remove lateral and redistribute fields**
+
+In `Atendimento.jsx`:
+
+- remove `Proximas acoes` sidebar and its `proximas` list;
+- change the page layout wrapper to a single full-width workspace;
+- render `Nova OS` as two columns: client/service left, items/payment right;
+- render `Receber OS` as two columns: search/results left, selected payment right;
+- render `Venda avulsa` as two columns: items left, payment/total right;
+- keep responsive fallback to one column below desktop widths.
+
+- [ ] **Step 4: Verify**
+
+Run:
+
+```powershell
+cd backend
+npm.cmd test
+cd ../frontend
+npm.cmd run build
+```
+
+Open `/atendimento` locally and verify each of the three mode buttons exposes its wide layout without the former side panel.
 - Stock write-down, fiscal sale emission, barcode scanning, and multi-cashier closing are intentionally out of scope for this production slice.

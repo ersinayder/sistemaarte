@@ -130,6 +130,16 @@ describe('route persistence contracts', () => {
     expect(source).toMatch(/pagoFinal = 1/);
   });
 
+  it('keeps atendimento in a wide workspace without the lateral action rail', () => {
+    const source = fs.readFileSync(new URL('../../frontend/src/pages/Atendimento.jsx', import.meta.url), 'utf8');
+
+    expect(source).not.toMatch(/Pr[oó]ximas a[cç][oõ]es/i);
+    expect(source).toMatch(/atendimento-wide-workspace/);
+    expect(source).toMatch(/atendimento-nova-grid/);
+    expect(source).toMatch(/atendimento-receber-grid/);
+    expect(source).toMatch(/atendimento-venda-grid/);
+  });
+
   it('mounts admin financeiro API and paying accounts creates a caixa output', async () => {
     const serverSource = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
     const source = fs.readFileSync(new URL('../routes/financeiro.js', import.meta.url), 'utf8');

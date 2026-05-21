@@ -937,238 +937,250 @@ export default function Atendimento() {
   )
 
   const renderNovaOS = () => (
-    <form onSubmit={createOS} className="atendimento-form">
-      <section className="card atendimento-section">
-        <div className="atendimento-section-title">
-          <UserPlus size={16} /> Cliente
-        </div>
-        <div ref={clienteRef} style={{ position: 'relative' }}>
-          <Campo label="Nome do cliente">
-            <input
-              className="form-input"
-              value={clienteQuery}
-              onFocus={() => setClienteOpen(true)}
-              onChange={e => {
-                const value = e.target.value
-                setClienteQuery(value)
-                setClienteOpen(true)
-                setClienteSelecionado(null)
-                setOsForm(f => ({ ...f, clientenome: value, clienteid: '', clientetelefone: '', clientecpf: '' }))
-              }}
-              placeholder="Digite nome, telefone ou CPF/CNPJ"
-              autoComplete="off"
-              style={{ height: 40 }}
-            />
-          </Campo>
-          {clienteOpen && (
-            <div className="atendimento-popover">
-              {clientesFiltrados.length ? clientesFiltrados.map(c => (
-                <button type="button" key={c.id} onClick={() => selectCliente(c)} className="atendimento-suggestion">
-                  <span style={{ fontWeight: 800 }}>{c.name}</span>
-                  <span>{c.phone || c.cpf || 'Cliente cadastrado'}</span>
-                </button>
-              )) : (
-                <div style={{ padding: 'var(--space-3)', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
-                  Cliente ainda não cadastrado
-                </div>
-              )}
+    <form onSubmit={createOS} className="atendimento-form atendimento-nova-grid">
+      <div className="atendimento-flow-column">
+        <section className="card atendimento-section">
+          <div className="atendimento-section-title">
+            <UserPlus size={16} /> Cliente
+          </div>
+          <div ref={clienteRef} style={{ position: 'relative' }}>
+            <Campo label="Nome do cliente">
+              <input
+                className="form-input"
+                value={clienteQuery}
+                onFocus={() => setClienteOpen(true)}
+                onChange={e => {
+                  const value = e.target.value
+                  setClienteQuery(value)
+                  setClienteOpen(true)
+                  setClienteSelecionado(null)
+                  setOsForm(f => ({ ...f, clientenome: value, clienteid: '', clientetelefone: '', clientecpf: '' }))
+                }}
+                placeholder="Digite nome, telefone ou CPF/CNPJ"
+                autoComplete="off"
+                style={{ height: 40 }}
+              />
+            </Campo>
+            {clienteOpen && (
+              <div className="atendimento-popover">
+                {clientesFiltrados.length ? clientesFiltrados.map(c => (
+                  <button type="button" key={c.id} onClick={() => selectCliente(c)} className="atendimento-suggestion">
+                    <span style={{ fontWeight: 800 }}>{c.name}</span>
+                    <span>{c.phone || c.cpf || 'Cliente cadastrado'}</span>
+                  </button>
+                )) : (
+                  <div style={{ padding: 'var(--space-3)', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                    Cliente ainda não cadastrado
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          {clienteSelecionado && (
+            <div className="atendimento-inline-callout" style={{
+              borderColor: clienteFiscalCompleto(clienteSelecionado) ? 'var(--color-success)' : 'var(--color-warning)',
+              background: clienteFiscalCompleto(clienteSelecionado)
+                ? 'color-mix(in oklab, var(--color-success) 10%, var(--color-surface))'
+                : 'color-mix(in oklab, var(--color-warning) 12%, var(--color-surface))',
+            }}>
+              <div>
+                <strong>{clienteSelecionado.name}</strong>
+                <span>
+                  {clienteFiscalCompleto(clienteSelecionado)
+                    ? 'Dados fiscais completos'
+                    : 'Dados fiscais incompletos para NF-e'}
+                </span>
+              </div>
+              <button type="button" className="btn btn-secondary" onClick={() => openClientModal(clienteSelecionado)}>
+                {clienteFiscalCompleto(clienteSelecionado) ? 'Editar dados' : 'Completar'}
+              </button>
             </div>
           )}
-        </div>
-        {clienteSelecionado && (
-          <div className="atendimento-inline-callout" style={{
-            borderColor: clienteFiscalCompleto(clienteSelecionado) ? 'var(--color-success)' : 'var(--color-warning)',
-            background: clienteFiscalCompleto(clienteSelecionado)
-              ? 'color-mix(in oklab, var(--color-success) 10%, var(--color-surface))'
-              : 'color-mix(in oklab, var(--color-warning) 12%, var(--color-surface))',
-          }}>
-            <div>
-              <strong>{clienteSelecionado.name}</strong>
-              <span>
-                {clienteFiscalCompleto(clienteSelecionado)
-                  ? 'Dados fiscais completos'
-                  : 'Dados fiscais incompletos para NF-e'}
-              </span>
+          {osForm.clientenome.trim().length > 2 && !clienteExiste && !osForm.clienteid && (
+            <div className="atendimento-inline-callout">
+              <div>
+                <strong>Novo cliente</strong>
+                <span>Cadastre os dados fiscais sem sair da OS</span>
+              </div>
+              <button type="button" className="btn btn-secondary" onClick={() => openClientModal(null)} disabled={saving}>Cadastrar cliente</button>
             </div>
-            <button type="button" className="btn btn-secondary" onClick={() => openClientModal(clienteSelecionado)}>
-              {clienteFiscalCompleto(clienteSelecionado) ? 'Editar dados' : 'Completar'}
-            </button>
+          )}
+        </section>
+
+        <section className="card atendimento-section">
+          <div className="atendimento-section-title">
+            <ClipboardList size={16} /> Serviço
           </div>
-        )}
-        {osForm.clientenome.trim().length > 2 && !clienteExiste && !osForm.clienteid && (
-          <div className="atendimento-inline-callout">
-            <div>
-              <strong>Novo cliente</strong>
-              <span>Cadastre os dados fiscais sem sair da OS</span>
-            </div>
-            <button type="button" className="btn btn-secondary" onClick={() => openClientModal(null)} disabled={saving}>Cadastrar cliente</button>
+          <div className="atendimento-grid-3">
+            <Campo label="Tipo">
+              <select className="form-input" value={osForm.servico} onChange={e => setOsForm(f => ({ ...f, servico: e.target.value }))}>
+                {SERVICOS.map(s => <option key={s}>{s}</option>)}
+              </select>
+            </Campo>
+            <Campo label="Prioridade">
+              <select className="form-input" value={osForm.prioridade} onChange={e => setOsForm(f => ({ ...f, prioridade: e.target.value }))}>
+                <option>Normal</option>
+                <option>Urgente</option>
+              </select>
+            </Campo>
+            <Campo label="Entrega">
+              <input className="form-input" type="date" value={osForm.prazoentrega} onChange={e => setOsForm(f => ({ ...f, prazoentrega: e.target.value }))} />
+            </Campo>
           </div>
-        )}
-      </section>
+          <Campo label="Observações">
+            <textarea className="form-input" value={osForm.observacoes} onChange={e => setOsForm(f => ({ ...f, observacoes: e.target.value }))} placeholder="Medidas, cores, detalhes do pedido..." />
+          </Campo>
+        </section>
+      </div>
 
-      <section className="card atendimento-section">
-        <div className="atendimento-section-title">
-          <ClipboardList size={16} /> Serviço
-        </div>
-        <div className="atendimento-grid-3">
-          <Campo label="Tipo">
-            <select className="form-input" value={osForm.servico} onChange={e => setOsForm(f => ({ ...f, servico: e.target.value }))}>
-              {SERVICOS.map(s => <option key={s}>{s}</option>)}
-            </select>
-          </Campo>
-          <Campo label="Prioridade">
-            <select className="form-input" value={osForm.prioridade} onChange={e => setOsForm(f => ({ ...f, prioridade: e.target.value }))}>
-              <option>Normal</option>
-              <option>Urgente</option>
-            </select>
-          </Campo>
-          <Campo label="Entrega">
-            <input className="form-input" type="date" value={osForm.prazoentrega} onChange={e => setOsForm(f => ({ ...f, prazoentrega: e.target.value }))} />
-          </Campo>
-        </div>
-        <Campo label="Observações">
-          <textarea className="form-input" value={osForm.observacoes} onChange={e => setOsForm(f => ({ ...f, observacoes: e.target.value }))} placeholder="Medidas, cores, detalhes do pedido..." />
-        </Campo>
-      </section>
+      <div className="atendimento-flow-column">
+        <section className="card atendimento-section">
+          <div className="atendimento-section-title">
+            <Package size={16} /> Itens
+          </div>
+          <ItemPicker produtos={produtos} onAdd={item => setOsItems([...osForm.produtos, item])} placeholder="Buscar produto cadastrado ou digitar item avulso" />
+          <ItensEditor itens={osForm.produtos} onChange={setOsItems} emptyText="Nenhum item adicionado" />
+        </section>
 
-      <section className="card atendimento-section">
-        <div className="atendimento-section-title">
-          <Package size={16} /> Itens
-        </div>
-        <ItemPicker produtos={produtos} onAdd={item => setOsItems([...osForm.produtos, item])} placeholder="Buscar produto cadastrado ou digitar item avulso" />
-        <ItensEditor itens={osForm.produtos} onChange={setOsItems} emptyText="Nenhum item adicionado" />
-      </section>
+        <section className="card atendimento-section">
+          <div className="atendimento-section-title">
+            <DollarSign size={16} /> Pagamento
+          </div>
+          <div className="atendimento-grid-3">
+            <Campo label="Total">
+              <input className="form-input" type="number" min="0" step="0.01" value={osForm.valortotal} onChange={e => setOsForm(f => ({ ...f, valortotal: e.target.value }))} placeholder="0,00" />
+            </Campo>
+            <Campo label="Entrada">
+              <input className="form-input" type="number" min="0" step="0.01" value={osForm.valorentrada} onChange={e => setOsForm(f => ({ ...f, valorentrada: e.target.value }))} placeholder="0,00" />
+            </Campo>
+            <Campo label="Forma">
+              <select className="form-input" value={osForm.pagamento} onChange={e => setOsForm(f => ({ ...f, pagamento: e.target.value }))}>
+                {PAGAMENTOS.map(p => <option key={p}>{p}</option>)}
+              </select>
+            </Campo>
+          </div>
+        </section>
 
-      <section className="card atendimento-section">
-        <div className="atendimento-section-title">
-          <DollarSign size={16} /> Pagamento
+        <div className="atendimento-submit-row">
+          <div>
+            <span>Total</span>
+            <strong>{moeda(numero(osForm.valortotal) || totalItens(osForm.produtos))}</strong>
+          </div>
+          <button className="btn btn-primary" disabled={saving} style={{ minWidth: 150 }}>
+            Criar OS
+          </button>
         </div>
-        <div className="atendimento-grid-3">
-          <Campo label="Total">
-            <input className="form-input" type="number" min="0" step="0.01" value={osForm.valortotal} onChange={e => setOsForm(f => ({ ...f, valortotal: e.target.value }))} placeholder="0,00" />
-          </Campo>
-          <Campo label="Entrada">
-            <input className="form-input" type="number" min="0" step="0.01" value={osForm.valorentrada} onChange={e => setOsForm(f => ({ ...f, valorentrada: e.target.value }))} placeholder="0,00" />
-          </Campo>
-          <Campo label="Forma">
-            <select className="form-input" value={osForm.pagamento} onChange={e => setOsForm(f => ({ ...f, pagamento: e.target.value }))}>
-              {PAGAMENTOS.map(p => <option key={p}>{p}</option>)}
-            </select>
-          </Campo>
-        </div>
-      </section>
-
-      <div className="atendimento-submit-row">
-        <div>
-          <span>Total</span>
-          <strong>{moeda(numero(osForm.valortotal) || totalItens(osForm.produtos))}</strong>
-        </div>
-        <button className="btn btn-primary" disabled={saving} style={{ minWidth: 150 }}>
-          Criar OS
-        </button>
       </div>
     </form>
   )
 
   const renderReceber = () => (
-    <form onSubmit={receberOS} className="atendimento-form">
-      <section className="card atendimento-section">
-        <div className="atendimento-section-title">
-          <Search size={16} /> Buscar OS
-        </div>
-        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-          <input
-            className="form-input"
-            value={receiveQuery}
-            onChange={e => setReceiveQuery(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') buscarOS(e) }}
-            placeholder="Número, cliente ou serviço"
-            style={{ height: 40 }}
-          />
-          <button type="button" className="btn btn-secondary" disabled={saving} onClick={buscarOS}>Buscar</button>
-        </div>
-        <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
-          {receiveResults.map(os => (
-            <button type="button" key={os.id} onClick={() => selectOS(os)} className="atendimento-os-row" style={{
-              borderColor: selectedOs?.id === os.id ? 'var(--color-primary)' : 'var(--color-border)',
-              background: selectedOs?.id === os.id ? 'color-mix(in oklab, var(--color-primary) 12%, var(--color-surface))' : 'var(--color-surface-offset)',
-            }}>
-              <div>
-                <strong>{os.numero} · {os.clientenome}</strong>
-                <span>{os.servico} · {os.status}</span>
-              </div>
-              <strong>{moeda(saldoOS(os))}</strong>
-            </button>
-          ))}
-        </div>
-      </section>
+    <form onSubmit={receberOS} className="atendimento-form atendimento-receber-grid">
+      <div className="atendimento-flow-column">
+        <section className="card atendimento-section">
+          <div className="atendimento-section-title">
+            <Search size={16} /> Buscar OS
+          </div>
+          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+            <input
+              className="form-input"
+              value={receiveQuery}
+              onChange={e => setReceiveQuery(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') buscarOS(e) }}
+              placeholder="Número, cliente ou serviço"
+              style={{ height: 40 }}
+            />
+            <button type="button" className="btn btn-secondary" disabled={saving} onClick={buscarOS}>Buscar</button>
+          </div>
+          <div className="atendimento-results-list">
+            {receiveResults.map(os => (
+              <button type="button" key={os.id} onClick={() => selectOS(os)} className="atendimento-os-row" style={{
+                borderColor: selectedOs?.id === os.id ? 'var(--color-primary)' : 'var(--color-border)',
+                background: selectedOs?.id === os.id ? 'color-mix(in oklab, var(--color-primary) 12%, var(--color-surface))' : 'var(--color-surface-offset)',
+              }}>
+                <div>
+                  <strong>{os.numero} · {os.clientenome}</strong>
+                  <span>{os.servico} · {os.status}</span>
+                </div>
+                <strong>{moeda(saldoOS(os))}</strong>
+              </button>
+            ))}
+          </div>
+        </section>
+      </div>
 
-      <section className="card atendimento-section">
-        <div className="atendimento-section-title">
-          <DollarSign size={16} /> Recebimento
-        </div>
-        {selectedOs ? (
-          <div className="atendimento-selected-os">
-            <div>
-              <span>Selecionada</span>
-              <strong>{selectedOs.numero} · {selectedOs.clientenome}</strong>
+      <div className="atendimento-flow-column">
+        <section className="card atendimento-section">
+          <div className="atendimento-section-title">
+            <DollarSign size={16} /> Recebimento
+          </div>
+          {selectedOs ? (
+            <div className="atendimento-selected-os">
+              <div>
+                <span>Selecionada</span>
+                <strong>{selectedOs.numero} · {selectedOs.clientenome}</strong>
+              </div>
+              <strong>{moeda(saldoOS(selectedOs))}</strong>
             </div>
+          ) : null}
+          <div className="atendimento-grid-2">
+            <Campo label="Valor recebido">
+              <input className="form-input" type="number" min="0" step="0.01" value={paymentForm.valor} onChange={e => setPaymentForm(f => ({ ...f, valor: e.target.value }))} placeholder="0,00" />
+            </Campo>
+            <Campo label="Forma">
+              <select className="form-input" value={paymentForm.pagamento} onChange={e => setPaymentForm(f => ({ ...f, pagamento: e.target.value }))}>
+                {PAGAMENTOS.map(p => <option key={p}>{p}</option>)}
+              </select>
+            </Campo>
+          </div>
+        </section>
+
+        <div className="atendimento-submit-row">
+          <div>
+            <span>Saldo selecionado</span>
             <strong>{moeda(saldoOS(selectedOs))}</strong>
           </div>
-        ) : null}
-        <div className="atendimento-grid-2">
-          <Campo label="Valor recebido">
-            <input className="form-input" type="number" min="0" step="0.01" value={paymentForm.valor} onChange={e => setPaymentForm(f => ({ ...f, valor: e.target.value }))} placeholder="0,00" />
-          </Campo>
-          <Campo label="Forma">
-            <select className="form-input" value={paymentForm.pagamento} onChange={e => setPaymentForm(f => ({ ...f, pagamento: e.target.value }))}>
-              {PAGAMENTOS.map(p => <option key={p}>{p}</option>)}
-            </select>
-          </Campo>
+          <button className="btn btn-primary" disabled={saving || !selectedOs} style={{ minWidth: 170 }}>
+            Receber pagamento
+          </button>
         </div>
-      </section>
-
-      <div className="atendimento-submit-row">
-        <div>
-          <span>Saldo selecionado</span>
-          <strong>{moeda(saldoOS(selectedOs))}</strong>
-        </div>
-        <button className="btn btn-primary" disabled={saving || !selectedOs} style={{ minWidth: 170 }}>
-          Receber pagamento
-        </button>
       </div>
     </form>
   )
 
   const renderVenda = () => (
-    <form onSubmit={venderAvulso} className="atendimento-form">
-      <section className="card atendimento-section">
-        <div className="atendimento-section-title">
-          <Package size={16} /> Itens da venda
-        </div>
-        <ItemPicker produtos={produtos} onAdd={item => setSaleItems(prev => [...prev, item])} placeholder="Buscar produto ou digitar venda avulsa" />
-        <ItensEditor itens={saleItems} onChange={setSaleItems} emptyText="Nenhum produto na venda" />
-      </section>
+    <form onSubmit={venderAvulso} className="atendimento-form atendimento-venda-grid">
+      <div className="atendimento-flow-column">
+        <section className="card atendimento-section">
+          <div className="atendimento-section-title">
+            <Package size={16} /> Itens da venda
+          </div>
+          <ItemPicker produtos={produtos} onAdd={item => setSaleItems(prev => [...prev, item])} placeholder="Buscar produto ou digitar venda avulsa" />
+          <ItensEditor itens={saleItems} onChange={setSaleItems} emptyText="Nenhum produto na venda" />
+        </section>
+      </div>
 
-      <section className="card atendimento-section">
-        <div className="atendimento-section-title">
-          <DollarSign size={16} /> Caixa
-        </div>
-        <Campo label="Forma de pagamento">
-          <select className="form-input" value={salePayment} onChange={e => setSalePayment(e.target.value)} style={{ maxWidth: 320 }}>
-            {PAGAMENTOS.map(p => <option key={p}>{p}</option>)}
-          </select>
-        </Campo>
-      </section>
+      <div className="atendimento-flow-column">
+        <section className="card atendimento-section">
+          <div className="atendimento-section-title">
+            <DollarSign size={16} /> Caixa
+          </div>
+          <Campo label="Forma de pagamento">
+            <select className="form-input" value={salePayment} onChange={e => setSalePayment(e.target.value)}>
+              {PAGAMENTOS.map(p => <option key={p}>{p}</option>)}
+            </select>
+          </Campo>
+        </section>
 
-      <div className="atendimento-submit-row">
-        <div>
-          <span>Total da venda</span>
-          <strong>{moeda(totalItens(saleItems))}</strong>
+        <div className="atendimento-submit-row">
+          <div>
+            <span>Total da venda</span>
+            <strong>{moeda(totalItens(saleItems))}</strong>
+          </div>
+          <button className="btn btn-primary" disabled={saving} style={{ minWidth: 170 }}>
+            Registrar venda
+          </button>
         </div>
-        <button className="btn btn-primary" disabled={saving} style={{ minWidth: 170 }}>
-          Registrar venda
-        </button>
       </div>
     </form>
   )
@@ -1180,10 +1192,6 @@ export default function Atendimento() {
     return renderHome()
   }
 
-  const proximas = ordens
-    .filter(o => saldoOS(o) > 0.009 && ['Pronto', 'Aguardando', 'Em Produção'].includes(o.status))
-    .slice(0, 4)
-
   if (loading) {
     return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', color: 'var(--color-text-muted)' }}>Carregando...</div>
   }
@@ -1192,12 +1200,16 @@ export default function Atendimento() {
     <div style={{ padding: 'var(--space-6)', display: 'grid', gap: 'var(--space-4)' }}>
       <style>{`
         .atendimento-kpis { display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); }
-        .atendimento-layout { display:grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 360px); gap: var(--space-4); align-items:start; }
+        .atendimento-wide-workspace { min-width:0; }
         .atendimento-panel-head { display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); padding: var(--space-4) var(--space-5); border-bottom:1px solid var(--color-border); }
         .atendimento-mode-buttons { display:flex; gap:var(--space-2); flex-wrap:wrap; justify-content:flex-end; }
         .atendimento-cards { display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); padding: var(--space-5); }
         .atendimento-action-card { min-height: 116px; padding: var(--space-4); border:none; text-align:left; color:var(--color-text); display:flex; align-items:flex-start; gap:var(--space-3); cursor:pointer; }
         .atendimento-form { display:grid; gap: var(--space-3); padding: var(--space-5); }
+        .atendimento-flow-column { min-width:0; display:grid; gap:var(--space-3); align-content:start; }
+        .atendimento-nova-grid { grid-template-columns:minmax(360px, 0.95fr) minmax(460px, 1.2fr); align-items:start; }
+        .atendimento-receber-grid { grid-template-columns:minmax(380px, 1fr) minmax(360px, 0.85fr); align-items:start; }
+        .atendimento-venda-grid { grid-template-columns:minmax(460px, 1.25fr) minmax(320px, 0.75fr); align-items:start; }
         .atendimento-section { padding: var(--space-4); display:grid; gap: var(--space-3); }
         .atendimento-section-title { display:flex; align-items:center; gap: var(--space-2); font-weight:900; font-size: var(--text-sm); }
         .atendimento-grid-2 { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
@@ -1215,11 +1227,12 @@ export default function Atendimento() {
         .atendimento-os-row { width:100%; border:1px solid var(--color-border); border-radius:var(--radius-md); padding:var(--space-3); color:var(--color-text); display:flex; justify-content:space-between; align-items:center; gap:var(--space-3); text-align:left; cursor:pointer; }
         .atendimento-os-row div { display:grid; gap:3px; min-width:0; }
         .atendimento-os-row span { color:var(--color-text-muted); font-size:var(--text-xs); }
+        .atendimento-results-list { min-height:82px; max-height:min(48vh, 540px); overflow:auto; display:grid; gap:var(--space-2); align-content:start; padding-right:2px; }
         .atendimento-selected-os { display:flex; justify-content:space-between; gap:var(--space-3); padding:var(--space-3); border:1px solid var(--color-primary); border-radius:var(--radius-md); background:color-mix(in oklab, var(--color-primary) 10%, var(--color-surface)); }
         .atendimento-selected-os div { display:grid; gap:2px; }
         .atendimento-selected-os span { color:var(--color-text-muted); font-size:10px; font-weight:900; text-transform:uppercase; letter-spacing:0.06em; }
         @media (max-width: 1180px) {
-          .atendimento-layout { grid-template-columns:1fr; }
+          .atendimento-nova-grid, .atendimento-receber-grid, .atendimento-venda-grid { grid-template-columns:1fr; }
           .atendimento-kpis { grid-template-columns:repeat(2, minmax(0, 1fr)); }
         }
         @media (max-width: 780px) {
@@ -1249,7 +1262,7 @@ export default function Atendimento() {
         <Kpi icon={Search} label="Vencidas" value={resumo.vencidas} color="var(--color-warning)" />
       </div>
 
-      <div className="atendimento-layout">
+      <div className="atendimento-wide-workspace">
         <main className="card" style={{ overflow: 'hidden' }}>
           <div className="atendimento-panel-head">
             <div>
@@ -1264,43 +1277,6 @@ export default function Atendimento() {
           </div>
           {renderCurrent()}
         </main>
-
-        <aside className="card" style={{ overflow: 'hidden' }}>
-          <div style={{ padding: 'var(--space-4)', borderBottom: '1px solid var(--color-border)' }}>
-            <h2 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 900 }}>Próximas ações</h2>
-            <p style={{ margin: '3px 0 0', color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)' }}>Fila do atendimento</p>
-          </div>
-          <div style={{ padding: 'var(--space-4)', display: 'grid', gap: 'var(--space-3)' }}>
-            <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-sm)' }}>
-                <span>OS pronta com saldo</span>
-                <strong>{ordens.filter(o => o.status === 'Pronto' && saldoOS(o) > 0.009).length}</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-sm)' }}>
-                <span>Vencidas</span>
-                <strong>{resumo.vencidas}</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-sm)' }}>
-                <span>Caixa hoje</span>
-                <strong>{moeda(resumo.recebido)}</strong>
-              </div>
-            </div>
-            <button type="button" className="btn btn-secondary" onClick={() => setMode('receive')}>Receber OS</button>
-            <button type="button" className="btn btn-secondary" onClick={() => setMode('new-os')}>Nova OS</button>
-            <div style={{ height: 1, background: 'var(--color-divider)' }} />
-            {proximas.length === 0 ? (
-              <div style={{ color: 'var(--color-text-faint)', fontSize: 'var(--text-sm)' }}>Nenhuma ação pendente no recorte atual.</div>
-            ) : proximas.map(os => (
-              <button key={os.id} type="button" onClick={() => { setMode('receive'); selectOS(os) }} className="atendimento-os-row">
-                <div>
-                  <strong>{os.numero} · {os.clientenome}</strong>
-                  <span>{os.status} · {os.servico}</span>
-                </div>
-                <strong>{moeda(saldoOS(os))}</strong>
-              </button>
-            ))}
-          </div>
-        </aside>
       </div>
 
       {deliveryPrompt && (
