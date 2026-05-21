@@ -75,6 +75,17 @@ CREATE TABLE IF NOT EXISTS lancamentos (
   deletedpor INTEGER DEFAULT NULL,
   createdat TEXT DEFAULT (datetime('now','localtime'))
 );
+CREATE TABLE IF NOT EXISTS lancamento_itens (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  lancamentoid    INTEGER NOT NULL,
+  produto_id      INTEGER DEFAULT NULL,
+  nome            TEXT NOT NULL,
+  quantidade      REAL NOT NULL DEFAULT 1,
+  preco_unitario  REAL NOT NULL DEFAULT 0,
+  subtotal        REAL GENERATED ALWAYS AS (quantidade * preco_unitario) STORED,
+  avulso          INTEGER DEFAULT 0,
+  createdat       TEXT DEFAULT (datetime('now','localtime'))
+);
 CREATE TABLE IF NOT EXISTS statuslog (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   ordemid        INTEGER,
@@ -215,6 +226,7 @@ CREATE INDEX IF NOT EXISTS idx_ordens_prazo        ON ordens(prazoentrega);
 CREATE INDEX IF NOT EXISTS idx_ordens_clienteid    ON ordens(clienteid);
 CREATE INDEX IF NOT EXISTS idx_lancamentos_data    ON lancamentos(data);
 CREATE INDEX IF NOT EXISTS idx_lancamentos_ordemid ON lancamentos(ordemid);
+CREATE INDEX IF NOT EXISTS idx_lancamento_itens_lancamentoid ON lancamento_itens(lancamentoid);
 CREATE INDEX IF NOT EXISTS idx_statuslog_ordemid   ON statuslog(ordemid);
 CREATE INDEX IF NOT EXISTS idx_produtos_nome       ON produtos(nome COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS idx_ordem_itens_ordemid ON ordem_itens(ordemid);
@@ -396,6 +408,19 @@ function initDB() {
     )`,
     "CREATE INDEX IF NOT EXISTS idx_contas_pagar_status ON contas_pagar(status)",
     "CREATE INDEX IF NOT EXISTS idx_contas_pagar_vencimento ON contas_pagar(vencimento)",
+    // v12 - itens estruturados de venda avulsa no caixa
+    `CREATE TABLE IF NOT EXISTS lancamento_itens (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      lancamentoid    INTEGER NOT NULL,
+      produto_id      INTEGER DEFAULT NULL,
+      nome            TEXT NOT NULL,
+      quantidade      REAL NOT NULL DEFAULT 1,
+      preco_unitario  REAL NOT NULL DEFAULT 0,
+      subtotal        REAL GENERATED ALWAYS AS (quantidade * preco_unitario) STORED,
+      avulso          INTEGER DEFAULT 0,
+      createdat       TEXT DEFAULT (datetime('now','localtime'))
+    )`,
+    "CREATE INDEX IF NOT EXISTS idx_lancamento_itens_lancamentoid ON lancamento_itens(lancamentoid)",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {}

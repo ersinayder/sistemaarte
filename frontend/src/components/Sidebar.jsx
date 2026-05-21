@@ -11,6 +11,7 @@ const Icon = ({ d, d2 }) => (
 )
 
 const ICONS = {
+  atendimento:{ d: 'M4 7h16M4 12h16M4 17h10', d2: 'M18 15l2 2 3-4' },
   resumo:    { d: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z' },
   caixa:     { d: 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z' },
   ordens:    { d: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2', d2: 'M9 3h6a1 1 0 011 1v1H8V4a1 1 0 011-1zM9 12h6M9 16h4' },
@@ -128,6 +129,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
           {(isAdmin || isCaixa) && (
             <>
               {section('Operação')}
+              {navItem('/atendimento', 'Atendimento', 'atendimento')}
               {navItem('/dashboard', 'Resumo', 'resumo')}
               {navItem('/caixa', 'Caixa', 'caixa')}
               {navItemBadge('/ordens', 'Ordens de Serviço', 'ordens', vencidas)}

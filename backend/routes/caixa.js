@@ -1,7 +1,12 @@
 const router = require("express").Router();
-const { getAll, getOne, run, runInsert } = require("../database");
+const { getAll, getOne, run, runInsert, transaction } = require("../database");
 const { auth } = require("../middlewares/auth");
 const { toNumber } = require("../utils/numbers");
+const {
+  descricaoVendaAvulsa,
+  normalizarItensVendaAvulsa,
+  totalItensVendaAvulsa,
+} = require("../domain/caixaRules");
 const { getResumoFinanceiroOS } = require("../domain/financeiroRules");
 const { descricaoRestanteOS } = require("../domain/ordensRules");
 
@@ -9,7 +14,13 @@ const { descricaoRestanteOS } = require("../domain/ordensRules");
 router.get("/", auth(["admin","caixa"]), (req, res, next) => {
   try {
     const { data, mes } = req.query;
-    let sql = `SELECT l.*, o.numero AS ordemnumero
+    let sql = `SELECT l.*,
+                      o.numero AS ordemnumero,
+                      (
+                        SELECT GROUP_CONCAT(li.nome || ' x' || li.quantidade, ', ')
+                        FROM lancamento_itens li
+                        WHERE li.lancamentoid = l.id
+                      ) AS itens_resumo
                FROM lancamentos l
                LEFT JOIN ordens o ON o.id=l.ordemid
                WHERE l.deletedat IS NULL
@@ -25,15 +36,20 @@ router.get("/", auth(["admin","caixa"]), (req, res, next) => {
 // POST /api/caixa
 router.post("/", auth(["admin","caixa"]), (req, res, next) => {
   try {
-    const { data, tipo, categoria, descricao, pagamento, valor, pago, ordemid } = req.body ?? {};
-    if (!data || !pagamento || valor == null)
+    const { data, tipo, categoria, descricao, pagamento, valor, pago, ordemid, itens } = req.body ?? {};
+    const itensVenda = normalizarItensVendaAvulsa(itens);
+
+    if (!data || !pagamento || (valor == null && itensVenda.length === 0))
       return res.status(400).json({ error: "data, pagamento e valor sao obrigatorios" });
 
-    const nValor = toNumber(valor);
+    const nValor = itensVenda.length > 0 ? totalItensVendaAvulsa(itensVenda) : toNumber(valor);
     let origem = "manual";
     let descFinal = descricao;
     let categoriaFinal = categoria || null;
     let pagoFinal = pago ? 1 : 0;
+
+    if (itensVenda.length > 0 && ordemid)
+      return res.status(400).json({ error: "Venda avulsa nao deve ser vinculada a uma OS." });
 
     if (ordemid) {
       const resumo = getResumoFinanceiroOS(ordemid);
@@ -45,16 +61,35 @@ router.post("/", auth(["admin","caixa"]), (req, res, next) => {
       categoriaFinal = categoria || "Pagamento OS";
       pagoFinal = 1;
       descFinal = descricaoRestanteOS(resumo.ordem.numero, resumo.ordem.clientenome, resumo.ordem.servico);
+    } else if (itensVenda.length > 0) {
+      if (tipo && tipo !== "Entrada")
+        return res.status(400).json({ error: "Venda avulsa deve ser uma entrada." });
+      origem = "vendaavulsa";
+      categoriaFinal = categoria || "Venda avulsa";
+      pagoFinal = 1;
+      descFinal = descricao || descricaoVendaAvulsa(itensVenda);
     }
 
     if (!descFinal)
       return res.status(400).json({ error: "descricao e obrigatoria" });
 
-    const id = runInsert(
-      "INSERT INTO lancamentos (data,tipo,categoria,descricao,pagamento,valor,pago,ordemid,criadopor,origem) VALUES (?,?,?,?,?,?,?,?,?,?)",
-      [data, tipo||"Diversos", categoriaFinal, descFinal, pagamento, nValor, pagoFinal, ordemid||null, req.user.id, origem]
-    );
-    res.json({ id, origem });
+    const id = transaction(() => {
+      const lancamentoId = runInsert(
+        "INSERT INTO lancamentos (data,tipo,categoria,descricao,pagamento,valor,pago,ordemid,criadopor,origem) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        [data, origem === "vendaavulsa" ? "Entrada" : (tipo||"Diversos"), categoriaFinal, descFinal, pagamento, nValor, pagoFinal, ordemid||null, req.user.id, origem]
+      );
+
+      for (const item of itensVenda) {
+        runInsert(
+          "INSERT INTO lancamento_itens (lancamentoid,produto_id,nome,quantidade,preco_unitario,avulso) VALUES (?,?,?,?,?,?)",
+          [lancamentoId, item.produto_id, item.nome, item.quantidade, item.preco_unitario, item.avulso]
+        );
+      }
+
+      return lancamentoId;
+    });
+
+    res.json({ id, origem, itens_resumo: itensVenda.length ? descricaoVendaAvulsa(itensVenda) : null });
   } catch(e) { next(e); }
 });
 

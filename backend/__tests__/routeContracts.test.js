@@ -115,6 +115,33 @@ describe('route persistence contracts', () => {
     expect(source).toMatch(/UPDATE lancamentos SET[^"]*categoria=\?/s);
   });
 
+  it('persists structured standalone sale items in caixa launches', () => {
+    const databaseSource = fs.readFileSync(new URL('../database.js', import.meta.url), 'utf8');
+    const source = fs.readFileSync(new URL('../routes/caixa.js', import.meta.url), 'utf8');
+
+    expect(databaseSource).toMatch(/CREATE TABLE IF NOT EXISTS lancamento_itens/);
+    expect(databaseSource).toMatch(/idx_lancamento_itens_lancamentoid/);
+    expect(source).toMatch(/normalizarItensVendaAvulsa/);
+    expect(source).toMatch(/origem = "vendaavulsa"/);
+    expect(source).toMatch(/INSERT INTO lancamento_itens/);
+    expect(source).toMatch(/itens_resumo/);
+    expect(source).toMatch(/transaction\(\(\) =>/);
+    expect(source).toMatch(/origem === "vendaavulsa" \? "Entrada"/);
+    expect(source).toMatch(/pagoFinal = 1/);
+  });
+
+  it('keeps atendimento in a wide workspace without the lateral action rail', () => {
+    const source = fs.readFileSync(new URL('../../frontend/src/pages/Atendimento.jsx', import.meta.url), 'utf8');
+
+    expect(source).not.toMatch(/Pr[oó]ximas a[cç][oõ]es/i);
+    expect(source).toMatch(/atendimento-wide-workspace/);
+    expect(source).toMatch(/mode === 'home' && \(\s*<div className="atendimento-kpis">/);
+    expect(source).toMatch(/atendimento-nova-grid/);
+    expect(source).toMatch(/atendimento-receber-grid/);
+    expect(source).toMatch(/atendimento-results-list \{[^}]*max-height:min\(32vh, 420px\)/);
+    expect(source).toMatch(/atendimento-venda-grid/);
+  });
+
   it('mounts admin financeiro API and paying accounts creates a caixa output', async () => {
     const serverSource = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
     const source = fs.readFileSync(new URL('../routes/financeiro.js', import.meta.url), 'utf8');
