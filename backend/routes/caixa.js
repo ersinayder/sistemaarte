@@ -76,7 +76,7 @@ router.post("/", auth(["admin","caixa"]), (req, res, next) => {
     const id = transaction(() => {
       const lancamentoId = runInsert(
         "INSERT INTO lancamentos (data,tipo,categoria,descricao,pagamento,valor,pago,ordemid,criadopor,origem) VALUES (?,?,?,?,?,?,?,?,?,?)",
-        [data, origem === "vendaavulsa" ? "Entrada" : (tipo||"Diversos"), categoriaFinal, descFinal, pagamento, nValor, pagoFinal, ordemid||null, req.user.id, origem]
+        [data, origem === "vendaavulsa" || origem === "saldoos" ? "Entrada" : (tipo||"Diversos"), categoriaFinal, descFinal, pagamento, nValor, pagoFinal, ordemid||null, req.user.id, origem]
       );
 
       for (const item of itensVenda) {
@@ -141,7 +141,7 @@ router.put("/:id", auth(["admin","caixa"]), (req, res, next) => {
 
     run(
       "UPDATE lancamentos SET data=?,tipo=?,categoria=?,descricao=?,pagamento=?,valor=?,pago=?,ordemid=?,origem=? WHERE id=?",
-      [data, tipo||"Diversos", categoriaFinal, descFinal, pagamento, nValor, pagoFinal, novoOrdemId, origem, req.params.id]
+      [data, novoOrdemId ? "Entrada" : (tipo||"Diversos"), categoriaFinal, descFinal, pagamento, nValor, pagoFinal, novoOrdemId, origem, req.params.id]
     );
     res.json({ ok: true });
   } catch(e) { next(e); }

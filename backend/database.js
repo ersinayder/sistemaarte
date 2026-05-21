@@ -512,6 +512,15 @@ function initDB() {
       console.log(`[DB] Corrigidos ${fixed.changes} lancamento(s) entradaos com tipo invalido.`);
   } catch (_) {}
 
+  // Corrigir recebimentos de saldo de OS com tipo invalido
+  try {
+    const fixed = db.prepare(
+      "UPDATE lancamentos SET tipo='Entrada' WHERE origem='saldoos' AND tipo != 'Entrada' AND deletedat IS NULL"
+    ).run();
+    if (fixed.changes > 0)
+      console.log(`[DB] Corrigidos ${fixed.changes} lancamento(s) saldoos com tipo invalido.`);
+  } catch (_) {}
+
   // Seed sequencias
   db.prepare("INSERT OR IGNORE INTO sequencias (nome, ultimo) VALUES ('os', 0)").run();
   db.prepare("INSERT OR IGNORE INTO sequencias (nome, ultimo) VALUES ('proposta', 0)").run();

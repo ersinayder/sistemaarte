@@ -126,8 +126,17 @@ describe('route persistence contracts', () => {
     expect(source).toMatch(/INSERT INTO lancamento_itens/);
     expect(source).toMatch(/itens_resumo/);
     expect(source).toMatch(/transaction\(\(\) =>/);
-    expect(source).toMatch(/origem === "vendaavulsa" \? "Entrada"/);
+    expect(source).toMatch(/origem === "vendaavulsa" \|\| origem === "saldoos"\s*\?\s*"Entrada"/);
     expect(source).toMatch(/pagoFinal = 1/);
+  });
+
+  it('keeps OS balance receipts as caixa entries and repairs old invalid balance receipt types', () => {
+    const caixaSource = fs.readFileSync(new URL('../routes/caixa.js', import.meta.url), 'utf8');
+    const databaseSource = fs.readFileSync(new URL('../database.js', import.meta.url), 'utf8');
+
+    expect(caixaSource).toMatch(/origem === "vendaavulsa" \|\| origem === "saldoos"\s*\?\s*"Entrada"/);
+    expect(caixaSource).toMatch(/novoOrdemId\s*\?\s*"Entrada"\s*:\s*\(tipo\|\|"Diversos"\)/);
+    expect(databaseSource).toMatch(/origem='saldoos' AND tipo != 'Entrada' AND deletedat IS NULL/);
   });
 
   it('keeps atendimento in a wide workspace without the lateral action rail', () => {
