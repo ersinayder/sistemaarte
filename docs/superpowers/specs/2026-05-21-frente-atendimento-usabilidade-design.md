@@ -29,6 +29,7 @@ Organizacao proposta:
 Operacao
   Atendimento
   Resumo
+  Caixa
   Ordens de Servico
   Orcamento Rapido
   Propostas
@@ -50,6 +51,8 @@ Cadastros
 ```
 
 O prototipo aprovado removeu os botoes repetidos no canto superior da pagina. A alternancia entre `Nova OS`, `Receber OS` e `Venda avulsa` fica dentro do painel `O que voce vai fazer agora?`, como botoes compactos com icone e titulo. Quando o usuario entra em um fluxo, os tres botoes compactos continuam visiveis no cabecalho do painel para troca rapida.
+
+`Caixa` continua no menu de `Operacao`. A nova tela de `Atendimento` nao substitui o caixa; ela apenas vira o caminho rapido para registrar vendas e recebimentos durante o atendimento. O `Caixa` permanece como tela de conferencia, historico, fechamento e ajustes manuais.
 
 ## Tela `/atendimento`
 
@@ -194,6 +197,33 @@ Estoque:
 - Nesta fase, venda avulsa estrutura o caixa e os itens.
 - Nao baixar estoque automaticamente ainda, porque o fluxo atual de OS tambem nao baixa estoque ao usar produtos.
 - A baixa automatica de estoque deve ser tratada em uma etapa propria para nao criar divergencia entre OS e venda avulsa.
+
+## Tela `Caixa` apos a Frente de Atendimento
+
+O caixa deve continuar existindo e ganhar uma funcao mais clara: conferir e fechar o movimento. Ele nao deve ser o caminho principal para receber OS ou vender produto avulso, mas deve listar tudo que foi registrado pelo atendimento.
+
+Comportamento desejado:
+
+- Navegacao por dia preservada.
+- Navegacao por mes preservada.
+- Atalhos `Hoje` e `Ontem`.
+- Setas para dia anterior e proximo dia.
+- Seletor de mes.
+- Faixa/calendario horizontal do mes mostrando, por dia, total recebido e quantidade de lancamentos.
+- Lista do dia selecionado.
+- Filtros por tipo, forma de pagamento, categoria e origem.
+- Origens visiveis: `manual`, `entradaos`, `saldoos`, `vendaavulsa`.
+- Resumo por forma de pagamento no dia e no mes.
+- Botao `Novo lancamento manual` continua existindo para despesas, ajustes e entradas sem OS/produto.
+
+O operador deve entender a separacao:
+
+```txt
+Atendimento registra o movimento.
+Caixa confere, filtra, fecha e audita.
+```
+
+Essa separacao evita que o usuario precise usar o campo `descricao` para casos comuns, mas preserva flexibilidade administrativa.
 
 ## Componentes Frontend
 
