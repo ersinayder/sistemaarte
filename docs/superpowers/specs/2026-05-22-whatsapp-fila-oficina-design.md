@@ -13,7 +13,7 @@ Integrar avisos de WhatsApp diretamente na Fila da Oficina, sem criar uma pagina
 O operador deve conseguir:
 
 - Ver quais OS precisam de confirmacao de pedido ou aviso de pedido pronto.
-- Abrir a conversa do WhatsApp com a mensagem pronta no aplicativo instalado.
+- Abrir a conversa do WhatsApp Web com a mensagem pronta sem criar uma nova guia a cada aviso.
 - Voltar para a Fila da Oficina e marcar o aviso como confirmado/enviado.
 - Usar fallback de copiar mensagem quando o WhatsApp nao preencher o texto.
 
@@ -31,7 +31,7 @@ A tag deve ser discreta e ficar junto das tags operacionais do card, sem disputa
 
 Interacoes:
 
-- Clique esquerdo na tag pendente abre o aplicativo do WhatsApp com a conversa e a mensagem pronta.
+- Clique esquerdo na tag pendente navega a guia atual para o WhatsApp Web com a conversa e a mensagem pronta.
 - Depois do clique, o estado local/persistido passa para `Aberto`.
 - Clique direito na tag abre um menu compacto com uma unica acao principal: `Marcar confirmado` ou `Marcar avisado`.
 - Tambem deve existir um pequeno controle de marcar envio visivel em hover/foco, para nao depender exclusivamente do botao direito.
@@ -39,33 +39,28 @@ Interacoes:
 
 ## Abertura do WhatsApp
 
-O padrao da Oficina deve ser o protocolo do aplicativo WhatsApp, para nao criar uma nova guia Web a cada aviso:
-
-```txt
-whatsapp://send?phone=<telefone>&text=<mensagem>
-```
-
-O frontend deve navegar para esse protocolo no clique do operador:
-
-```js
-window.location.assign(url)
-```
-
-WhatsApp Web continua sendo uma URL util para modo futuro e testes de texto:
+O padrao da Oficina deve navegar a propria guia para WhatsApp Web, para nao criar uma nova guia a cada aviso:
 
 ```txt
 https://web.whatsapp.com/send?phone=<telefone>&text=<mensagem>
 ```
 
-Mas ele nao deve ser o padrao para esse fluxo. Em 2026-05-22, `web.whatsapp.com` responde com `Cross-Origin-Opener-Policy: same-origin`; o navegador separa a guia aberta do contexto da Oficina. Por isso o sistema nao consegue garantir reuso de uma unica guia Web aberta pelo operador nem pela propria Oficina.
+O frontend deve usar navegacao da guia atual no clique do operador:
+
+```js
+window.location.assign(url)
+```
+
+Depois do envio, o operador usa a acao voltar do navegador para retornar a Fila da Oficina. Em 2026-05-22, `web.whatsapp.com` responde com `Cross-Origin-Opener-Policy: same-origin`; o navegador separa guias Web abertas do contexto da Oficina. Por isso o sistema nao consegue garantir reuso de uma unica guia Web aberta pelo operador nem pela propria Oficina com `window.open`.
 
 Configuracao futura simples:
 
-- `app`: abre `whatsapp://send` para o aplicativo instalado no Windows.
-- `web`: abre `web.whatsapp.com/send`, aceitando que o navegador pode criar outra guia.
+- `web-self`: navega a guia atual para `web.whatsapp.com/send`.
+- `app`: abre `whatsapp://send` quando houver protocolo de aplicativo confiavel.
+- `web-tab`: abre `web.whatsapp.com/send`, aceitando que o navegador pode criar outra guia.
 - `copy`: apenas copia a mensagem.
 
-O modo `app` e o padrao inicial da Oficina.
+O modo `web-self` e o padrao inicial da Oficina.
 
 ## Dados e estados
 
@@ -119,7 +114,7 @@ Se o cliente nao tiver telefone valido:
 - A tag deve indicar pendencia sem telefone.
 - Clique deve mostrar aviso claro e oferecer copiar mensagem sem telefone.
 
-Se o navegador nao conseguir lançar o aplicativo:
+Se o navegador nao conseguir navegar para o WhatsApp Web:
 
 - Mostrar aviso claro.
 - Oferecer copiar mensagem.
@@ -138,9 +133,8 @@ Backend:
 
 Frontend:
 
-- Helper de URL continua gerando `web.whatsapp.com/send` com telefone e texto codificados para fallback futuro.
-- Helper de URL gera `whatsapp://send` com telefone e texto codificados para o fluxo da Oficina.
-- Clique na tag lança o protocolo do aplicativo, sem abrir uma guia Web pelo helper da Oficina.
+- Helper de URL gera `web.whatsapp.com/send` com telefone e texto codificados.
+- Clique na tag navega a guia atual para o WhatsApp Web, sem criar uma nova guia pelo helper da Oficina.
 - Clique direito abre menu compacto.
 - Card mostra `Confirmar`, `Avisar pronto`, `Aberto`, `Confirmado` e `Avisado` conforme estado.
 
