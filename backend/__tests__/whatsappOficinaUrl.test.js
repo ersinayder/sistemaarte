@@ -16,22 +16,28 @@ describe('whatsappOficina frontend helper', () => {
     expect(url).not.toContain('wa.me');
   });
 
-  it('opens using the fixed named target so the browser can reuse the tab', () => {
-    const opener = vi.fn(() => ({}));
+  it('builds a WhatsApp app URL for Oficina messages', () => {
+    const url = helper.buildWhatsappAppUrl({
+      phone: '(31) 99999-0000',
+      text: 'Mensagem pronta',
+    });
+
+    expect(url).toBe('whatsapp://send?phone=31999990000&text=Mensagem%20pronta');
+  });
+
+  it('launches the WhatsApp app protocol instead of opening a Web tab', () => {
+    const launcher = vi.fn(() => true);
 
     const ok = helper.openWhatsappConversation({
       phone: '5531999990000',
       text: 'Mensagem',
-    }, opener);
+    }, launcher);
 
     expect(ok).toBe(true);
-    expect(opener).toHaveBeenCalledWith(
-      'https://web.whatsapp.com/send?phone=5531999990000&text=Mensagem',
-      'sistema_whatsapp'
-    );
+    expect(launcher).toHaveBeenCalledWith('whatsapp://send?phone=5531999990000&text=Mensagem');
   });
 
-  it('returns false when phone is missing or popup is blocked', () => {
+  it('returns false when phone is missing or the app launcher fails', () => {
     expect(helper.openWhatsappConversation({ phone: '', text: 'Mensagem' }, vi.fn())).toBe(false);
     expect(helper.openWhatsappConversation({ phone: '5531999990000', text: 'Mensagem' }, vi.fn(() => null))).toBe(false);
   });
