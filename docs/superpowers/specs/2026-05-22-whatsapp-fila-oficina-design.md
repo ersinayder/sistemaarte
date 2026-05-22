@@ -45,13 +45,13 @@ O padrao deve ser WhatsApp Web direto, sem passar por `api.whatsapp.com`:
 https://web.whatsapp.com/send?phone=<telefone>&text=<mensagem>
 ```
 
-O frontend deve abrir com target nomeado:
+O frontend deve abrir com target nomeado e guardar a referencia da guia retornada:
 
 ```js
-window.open(url, "sistema_whatsapp")
+whatsappWindow = window.open(url, "sistema_whatsapp")
 ```
 
-Isso permite que o navegador tente reutilizar a aba criada pelo sistema nos cliques seguintes. O sistema nao deve prometer controle sobre abas do WhatsApp abertas manualmente pelo usuario, porque o navegador nao permite listar ou reaproveitar abas arbitrarias por seguranca.
+Nos cliques seguintes, a Oficina deve navegar e focar essa mesma referencia enquanto ela continuar aberta. O target nomeado continua como fallback para a abertura inicial, mas nao e suficiente sozinho: navegadores modernos podem limpar o nome de uma guia quando ela navega para outro dominio, como `web.whatsapp.com`. O sistema nao deve prometer controle sobre abas do WhatsApp abertas manualmente pelo usuario, porque o navegador nao permite listar ou reaproveitar abas arbitrarias por seguranca.
 
 Configuracao futura simples:
 
@@ -133,7 +133,8 @@ Backend:
 Frontend:
 
 - Helper de URL gera `web.whatsapp.com/send` com telefone e texto codificados.
-- Clique na tag chama abertura com target `sistema_whatsapp`.
+- Clique na tag abre a primeira conversa com target `sistema_whatsapp` e guarda a referencia da guia.
+- Novo clique na tag reutiliza a referencia aberta, navega para a nova conversa e foca a guia do WhatsApp.
 - Clique direito abre menu compacto.
 - Card mostra `Confirmar`, `Avisar pronto`, `Aberto`, `Confirmado` e `Avisado` conforme estado.
 
