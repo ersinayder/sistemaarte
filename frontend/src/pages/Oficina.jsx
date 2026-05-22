@@ -178,7 +178,7 @@ export default function Oficina() {
       }
       const opened = openWhatsappConversation(data.whatsapp);
       if (!opened) {
-        toast.error('Permita pop-ups para abrir o WhatsApp');
+        toast.error('Nao foi possivel abrir o aplicativo do WhatsApp');
         await copiarMensagem(data.whatsapp.text);
       }
     } catch (err) {
