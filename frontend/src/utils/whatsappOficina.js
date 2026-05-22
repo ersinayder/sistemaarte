@@ -4,13 +4,7 @@ export function buildWhatsappWebUrl({ phone, text }) {
   return `https://web.whatsapp.com/send?phone=${normalizedPhone}&text=${encodeURIComponent(String(text || ''))}`;
 }
 
-export function buildWhatsappAppUrl({ phone, text }) {
-  const normalizedPhone = String(phone || '').replace(/\D/g, '');
-  if (!normalizedPhone) return null;
-  return `whatsapp://send?phone=${normalizedPhone}&text=${encodeURIComponent(String(text || ''))}`;
-}
-
-function launchWhatsappApp(url) {
+function navigateWhatsappWeb(url) {
   try {
     window.location.assign(url);
     return true;
@@ -19,8 +13,8 @@ function launchWhatsappApp(url) {
   }
 }
 
-export function openWhatsappConversation(payload, launcher = launchWhatsappApp) {
-  const url = buildWhatsappAppUrl(payload || {});
+export function openWhatsappConversation(payload, launcher = navigateWhatsappWeb) {
+  const url = buildWhatsappWebUrl(payload || {});
   if (!url) return false;
 
   return Boolean(launcher(url));

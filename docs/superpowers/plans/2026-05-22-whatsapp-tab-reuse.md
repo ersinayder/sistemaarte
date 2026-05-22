@@ -1,10 +1,10 @@
-# WhatsApp App Launch Implementation Plan
+# WhatsApp Same-Tab Web Launch Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Launch WhatsApp notices from Oficina through the installed app protocol instead of creating a new Web tab for each message.
+**Goal:** Launch WhatsApp notices from Oficina in the current browser tab instead of creating a new WhatsApp Web tab for each message.
 
-**Architecture:** Keep WhatsApp URL construction in `frontend/src/utils/whatsappOficina.js`. The helper retains the existing WhatsApp Web URL builder for future fallback work, adds an app URL builder for `whatsapp://send`, and launches that protocol with `window.location.assign` from the Oficina click flow because WhatsApp Web isolates opened tabs with `Cross-Origin-Opener-Policy: same-origin`.
+**Architecture:** Keep WhatsApp URL construction in `frontend/src/utils/whatsappOficina.js`. The helper builds `web.whatsapp.com/send` URLs and navigates the current tab with `window.location.assign` from the Oficina click flow because WhatsApp Web isolates opened tabs with `Cross-Origin-Opener-Policy: same-origin`, while the external `whatsapp://` protocol is not reliable for an operator who uses WhatsApp Web in Chrome.
 
 **Tech Stack:** React 18 helper code, Vitest 4.1, Vite 8.
 
@@ -12,9 +12,9 @@
 
 ## File Structure
 
-- `backend/__tests__/whatsappOficinaUrl.test.js`: regression tests for Web URL generation, app URL generation, app launch, and launcher failure.
+- `backend/__tests__/whatsappOficinaUrl.test.js`: regression tests for Web URL generation, current-tab launch, and navigation failure.
 - `frontend/src/utils/whatsappOficina.js`: focused WhatsApp opener used by the Oficina page.
-- `frontend/src/pages/Oficina.jsx`: user-facing failure message when the app protocol launcher cannot run.
+- `frontend/src/pages/Oficina.jsx`: user-facing failure message when WhatsApp Web navigation cannot run.
 
 ### Task 1: Reproduce The Web Tab Path
 
@@ -23,7 +23,7 @@
 
 - [ ] **Step 1: Write the failing test**
 
-Add tests that require `buildWhatsappAppUrl()` to generate `whatsapp://send?phone=<digits>&text=<encoded-text>` and require `openWhatsappConversation()` to call a supplied launcher with that app URL instead of calling a Web-tab opener.
+Add tests that require `openWhatsappConversation()` to call a supplied launcher with the existing `https://web.whatsapp.com/send` URL instead of calling an app-protocol or Web-tab opener.
 
 - [ ] **Step 2: Run the focused test**
 
@@ -34,9 +34,9 @@ cd C:\Users\esina\OneDrive\Documentos\Sistema\backend
 npm.cmd test -- whatsappOficinaUrl.test.js
 ```
 
-Expected: FAIL because the helper has no app URL builder and still sends the click through `web.whatsapp.com`.
+Expected: FAIL while the helper still sends the click through `whatsapp://send`.
 
-### Task 2: Launch The WhatsApp App
+### Task 2: Navigate To WhatsApp Web
 
 **Files:**
 - Modify: `frontend/src/utils/whatsappOficina.js`
@@ -45,9 +45,9 @@ Expected: FAIL because the helper has no app URL builder and still sends the cli
 
 - [ ] **Step 1: Implement the minimal helper change**
 
-Add `buildWhatsappAppUrl()`. Make `openWhatsappConversation()` build that URL and use a launcher that navigates to it with `window.location.assign`, returning `false` if the launcher cannot run.
+Make `openWhatsappConversation()` build the existing WhatsApp Web URL and use a launcher that navigates the current tab to it with `window.location.assign`, returning `false` if the launcher cannot run.
 
-Update the Oficina failure toast to say the app could not be opened before copying the message fallback.
+Update the Oficina failure toast to say WhatsApp Web could not be opened before copying the message fallback.
 
 - [ ] **Step 2: Run the focused test**
 
@@ -93,6 +93,6 @@ Run:
 
 ```powershell
 git add docs/superpowers/specs/2026-05-22-whatsapp-fila-oficina-design.md docs/superpowers/plans/2026-05-22-whatsapp-tab-reuse.md backend/__tests__/whatsappOficinaUrl.test.js frontend/src/utils/whatsappOficina.js frontend/src/pages/Oficina.jsx
-git commit -m "fix: launch oficina whatsapp in app"
+git commit -m "fix: open oficina whatsapp in current tab"
 git push
 ```
