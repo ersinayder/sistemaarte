@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { openWhatsappConversation } from '../utils/whatsappOficina';
 
 const COLUNAS = [
   { status: 'Aguardando',  label: 'Aguardando',  slug: 'aguardando', color:'var(--status-aguardando,#9AA4B2)' },
@@ -91,6 +93,8 @@ export default function Oficina() {
   const [filterPrio,  setFilterPrio]  = useState('todas');
   const [viewMode,    setViewMode]    = useState('kanban');
   const [today,       setToday]       = useState('');
+  const [whatsappMenu, setWhatsappMenu] = useState(null);
+  const [openingAviso, setOpeningAviso] = useState(null);
 
   useEffect(() => {
     const d = new Date();
@@ -117,6 +121,86 @@ export default function Oficina() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!whatsappMenu) return undefined;
+    const close = () => setWhatsappMenu(null);
+    window.addEventListener('click', close);
+    window.addEventListener('keydown', close);
+    return () => {
+      window.removeEventListener('click', close);
+      window.removeEventListener('keydown', close);
+    };
+  }, [whatsappMenu]);
+
+  const updateAvisoLocal = useCallback((ordemId, aviso) => {
+    if (!aviso) return;
+    setOrdens(current => current.map(ordem => {
+      if (String(ordem.id) !== String(ordemId)) return ordem;
+      const whatsappAvisos = {
+        ...(ordem.whatsappAvisos || {}),
+        [aviso.tipo]: aviso,
+      };
+      const atualPrincipal = ordem.whatsappAvisoPrincipal;
+      const whatsappAvisoPrincipal =
+        atualPrincipal?.tipo === aviso.tipo || !atualPrincipal
+          ? aviso
+          : atualPrincipal;
+      return { ...ordem, whatsappAvisos, whatsappAvisoPrincipal };
+    }));
+  }, []);
+
+  const copiarMensagem = useCallback(async (text) => {
+    if (!text) return false;
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success('Mensagem copiada');
+      return true;
+    } catch {
+      toast.error('Nao foi possivel copiar a mensagem');
+      return false;
+    }
+  }, []);
+
+  const abrirAvisoWhatsapp = useCallback(async (e, ordem, aviso) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!aviso?.tipo || openingAviso) return;
+
+    setOpeningAviso(`${ordem.id}:${aviso.tipo}`);
+    try {
+      const { data } = await api.post(`/ordens/${ordem.id}/whatsapp-avisos/${aviso.tipo}/abrir`);
+      updateAvisoLocal(ordem.id, data.aviso);
+      if (!data.whatsapp?.phone) {
+        toast.error('Cliente sem telefone cadastrado');
+        await copiarMensagem(data.whatsapp?.text);
+        return;
+      }
+      const opened = openWhatsappConversation(data.whatsapp);
+      if (!opened) {
+        toast.error('Permita pop-ups para abrir o WhatsApp');
+        await copiarMensagem(data.whatsapp.text);
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Erro ao abrir WhatsApp');
+      await copiarMensagem(err.response?.data?.whatsapp?.text);
+    } finally {
+      setOpeningAviso(null);
+    }
+  }, [copiarMensagem, openingAviso, updateAvisoLocal]);
+
+  const marcarAvisoWhatsapp = useCallback(async (e, ordem, aviso, status) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setWhatsappMenu(null);
+    try {
+      const { data } = await api.patch(`/ordens/${ordem.id}/whatsapp-avisos/${aviso.tipo}/status`, { status });
+      updateAvisoLocal(ordem.id, data.aviso);
+      toast.success(status === 'enviado' ? 'Aviso marcado como enviado' : 'Aviso ignorado');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Erro ao atualizar aviso');
+    }
+  }, [updateAvisoLocal]);
 
   const recover = useCallback(async () => {
     setLoading(true);
@@ -210,6 +294,74 @@ export default function Oficina() {
     return ['todos', ...Array.from(s)];
   }, [ordens]);
 
+  const WhatsappAvisoTag = ({ ordem }) => {
+    const aviso = ordem.whatsappAvisoPrincipal;
+    if (!aviso) return null;
+
+    const isDone = ['enviado', 'ignorado'].includes(aviso.status);
+    const label = aviso.tipo === 'pedido_pronto'
+      ? aviso.status === 'enviado' ? 'Avisado' : aviso.status === 'aberto' ? 'Aberto' : 'Avisar pronto'
+      : aviso.status === 'enviado' ? 'Confirmado' : aviso.status === 'aberto' ? 'Aberto' : 'Confirmar';
+    const key = `${ordem.id}:${aviso.tipo}`;
+    const busy = openingAviso === key;
+
+    const openMenu = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setWhatsappMenu({
+        x: event.clientX,
+        y: event.clientY,
+        ordem,
+        aviso,
+      });
+    };
+
+    return (
+      <span
+        onClick={isDone ? (e) => e.stopPropagation() : (e) => abrirAvisoWhatsapp(e, ordem, aviso)}
+        onContextMenu={openMenu}
+        title={isDone ? label : 'Clique para abrir WhatsApp. Clique direito para marcar.'}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 4,
+          fontSize: 9,
+          fontWeight: 800,
+          color: isDone ? 'var(--color-text-faint)' : '#22C55E',
+          background: isDone ? 'rgba(255,255,255,0.05)' : 'rgba(34,197,94,0.12)',
+          border: `1px solid ${isDone ? 'var(--color-border)' : 'rgba(34,197,94,0.35)'}`,
+          borderRadius: 'var(--radius-full)',
+          padding: '1px 5px',
+          cursor: isDone ? 'default' : 'pointer',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {busy ? 'Abrindo...' : label}
+        {!isDone && (
+          <button
+            type="button"
+            onClick={(e) => marcarAvisoWhatsapp(e, ordem, aviso, 'enviado')}
+            title={aviso.tipo === 'pedido_pronto' ? 'Marcar avisado' : 'Marcar confirmado'}
+            style={{
+              width: 14,
+              height: 14,
+              border: 'none',
+              borderRadius: '50%',
+              background: 'rgba(34,197,94,0.2)',
+              color: '#22C55E',
+              fontSize: 10,
+              lineHeight: '14px',
+              cursor: 'pointer',
+              padding: 0,
+            }}
+          >
+            ✓
+          </button>
+        )}
+      </span>
+    );
+  };
+
   if (loading) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'60vh', color:'var(--color-text-muted)' }}>
       Carregando...
@@ -279,6 +431,40 @@ export default function Oficina() {
           </button>
         </div>
       </div>
+
+      {whatsappMenu && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: 'fixed',
+            top: whatsappMenu.y,
+            left: whatsappMenu.x,
+            zIndex: 1000,
+            background: 'var(--color-surface-offset)',
+            border: '1px solid var(--color-border)',
+            borderRadius: 'var(--radius-md)',
+            boxShadow: '0 12px 30px rgba(0,0,0,0.35)',
+            padding: 4,
+          }}
+        >
+          <button
+            type="button"
+            onClick={(e) => marcarAvisoWhatsapp(e, whatsappMenu.ordem, whatsappMenu.aviso, 'enviado')}
+            style={{
+              border: 'none',
+              background: 'transparent',
+              color: 'var(--color-text)',
+              fontSize: 11,
+              fontWeight: 700,
+              padding: '6px 10px',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {whatsappMenu.aviso.tipo === 'pedido_pronto' ? 'Marcar avisado' : 'Marcar confirmado'}
+          </button>
+        </div>
+      )}
 
       {/* Kanban */}
       {viewMode === 'kanban' ? (
@@ -394,6 +580,7 @@ export default function Oficina() {
                                   background:'rgba(239,68,68,0.12)', borderRadius:'var(--radius-full)',
                                   padding:'1px 5px', letterSpacing:'0.03em' }}>URGENTE</span>
                               )}
+                              <WhatsappAvisoTag ordem={o} />
                               <span className={`badge badge-${TIPOBADGE[o.servico]||'secondary'}`} style={{ fontSize:9 }}>
                                 {o.servico}
                               </span>
@@ -507,7 +694,12 @@ export default function Oficina() {
                         transition:'background 0.12s'
                       }}>
                       <td style={{ padding:'var(--space-2) var(--space-3)', fontWeight:700, color:'var(--color-primary)', fontSize:'var(--text-xs)' }}>{o.numero}</td>
-                      <td style={{ padding:'var(--space-2) var(--space-3)', fontWeight:600, fontSize:'var(--text-xs)', color:'var(--color-text)' }}>{o.clientenome}</td>
+                      <td style={{ padding:'var(--space-2) var(--space-3)', fontWeight:600, fontSize:'var(--text-xs)', color:'var(--color-text)' }}>
+                        <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
+                          <span>{o.clientenome}</span>
+                          <WhatsappAvisoTag ordem={o} />
+                        </div>
+                      </td>
                       <td style={{ padding:'var(--space-2) var(--space-3)' }}>
                         <span className={`badge badge-${TIPOBADGE[o.servico]||'secondary'}`} style={{ fontSize:10 }}>{o.servico}</span>
                       </td>
