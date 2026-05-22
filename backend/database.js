@@ -221,6 +221,25 @@ CREATE TABLE IF NOT EXISTS whatsapp_config (
   updatedat             TEXT DEFAULT (datetime('now','localtime'))
 );
 INSERT OR IGNORE INTO whatsapp_config (id) VALUES (1);
+CREATE TABLE IF NOT EXISTS whatsapp_avisos (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  ordemid           INTEGER NOT NULL,
+  tipo              TEXT NOT NULL,
+  status            TEXT NOT NULL DEFAULT 'pendente',
+  telefone_snapshot TEXT,
+  mensagem_snapshot TEXT,
+  aberto_por        INTEGER,
+  enviado_por       INTEGER,
+  ignorado_por      INTEGER,
+  aberto_em         TEXT,
+  enviado_em        TEXT,
+  ignorado_em       TEXT,
+  createdat         TEXT DEFAULT (datetime('now','localtime')),
+  updatedat         TEXT DEFAULT (datetime('now','localtime')),
+  UNIQUE(ordemid, tipo)
+);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_avisos_ordemid ON whatsapp_avisos(ordemid);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_avisos_status ON whatsapp_avisos(status);
 CREATE INDEX IF NOT EXISTS idx_ordens_status       ON ordens(status);
 CREATE INDEX IF NOT EXISTS idx_ordens_prazo        ON ordens(prazoentrega);
 CREATE INDEX IF NOT EXISTS idx_ordens_clienteid    ON ordens(clienteid);
@@ -421,6 +440,26 @@ function initDB() {
       createdat       TEXT DEFAULT (datetime('now','localtime'))
     )`,
     "CREATE INDEX IF NOT EXISTS idx_lancamento_itens_lancamentoid ON lancamento_itens(lancamentoid)",
+    // v13 - avisos manuais de WhatsApp por OS
+    `CREATE TABLE IF NOT EXISTS whatsapp_avisos (
+      id                INTEGER PRIMARY KEY AUTOINCREMENT,
+      ordemid           INTEGER NOT NULL,
+      tipo              TEXT NOT NULL,
+      status            TEXT NOT NULL DEFAULT 'pendente',
+      telefone_snapshot TEXT,
+      mensagem_snapshot TEXT,
+      aberto_por        INTEGER,
+      enviado_por       INTEGER,
+      ignorado_por      INTEGER,
+      aberto_em         TEXT,
+      enviado_em        TEXT,
+      ignorado_em       TEXT,
+      createdat         TEXT DEFAULT (datetime('now','localtime')),
+      updatedat         TEXT DEFAULT (datetime('now','localtime')),
+      UNIQUE(ordemid, tipo)
+    )`,
+    "CREATE INDEX IF NOT EXISTS idx_whatsapp_avisos_ordemid ON whatsapp_avisos(ordemid)",
+    "CREATE INDEX IF NOT EXISTS idx_whatsapp_avisos_status ON whatsapp_avisos(status)",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {}
