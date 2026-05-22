@@ -7,9 +7,18 @@ const {
   validarEntradaOS, validarStatus, validarPrazo, normalizarStatus,
   descricaoEntradaOS, descricaoRestanteOS
 } = require("../domain/ordensRules");
-const { sendWhatsApp, sendWhatsAppConfirmacao } = require("../utils/whatsapp");
+const { sendWhatsAppConfirmacao } = require("../utils/whatsapp");
 const { getResumoFinanceiroOS } = require('../domain/financeiroRules');
 const { normalizarPaginacao, montarMetaPaginacao } = require("../domain/paginationRules");
+const {
+  normalizarTipoAviso,
+  normalizarStatusAviso,
+  normalizarTelefoneWhatsapp,
+  podeUsarAviso,
+  avisoDisponivelParaOrdem,
+  montarMensagemAviso,
+  validarTransicaoAviso,
+} = require("../domain/whatsappAvisosRules");
 
 const SEL_ORDEM = `
   SELECT o.*,
@@ -73,14 +82,21 @@ function resolveClienteData(clienteid, clientenome, telefoneFornecido, cpfFornec
   return { telefone, cpf };
 }
 
-function maybeNotifyPronto(ordemId, statusAnterior, statusNovo) {
-  if (statusAnterior === statusNovo || statusNovo !== 'Pronto') return;
-  const os = getOne(
-    `SELECT o.*, u.name AS criadopornome FROM ordens o LEFT JOIN users u ON u.id=o.criadopor WHERE o.id=?`,
-    [ordemId]
+function garantirAvisoPendente(ordemId, tipo) {
+  run(
+    `INSERT OR IGNORE INTO whatsapp_avisos (ordemid, tipo, status, updatedat)
+     VALUES (?, ?, 'pendente', datetime('now','localtime'))`,
+    [ordemId, tipo]
   );
-  if (!os) return;
-  sendWhatsApp(os).catch(err => console.error('[WhatsApp] erro inesperado:', err.message));
+}
+
+function garantirAvisoPronto(ordemId, statusAnterior, statusNovo) {
+  if (statusAnterior === statusNovo || statusNovo !== 'Pronto') return;
+  garantirAvisoPendente(ordemId, 'pedido_pronto');
+}
+
+function maybeNotifyPronto(ordemId, statusAnterior, statusNovo) {
+  garantirAvisoPronto(ordemId, statusAnterior, statusNovo);
 }
 
 function isValidDate(d) {
@@ -103,6 +119,115 @@ function saveItens(ordemId, produtos) {
       [ordemId, pid, nome, qty, preco, avulso]
     );
   }
+}
+
+function buscarOrdemAviso(ordemId) {
+  return getOne(`${SEL_ORDEM} WHERE o.id=? AND o.deletedat IS NULL`, [ordemId]);
+}
+
+function buscarAviso(ordemId, tipo) {
+  return getOne(
+    `SELECT * FROM whatsapp_avisos WHERE ordemid=? AND tipo=? LIMIT 1`,
+    [ordemId, tipo]
+  );
+}
+
+function listarAvisos(ordemIds) {
+  if (!ordemIds.length) return [];
+  const placeholders = ordemIds.map(() => '?').join(',');
+  return getAll(
+    `SELECT * FROM whatsapp_avisos WHERE ordemid IN (${placeholders})`,
+    ordemIds
+  );
+}
+
+function projetarAviso(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    ordemid: row.ordemid,
+    tipo: row.tipo,
+    status: row.status || 'pendente',
+    aberto_em: row.aberto_em || null,
+    enviado_em: row.enviado_em || null,
+    ignorado_em: row.ignorado_em || null,
+    updatedat: row.updatedat || null,
+  };
+}
+
+function avisoVirtual(ordem, tipo, role, avisosPorChave) {
+  const existente = avisosPorChave.get(`${ordem.id}:${tipo}`);
+  if (!podeUsarAviso(role, tipo)) return null;
+  if (existente) {
+    const projetado = projetarAviso(existente);
+    if (['enviado', 'ignorado'].includes(projetado.status)) return projetado;
+    const disponibilidade = avisoDisponivelParaOrdem(ordem, tipo, role);
+    return disponibilidade.ok ? projetado : null;
+  }
+  const disponibilidade = avisoDisponivelParaOrdem(ordem, tipo, role);
+  if (!disponibilidade.ok) return null;
+  return { ordemid: ordem.id, tipo, status: 'pendente', virtual: true };
+}
+
+function redactOrdemForRole(row, role) {
+  if (role !== 'oficina') return row;
+  const {
+    valortotal,
+    valorentrada,
+    valor,
+    entrada,
+    valorrecebido,
+    saldoaberto,
+    pagamento,
+    ...safe
+  } = row;
+  return safe;
+}
+
+function redactItensForRole(itens, role) {
+  if (role !== 'oficina') return itens;
+  return itens.map(({ preco_unitario, subtotal, ...item }) => item);
+}
+
+function anexarAvisosWhatsApp(rows, role) {
+  const ordemIds = rows.map((row) => row.id).filter(Boolean);
+  const avisos = listarAvisos(ordemIds);
+  const avisosPorChave = new Map(avisos.map((aviso) => [`${aviso.ordemid}:${aviso.tipo}`, aviso]));
+
+  return rows.map((row) => {
+    const confirmacao = avisoVirtual(row, 'confirmacao_pedido', role, avisosPorChave);
+    const pronto = avisoVirtual(row, 'pedido_pronto', role, avisosPorChave);
+    const whatsappAvisos = {
+      confirmacao_pedido: confirmacao,
+      pedido_pronto: pronto,
+    };
+    const whatsappAvisoPrincipal = pronto && ['pendente', 'aberto'].includes(pronto.status)
+      ? pronto
+      : confirmacao && ['pendente', 'aberto'].includes(confirmacao.status)
+        ? confirmacao
+        : pronto || confirmacao;
+    return { ...redactOrdemForRole(row, role), whatsappAvisos, whatsappAvisoPrincipal };
+  });
+}
+
+function salvarAvisoAberto(ordemId, tipo, phone, text, userId) {
+  run(
+    `INSERT INTO whatsapp_avisos
+       (ordemid, tipo, status, telefone_snapshot, mensagem_snapshot, aberto_por, aberto_em, updatedat)
+     VALUES (?, ?, 'aberto', ?, ?, ?, datetime('now','localtime'), datetime('now','localtime'))
+     ON CONFLICT(ordemid, tipo) DO UPDATE SET
+       status=CASE
+         WHEN whatsapp_avisos.status IN ('enviado','ignorado') THEN whatsapp_avisos.status
+         ELSE 'aberto'
+       END,
+       telefone_snapshot=excluded.telefone_snapshot,
+       mensagem_snapshot=excluded.mensagem_snapshot,
+       aberto_por=excluded.aberto_por,
+       aberto_em=COALESCE(whatsapp_avisos.aberto_em, excluded.aberto_em),
+       updatedat=datetime('now','localtime')`,
+    [ordemId, tipo, phone, text, userId]
+  );
+  return buscarAviso(ordemId, tipo);
 }
 
 // GET /api/ordens
@@ -130,12 +255,13 @@ router.get("/", auth(), (req, res, next) => {
     }
     const whereSql = ` WHERE ${where.join(" AND ")}`;
     if (!querPaginacao) {
-      return res.json(getAll(`${SEL_ORDEM}${whereSql} ORDER BY o.id DESC`, p));
+      const rows = getAll(`${SEL_ORDEM}${whereSql} ORDER BY o.id DESC`, p);
+      return res.json(anexarAvisosWhatsApp(rows, req.user.role));
     }
     const total = getOne(`SELECT COUNT(*) AS total FROM ordens o${whereSql}`, p)?.total ?? 0;
     const rows = getAll(`${SEL_ORDEM}${whereSql} ORDER BY o.id DESC LIMIT ? OFFSET ?`, [...p, limit, offset]);
     res.json({
-      data: rows,
+      data: anexarAvisosWhatsApp(rows, req.user.role),
       meta: montarMetaPaginacao({ page, limit, total }),
     });
   } catch(e) { next(e); }
@@ -161,7 +287,12 @@ router.get("/:id", auth(), (req, res, next) => {
        ORDER BY l.createdat ASC, l.id ASC`,
       [req.params.id]
     );
-    res.json({ ...o, logs, itens, lancamentos });
+    res.json({
+      ...redactOrdemForRole(o, req.user.role),
+      logs,
+      itens: redactItensForRole(itens, req.user.role),
+      lancamentos: req.user.role === 'oficina' ? [] : lancamentos,
+    });
   } catch(e) { next(e); }
 });
 
@@ -213,6 +344,7 @@ router.post("/", auth(["admin","caixa"]), (req, res, next) => {
         "INSERT INTO statuslog (ordemid,statusanterior,statusnovo,usuarioid,obs) VALUES (?,?,?,?,?)",
         [id, null, "Aguardando", req.user.id, "Ordem criada"]
       );
+      garantirAvisoPendente(id, 'confirmacao_pedido');
       saveItens(id, produtos);
       if (entrada > 0) {
         const desc = descricaoEntradaOS(numero, clientenome, servico, total, entrada);
@@ -378,6 +510,79 @@ router.patch("/:id/status", auth(["admin","caixa","oficina"]), (req, res, next) 
     }
     next(e);
   }
+});
+
+// POST /api/ordens/:id/whatsapp-avisos/:tipo/abrir
+router.post("/:id/whatsapp-avisos/:tipo/abrir", auth(["admin","caixa","oficina"]), (req, res, next) => {
+  try {
+    const tipo = normalizarTipoAviso(req.params.tipo);
+    if (!tipo) return res.status(400).json({ error: "Tipo de aviso invalido." });
+    if (!podeUsarAviso(req.user.role, tipo)) {
+      return res.status(403).json({ error: "Aviso nao permitido para este usuario." });
+    }
+
+    const os = buscarOrdemAviso(req.params.id);
+    if (!os) return res.status(404).json({ error: "OS nao encontrada" });
+
+    const disponibilidade = avisoDisponivelParaOrdem(os, tipo, req.user.role);
+    if (!disponibilidade.ok) {
+      return res.status(409).json({ error: "Aviso indisponivel para o status atual da OS." });
+    }
+
+    const phone = normalizarTelefoneWhatsapp(os.clientetelefone || os.clientecontato);
+    const message = montarMensagemAviso(os, tipo, { role: req.user.role });
+    if (!message.ok) return res.status(403).json({ error: "Aviso nao permitido para este usuario." });
+
+    const aviso = salvarAvisoAberto(os.id, tipo, phone, message.text, req.user.id);
+    res.json({
+      aviso: projetarAviso(aviso),
+      whatsapp: {
+        mode: "web",
+        phone,
+        text: message.text,
+      },
+    });
+  } catch(e) { next(e); }
+});
+
+// PATCH /api/ordens/:id/whatsapp-avisos/:tipo/status
+router.patch("/:id/whatsapp-avisos/:tipo/status", auth(["admin","caixa","oficina"]), (req, res, next) => {
+  try {
+    const tipo = normalizarTipoAviso(req.params.tipo);
+    const status = normalizarStatusAviso(req.body?.status);
+    if (!tipo) return res.status(400).json({ error: "Tipo de aviso invalido." });
+    if (!status || !['enviado', 'ignorado'].includes(status)) {
+      return res.status(400).json({ error: "Status de aviso invalido." });
+    }
+    if (!podeUsarAviso(req.user.role, tipo)) {
+      return res.status(403).json({ error: "Aviso nao permitido para este usuario." });
+    }
+
+    const os = buscarOrdemAviso(req.params.id);
+    if (!os) return res.status(404).json({ error: "OS nao encontrada" });
+
+    const disponibilidade = avisoDisponivelParaOrdem(os, tipo, req.user.role);
+    if (!disponibilidade.ok) {
+      return res.status(409).json({ error: "Aviso indisponivel para o status atual da OS." });
+    }
+
+    const atual = buscarAviso(os.id, tipo) || { status: 'pendente' };
+    const transicao = validarTransicaoAviso(atual.status, status);
+    if (!transicao.ok) return res.status(409).json({ error: "Transicao de aviso invalida." });
+
+    if (!atual.id) garantirAvisoPendente(os.id, tipo);
+
+    const fieldPor = status === 'enviado' ? 'enviado_por' : 'ignorado_por';
+    const fieldEm = status === 'enviado' ? 'enviado_em' : 'ignorado_em';
+    run(
+      `UPDATE whatsapp_avisos
+       SET status=?, ${fieldPor}=?, ${fieldEm}=datetime('now','localtime'), updatedat=datetime('now','localtime')
+       WHERE ordemid=? AND tipo=?`,
+      [status, req.user.id, os.id, tipo]
+    );
+
+    res.json({ aviso: projetarAviso(buscarAviso(os.id, tipo)) });
+  } catch(e) { next(e); }
 });
 
 // POST /api/ordens/:id/whatsapp-confirmacao

@@ -63,6 +63,13 @@ function routeRoles(router, method, path) {
 }
 
 describe('route authorization contracts', () => {
+  it('exposes whatsapp notice routes with explicit role restrictions', async () => {
+    const ordensRouter = await loadRouter('../routes/ordens.js');
+
+    expect(routeRoles(ordensRouter, 'post', '/:id/whatsapp-avisos/:tipo/abrir')).toEqual(['admin', 'caixa', 'oficina']);
+    expect(routeRoles(ordensRouter, 'patch', '/:id/whatsapp-avisos/:tipo/status')).toEqual(['admin', 'caixa', 'oficina']);
+  });
+
   it('restricts fiscal write routes to admin and caixa', async () => {
     const nfeRouter = await loadRouter('../routes/nfe.js');
 
@@ -167,6 +174,25 @@ describe('route persistence contracts', () => {
     expect(source).toMatch(/tipo,\s*categoria,\s*descricao,\s*pagamento,\s*valor/);
     expect(source).toMatch(/UPDATE contas_pagar SET status='Pago'/);
   });
+
+  it('does not call the unstable automatic whatsapp sender when OS becomes ready', () => {
+    const source = fs.readFileSync(new URL('../routes/ordens.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/function maybeNotifyPronto/);
+    expect(source).not.toMatch(/sendWhatsApp\(os\)/);
+    expect(source).toMatch(/garantirAvisoPronto/);
+  });
+
+  it('redacts financial fields from oficina OS responses on the backend', () => {
+    const source = fs.readFileSync(new URL('../routes/ordens.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/function redactOrdemForRole/);
+    expect(source).toMatch(/role !== 'oficina'/);
+    expect(source).toMatch(/saldoaberto/);
+    expect(source).toMatch(/function redactItensForRole/);
+    expect(source).toMatch(/\{\s*preco_unitario,\s*subtotal,\s*\.\.\.item\s*\}/);
+    expect(source).toMatch(/lancamentos:\s*req\.user\.role === 'oficina' \? \[\] : lancamentos/);
+  });
 });
 
 describe('security configuration contracts', () => {
@@ -211,7 +237,7 @@ describe('pagination route contracts', () => {
     expect(source).toMatch(/montarMetaPaginacao/);
     expect(source).toMatch(/COUNT\(\*\) AS total[\s\S]+FROM ordens o/);
     expect(source).toMatch(/LIMIT \? OFFSET \?/);
-    expect(source).toMatch(/res\.json\(\{\s*data:\s*rows,\s*meta:/);
+    expect(source).toMatch(/res\.json\(\{\s*data:\s*anexarAvisosWhatsApp\(rows,\s*req\.user\.role\),\s*meta:/);
   });
 
   it('paginates clientes with matching count metadata', () => {
