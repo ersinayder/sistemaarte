@@ -12,6 +12,7 @@ const {
 } = require('../utils/nfe');
 const { montarNFe } = require('../domain/nfeRules');
 const { renderDanfeHtml } = require('../utils/danfe');
+const { sendPrintHtml } = require('../utils/print/base');
 const {
   tpAmbAtual,
   getCertificadoConfig,
@@ -340,9 +341,7 @@ router.get('/:chave/danfe', auth(['admin', 'caixa']), (req, res) => {
     }
 
     const html = renderDanfeHtml(xml);
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.setHeader('Content-Disposition', `inline; filename="danfe-${filenameSeguro(chave)}.html"`);
-    res.send(html);
+    sendPrintHtml(res, `danfe-${filenameSeguro(chave)}.html`, html);
   } catch (e) {
     console.error('[NF-e] GET /:chave/danfe:', e.message);
     res.status(e.statusCode || 500).json({ erro: e.statusCode ? e.message : 'Erro ao gerar DANFE' });

@@ -24,7 +24,12 @@ describe('propostaPdf', () => {
     expect(html).toContain('PROPOSTA COMERCIAL');
     expect(html).toContain('class="brand-logo"');
     expect(html).toContain('Arte e Molduras');
-    expect(html).toContain('PROP-0007');
+    expect(html).toContain('0007');
+    expect(html).not.toContain('PROP-0007');
+    expect(html).not.toContain('Status');
+    expect(html).not.toContain('Orcamento enviado');
+    expect(html).not.toContain('Origem');
+    expect(html).not.toContain('Balcao');
     expect(html).toContain('Cliente Teste');
     expect(html).toContain('Moldura preta');
     expect(html).toContain('Vidro antirreflexo');

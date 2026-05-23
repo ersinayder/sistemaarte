@@ -14,6 +14,7 @@ const {
   montarFechamentoCaixa,
   renderFechamentoCaixaHtml,
 } = require("../utils/print/caixaFechamento");
+const { sendPrintHtml } = require("../utils/print/base");
 
 // GET /api/caixa
 router.get("/", auth(["admin","caixa"]), (req, res, next) => {
@@ -62,9 +63,7 @@ router.get("/fechamento", auth(["admin","caixa"]), (req, res, next) => {
     );
     const fechamento = montarFechamentoCaixa({ data, lancamentos });
     const html = renderFechamentoCaixaHtml({ data, fechamento, usuario: req.user });
-    res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.setHeader("Content-Disposition", `inline; filename="fechamento-caixa-${data}.html"`);
-    res.send(html);
+    sendPrintHtml(res, `fechamento-caixa-${data}.html`, html);
   } catch(e) { next(e); }
 });
 

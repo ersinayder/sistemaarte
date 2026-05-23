@@ -26,4 +26,24 @@ describe('print base', () => {
     expect(print.fmtMoney(1234.5)).toBe('R$&nbsp;1.234,50');
     expect(print.fmtDate('2026-05-23 10:15:00')).toBe('23/05/2026');
   });
+
+  it('sets print response headers compatible with the app CSP', () => {
+    const headers = {};
+    const res = {
+      setHeader(key, value) {
+        headers[key] = value;
+      },
+      send(value) {
+        this.body = value;
+      },
+    };
+
+    print.sendPrintHtml(res, 'fechamento.html', '<html></html>');
+
+    expect(headers['Content-Type']).toBe('text/html; charset=utf-8');
+    expect(headers['Content-Disposition']).toBe('inline; filename="fechamento.html"');
+    expect(headers['Content-Security-Policy']).toContain("script-src 'unsafe-inline'");
+    expect(headers['Content-Security-Policy']).toContain("style-src 'unsafe-inline'");
+    expect(res.body).toBe('<html></html>');
+  });
 });

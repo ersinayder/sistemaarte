@@ -63,4 +63,11 @@ describe('caixa fechamento print', () => {
     expect(html).toContain('Responsavel pelo Caixa');
     expect(html).toContain('Conferencia');
   });
+
+  it('does not render the outgoing totals by category section', () => {
+    const fechamento = montarFechamentoCaixa({ data: '2026-05-23', lancamentos });
+    const html = renderFechamentoCaixaHtml({ data: '2026-05-23', fechamento, usuario: { name: 'Caixa' } });
+
+    expect(html).not.toContain('Saidas por categoria');
+  });
 });

@@ -14,6 +14,7 @@ const {
   renderDreHtml,
   renderResumoFinanceiroHtml,
 } = require("../utils/print/financeiroReports");
+const { sendPrintHtml } = require("../utils/print/base");
 
 const FILTRO_LANCAMENTO_ATIVO = `
   l.deletedat IS NULL
@@ -50,12 +51,6 @@ function filtrosContaPagar(query = {}) {
     params.push(q, q, q, q);
   }
   return { where: where.join(" AND "), params };
-}
-
-function sendPrintHtml(res, filename, html) {
-  res.setHeader("Content-Type", "text/html; charset=utf-8");
-  res.setHeader("Content-Disposition", `inline; filename="${filename}"`);
-  res.send(html);
 }
 
 function getResumoFinanceiroPayload(mesInput) {

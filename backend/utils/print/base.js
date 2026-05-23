@@ -3,6 +3,15 @@ const path = require('path');
 
 let logoCache = null;
 
+const PRINT_CONTENT_SECURITY_POLICY = [
+  "default-src 'none'",
+  "img-src data:",
+  "style-src 'unsafe-inline'",
+  "script-src 'unsafe-inline'",
+  "base-uri 'none'",
+  "form-action 'none'",
+].join('; ');
+
 function esc(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -138,7 +147,7 @@ function renderPrintDocument({
 </style>
 </head>
 <body class="${esc(documentClass)}">
-  <div class="actions no-print"><button class="print-btn" onclick="window.print()">Imprimir / salvar PDF</button></div>
+  <div class="actions no-print"><button type="button" class="print-btn" onclick="window.print()">Imprimir / salvar PDF</button></div>
   <main class="sheet">
     <header class="doc-header">
       <div class="brand">
@@ -156,6 +165,17 @@ function renderPrintDocument({
 </html>`;
 }
 
+function setPrintHeaders(res, filename) {
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Content-Security-Policy', PRINT_CONTENT_SECURITY_POLICY);
+  if (filename) res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+}
+
+function sendPrintHtml(res, filename, html) {
+  setPrintHeaders(res, filename);
+  res.send(html);
+}
+
 module.exports = {
   esc,
   fmtDate,
@@ -165,4 +185,6 @@ module.exports = {
   renderKpis,
   renderPrintDocument,
   renderTable,
+  sendPrintHtml,
+  setPrintHeaders,
 };

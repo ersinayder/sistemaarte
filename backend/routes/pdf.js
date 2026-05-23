@@ -3,6 +3,7 @@ const { getOne, getAll } = require("../database");
 const { auth } = require("../middlewares/auth");
 const { getResumoFinanceiroOS } = require("../domain/financeiroRules");
 const { renderOrdemServicoHtml } = require("../utils/print/ordemServico");
+const { sendPrintHtml } = require("../utils/print/base");
 
 const SEL_ORDEM = `
   SELECT o.*,
@@ -41,9 +42,7 @@ router.get("/:id/pdf", auth(["admin", "caixa"]), (req, res) => {
     const resumo = getResumoFinanceiroOS(req.params.id);
     const html = renderOrdemServicoHtml({ ordem: os, itens, logs, resumo });
 
-    res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.setHeader("Content-Disposition", `inline; filename="ordem-${os.numero || os.id}.html"`);
-    res.send(html);
+    sendPrintHtml(res, `ordem-${os.numero || os.id}.html`, html);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
