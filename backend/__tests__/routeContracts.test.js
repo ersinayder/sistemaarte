@@ -87,8 +87,11 @@ describe('route authorization contracts', () => {
     const produtosRouter = await loadRouter('../routes/produtos.js');
 
     expect(routeRoles(caixaRouter, 'get', '/')).toEqual(['admin', 'caixa']);
+    expect(routeRoles(caixaRouter, 'get', '/fechamento')).toEqual(['admin', 'caixa']);
     expect(routeRoles(relatoriosRouter, 'get', '/resumo')).toEqual(['admin', 'caixa']);
+    expect(routeRoles(relatoriosRouter, 'get', '/producao/pdf')).toEqual(['admin']);
     expect(routeRoles(financeiroRouter, 'get', '/resumo')).toEqual(['admin']);
+    expect(routeRoles(financeiroRouter, 'get', '/resumo/pdf')).toEqual(['admin']);
     expect(routeRoles(clientesRouter, 'get', '/')).toEqual(['admin', 'caixa']);
     expect(routeRoles(clientesRouter, 'get', '/:id')).toEqual(['admin', 'caixa']);
     expect(routeRoles(clientesRouter, 'get', '/:id/ordens')).toEqual(['admin', 'caixa']);
@@ -166,10 +169,13 @@ describe('route persistence contracts', () => {
     expect(serverSource).toMatch(/app\.use\(["']\/api\/financeiro["'],\s*require\(["']\.\/routes\/financeiro["']\)\)/);
     expect(routeRoles(financeiroRouter, 'get', '/resumo')).toEqual(['admin']);
     expect(routeRoles(financeiroRouter, 'get', '/contas-pagar')).toEqual(['admin']);
+    expect(routeRoles(financeiroRouter, 'get', '/contas-pagar/pdf')).toEqual(['admin']);
     expect(routeRoles(financeiroRouter, 'post', '/contas-pagar')).toEqual(['admin']);
     expect(routeRoles(financeiroRouter, 'patch', '/contas-pagar/:id/pagar')).toEqual(['admin']);
     expect(routeRoles(financeiroRouter, 'get', '/contas-receber')).toEqual(['admin']);
+    expect(routeRoles(financeiroRouter, 'get', '/contas-receber/pdf')).toEqual(['admin']);
     expect(routeRoles(financeiroRouter, 'get', '/dre')).toEqual(['admin']);
+    expect(routeRoles(financeiroRouter, 'get', '/dre/pdf')).toEqual(['admin']);
     expect(source).toMatch(/INSERT INTO lancamentos/);
     expect(source).toMatch(/tipo,\s*categoria,\s*descricao,\s*pagamento,\s*valor/);
     expect(source).toMatch(/UPDATE contas_pagar SET status='Pago'/);

@@ -57,93 +57,8 @@ function labelDay(dateStr) {
   return new Date(dateStr + 'T12:00:00').toLocaleDateString('pt-BR', { weekday:'short', day:'2-digit', month:'short' });
 }
 
-function gerarPDFFechamento(lancamentos, date, diaEntrada, diaSaida, diaSaldo) {
-  const fmtCur = v => Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-  const fmtD   = d => d ? new Date(d+'T12:00:00').toLocaleDateString('pt-BR') : '—';
-
-  const entradas = lancamentos.filter(l => l.tipo === 'Entrada');
-  const grupos = {};
-  PAGAMENTO_OPT.forEach(p => { grupos[p] = { total: 0, itens: [] }; });
-  entradas.forEach(l => {
-    const pg = l.pagamento || 'Outros';
-    if (!grupos[pg]) grupos[pg] = { total: 0, itens: [] };
-    grupos[pg].total += Number(l.valor||0);
-    grupos[pg].itens.push(l);
-  });
-
-  const rows = lancamentos.map(l => `
-    <tr>
-      <td>${l.tipo==='Entrada'?'↑':'↓'} ${l.categoria||'—'}</td>
-      <td>${l.descricao||'—'}</td>
-      <td>${l.pagamento||'—'}</td>
-      <td style="text-align:right;color:${l.tipo==='Entrada'?'#166534':'#991b1b'}">${l.tipo==='Entrada'?'+':'−'} ${fmtCur(l.valor)}</td>
-    </tr>
-  `).join('');
-
-  const gruposRows = Object.entries(grupos)
-    .filter(([,g]) => g.total > 0)
-    .map(([pg, g]) => `
-      <tr>
-        <td><b>${pg}</b></td>
-        <td style="text-align:right;color:#166534"><b>${fmtCur(g.total)}</b></td>
-      </tr>
-    `).join('');
-
-  const html = `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8">
-<title>Fechamento Diário — ${fmtD(date)}</title>
-<style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family: Arial, sans-serif; font-size: 11px; color: #111; padding: 24px; }
-  h1 { font-size: 16px; margin-bottom: 4px; }
-  h2 { font-size: 13px; margin: 16px 0 6px; color: #333; border-bottom: 1px solid #ccc; padding-bottom: 4px; }
-  .logo { font-size: 20px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 16px; }
-  .kpis { display: flex; gap: 24px; margin-bottom: 16px; }
-  .kpi { background: #f5f5f5; border-radius: 6px; padding: 8px 14px; }
-  .kpi-label { font-size: 10px; color: #666; }
-  .kpi-val { font-size: 15px; font-weight: 700; }
-  .kpi-val.green { color: #166534; }
-  .kpi-val.red   { color: #991b1b; }
-  .kpi-val.blue  { color: #1e40af; }
-  table { width: 100%; border-collapse: collapse; }
-  th { background: #f0f0f0; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; padding: 5px 8px; text-align: left; }
-  td { padding: 4px 8px; border-bottom: 1px solid #eee; }
-  @media print { body { padding: 0; } }
-</style>
-</head>
-<body>
-  <div class="logo">Arte &amp; Molduras</div>
-  <h1>Fechamento de Caixa — ${fmtD(date)}</h1>
-  <p style="color:#666;font-size:10px;margin-bottom:16px">Gerado em ${new Date().toLocaleString('pt-BR')}</p>
-  <div class="kpis">
-    <div class="kpi"><div class="kpi-label">Total Entradas</div><div class="kpi-val green">${fmtCur(diaEntrada)}</div></div>
-    <div class="kpi"><div class="kpi-label">Total Saídas</div><div class="kpi-val red">${fmtCur(diaSaida)}</div></div>
-    <div class="kpi"><div class="kpi-label">Saldo do Dia</div><div class="kpi-val blue">${fmtCur(diaSaldo)}</div></div>
-  </div>
-  <h2>Entradas por Forma de Pagamento</h2>
-  <table>
-    <thead><tr><th>Forma</th><th style="text-align:right">Total</th></tr></thead>
-    <tbody>${gruposRows || '<tr><td colspan="2" style="color:#999">Nenhuma entrada</td></tr>'}</tbody>
-  </table>
-  <h2>Lançamentos do Dia</h2>
-  <table>
-    <thead><tr><th>Tipo / Categoria</th><th>Descrição</th><th>Pagamento</th><th style="text-align:right">Valor</th></tr></thead>
-    <tbody>${rows || '<tr><td colspan="4" style="color:#999">Sem lançamentos</td></tr>'}</tbody>
-  </table>
-  <div style="margin-top:24px;padding-top:12px;border-top:2px solid #333;display:flex;justify-content:space-between">
-    <span>Responsável: ___________________________</span>
-    <span>Assinatura: ___________________________</span>
-  </div>
-</body>
-</html>`;
-
-  const win = window.open('', '_blank');
-  win.document.write(html);
-  win.document.close();
-  win.focus();
-  setTimeout(() => win.print(), 400);
+function abrirFechamentoCaixa(date) {
+  window.open(`/api/caixa/fechamento?data=${encodeURIComponent(date)}`, '_blank', 'noopener,noreferrer');
 }
 
 function Pagination({ current, total, onChange }) {
@@ -236,10 +151,6 @@ export default function Caixa() {
     return { entrada: e, saida: s2, saldo: e - s2 };
   }, [lancamentosFiltrados]);
 
-  const diaEntrada = lancamentos.filter(l=>l.tipo==='Entrada').reduce((s,l)=>s+Number(l.valor||0),0);
-  const diaSaida   = lancamentos.filter(l=>l.tipo==='Saída').reduce((s,l)=>s+Number(l.valor||0),0);
-  const diaSaldo   = diaEntrada - diaSaida;
-
   const totalPages = Math.max(1, Math.ceil(lancamentosFiltrados.length / PER_PAGE));
   const paginated  = lancamentosFiltrados.slice((page-1)*PER_PAGE, page*PER_PAGE);
 
@@ -331,7 +242,7 @@ export default function Caixa() {
           {viewMode === 'dia' && (
             <button className="btn btn-secondary"
               style={{ fontSize:'var(--text-xs)', display:'flex', alignItems:'center', gap:'var(--space-1)' }}
-              onClick={() => gerarPDFFechamento(lancamentos, selectedDay, diaEntrada, diaSaida, diaSaldo)}>
+              onClick={() => abrirFechamentoCaixa(selectedDay)}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                 <polyline points="14 2 14 8 20 8"/>
