@@ -19,7 +19,8 @@ O principal risco atual e confiar no frontend para calcular e agrupar dados de c
 1. Padronizar a aparencia dos documentos comerciais e operacionais.
 2. Fazer todos os calculos e agrupamentos no backend.
 3. Normalizar formas de pagamento em uma unica regra de dominio.
-4. Criar documentos imprimiveis para o pacote completo:
+4. Exibir a logo da Arte e Molduras em todas as impressoes, com posicionamento e proporcao adequados para cada tipo de documento.
+5. Criar documentos imprimiveis para o pacote completo:
    - Ordem de Servico
    - Proposta/Orcamento comercial
    - DANFE, preservando padrao fiscal
@@ -29,7 +30,7 @@ O principal risco atual e confiar no frontend para calcular e agrupar dados de c
    - Contas a pagar
    - Contas a receber
    - Producao
-5. Manter o frontend como camada de apresentacao e atalho para abrir documentos, sem autoridade sobre totais.
+6. Manter o frontend como camada de apresentacao e atalho para abrir documentos, sem autoridade sobre totais.
 
 ## Nao Objetivos
 
@@ -46,7 +47,7 @@ Criar utilitarios em `backend/utils/print/` para componentes HTML compartilhados
 
 - layout base com folha A4, botoes no-print, cabecalho, rodape e estilos comuns
 - formatadores de moeda, data, data/hora, texto seguro e numeros
-- carregamento de logo como data URI quando necessario
+- carregamento de logo como data URI para todos os documentos imprimiveis
 - componentes de tabela, resumo financeiro, cards de KPI, bloco de assinatura e observacoes
 - helper de status/pagamento para rotulos comerciais
 
@@ -155,7 +156,9 @@ O frontend deve:
 
 Padrao visual recomendado:
 
-- documento limpo, branco, A4, com marca no topo
+- documento limpo, branco, A4, com logo/marca no topo em todos os modelos
+- logo com proporcao preservada, boa area de respiro e sem deformacao
+- documentos comerciais podem usar logo maior e mais institucional; relatorios devem usar cabecalho mais compacto; DANFE deve manter logo dentro do bloco fiscal do emitente
 - tipografia sistemica, boa hierarquia e tabela legivel
 - uso moderado de cores para status, totais positivos/negativos e secoes
 - blocos de assinatura quando o documento fisico exigir conferencia
