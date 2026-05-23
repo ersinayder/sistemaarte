@@ -48,8 +48,50 @@ function montarFechamentoCaixa({ data, lancamentos = [] } = {}) {
 
 function renderLancamentoDescricao(row) {
   const detalhes = [row.descricao, row.itens_resumo].filter(Boolean).map(esc).join('<br><small>');
-  return detalhes.includes('<small>') ? `${detalhes}</small>` : detalhes || '&mdash;';
+  const conteudo = detalhes.includes('<small>') ? `${detalhes}</small>` : detalhes || '&mdash;';
+  return `<div class="daily-ledger-description">${conteudo}</div>`;
 }
+
+function renderLancamentoMovimento(row) {
+  return `
+    <strong>${esc(row.tipo)}</strong>
+    <small>${esc(row.categoria || 'Outros')}</small>
+  `;
+}
+
+const fechamentoCaixaStyles = `
+  .caixa-fechamento-print { font-size: 13px; line-height: 1.38; }
+  .caixa-fechamento-print .sheet { padding: 9mm 10mm; }
+  .caixa-fechamento-print .doc-header { grid-template-columns: 36mm 1fr; gap: 8mm; padding-bottom: 5mm; }
+  .caixa-fechamento-print .brand { min-height: 20mm; }
+  .caixa-fechamento-print .brand-logo { max-width: 34mm; max-height: 20mm; }
+  .caixa-fechamento-print h1 { font-size: 20px; letter-spacing: .05em; }
+  .caixa-fechamento-print .section { margin-top: 5mm; }
+  .caixa-fechamento-print .section-title { font-size: 11px; letter-spacing: .06em; color: #0f172a; }
+  .caixa-fechamento-print .label,
+  .caixa-fechamento-print th { font-size: 10px; letter-spacing: .04em; }
+  .caixa-fechamento-print .value { font-size: 13px; }
+  .caixa-fechamento-print .kpis { gap: 2.5mm; margin-top: 4mm; }
+  .caixa-fechamento-print .kpi { padding: 2.7mm; }
+  .caixa-fechamento-print .kpi strong { font-size: 17px; }
+  .caixa-fechamento-print table { font-size: 12.25px; }
+  .caixa-fechamento-print th,
+  .caixa-fechamento-print td { padding: 2.4mm 2mm; }
+  .caixa-fechamento-print .daily-ledger-table th:nth-child(1),
+  .caixa-fechamento-print .daily-ledger-table td:nth-child(1) { width: 18%; }
+  .caixa-fechamento-print .daily-ledger-table th:nth-child(2),
+  .caixa-fechamento-print .daily-ledger-table td:nth-child(2) { width: 14%; }
+  .caixa-fechamento-print .daily-ledger-table th:nth-child(3),
+  .caixa-fechamento-print .daily-ledger-table td:nth-child(3) { width: 12%; }
+  .caixa-fechamento-print .daily-ledger-table th:nth-child(5),
+  .caixa-fechamento-print .daily-ledger-table td:nth-child(5) { width: 18%; white-space: nowrap; }
+  .caixa-fechamento-print .daily-ledger-table td { page-break-inside: avoid; }
+  .caixa-fechamento-print .daily-ledger-table small { display: block; margin-top: 1mm; color: #475569; font-size: 10.5px; line-height: 1.25; }
+  .caixa-fechamento-print .daily-ledger-description { max-width: 100%; font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; }
+  .caixa-fechamento-print .note { font-size: 12.5px; }
+  .caixa-fechamento-print .signature-line,
+  .caixa-fechamento-print .doc-footer { font-size: 11px; }
+`;
 
 function renderFechamentoCaixaHtml({ data, fechamento, usuario } = {}) {
   const f = fechamento || montarFechamentoCaixa({ data, lancamentos: [] });
@@ -84,8 +126,7 @@ function renderFechamentoCaixaHtml({ data, fechamento, usuario } = {}) {
       <h2 class="section-title">Lancamentos do dia</h2>
       ${renderTable({
         columns: [
-          { key: 'tipo', label: 'Tipo', render: (row) => esc(row.tipo) },
-          { key: 'categoria', label: 'Categoria', render: (row) => esc(row.categoria || 'Outros') },
+          { key: 'movimento', label: 'Movimento', render: renderLancamentoMovimento },
           { key: 'pagamento', label: 'Pagamento', render: (row) => esc(row.pagamento) },
           { key: 'ordemnumero', label: 'OS', render: (row) => esc(row.ordemnumero || '') },
           { key: 'descricao', label: 'Descricao', render: renderLancamentoDescricao },
@@ -93,6 +134,7 @@ function renderFechamentoCaixaHtml({ data, fechamento, usuario } = {}) {
         ],
         rows: f.lancamentos,
         empty: 'Nenhum lancamento no dia.',
+        tableClass: 'daily-ledger-table',
       })}
     </section>
 
@@ -111,7 +153,9 @@ function renderFechamentoCaixaHtml({ data, fechamento, usuario } = {}) {
     subtitle: fmtDate(data || f.data),
     body,
     footer: `Fechamento diario | ${fmtDate(data || f.data)}`,
+    documentClass: 'caixa-fechamento-print',
     compact: true,
+    extraStyles: fechamentoCaixaStyles,
   });
 }
 
