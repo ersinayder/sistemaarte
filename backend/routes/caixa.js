@@ -2,6 +2,7 @@ const router = require("express").Router();
 const { getAll, getOne, run, runInsert, transaction } = require("../database");
 const { auth } = require("../middlewares/auth");
 const { toNumber } = require("../utils/numbers");
+const { hoje } = require("../utils/dates");
 const {
   descricaoVendaAvulsa,
   normalizarItensVendaAvulsa,
@@ -9,6 +10,10 @@ const {
 } = require("../domain/caixaRules");
 const { getResumoFinanceiroOS } = require("../domain/financeiroRules");
 const { descricaoRestanteOS } = require("../domain/ordensRules");
+const {
+  montarFechamentoCaixa,
+  renderFechamentoCaixaHtml,
+} = require("../utils/print/caixaFechamento");
 
 // GET /api/caixa
 router.get("/", auth(["admin","caixa"]), (req, res, next) => {
@@ -30,6 +35,36 @@ router.get("/", auth(["admin","caixa"]), (req, res, next) => {
     if (mes)  { sql += " AND strftime('%Y-%m',l.data)=?"; p.push(mes); }
     sql += " ORDER BY l.data DESC, l.id DESC";
     res.json(getAll(sql, p));
+  } catch(e) { next(e); }
+});
+
+// GET /api/caixa/fechamento?data=YYYY-MM-DD
+router.get("/fechamento", auth(["admin","caixa"]), (req, res, next) => {
+  try {
+    const data = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.data || ""))
+      ? String(req.query.data)
+      : hoje();
+    const lancamentos = getAll(
+      `SELECT l.*,
+              o.numero AS ordemnumero,
+              (
+                SELECT GROUP_CONCAT(li.nome || ' x' || li.quantidade, ', ')
+                FROM lancamento_itens li
+                WHERE li.lancamentoid = l.id
+              ) AS itens_resumo
+       FROM lancamentos l
+       LEFT JOIN ordens o ON o.id=l.ordemid
+       WHERE l.deletedat IS NULL
+       AND (l.ordemid IS NULL OR o.deletedat IS NULL)
+       AND l.data=?
+       ORDER BY l.data DESC, l.id DESC`,
+      [data]
+    );
+    const fechamento = montarFechamentoCaixa({ data, lancamentos });
+    const html = renderFechamentoCaixaHtml({ data, fechamento, usuario: req.user });
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Content-Disposition", `inline; filename="fechamento-caixa-${data}.html"`);
+    res.send(html);
   } catch(e) { next(e); }
 });
 

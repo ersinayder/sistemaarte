@@ -22,12 +22,15 @@ describe('propostaPdf', () => {
 
     expect(html).toContain('<!doctype html>');
     expect(html).toContain('PROPOSTA COMERCIAL');
+    expect(html).toContain('class="brand-logo"');
+    expect(html).toContain('Arte e Molduras');
     expect(html).toContain('PROP-0007');
     expect(html).toContain('Cliente Teste');
     expect(html).toContain('Moldura preta');
     expect(html).toContain('Vidro antirreflexo');
     expect(html).toContain('R$&nbsp;250,50');
     expect(html).toContain('Imprimir / salvar PDF');
+    expect(html).toContain('.no-print { display: none !important; }');
   });
 
   it('escapes proposal and item data before rendering', () => {

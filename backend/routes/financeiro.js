@@ -8,6 +8,12 @@ const {
   normalizarStatusContaPagar,
   validarContaPagar,
 } = require("../domain/financeiroAdminRules");
+const {
+  renderContasPagarHtml,
+  renderContasReceberHtml,
+  renderDreHtml,
+  renderResumoFinanceiroHtml,
+} = require("../utils/print/financeiroReports");
 
 const FILTRO_LANCAMENTO_ATIVO = `
   l.deletedat IS NULL
@@ -46,48 +52,129 @@ function filtrosContaPagar(query = {}) {
   return { where: where.join(" AND "), params };
 }
 
+function sendPrintHtml(res, filename, html) {
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("Content-Disposition", `inline; filename="${filename}"`);
+  res.send(html);
+}
+
+function getResumoFinanceiroPayload(mesInput) {
+  const { mes, inicio, fim } = periodoMes(mesInput);
+  const receitaRealizada = getOne(
+    `SELECT COALESCE(SUM(l.valor),0) AS v FROM lancamentos l
+     WHERE strftime('%Y-%m',l.data)=? AND l.tipo='Entrada' AND l.pago=1 AND ${FILTRO_LANCAMENTO_ATIVO}`,
+    [mes]
+  )?.v ?? 0;
+  const saidasPagas = getOne(
+    `SELECT COALESCE(SUM(l.valor),0) AS v FROM lancamentos l
+     WHERE strftime('%Y-%m',l.data)=? AND l.tipo='Saída' AND l.pago=1 AND ${FILTRO_LANCAMENTO_ATIVO}`,
+    [mes]
+  )?.v ?? 0;
+  const contasPendentes = getOne(
+    `SELECT COALESCE(SUM(valor),0) AS v FROM contas_pagar
+     WHERE deletedat IS NULL AND status='Pendente' AND vencimento BETWEEN ? AND ?`,
+    [inicio, fim]
+  )?.v ?? 0;
+  const contasVencidas = getOne(
+    `SELECT COALESCE(SUM(valor),0) AS v FROM contas_pagar
+     WHERE deletedat IS NULL AND status='Pendente' AND vencimento < ?`,
+    [hoje()]
+  )?.v ?? 0;
+  const despesasPorCategoria = getAll(
+    `SELECT COALESCE(categoria,'Outros') AS categoria, COALESCE(SUM(valor),0) AS valor
+     FROM contas_pagar
+     WHERE deletedat IS NULL AND status='Pago' AND strftime('%Y-%m',COALESCE(pagoem,vencimento))=?
+     GROUP BY COALESCE(categoria,'Outros') ORDER BY valor DESC`,
+    [mes]
+  );
+  return {
+    mes,
+    ...calcularResumoFinanceiroAdmin({ receitaRealizada, saidasPagas, contasPendentes, contasVencidas }),
+    despesasPorCategoria,
+  };
+}
+
+function getContasPagarPayload(query = {}) {
+  const { where, params } = filtrosContaPagar(query);
+  return getAll(`SELECT * FROM contas_pagar WHERE ${where} ORDER BY vencimento ASC, id ASC`, params);
+}
+
+function getContasReceberPayload() {
+  return getAll(
+    `SELECT * FROM (
+      SELECT o.id, o.numero, o.clientenome, o.status, o.prazoentrega, o.valortotal,
+        COALESCE((SELECT SUM(l.valor) FROM lancamentos l WHERE l.ordemid=o.id AND l.pago=1 AND l.deletedat IS NULL),0) AS recebido,
+        CASE
+          WHEN (o.valortotal - COALESCE((SELECT SUM(l.valor) FROM lancamentos l WHERE l.ordemid=o.id AND l.pago=1 AND l.deletedat IS NULL),0)) < 0
+          THEN 0
+          ELSE CAST(o.valortotal - COALESCE((SELECT SUM(l.valor) FROM lancamentos l WHERE l.ordemid=o.id AND l.pago=1 AND l.deletedat IS NULL),0) AS REAL)
+        END AS saldo
+      FROM ordens o
+      WHERE o.deletedat IS NULL AND o.status NOT IN ('Entregue','Cancelado')
+    ) WHERE saldo > 0.009 ORDER BY prazoentrega ASC, id ASC`
+  );
+}
+
+function getDrePayload(mesInput) {
+  const { mes } = periodoMes(mesInput);
+  const receitaBruta = getOne(
+    `SELECT COALESCE(SUM(l.valor),0) AS v FROM lancamentos l
+     WHERE strftime('%Y-%m',l.data)=? AND l.tipo='Entrada' AND l.pago=1 AND ${FILTRO_LANCAMENTO_ATIVO}`,
+    [mes]
+  )?.v ?? 0;
+  const devolucoes = getOne(
+    `SELECT COALESCE(SUM(l.valor),0) AS v FROM lancamentos l
+     WHERE strftime('%Y-%m',l.data)=? AND l.tipo='Saída' AND l.pago=1
+     AND (LOWER(COALESCE(l.categoria,'')) LIKE '%devol%' OR LOWER(COALESCE(l.categoria,'')) LIKE '%estorno%')
+     AND ${FILTRO_LANCAMENTO_ATIVO}`,
+    [mes]
+  )?.v ?? 0;
+  const despesas = getAll(
+    `SELECT COALESCE(l.categoria,'Outros') AS categoria, COALESCE(SUM(l.valor),0) AS valor
+     FROM lancamentos l
+     WHERE strftime('%Y-%m',l.data)=? AND l.tipo='Saída' AND l.pago=1
+     AND NOT (LOWER(COALESCE(l.categoria,'')) LIKE '%devol%' OR LOWER(COALESCE(l.categoria,'')) LIKE '%estorno%')
+     AND ${FILTRO_LANCAMENTO_ATIVO}
+     GROUP BY COALESCE(l.categoria,'Outros') ORDER BY valor DESC`,
+    [mes]
+  );
+  const totalDespesas = despesas.reduce((acc, row) => acc + toNumber(row.valor), 0);
+  const receitaLiquida = toNumber(receitaBruta) - toNumber(devolucoes);
+  return { mes, receitaBruta, devolucoes, receitaLiquida, despesas, totalDespesas, resultado: receitaLiquida - totalDespesas };
+}
+
 router.get("/resumo", auth(["admin"]), (req, res, next) => {
   try {
-    const { mes, inicio, fim } = periodoMes(req.query.mes);
-    const receitaRealizada = getOne(
-      `SELECT COALESCE(SUM(l.valor),0) AS v FROM lancamentos l
-       WHERE strftime('%Y-%m',l.data)=? AND l.tipo='Entrada' AND l.pago=1 AND ${FILTRO_LANCAMENTO_ATIVO}`,
-      [mes]
-    )?.v ?? 0;
-    const saidasPagas = getOne(
-      `SELECT COALESCE(SUM(l.valor),0) AS v FROM lancamentos l
-       WHERE strftime('%Y-%m',l.data)=? AND l.tipo='Saída' AND l.pago=1 AND ${FILTRO_LANCAMENTO_ATIVO}`,
-      [mes]
-    )?.v ?? 0;
-    const contasPendentes = getOne(
-      `SELECT COALESCE(SUM(valor),0) AS v FROM contas_pagar
-       WHERE deletedat IS NULL AND status='Pendente' AND vencimento BETWEEN ? AND ?`,
-      [inicio, fim]
-    )?.v ?? 0;
-    const contasVencidas = getOne(
-      `SELECT COALESCE(SUM(valor),0) AS v FROM contas_pagar
-       WHERE deletedat IS NULL AND status='Pendente' AND vencimento < ?`,
-      [hoje()]
-    )?.v ?? 0;
-    const despesasPorCategoria = getAll(
-      `SELECT COALESCE(categoria,'Outros') AS categoria, COALESCE(SUM(valor),0) AS valor
-       FROM contas_pagar
-       WHERE deletedat IS NULL AND status='Pago' AND strftime('%Y-%m',COALESCE(pagoem,vencimento))=?
-       GROUP BY COALESCE(categoria,'Outros') ORDER BY valor DESC`,
-      [mes]
+    res.json(getResumoFinanceiroPayload(req.query.mes));
+  } catch (e) { next(e); }
+});
+
+router.get("/resumo/pdf", auth(["admin"]), (req, res, next) => {
+  try {
+    const resumo = getResumoFinanceiroPayload(req.query.mes);
+    sendPrintHtml(
+      res,
+      `resumo-financeiro-${resumo.mes}.html`,
+      renderResumoFinanceiroHtml({ mes: resumo.mes, resumo })
     );
-    res.json({
-      mes,
-      ...calcularResumoFinanceiroAdmin({ receitaRealizada, saidasPagas, contasPendentes, contasVencidas }),
-      despesasPorCategoria,
-    });
   } catch (e) { next(e); }
 });
 
 router.get("/contas-pagar", auth(["admin"]), (req, res, next) => {
   try {
-    const { where, params } = filtrosContaPagar(req.query);
-    res.json(getAll(`SELECT * FROM contas_pagar WHERE ${where} ORDER BY vencimento ASC, id ASC`, params));
+    res.json(getContasPagarPayload(req.query));
+  } catch (e) { next(e); }
+});
+
+router.get("/contas-pagar/pdf", auth(["admin"]), (req, res, next) => {
+  try {
+    const contas = getContasPagarPayload(req.query);
+    const mes = req.query.mes || mesAtual();
+    sendPrintHtml(
+      res,
+      `contas-pagar-${mes}.html`,
+      renderContasPagarHtml({ mes, contas })
+    );
   } catch (e) { next(e); }
 });
 
@@ -190,49 +277,35 @@ router.delete("/contas-pagar/:id", auth(["admin"]), (req, res, next) => {
 
 router.get("/contas-receber", auth(["admin"]), (_req, res, next) => {
   try {
-    res.json(getAll(
-      `SELECT * FROM (
-        SELECT o.id, o.numero, o.clientenome, o.status, o.prazoentrega, o.valortotal,
-          COALESCE((SELECT SUM(l.valor) FROM lancamentos l WHERE l.ordemid=o.id AND l.pago=1 AND l.deletedat IS NULL),0) AS recebido,
-          CASE
-            WHEN (o.valortotal - COALESCE((SELECT SUM(l.valor) FROM lancamentos l WHERE l.ordemid=o.id AND l.pago=1 AND l.deletedat IS NULL),0)) < 0
-            THEN 0
-            ELSE CAST(o.valortotal - COALESCE((SELECT SUM(l.valor) FROM lancamentos l WHERE l.ordemid=o.id AND l.pago=1 AND l.deletedat IS NULL),0) AS REAL)
-          END AS saldo
-        FROM ordens o
-        WHERE o.deletedat IS NULL AND o.status NOT IN ('Entregue','Cancelado')
-      ) WHERE saldo > 0.009 ORDER BY prazoentrega ASC, id ASC`
-    ));
+    res.json(getContasReceberPayload());
+  } catch (e) { next(e); }
+});
+
+router.get("/contas-receber/pdf", auth(["admin"]), (_req, res, next) => {
+  try {
+    const contas = getContasReceberPayload();
+    sendPrintHtml(
+      res,
+      "contas-receber.html",
+      renderContasReceberHtml({ contas })
+    );
   } catch (e) { next(e); }
 });
 
 router.get("/dre", auth(["admin"]), (req, res, next) => {
   try {
-    const { mes } = periodoMes(req.query.mes);
-    const receitaBruta = getOne(
-      `SELECT COALESCE(SUM(l.valor),0) AS v FROM lancamentos l
-       WHERE strftime('%Y-%m',l.data)=? AND l.tipo='Entrada' AND l.pago=1 AND ${FILTRO_LANCAMENTO_ATIVO}`,
-      [mes]
-    )?.v ?? 0;
-    const devolucoes = getOne(
-      `SELECT COALESCE(SUM(l.valor),0) AS v FROM lancamentos l
-       WHERE strftime('%Y-%m',l.data)=? AND l.tipo='Saída' AND l.pago=1
-       AND (LOWER(COALESCE(l.categoria,'')) LIKE '%devol%' OR LOWER(COALESCE(l.categoria,'')) LIKE '%estorno%')
-       AND ${FILTRO_LANCAMENTO_ATIVO}`,
-      [mes]
-    )?.v ?? 0;
-    const despesas = getAll(
-      `SELECT COALESCE(l.categoria,'Outros') AS categoria, COALESCE(SUM(l.valor),0) AS valor
-       FROM lancamentos l
-       WHERE strftime('%Y-%m',l.data)=? AND l.tipo='Saída' AND l.pago=1
-       AND NOT (LOWER(COALESCE(l.categoria,'')) LIKE '%devol%' OR LOWER(COALESCE(l.categoria,'')) LIKE '%estorno%')
-       AND ${FILTRO_LANCAMENTO_ATIVO}
-       GROUP BY COALESCE(l.categoria,'Outros') ORDER BY valor DESC`,
-      [mes]
+    res.json(getDrePayload(req.query.mes));
+  } catch (e) { next(e); }
+});
+
+router.get("/dre/pdf", auth(["admin"]), (req, res, next) => {
+  try {
+    const dre = getDrePayload(req.query.mes);
+    sendPrintHtml(
+      res,
+      `dre-${dre.mes}.html`,
+      renderDreHtml({ mes: dre.mes, dre })
     );
-    const totalDespesas = despesas.reduce((acc, row) => acc + toNumber(row.valor), 0);
-    const receitaLiquida = toNumber(receitaBruta) - toNumber(devolucoes);
-    res.json({ mes, receitaBruta, devolucoes, receitaLiquida, despesas, totalDespesas, resultado: receitaLiquida - totalDespesas });
   } catch (e) { next(e); }
 });
 

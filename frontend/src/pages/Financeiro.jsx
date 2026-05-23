@@ -180,6 +180,16 @@ export default function Financeiro() {
     }
   };
 
+  const abrirImpressao = () => {
+    const urls = {
+      resumo: `/api/financeiro/resumo/pdf?mes=${encodeURIComponent(mes)}`,
+      pagar: `/api/financeiro/contas-pagar/pdf?mes=${encodeURIComponent(mes)}`,
+      receber: '/api/financeiro/contas-receber/pdf',
+      dre: `/api/financeiro/dre/pdf?mes=${encodeURIComponent(mes)}`,
+    };
+    window.open(urls[tab] || urls.resumo, '_blank', 'noopener,noreferrer');
+  };
+
   const renderResumo = () => (
     <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 'var(--space-3)' }}>
@@ -283,6 +293,7 @@ export default function Financeiro() {
         </div>
         <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
           <input className="form-input" type="month" value={mes} onChange={(e) => setMes(e.target.value)} style={{ width: 160 }} />
+          <button className="btn btn-secondary" onClick={abrirImpressao}>Imprimir</button>
           <button className="btn btn-secondary" onClick={load} disabled={loading}>Atualizar</button>
         </div>
       </div>
