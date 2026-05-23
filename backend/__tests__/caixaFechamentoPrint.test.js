@@ -64,6 +64,17 @@ describe('caixa fechamento print', () => {
     expect(html).toContain('Conferencia');
   });
 
+  it('uses a more readable print layout for the daily ledger', () => {
+    const fechamento = montarFechamentoCaixa({ data: '2026-05-23', lancamentos });
+    const html = renderFechamentoCaixaHtml({ data: '2026-05-23', fechamento, usuario: { name: 'Caixa' } });
+
+    expect(html).toContain('body class="caixa-fechamento-print"');
+    expect(html).toContain('.caixa-fechamento-print { font-size: 13px; line-height: 1.38; }');
+    expect(html).toContain('.caixa-fechamento-print .daily-ledger-table');
+    expect(html).toContain('class="daily-ledger-table"');
+    expect(html).toContain('class="daily-ledger-description"');
+  });
+
   it('does not render the outgoing totals by category section', () => {
     const fechamento = montarFechamentoCaixa({ data: '2026-05-23', lancamentos });
     const html = renderFechamentoCaixaHtml({ data: '2026-05-23', fechamento, usuario: { name: 'Caixa' } });

@@ -75,7 +75,7 @@ function renderKpis(items = []) {
   return `<div class="kpis">${html}</div>`;
 }
 
-function renderTable({ columns = [], rows = [], empty = 'Sem registros.' }) {
+function renderTable({ columns = [], rows = [], empty = 'Sem registros.', tableClass = '' }) {
   const head = columns.map((col) => `<th class="${col.align === 'right' ? 'right' : ''}">${esc(col.label)}</th>`).join('');
   const body = rows.length
     ? rows.map((row) => `<tr>${columns.map((col) => {
@@ -83,7 +83,8 @@ function renderTable({ columns = [], rows = [], empty = 'Sem registros.' }) {
       return `<td class="${col.align === 'right' ? 'right' : ''}">${raw == null ? '&mdash;' : raw}</td>`;
     }).join('')}</tr>`).join('')
     : `<tr><td class="empty" colspan="${columns.length || 1}">${esc(empty)}</td></tr>`;
-  return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+  const classAttr = tableClass ? ` class="${esc(tableClass)}"` : '';
+  return `<table${classAttr}><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 }
 
 function renderPrintDocument({
@@ -93,6 +94,7 @@ function renderPrintDocument({
   footer = '',
   documentClass = '',
   compact = false,
+  extraStyles = '',
 } = {}) {
   const logo = logoDataUri();
   const generatedAt = fmtDateTime();
@@ -144,6 +146,7 @@ function renderPrintDocument({
     .actions, .no-print { display: none !important; }
     .sheet { width: auto; min-height: auto; margin: 0; box-shadow: none; }
   }
+  ${extraStyles}
 </style>
 </head>
 <body class="${esc(documentClass)}">
