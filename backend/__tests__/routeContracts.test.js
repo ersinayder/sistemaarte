@@ -306,6 +306,6 @@ describe('propostas route contracts', () => {
 
     expect(routeRoles(propostasRouter, 'get', '/:id/pdf')).toEqual(['admin', 'caixa']);
     expect(source).toMatch(/renderPropostaHtml/);
-    expect(source).toMatch(/Content-Type["'],\s*["']text\/html; charset=utf-8/);
+    expect(source).toMatch(/sendPrintHtml/);
   });
 });

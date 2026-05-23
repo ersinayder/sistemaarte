@@ -10,7 +10,12 @@ function subtotalItem(item) {
   return Number(item?.quantidade || 1) * Number(item?.preco_unitario || 0);
 }
 
+function numeroPropostaPrint(numero) {
+  return String(numero || '').replace(/^PROP-/i, '');
+}
+
 function renderPropostaHtml({ proposta, itens = [] }) {
+  const numero = numeroPropostaPrint(proposta.numero);
   const rows = itens.map((item, idx) => ({
     ...item,
     idx: idx + 1,
@@ -20,12 +25,10 @@ function renderPropostaHtml({ proposta, itens = [] }) {
   const body = `
     <section class="section">
       <div class="grid-3">
-        <div class="field"><span class="label">Numero</span><span class="value">${esc(proposta.numero)}</span></div>
+        <div class="field"><span class="label">Numero</span><span class="value">${esc(numero)}</span></div>
         <div class="field"><span class="label">Cliente</span><span class="value">${esc(proposta.clientenome)}</span></div>
         <div class="field"><span class="label">Data</span><span class="value">${fmtDate(proposta.createdat)}</span></div>
-        <div class="field"><span class="label">Status</span><span class="value">${esc(proposta.status)}</span></div>
         <div class="field"><span class="label">Prazo previsto</span><span class="value">${fmtDate(proposta.prazoentrega)}</span></div>
-        <div class="field"><span class="label">Origem</span><span class="value">${esc(proposta.origem || 'Balcao')}</span></div>
       </div>
     </section>
 
@@ -61,7 +64,7 @@ function renderPropostaHtml({ proposta, itens = [] }) {
 
   return renderPrintDocument({
     title: 'PROPOSTA COMERCIAL',
-    subtitle: proposta.numero || '',
+    subtitle: numero,
     body,
     footer: '<strong>Arte e Molduras</strong> | Proposta valida por 7 dias. A producao inicia apos aprovacao e abertura da Ordem de Servico.',
   });

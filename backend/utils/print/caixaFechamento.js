@@ -28,18 +28,6 @@ function soma(rows) {
   return Math.round(rows.reduce((acc, row) => acc + Number(row.valor || 0), 0) * 100) / 100;
 }
 
-function agruparSaidasPorCategoria(rows) {
-  const grupos = new Map();
-  for (const row of rows) {
-    const categoria = row.categoria || 'Outros';
-    if (!grupos.has(categoria)) grupos.set(categoria, { categoria, total: 0, itens: [] });
-    const grupo = grupos.get(categoria);
-    grupo.total = Math.round((grupo.total + Number(row.valor || 0)) * 100) / 100;
-    grupo.itens.push(row);
-  }
-  return Array.from(grupos.values()).sort((a, b) => b.total - a.total);
-}
-
 function montarFechamentoCaixa({ data, lancamentos = [] } = {}) {
   const rows = Array.isArray(lancamentos) ? lancamentos : [];
   const entradas = rows.filter(isEntrada);
@@ -55,7 +43,6 @@ function montarFechamentoCaixa({ data, lancamentos = [] } = {}) {
     saida,
     saldo: Math.round((entrada - saida) * 100) / 100,
     entradasPorPagamento: agruparPorPagamento(entradas).sort((a, b) => b.total - a.total),
-    saidasPorCategoria: agruparSaidasPorCategoria(saidas),
   };
 }
 
@@ -90,18 +77,6 @@ function renderFechamentoCaixaHtml({ data, fechamento, usuario } = {}) {
         ],
         rows: f.entradasPorPagamento,
         empty: 'Nenhuma entrada no periodo.',
-      })}
-    </section>
-
-    <section class="section">
-      <h2 class="section-title">Saidas por categoria</h2>
-      ${renderTable({
-        columns: [
-          { key: 'categoria', label: 'Categoria', render: (row) => esc(row.categoria) },
-          { key: 'total', label: 'Total', align: 'right', render: (row) => `<strong>${fmtMoney(row.total)}</strong>` },
-        ],
-        rows: f.saidasPorCategoria,
-        empty: 'Nenhuma saida no periodo.',
       })}
     </section>
 

@@ -5,6 +5,7 @@ const { hoje } = require("../utils/dates");
 const { toNumber } = require("../utils/numbers");
 const { normalizarPagamento } = require("../domain/pagamentosRules");
 const { renderRelatorioProducaoHtml } = require("../utils/print/producaoReport");
+const { sendPrintHtml } = require("../utils/print/base");
 
 const FILTRO_ATIVO = `
   l.deletedat IS NULL
@@ -167,9 +168,7 @@ router.get("/producao/pdf", auth(["admin"]), (req, res, next) => {
     if (!mes) return res.status(400).json({ error: "Informe o mes YYYY-MM" });
     const payload = getRelatorioProducaoPayload(mes);
     const html = renderRelatorioProducaoHtml(payload);
-    res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.setHeader("Content-Disposition", `inline; filename="relatorio-producao-${mes}.html"`);
-    res.send(html);
+    sendPrintHtml(res, `relatorio-producao-${mes}.html`, html);
   } catch(e) { next(e); }
 });
 
