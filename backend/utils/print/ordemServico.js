@@ -99,7 +99,7 @@ const ORDEM_SERVICO_A5_STYLES = `
   .ordem-servico-print .os-form-title { text-align: right; }
   .ordem-servico-print .os-title-band { display: flex; align-items: center; justify-content: flex-end; gap: 2mm; margin-bottom: 2.5mm; white-space: nowrap; }
   .ordem-servico-print .os-form-title h1 { flex: 0 1 auto; margin: 0; font-size: 16px; line-height: 1.05; letter-spacing: .045em; white-space: nowrap; color: #111827; }
-  .ordem-servico-print .os-number-badge { flex: 0 0 auto; display: inline-block; min-width: 26mm; border-radius: 6px; background: #111827; padding: 1.3mm 2.5mm; text-align: center; font-size: 16px; font-weight: 900; color: #fff; }
+  .ordem-servico-print .os-number-badge { flex: 0 0 auto; display: inline-block; min-width: 26mm; border: 1.5px solid #111827; border-radius: 6px; background: #111827; padding: 1.3mm 2.5mm; text-align: center; font-size: 16px; font-weight: 900; color: #fff; }
   .ordem-servico-print .os-date-row { display: grid; grid-template-columns: 1fr 1fr; gap: 2.2mm; margin-top: 1mm; }
   .ordem-servico-print .os-mini-field .label { text-align: left; }
   .ordem-servico-print .os-mini-field .os-box-value { min-height: 7mm; text-align: center; font-weight: 900; }
@@ -139,6 +139,7 @@ const ORDEM_SERVICO_A5_STYLES = `
   @page { size: A5; margin: 0; }
   @media print {
     .ordem-servico-print .sheet { width: 148mm; min-height: 210mm; padding: 6mm; }
+    .ordem-servico-print .os-number-badge { border: 1.5px solid #111827; background: #fff !important; color: #111827 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   }
 `;
 
@@ -196,8 +197,8 @@ function renderOrdemServicoHtml({ ordem = {}, itens = [], resumo = {} } = {}) {
       </div>
 
       <footer class="os-legal-footer">
-        Ao aprovar esta Ordem de Servico, o cliente reconhece que o servico/produto e personalizado e sob encomenda.
-        A entrada/sinal cobre reserva, materiais e inicio da producao, nao sendo reembolsavel em caso de cancelamento pelo cliente apos a aprovacao.
+        Ao aprovar esta Ordem de Serviço, o cliente reconhece que o serviço/produto é personalizado e sob encomenda.
+        A entrada/sinal cobre reserva, materiais e início da produção, não sendo reembolsável em caso de cancelamento pelo cliente após a aprovação.
       </footer>
     </section>
   `;

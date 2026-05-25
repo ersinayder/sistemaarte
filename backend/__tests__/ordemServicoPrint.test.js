@@ -39,7 +39,10 @@ describe('ordemServico print', () => {
     expect(html).toContain('R$&nbsp;200,00');
     expect(html).toContain('R$&nbsp;150,00');
     expect(html).toContain('Assinatura do Cliente');
-    expect(html).toContain('Ao aprovar esta Ordem de Servico');
+    expect(html).toContain('Ao aprovar esta Ordem de Serviço');
+    expect(html).toContain('serviço/produto é personalizado');
+    expect(html).toContain('início da produção');
+    expect(html).toContain('não sendo reembolsável');
   });
 
   it('escapes service order data', () => {
@@ -126,7 +129,8 @@ describe('ordemServico print', () => {
     expect(html).not.toContain('<span>Saldo</span>');
     expect(html).toContain('.ordem-servico-print .os-form-frame { border: 1px solid #cbd5e1;');
     expect(html).toContain('.ordem-servico-print .os-title-band');
-    expect(html).toContain('.ordem-servico-print .os-number-badge');
+    expect(html).toContain('.ordem-servico-print .os-number-badge { flex: 0 0 auto; display: inline-block; min-width: 26mm; border: 1.5px solid #111827;');
+    expect(html).toContain('.ordem-servico-print .os-number-badge { border: 1.5px solid #111827; background: #fff !important; color: #111827 !important;');
   });
 
   it('omits status and service fields from the printed service order', () => {
