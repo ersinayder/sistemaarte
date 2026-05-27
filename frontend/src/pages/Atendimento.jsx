@@ -148,6 +148,15 @@ function rows(payload) {
   return []
 }
 
+function mergeClientes(current, incoming) {
+  const byId = new Map(current.map(c => [c.id, c]))
+  for (const cliente of incoming) {
+    if (!cliente?.id) continue
+    byId.set(cliente.id, { ...(byId.get(cliente.id) || {}), ...cliente })
+  }
+  return Array.from(byId.values())
+}
+
 function formInicialOS() {
   return {
     clienteid: '',
@@ -488,26 +497,18 @@ function QuickClientModal({ open, cliente, initialName, onClose, onSaved }) {
 
   const handleSave = async () => {
     const documento = form.tipo === 'PJ' ? form.cnpj : form.cpf
-    const required = [
-      [form.nome.trim(), 'Nome/Razão social'],
-      [onlyDigits(documento), form.tipo === 'PJ' ? 'CNPJ' : 'CPF'],
-      [form.cep.trim(), 'CEP'],
-      [form.logradouro.trim(), 'Logradouro'],
-      [form.numero.trim(), 'Número'],
-      [form.bairro.trim(), 'Bairro'],
-      [form.cidade.trim(), 'Cidade'],
-      [form.uf.trim(), 'UF'],
-    ]
-    const missing = required.find(([value]) => !value)
-    if (missing) return toast.error(`${missing[1]} é obrigatório para dados fiscais.`)
-    if (form.tipo === 'PF' && !validaCPF(documento)) return toast.error('CPF inválido')
-    if (form.tipo === 'PJ' && !validaCNPJ(documento)) return toast.error('CNPJ inválido')
+    const documentoDigits = onlyDigits(documento)
+    if (!form.nome.trim()) return toast.error('Nome é obrigatório.')
+    if (documentoDigits) {
+      if (form.tipo === 'PF' && (documentoDigits.length !== 11 || !validaCPF(documento))) return toast.error('CPF inválido')
+      if (form.tipo === 'PJ' && (documentoDigits.length !== 14 || !validaCNPJ(documento))) return toast.error('CNPJ inválido')
+    }
 
     const payload = {
       name: form.nome.trim(),
       phone: form.contato.trim(),
       email: form.email.trim(),
-      cpf: documento,
+      cpf: documentoDigits ? documento : '',
       ie: form.ie.trim(),
       logradouro: form.logradouro.trim(),
       numero: form.numero.trim(),
@@ -666,6 +667,7 @@ export default function Atendimento() {
   const [clientModalOpen, setClientModalOpen] = useState(false)
   const [clientModalCliente, setClientModalCliente] = useState(null)
   const clienteRef = useRef(null)
+  const clienteSearchSeq = useRef(0)
 
   const [receiveQuery, setReceiveQuery] = useState('')
   const [receiveResults, setReceiveResults] = useState([])
@@ -705,6 +707,21 @@ export default function Atendimento() {
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
   }, [])
+
+  useEffect(() => {
+    const q = clienteQuery.trim()
+    if (!clienteOpen || q.length < 2) return
+    const seq = ++clienteSearchSeq.current
+    const timer = setTimeout(async () => {
+      try {
+        const { data } = await api.get(`/clientes?q=${encodeURIComponent(q)}`)
+        if (seq === clienteSearchSeq.current) {
+          setClientes(prev => mergeClientes(prev, rows(data)))
+        }
+      } catch {}
+    }, 180)
+    return () => clearTimeout(timer)
+  }, [clienteOpen, clienteQuery])
 
   const resumo = useMemo(() => {
     const ativas = ordens.filter(o => !['Entregue', 'Cancelado'].includes(o.status))
@@ -1000,7 +1017,7 @@ export default function Atendimento() {
             <div className="atendimento-inline-callout">
               <div>
                 <strong>Novo cliente</strong>
-                <span>Cadastre os dados fiscais sem sair da OS</span>
+                <span>Cadastre o cliente sem sair da OS</span>
               </div>
               <button type="button" className="btn btn-secondary" onClick={() => openClientModal(null)} disabled={saving}>Cadastrar cliente</button>
             </div>
