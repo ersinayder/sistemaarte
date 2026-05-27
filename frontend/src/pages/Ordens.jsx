@@ -82,6 +82,15 @@ const toDateInputValue = () => {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 };
 
+function mergeClientes(current, incoming) {
+  const byId = new Map(current.map(c => [c.id, c]));
+  for (const cliente of incoming) {
+    if (!cliente?.id) continue;
+    byId.set(cliente.id, { ...(byId.get(cliente.id) || {}), ...cliente });
+  }
+  return Array.from(byId.values());
+}
+
 // ------- Modal de OS -------
 function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEditFinanceiro }) {
   const isNew = !os;
@@ -95,7 +104,9 @@ function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEd
   const [saving, setSaving] = useState(false);
   const [clienteQuery, setClienteQuery] = useState('');
   const [clienteOpen,  setClienteOpen]  = useState(false);
+  const [clientesBusca, setClientesBusca] = useState(clientes);
   const clienteRef = useRef(null);
+  const clienteSearchSeq = useRef(0);
   const [tab, setTab] = useState('dados');
 
   useEffect(() => {
@@ -130,6 +141,26 @@ function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEd
     return () => document.removeEventListener('mousedown', h);
   }, []);
 
+  useEffect(() => {
+    setClientesBusca(clientes);
+  }, [clientes]);
+
+  useEffect(() => {
+    const q = clienteQuery.trim();
+    if (!clienteOpen || q.length < 2) return;
+    const seq = ++clienteSearchSeq.current;
+    const timer = setTimeout(async () => {
+      try {
+        const { data } = await api.get(`/clientes?q=${encodeURIComponent(q)}`);
+        const found = Array.isArray(data) ? data : (data?.data || []);
+        if (seq === clienteSearchSeq.current) {
+          setClientesBusca(prev => mergeClientes(prev, found));
+        }
+      } catch {}
+    }, 180);
+    return () => clearTimeout(timer);
+  }, [clienteOpen, clienteQuery]);
+
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const recalcTotal = (prods) => {
@@ -142,10 +173,10 @@ function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEd
   const updateProd = (idx, campo, valor) => { const novos = form.produtos.map((p,i) => i===idx ? {...p,[campo]:valor} : p); set('produtos', novos); recalcTotal(novos); };
 
   const clientesFiltrados = useMemo(() => {
-    if (!clienteQuery.trim()) return clientes.slice(0, 8);
-    return clientes.filter(c => c.name.toLowerCase().includes(clienteQuery.toLowerCase()) ||
+    if (!clienteQuery.trim()) return clientesBusca.slice(0, 8);
+    return clientesBusca.filter(c => c.name.toLowerCase().includes(clienteQuery.toLowerCase()) ||
       (c.phone && c.phone.includes(clienteQuery)));
-  }, [clienteQuery, clientes]);
+  }, [clienteQuery, clientesBusca]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
