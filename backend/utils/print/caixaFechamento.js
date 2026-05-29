@@ -114,8 +114,8 @@ function renderFechamentoCaixaHtml({ data, fechamento, usuario } = {}) {
       <h2 class="section-title">Entradas por forma de pagamento</h2>
       ${renderTable({
         columns: [
-          { key: 'label', label: 'Forma', render: (row) => esc(row.label) },
-          { key: 'total', label: 'Total', align: 'right', render: (row) => `<strong>${fmtMoney(row.total)}</strong>` },
+          { key: 'label', label: 'Forma', render: (row) => esc(row.label), html: true },
+          { key: 'total', label: 'Total', align: 'right', render: (row) => `<strong>${fmtMoney(row.total)}</strong>`, html: true },
         ],
         rows: f.entradasPorPagamento,
         empty: 'Nenhuma entrada no periodo.',
@@ -126,11 +126,11 @@ function renderFechamentoCaixaHtml({ data, fechamento, usuario } = {}) {
       <h2 class="section-title">Lancamentos do dia</h2>
       ${renderTable({
         columns: [
-          { key: 'movimento', label: 'Movimento', render: renderLancamentoMovimento },
-          { key: 'pagamento', label: 'Pagamento', render: (row) => esc(row.pagamento) },
-          { key: 'ordemnumero', label: 'OS', render: (row) => esc(row.ordemnumero || '') },
-          { key: 'descricao', label: 'Descricao', render: renderLancamentoDescricao },
-          { key: 'valor', label: 'Valor', align: 'right', render: (row) => `<strong>${isEntrada(row) ? '+' : '-'} ${fmtMoney(row.valor)}</strong>` },
+          { key: 'movimento', label: 'Movimento', render: renderLancamentoMovimento, html: true },
+          { key: 'pagamento', label: 'Pagamento', render: (row) => esc(row.pagamento), html: true },
+          { key: 'ordemnumero', label: 'OS', render: (row) => esc(row.ordemnumero || ''), html: true },
+          { key: 'descricao', label: 'Descricao', render: renderLancamentoDescricao, html: true },
+          { key: 'valor', label: 'Valor', align: 'right', render: (row) => `<strong>${isEntrada(row) ? '+' : '-'} ${fmtMoney(row.valor)}</strong>`, html: true },
         ],
         rows: f.lancamentos,
         empty: 'Nenhum lancamento no dia.',

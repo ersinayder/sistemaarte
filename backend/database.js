@@ -3,6 +3,7 @@ const bcrypt    = require("bcryptjs");
 const path      = require("path");
 const fs        = require("fs");
 const { buildBackupStatus, writeBackupStatus } = require("./utils/backupStatus");
+const { encryptSecretIfPossible, isEncryptedSecret } = require("./utils/secrets");
 
 const DATA_DIR = path.join(__dirname, "data");
 const DB_FILE  = path.join(DATA_DIR, "oficina.db");
@@ -560,6 +561,20 @@ function initDB() {
       console.log(`[DB] Corrigidos ${fixed.changes} lancamento(s) saldoos com tipo invalido.`);
   } catch (_) {}
 
+  try {
+    const fiscal = db.prepare("SELECT certificado_senha FROM fiscal_config WHERE id = 1").get();
+    if (fiscal?.certificado_senha && !isEncryptedSecret(fiscal.certificado_senha)) {
+      const protegida = encryptSecretIfPossible(fiscal.certificado_senha);
+      if (protegida && protegida !== fiscal.certificado_senha) {
+        db.prepare("UPDATE fiscal_config SET certificado_senha=?, updatedat=datetime('now','localtime') WHERE id = 1")
+          .run(protegida);
+        console.log("[DB] Senha do certificado fiscal protegida em repouso.");
+      }
+    }
+  } catch (e) {
+    console.warn("[DB] Nao foi possivel proteger senha do certificado fiscal:", e.message);
+  }
+
   // Seed sequencias
   db.prepare("INSERT OR IGNORE INTO sequencias (nome, ultimo) VALUES ('os', 0)").run();
   db.prepare("INSERT OR IGNORE INTO sequencias (nome, ultimo) VALUES ('proposta', 0)").run();
@@ -602,7 +617,7 @@ function backup() {
     const status = buildBackupStatus(bdir);
     writeBackupStatus(bdir, status);
     console.log("[Backup] Salvo:",dest);
-    return { ok: true, arquivo: dest, status };
+    return { ok: true, arquivo: path.basename(dest), status };
   }).catch(e=>{
     const status = buildBackupStatus(bdir);
     status.status.status = "Pendente";

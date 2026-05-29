@@ -199,6 +199,33 @@ describe('route persistence contracts', () => {
     expect(source).toMatch(/\{\s*preco_unitario,\s*subtotal,\s*\.\.\.item\s*\}/);
     expect(source).toMatch(/lancamentos:\s*req\.user\.role === 'oficina' \? \[\] : lancamentos/);
   });
+
+  it('redacts fiscal and customer PII fields from oficina OS responses on the backend', () => {
+    const source = fs.readFileSync(new URL('../routes/ordens.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/clientetelefone,\s*\n\s*clientecontato,\s*\n\s*clientecpf,/);
+    expect(source).toMatch(/nfe_status,\s*\n\s*nfe_chave,\s*\n\s*nfe_protocolo,/);
+    expect(source).toMatch(/nfe_xml,/);
+    expect(source).toMatch(/nfe_cancel_motivo,/);
+  });
+
+  it('does not let oficina mutate OS items through the generic update route', () => {
+    const source = fs.readFileSync(new URL('../routes/ordens.js', import.meta.url), 'utf8');
+    const start = source.indexOf('if (req.user.role === "oficina")');
+    const end = source.indexOf('const total =', start);
+    const oficinaBranch = source.slice(start, end);
+
+    expect(oficinaBranch).toContain('UPDATE ordens SET status=?');
+    expect(oficinaBranch).not.toMatch(/saveItens/);
+    expect(oficinaBranch).not.toMatch(/DELETE FROM ordem_itens/);
+  });
+
+  it('blocks oficina from cancelling an OS through update and status routes', () => {
+    const source = fs.readFileSync(new URL('../routes/ordens.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/req\.user\.role === "oficina"[\s\S]+status === 'Cancelado'[\s\S]+Oficina nao pode cancelar OS/);
+    expect(source).toMatch(/req\.user\.role === 'oficina' && status === 'Cancelado'/);
+  });
 });
 
 describe('security configuration contracts', () => {
@@ -214,6 +241,20 @@ describe('security configuration contracts', () => {
     expect(source).toMatch(/max:\s*60/);
   });
 
+  it('mounts the CSRF origin guard before API routes', () => {
+    const source = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/require\(["']\.\/middlewares\/csrfOriginGuard["']\)/);
+    expect(source).toMatch(/app\.use\(["']\/api["'],\s*csrfOriginGuard\(\{\s*allowedOrigins\s*\}\)\)/);
+  });
+
+  it('does not trust forwarded proxy headers by default', () => {
+    const source = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/process\.env\.TRUST_PROXY/);
+    expect(source).not.toMatch(/app\.set\(["']trust proxy["'],\s*1\s*\)/);
+  });
+
   it('keeps the configuration health endpoint aligned with implemented security policies', () => {
     const source = fs.readFileSync(new URL('../routes/configuracoes.js', import.meta.url), 'utf8');
 
@@ -223,6 +264,22 @@ describe('security configuration contracts', () => {
     expect(source).not.toMatch(/Adicionar lockout por usuario no login/);
     expect(source).toMatch(/helmet:\s*true/);
     expect(source).toMatch(/lockoutLoginPorUsuario:\s*true/);
+  });
+
+  it('keeps fiscal event XML downloads scoped to active OS for non-admin users', () => {
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/FROM nfe_eventos e[\s\S]+LEFT JOIN ordens o ON o\.id = e\.ordemid/);
+    expect(source).toMatch(/req\.user\.role !== 'admin'[\s\S]+evento\.deletedat/);
+  });
+
+  it('does not log NF-e payloads or event payloads with fiscal PII', () => {
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+
+    expect(source).not.toMatch(/Payload dest/);
+    expect(source).not.toMatch(/Payload det/);
+    expect(source).not.toMatch(/JSON\.stringify\(eventoPayload\)/);
+    expect(source).not.toMatch(/JSON\.stringify\(payload\.infNFe\.dest\)/);
   });
 });
 

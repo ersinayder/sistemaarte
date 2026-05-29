@@ -38,11 +38,11 @@ function renderRelatorioProducaoHtml({ mes, fases = [], porOperador = [], porFas
       <h2 class="section-title">Resumo por operador</h2>
       ${renderTable({
         columns: [
-          { key: 'operador', label: 'Operador', render: (row) => esc(row.operador || 'Sem usuario') },
-          { key: 'total_fases', label: 'Total', align: 'right', render: (row) => esc(row.total_fases) },
-          { key: 'fases_concluidas', label: 'Concluidas', align: 'right', render: (row) => esc(row.fases_concluidas) },
-          { key: 'em_andamento', label: 'Andamento', align: 'right', render: (row) => esc(row.em_andamento) },
-          { key: 'media_duracao_min', label: 'Media', align: 'right', render: (row) => duracaoLabel(row.media_duracao_min) },
+          { key: 'operador', label: 'Operador', render: (row) => esc(row.operador || 'Sem usuario'), html: true },
+          { key: 'total_fases', label: 'Total', align: 'right', render: (row) => esc(row.total_fases), html: true },
+          { key: 'fases_concluidas', label: 'Concluidas', align: 'right', render: (row) => esc(row.fases_concluidas), html: true },
+          { key: 'em_andamento', label: 'Andamento', align: 'right', render: (row) => esc(row.em_andamento), html: true },
+          { key: 'media_duracao_min', label: 'Media', align: 'right', render: (row) => duracaoLabel(row.media_duracao_min), html: true },
         ],
         rows: porOperador,
         empty: 'Nenhum operador no periodo.',
@@ -53,9 +53,9 @@ function renderRelatorioProducaoHtml({ mes, fases = [], porOperador = [], porFas
       <h2 class="section-title">Resumo por fase</h2>
       ${renderTable({
         columns: [
-          { key: 'fase', label: 'Fase', render: (row) => esc(row.fase) },
-          { key: 'total', label: 'Total', align: 'right', render: (row) => esc(row.total) },
-          { key: 'media_duracao_min', label: 'Media', align: 'right', render: (row) => duracaoLabel(row.media_duracao_min) },
+          { key: 'fase', label: 'Fase', render: (row) => esc(row.fase), html: true },
+          { key: 'total', label: 'Total', align: 'right', render: (row) => esc(row.total), html: true },
+          { key: 'media_duracao_min', label: 'Media', align: 'right', render: (row) => duracaoLabel(row.media_duracao_min), html: true },
         ],
         rows: porFase,
         empty: 'Nenhuma fase no periodo.',
@@ -66,13 +66,13 @@ function renderRelatorioProducaoHtml({ mes, fases = [], porOperador = [], porFas
       <h2 class="section-title">Fases registradas</h2>
       ${renderTable({
         columns: [
-          { key: 'osnumero', label: 'OS', render: (row) => esc(row.osnumero) },
-          { key: 'servico', label: 'Servico', render: (row) => esc(row.servico) },
-          { key: 'status', label: 'Fase', render: (row) => esc(row.status) },
-          { key: 'operador', label: 'Operador', render: (row) => esc(row.operador || 'Sem usuario') },
-          { key: 'iniciadoem', label: 'Inicio', render: (row) => esc(row.iniciadoem ? `${fmtDate(row.iniciadoem)} ${String(row.iniciadoem).slice(11, 16)}` : '') },
-          { key: 'finalizadoem', label: 'Fim', render: (row) => esc(row.finalizadoem ? `${fmtDate(row.finalizadoem)} ${String(row.finalizadoem).slice(11, 16)}` : '') },
-          { key: 'duracao_min', label: 'Duracao', align: 'right', render: (row) => duracaoLabel(row.duracao_min) },
+          { key: 'osnumero', label: 'OS', render: (row) => esc(row.osnumero), html: true },
+          { key: 'servico', label: 'Servico', render: (row) => esc(row.servico), html: true },
+          { key: 'status', label: 'Fase', render: (row) => esc(row.status), html: true },
+          { key: 'operador', label: 'Operador', render: (row) => esc(row.operador || 'Sem usuario'), html: true },
+          { key: 'iniciadoem', label: 'Inicio', render: (row) => esc(row.iniciadoem ? `${fmtDate(row.iniciadoem)} ${String(row.iniciadoem).slice(11, 16)}` : ''), html: true },
+          { key: 'finalizadoem', label: 'Fim', render: (row) => esc(row.finalizadoem ? `${fmtDate(row.finalizadoem)} ${String(row.finalizadoem).slice(11, 16)}` : ''), html: true },
+          { key: 'duracao_min', label: 'Duracao', align: 'right', render: (row) => duracaoLabel(row.duracao_min), html: true },
         ],
         rows: fases,
         empty: 'Nenhuma fase registrada.',

@@ -44,7 +44,7 @@ function podeUsarAviso(role, tipo) {
   const normalized = normalizarTipoAviso(tipo);
   if (!normalized) return false;
   if (role === 'admin' || role === 'caixa') return true;
-  return role === 'oficina' && normalized === 'pedido_pronto';
+  return false;
 }
 
 function avisoDisponivelParaOrdem(ordem = {}, tipo, role) {
@@ -105,20 +105,20 @@ function montarMensagemAviso(ordem = {}, tipo, { role = null } = {}) {
     };
   }
 
+  const linhasPronto = [
+    '*Arte e Molduras - Pedido Pronto!*',
+    '',
+    `Ola, *${nome}*! Seu pedido esta pronto para retirada.`,
+    '',
+    `*Servico:* ${servico}`,
+    `*OS:* ${numero}`,
+  ];
+  linhasPronto.push(saldo > 0.009 ? `*Saldo na retirada:* ${fmtVal(saldo)}` : '*Pagamento:* Quitado');
+  linhasPronto.push('', 'Estamos aguardando voce!', '_Arte e Molduras_');
+
   return {
     ok: true,
-    text: [
-      '*Arte e Molduras - Pedido Pronto!*',
-      '',
-      `Ola, *${nome}*! Seu pedido esta pronto para retirada.`,
-      '',
-      `*Servico:* ${servico}`,
-      `*OS:* ${numero}`,
-      saldo > 0.009 ? `*Saldo na retirada:* ${fmtVal(saldo)}` : '*Pagamento:* Quitado',
-      '',
-      'Estamos aguardando voce!',
-      '_Arte e Molduras_',
-    ].join('\n'),
+    text: linhasPronto.join('\n'),
   };
 }
 

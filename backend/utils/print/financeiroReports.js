@@ -27,8 +27,8 @@ function renderResumoFinanceiroHtml({ mes, resumo = {} } = {}) {
       <h2 class="section-title">Despesas pagas por categoria</h2>
       ${renderTable({
         columns: [
-          { key: 'categoria', label: 'Categoria', render: (row) => esc(row.categoria) },
-          { key: 'valor', label: 'Valor', align: 'right', render: (row) => `<strong>${fmtMoney(row.valor)}</strong>` },
+          { key: 'categoria', label: 'Categoria', render: (row) => esc(row.categoria), html: true },
+          { key: 'valor', label: 'Valor', align: 'right', render: (row) => `<strong>${fmtMoney(row.valor)}</strong>`, html: true },
         ],
         rows: resumo.despesasPorCategoria || [],
         empty: 'Nenhuma despesa paga neste mes.',
@@ -52,8 +52,8 @@ function renderDreHtml({ mes, dre = {} } = {}) {
       <h2 class="section-title">Despesas operacionais</h2>
       ${renderTable({
         columns: [
-          { key: 'categoria', label: 'Categoria', render: (row) => esc(row.categoria) },
-          { key: 'valor', label: 'Valor', align: 'right', render: (row) => `<strong>${fmtMoney(row.valor)}</strong>` },
+          { key: 'categoria', label: 'Categoria', render: (row) => esc(row.categoria), html: true },
+          { key: 'valor', label: 'Valor', align: 'right', render: (row) => `<strong>${fmtMoney(row.valor)}</strong>`, html: true },
         ],
         rows: dre.despesas || [],
         empty: 'Nenhuma despesa operacional no periodo.',
@@ -79,12 +79,12 @@ function renderContasPagarHtml({ mes, contas = [] } = {}) {
       <h2 class="section-title">Contas</h2>
       ${renderTable({
         columns: [
-          { key: 'vencimento', label: 'Vencimento', render: (row) => fmtDate(row.vencimento) },
-          { key: 'fornecedor', label: 'Fornecedor', render: (row) => esc(row.fornecedor) },
-          { key: 'descricao', label: 'Descricao', render: (row) => esc(row.descricao) },
-          { key: 'categoria', label: 'Categoria', render: (row) => esc(row.categoria) },
-          { key: 'status', label: 'Status', render: (row) => esc(row.status) },
-          { key: 'valor', label: 'Valor', align: 'right', render: (row) => `<strong>${fmtMoney(row.valor)}</strong>` },
+          { key: 'vencimento', label: 'Vencimento', render: (row) => fmtDate(row.vencimento), html: true },
+          { key: 'fornecedor', label: 'Fornecedor', render: (row) => esc(row.fornecedor), html: true },
+          { key: 'descricao', label: 'Descricao', render: (row) => esc(row.descricao), html: true },
+          { key: 'categoria', label: 'Categoria', render: (row) => esc(row.categoria), html: true },
+          { key: 'status', label: 'Status', render: (row) => esc(row.status), html: true },
+          { key: 'valor', label: 'Valor', align: 'right', render: (row) => `<strong>${fmtMoney(row.valor)}</strong>`, html: true },
         ],
         rows: contas,
         empty: 'Nenhuma conta a pagar encontrada.',
@@ -107,13 +107,13 @@ function renderContasReceberHtml({ contas = [] } = {}) {
       <h2 class="section-title">OS com saldo aberto</h2>
       ${renderTable({
         columns: [
-          { key: 'prazoentrega', label: 'Prazo', render: (row) => fmtDate(row.prazoentrega) },
-          { key: 'numero', label: 'OS', render: (row) => esc(row.numero) },
-          { key: 'clientenome', label: 'Cliente', render: (row) => esc(row.clientenome) },
-          { key: 'status', label: 'Status', render: (row) => esc(row.status) },
-          { key: 'valortotal', label: 'Total', align: 'right', render: (row) => fmtMoney(row.valortotal) },
-          { key: 'recebido', label: 'Recebido', align: 'right', render: (row) => fmtMoney(row.recebido) },
-          { key: 'saldo', label: 'Saldo', align: 'right', render: (row) => `<strong>${fmtMoney(row.saldo)}</strong>` },
+          { key: 'prazoentrega', label: 'Prazo', render: (row) => fmtDate(row.prazoentrega), html: true },
+          { key: 'numero', label: 'OS', render: (row) => esc(row.numero), html: true },
+          { key: 'clientenome', label: 'Cliente', render: (row) => esc(row.clientenome), html: true },
+          { key: 'status', label: 'Status', render: (row) => esc(row.status), html: true },
+          { key: 'valortotal', label: 'Total', align: 'right', render: (row) => fmtMoney(row.valortotal), html: true },
+          { key: 'recebido', label: 'Recebido', align: 'right', render: (row) => fmtMoney(row.recebido), html: true },
+          { key: 'saldo', label: 'Saldo', align: 'right', render: (row) => `<strong>${fmtMoney(row.saldo)}</strong>`, html: true },
         ],
         rows: contas,
         empty: 'Nenhuma OS com saldo aberto.',

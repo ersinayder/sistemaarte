@@ -36,11 +36,11 @@ function renderPropostaHtml({ proposta, itens = [] }) {
       <h2 class="section-title">Itens da proposta</h2>
       ${renderTable({
         columns: [
-          { key: 'idx', label: '#', align: 'right', render: (item) => esc(item.idx) },
-          { key: 'nome', label: 'Descricao', render: (item) => esc(item.nome) },
-          { key: 'quantidade', label: 'Qtd.', align: 'right', render: (item) => esc(Number(item.quantidade || 1).toLocaleString('pt-BR')) },
-          { key: 'preco_unitario', label: 'Unitario', align: 'right', render: (item) => fmtMoney(item.preco_unitario) },
-          { key: 'subtotal', label: 'Subtotal', align: 'right', render: (item) => `<strong>${fmtMoney(item.subtotal)}</strong>` },
+          { key: 'idx', label: '#', align: 'right', render: (item) => esc(item.idx), html: true },
+          { key: 'nome', label: 'Descricao', render: (item) => esc(item.nome), html: true },
+          { key: 'quantidade', label: 'Qtd.', align: 'right', render: (item) => esc(Number(item.quantidade || 1).toLocaleString('pt-BR')), html: true },
+          { key: 'preco_unitario', label: 'Unitario', align: 'right', render: (item) => fmtMoney(item.preco_unitario), html: true },
+          { key: 'subtotal', label: 'Subtotal', align: 'right', render: (item) => `<strong>${fmtMoney(item.subtotal)}</strong>`, html: true },
         ],
         rows,
         empty: 'Nenhum item informado.',

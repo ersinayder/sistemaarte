@@ -50,7 +50,18 @@ describe('backupStatus', () => {
     expect(status.local.ultimo).toBeNull();
   });
 
-  it('reports OK for a fresh local backup and keeps newest file first', () => {
+  it('does not expose absolute filesystem paths in API status snapshots', () => {
+    const status = buildBackupStatus(tmpDir, {
+      now: new Date('2026-05-18T15:00:00-03:00'),
+    });
+    const body = JSON.stringify(status);
+
+    expect(status.local).not.toHaveProperty('diretorio');
+    expect(body).not.toMatch(/[A-Za-z]:\\/);
+    expect(body).not.toContain(tmpDir);
+  });
+
+  it('keeps overall status pending while offsite backup is not configured', () => {
     touchBackup('backup-2026-05-17T10-00-00.db', new Date('2026-05-17T10:00:00-03:00'));
     touchBackup('backup-2026-05-18T14-00-00.db', new Date('2026-05-18T14:00:00-03:00'));
 
@@ -58,7 +69,8 @@ describe('backupStatus', () => {
       now: new Date('2026-05-18T15:00:00-03:00'),
     });
 
-    expect(status.status.status).toBe('OK');
+    expect(status.status.status).toBe('Pendente');
+    expect(status.status.missing).toContain('destino-offsite');
     expect(status.local.total).toBe(2);
     expect(status.local.ultimo.nome).toBe('backup-2026-05-18T14-00-00.db');
     expect(status.local.arquivos[0].nome).toBe('backup-2026-05-18T14-00-00.db');
@@ -116,7 +128,8 @@ describe('backupStatus', () => {
       now: new Date('2026-05-18T15:00:00-03:00'),
     });
 
-    expect(loaded.status.status).toBe('OK');
+    expect(loaded.status.status).toBe('Pendente');
+    expect(loaded.status.missing).toContain('destino-offsite');
     expect(loaded.local.ultimo.nome).toBe('backup-2026-05-18T14-00-00.db');
     expect(fs.existsSync(backupStatusPath(tmpDir))).toBe(false);
   });

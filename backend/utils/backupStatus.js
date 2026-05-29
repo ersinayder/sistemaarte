@@ -66,15 +66,15 @@ function buildBackupStatus(backupsDir, { now = new Date() } = {}) {
   if (arquivos.length > 7) missing.push("retencao-local");
 
   const offsiteMissing = ["destino-offsite"];
+  const statusMissing = [...missing, ...offsiteMissing];
 
   return {
     status: {
-      status: missing.length ? "Pendente" : "OK",
-      missing,
+      status: statusMissing.length ? "Pendente" : "OK",
+      missing: statusMissing,
     },
     alertas: buildAlertas([...missing, ...offsiteMissing]),
     local: {
-      diretorio: backupsDir,
       total: arquivos.length,
       retencao: 7,
       ultimo: ultimo ? {
@@ -105,7 +105,9 @@ function readBackupStatus(backupsDir, options = {}) {
   if (!fs.existsSync(file)) return buildBackupStatus(backupsDir, options);
 
   try {
-    return JSON.parse(fs.readFileSync(file, "utf8"));
+    const status = JSON.parse(fs.readFileSync(file, "utf8"));
+    if (status?.local) delete status.local.diretorio;
+    return status;
   } catch {
     return buildBackupStatus(backupsDir, options);
   }

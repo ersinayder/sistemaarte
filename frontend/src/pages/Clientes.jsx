@@ -91,6 +91,7 @@ export default function Clientes() {
   const [detailData,    setDetailData]    = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const searchRef = useRef(null);
+  const formOverlayDownRef = useRef(false);
   const PER_PAGE = 25;
 
   const load = useCallback(async () => {
@@ -585,7 +586,13 @@ export default function Clientes() {
       </div>
 
       {showForm && ReactDOM.createPortal(
-        <div className="modal-overlay" onClick={closeForm}>
+        <div
+          className="modal-overlay"
+          onMouseDown={e => { formOverlayDownRef.current = e.target === e.currentTarget; }}
+          onClick={e => {
+            if (formOverlayDownRef.current && e.target === e.currentTarget) closeForm();
+            formOverlayDownRef.current = false;
+          }}>
           <div className="modal" style={{ maxWidth:600 }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">{editId ? 'Editar Cliente' : 'Novo Cliente'}</h2>

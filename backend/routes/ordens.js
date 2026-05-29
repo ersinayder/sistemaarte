@@ -172,6 +172,9 @@ function avisoVirtual(ordem, tipo, role, avisosPorChave) {
 function redactOrdemForRole(row, role) {
   if (role !== 'oficina') return row;
   const {
+    clientetelefone,
+    clientecontato,
+    clientecpf,
     valortotal,
     valorentrada,
     valor,
@@ -179,6 +182,17 @@ function redactOrdemForRole(row, role) {
     valorrecebido,
     saldoaberto,
     pagamento,
+    nfe_status,
+    nfe_chave,
+    nfe_protocolo,
+    nfe_numero,
+    nfe_serie,
+    nfe_emitida_em,
+    nfe_xml,
+    nfe_rejeicao_motivo,
+    nfe_cancelado_em,
+    nfe_cancel_protocolo,
+    nfe_cancel_motivo,
     ...safe
   } = row;
   return safe;
@@ -382,6 +396,7 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
 
     if (req.user.role === "oficina") {
       if (!status) return res.status(400).json({ error: "Informe o status" });
+      if (status === 'Cancelado') return res.status(403).json({ error: "Oficina nao pode cancelar OS." });
       const erroStatus = validarStatus(status, old.status);
       if (erroStatus) return res.status(400).json({ error: erroStatus });
       if (status === 'Entregue') {
@@ -396,7 +411,6 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
         if (status !== current.status)
           runInsert("INSERT INTO statuslog (ordemid,statusanterior,statusnovo,usuarioid) VALUES (?,?,?,?)",
             [req.params.id, current.status, status, req.user.id]);
-        if (Array.isArray(produtos)) saveItens(req.params.id, produtos);
       });
       maybeNotifyPronto(req.params.id, old.status, status);
       return res.json({ ok: true });
@@ -481,6 +495,10 @@ router.patch("/:id/status", auth(["admin","caixa","oficina"]), (req, res, next) 
 
     const existe = getOne("SELECT id FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);
     if (!existe) return res.status(404).json({ error: "Nao encontrado" });
+
+    if (req.user.role === 'oficina' && status === 'Cancelado') {
+      return res.status(403).json({ error: "Oficina nao pode cancelar OS." });
+    }
 
     if (status === 'Entregue') {
       const resumo = getResumoFinanceiroOS(req.params.id);

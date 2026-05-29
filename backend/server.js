@@ -10,6 +10,7 @@ const fs           = require("fs");
 const { initDB, backup }     = require("./database");
 const { auth }               = require("./middlewares/auth");
 const { errorHandler }       = require("./middlewares/errorHandler");
+const { csrfOriginGuard }    = require("./middlewares/csrfOriginGuard");
 const { hoje }               = require("./utils/dates");
 
 const IS_PROD = process.env.NODE_ENV === "production";
@@ -25,12 +26,14 @@ const allowedOrigins = process.env.CORS_ORIGINS
 const app  = express();
 const PORT = process.env.PORT || 3001;
 
-app.set("trust proxy", 1);
+const TRUST_PROXY = process.env.TRUST_PROXY === "1" || process.env.TRUST_PROXY === "true" ? 1 : false;
+app.set("trust proxy", TRUST_PROXY);
 
 app.use(helmet());
 app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json());
 app.use(cookieParser());
+app.use("/api", csrfOriginGuard({ allowedOrigins }));
 
 const globalLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -59,7 +62,6 @@ app.use("/api/configuracoes", require("./routes/configuracoes"));
 app.use("/api/kpis",        require("./routes/kpis"));
 // ── NF-e ──────────────────────────────────────────────────────────────────────
 app.use("/api/nfe",         require("./routes/nfe"));
-app.use("/api/certificado", require("./routes/certificado"));
 
 app.get("/api/health", (_req, res) => res.json({ ok: true, ts: Date.now() }));
 

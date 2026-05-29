@@ -9,14 +9,15 @@ on:
       - main
       - develop
 
+permissions:
+  contents: read
+
 jobs:
   testes:
     name: Testes Backend
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
 
     env:
-      HOMEPATH: C:\Users\Administrator
-      HOME: C:\Users\Administrator
       NODE_ENV: test
 
     steps:
@@ -36,7 +37,11 @@ jobs:
 
       - name: Instalar dependencias de teste
         working-directory: backend
-        run: npm install
+        run: npm ci
+
+      - name: Audit backend runtime dependencies
+        working-directory: backend
+        run: npm audit --omit=dev
 
       - name: Executar testes
         working-directory: backend

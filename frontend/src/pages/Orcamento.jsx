@@ -595,6 +595,7 @@ function NovaOSModal({ produtosIniciais, clienteInicial, clienteIdInicial, clien
   const [clienteOpen, setClienteOpen] = useState(false)
   const [clientesBusca, setClientesBusca] = useState(clientes)
   const clienteRef = useRef(null)
+  const overlayDownRef = useRef(false)
   const clienteSearchSeq = useRef(0)
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -696,7 +697,13 @@ function NovaOSModal({ produtosIniciais, clienteInicial, clienteIdInicial, clien
   , [todosProdutos, form.produtos])
 
   return ReactDOM.createPortal(
-    <div className="modal-overlay" onClick={onClose}>
+    <div
+      className="modal-overlay"
+      onMouseDown={e => { overlayDownRef.current = e.target === e.currentTarget }}
+      onClick={e => {
+        if (overlayDownRef.current && e.target === e.currentTarget) onClose()
+        overlayDownRef.current = false
+      }}>
       <div className="modal" style={{ maxWidth:640, maxHeight:'92vh', overflowY:'auto' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header" style={{ position:'sticky', top:0, background:'var(--color-surface)', zIndex:1, borderBottom:'1px solid var(--color-divider)' }}>
           <h2 className="modal-title">Nova Ordem de Serviço</h2>

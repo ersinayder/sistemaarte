@@ -80,7 +80,8 @@ function renderTable({ columns = [], rows = [], empty = 'Sem registros.', tableC
   const body = rows.length
     ? rows.map((row) => `<tr>${columns.map((col) => {
       const raw = typeof col.render === 'function' ? col.render(row) : row[col.key];
-      return `<td class="${col.align === 'right' ? 'right' : ''}">${raw == null ? '&mdash;' : raw}</td>`;
+      const value = col.html === true ? raw : esc(raw);
+      return `<td class="${col.align === 'right' ? 'right' : ''}">${raw == null ? '&mdash;' : value}</td>`;
     }).join('')}</tr>`).join('')
     : `<tr><td class="empty" colspan="${columns.length || 1}">${esc(empty)}</td></tr>`;
   const classAttr = tableClass ? ` class="${esc(tableClass)}"` : '';

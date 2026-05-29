@@ -3,6 +3,7 @@
 const path = require('path');
 const { getDB } = require('../database');
 const { statusFiscalConfig, formatarAutXmlParaNFe } = require('../domain/fiscalConfigRules');
+const { decryptSecret } = require('./secrets');
 
 const COD_MUNICIPIO_IPATINGA = '3131307';
 const COD_MUNICIPIO_IPATINGA_ANTIGO = '3127701';
@@ -132,7 +133,7 @@ function getCertificadoConfig() {
   if (cleanText(fiscal?.certificado_path) && cleanText(fiscal?.certificado_senha)) {
     return {
       pathCertificado: path.resolve(fiscal.certificado_path),
-      senhaCertificado: fiscal.certificado_senha,
+      senhaCertificado: decryptSecret(fiscal.certificado_senha),
       nome: cleanText(fiscal.certificado_nome),
       updatedat: fiscal.certificado_updatedat || fiscal.updatedat || null,
       origem: 'banco',

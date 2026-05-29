@@ -357,12 +357,16 @@ router.get('/eventos/:eventoId/xml', auth(['admin', 'caixa']), (req, res) => {
 
   try {
     const evento = getDB().prepare(`
-      SELECT id, chave, tipo, nseqevento, xml
-      FROM nfe_eventos
-      WHERE id = ?
+      SELECT e.id, e.chave, e.tipo, e.nseqevento, e.xml, e.ordemid, o.deletedat
+      FROM nfe_eventos e
+      LEFT JOIN ordens o ON o.id = e.ordemid
+      WHERE e.id = ?
     `).get(eventoId);
 
     if (!evento) {
+      return res.status(404).json({ erro: 'Evento fiscal nao encontrado.' });
+    }
+    if (req.user.role !== 'admin' && (!evento.ordemid || evento.deletedat)) {
       return res.status(404).json({ erro: 'Evento fiscal nao encontrado.' });
     }
     if (!evento.xml) {
@@ -480,8 +484,7 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
     const tpAmbLabel = ambiente === 1 ? '1(PROD)' : '2(HOMOL)';
     console.log(`[NF-e] Iniciando emissao OS#${os.id} numero=${numero} tpAmb=${tpAmbLabel}`);
     console.log('[NF-e] Payload ide:', JSON.stringify(payload.infNFe.ide));
-    console.log('[NF-e] Payload dest:', JSON.stringify(payload.infNFe.dest));
-    console.log('[NF-e] Payload det[0]:', JSON.stringify(payload.infNFe.det?.[0]));
+    console.log(`[NF-e] Payload pronto itens=${payload.infNFe.det?.length || 0}`);
 
     const wizard = await getNFEWizard();
     let resultado;
@@ -515,7 +518,7 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
       return;
     }
 
-    console.log(`[NF-e] Resposta SEFAZ (500 chars):`, JSON.stringify(resultado).slice(0, 500));
+    console.log(`[NF-e] Resposta SEFAZ recebida tipo=${Array.isArray(resultado) ? 'array' : typeof resultado}`);
 
     let cStat = '', chave = '', protocolo = '', agora = new Date().toISOString();
 
@@ -699,7 +702,6 @@ router.post('/:chave/cce', auth(['admin', 'caixa']), async (req, res) => {
     };
 
     console.log(`[NF-e] Iniciando CC-e chave=${chave} seq=${nSeqEvento}`);
-    console.log('[NF-e] ccePayload:', JSON.stringify(eventoPayload));
 
     const wizard = await getNFEWizard();
     let resultado;
@@ -714,7 +716,7 @@ router.post('/:chave/cce', auth(['admin', 'caixa']), async (req, res) => {
       return;
     }
 
-    console.log(`[NF-e] Resposta CC-e (500 chars):`, JSON.stringify(resultado).slice(0, 500));
+    console.log(`[NF-e] Resposta CC-e recebida tipo=${Array.isArray(resultado) ? 'array' : typeof resultado}`);
 
     const parsed = parseRetEvento(resultado, dhEvento);
     const autorizado = parsed.cStat === '135';
@@ -852,7 +854,6 @@ router.post('/:chave/cancelar', auth(['admin', 'caixa']), async (req, res) => {
     };
 
     console.log(`[NF-e] Iniciando cancelamento chave=${chave} protocolo=${os.nfe_protocolo}`);
-    console.log('[NF-e] eventoPayload:', JSON.stringify(eventoPayload));
 
     const wizard = await getNFEWizard();
     let resultado;
@@ -867,7 +868,7 @@ router.post('/:chave/cancelar', auth(['admin', 'caixa']), async (req, res) => {
       return;
     }
 
-    console.log(`[NF-e] Resposta cancelamento (500 chars):`, JSON.stringify(resultado).slice(0, 500));
+    console.log(`[NF-e] Resposta cancelamento recebida tipo=${Array.isArray(resultado) ? 'array' : typeof resultado}`);
 
     const parsed = parseRetEvento(resultado, dhEvento);
     const cStatResp    = parsed.cStat;

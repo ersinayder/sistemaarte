@@ -93,6 +93,7 @@ function mergeClientes(current, incoming) {
 
 // ------- Modal de OS -------
 function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEditFinanceiro }) {
+  const navigate = useNavigate();
   const isNew = !os;
   const [form, setForm] = useState({
     clienteid:'', clientenome:'', clientetelefone:'', clientecpf:'',
@@ -106,8 +107,9 @@ function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEd
   const [clienteOpen,  setClienteOpen]  = useState(false);
   const [clientesBusca, setClientesBusca] = useState(clientes);
   const clienteRef = useRef(null);
+  const [createdOS, setCreatedOS] = useState(null);
+  const overlayDownRef = useRef(false);
   const clienteSearchSeq = useRef(0);
-  const [tab, setTab] = useState('dados');
 
   useEffect(() => {
     if (os) {
@@ -197,6 +199,9 @@ function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEd
       if (isNew) {
         const { data } = await api.post('/ordens', payload);
         toast.success(`OS ${data.numero} criada!`);
+        onSaved();
+        setCreatedOS({ id: data.id, numero: data.numero });
+        return;
       } else {
         await api.put(`/ordens/${os.id}`, payload);
         toast.success('OS atualizada!');
@@ -218,12 +223,53 @@ function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEd
     todosProdutos.filter(p => !(form.produtos||[]).find(fp => fp.produto_id && fp.produto_id === p.id))
   , [todosProdutos, form.produtos]);
 
+  const overlayProps = {
+    onMouseDown: e => { overlayDownRef.current = e.target === e.currentTarget; },
+    onClick: e => {
+      if (overlayDownRef.current && e.target === e.currentTarget) onClose();
+      overlayDownRef.current = false;
+    },
+  };
+
+  if (createdOS) {
+    const visualizar = () => {
+      onClose();
+      navigate(`/ordens/${createdOS.id}`);
+    };
+    const imprimir = () => {
+      window.open(`/api/ordens/${createdOS.id}/pdf`, '_blank', 'noopener,noreferrer');
+      onClose();
+    };
+
+    return ReactDOM.createPortal(
+      <div style={{ position:'fixed', inset:0, zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center',
+        background:'oklch(from var(--color-bg) l c h / 0.7)', backdropFilter:'blur(2px)' }} {...overlayProps}>
+        <div style={{ background:'var(--color-surface)', borderRadius:'var(--radius-xl)',
+          boxShadow:'var(--shadow-lg)', width:'100%', maxWidth:460,
+          border:'1px solid var(--color-border)', overflow:'hidden' }}>
+          <div style={{ padding:'var(--space-5) var(--space-6)', borderBottom:'1px solid var(--color-border)' }}>
+            <h2 style={{ fontWeight:800, fontSize:'var(--text-lg)', margin:0 }}>OS {createdOS.numero} criada</h2>
+            <p style={{ fontSize:'var(--text-sm)', color:'var(--color-text-muted)', margin:'var(--space-2) 0 0' }}>
+              O que deseja fazer agora?
+            </p>
+          </div>
+          <div style={{ padding:'var(--space-5) var(--space-6)', display:'grid', gap:'var(--space-3)' }}>
+            <button type="button" className="btn btn-primary" onClick={visualizar} style={{ justifyContent:'center' }}>Visualizar OS</button>
+            <button type="button" className="btn btn-secondary" onClick={imprimir} style={{ justifyContent:'center' }}>Imprimir</button>
+            <button type="button" className="btn btn-ghost" onClick={onClose} style={{ justifyContent:'center' }}>Fechar</button>
+          </div>
+        </div>
+      </div>,
+      document.body
+    );
+  }
+
   const modalContent = (
     <div style={{ position:'fixed', inset:0, zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center',
       background:'oklch(from var(--color-bg) l c h / 0.7)', backdropFilter:'blur(2px)' }}
-      onClick={e => e.target === e.currentTarget && onClose()}>
+      {...overlayProps}>
       <div style={{ background:'var(--color-surface)', borderRadius:'var(--radius-xl)',
-        boxShadow:'var(--shadow-lg)', width:'100%', maxWidth:640, maxHeight:'90vh',
+        boxShadow:'var(--shadow-lg)', width:'100%', maxWidth:980, maxHeight:'90vh',
         display:'flex', flexDirection:'column', border:'1px solid var(--color-border)' }}>
         {/* Header */}
         <div style={{ padding:'var(--space-4) var(--space-6)', borderBottom:'1px solid var(--color-border)',
@@ -243,25 +289,13 @@ function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEd
           </button>
         </div>
 
-        {/* Tabs */}
-        <div style={{ display:'flex', borderBottom:'1px solid var(--color-border)', flexShrink:0,
-          padding:'0 var(--space-6)' }}>
-          {[['dados','Dados'],['produtos','Produtos'],['pagamento','Pagamento']].map(([k,l]) => (
-            <button key={k} onClick={()=>setTab(k)}
-              style={{ padding:'var(--space-3) var(--space-4)', fontSize:'var(--text-xs)', fontWeight:600,
-                borderBottom: tab===k ? '2px solid var(--color-primary)' : '2px solid transparent',
-                color: tab===k ? 'var(--color-primary)' : 'var(--color-text-muted)',
-                background:'none', transition:'all 0.15s' }}>
-              {l}
-            </button>
-          ))}
-        </div>
-
         {/* Body */}
         <form onSubmit={handleSubmit} style={{ overflowY:'auto', flex:1 }}>
-          <div style={{ padding:'var(--space-5) var(--space-6)', display:'flex', flexDirection:'column', gap:'var(--space-4)' }}>
+          <div style={{ padding:'var(--space-5) var(--space-6)', display:'grid',
+            gridTemplateColumns:'repeat(auto-fit, minmax(320px, 1fr))', gap:'var(--space-4)', alignItems:'start' }}>
 
-          {tab === 'dados' && (<>
+          <section className="card" style={{ padding:'var(--space-4)', display:'grid', gap:'var(--space-4)' }}>
+            <div style={{ fontWeight:800, fontSize:'var(--text-sm)' }}>Cliente e servico</div>
             {/* Cliente */}
             <div ref={clienteRef} style={{ position:'relative' }}>
               <label className="form-label">Cliente *</label>
@@ -351,9 +385,11 @@ function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEd
                 onChange={e=>set('observacoes',e.target.value)}
                 placeholder="Medidas, cores, detalhes do pedido…" />
             </div>
-          </>)}
+          </section>
 
-          {tab === 'produtos' && (<>
+          <section style={{ display:'grid', gap:'var(--space-4)' }}>
+            <div className="card" style={{ padding:'var(--space-4)', display:'grid', gap:'var(--space-4)' }}>
+              <div style={{ fontWeight:800, fontSize:'var(--text-sm)' }}>Itens</div>
             <ProdutoInput produtos={produtosSugestoes} onAdd={addProduto} />
             {form.produtos && form.produtos.length > 0 && (
               <div style={{ display:'flex', flexDirection:'column', gap:'var(--space-2)' }}>
@@ -385,9 +421,10 @@ function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEd
                 </div>
               </div>
             )}
-          </>)}
+            </div>
 
-          {tab === 'pagamento' && (<>
+            <div className="card" style={{ padding:'var(--space-4)', display:'grid', gap:'var(--space-4)' }}>
+              <div style={{ fontWeight:800, fontSize:'var(--text-sm)' }}>Pagamento</div>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'var(--space-3)' }}>
               <div>
                 <label className="form-label">Valor Total *</label>
@@ -415,7 +452,8 @@ function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEd
                 </div>
               </div>
             )}
-          </>)}
+            </div>
+          </section>
 
           </div>
 
@@ -447,6 +485,7 @@ export default function Ordens() {
   const [clientes,     setClientes]     = useState([]);
   const [todosProdutos,setTodosProdutos]= useState([]);
   const [loading,      setLoading]      = useState(true);
+  const [loaded,       setLoaded]       = useState(false);
   const [modalOS,      setModalOS]      = useState(null);
   const [showModal,    setShowModal]    = useState(false);
   const [filterStatus, setFilterStatus] = useState('todos');
@@ -475,6 +514,7 @@ export default function Ordens() {
       setTodosProdutos(rp.data || []);
     } finally {
       setLoading(false);
+      setLoaded(true);
     }
   }, [busca, filterStatus, filterTipo, page]);
 
@@ -508,7 +548,6 @@ export default function Ordens() {
   const ordensFiltradas = ordens;
   const totalOrdens = ordensMeta.total ?? ordens.length;
   const totalAberto = ordensFiltradas.filter(o => o.status !== 'Entregue' && o.status !== 'Cancelado').length;
-  const totalSaldo  = ordensFiltradas.reduce((s,o) => s + Number(o.saldoaberto||0), 0);
 
   const totalPages = Math.max(1, ordensMeta.totalPages || 1);
   const paginated  = ordensFiltradas;
@@ -521,7 +560,7 @@ export default function Ordens() {
     return ['todos', 'Quadro', 'Corte a Laser', 'Sublimacao', 'Diversos'];
   }, []);
 
-  if (loading) return (
+  if (loading && !loaded) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'60vh', color:'var(--color-text-muted)' }}>
       Carregando…
     </div>
@@ -563,13 +602,12 @@ export default function Ordens() {
       </div>
 
       {/* KPIs */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)',
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)',
         gap:'var(--space-2)', padding:'var(--space-2) var(--space-6)',
         borderBottom:'1px solid var(--color-border)', flexShrink:0 }}>
         {[
           { label:'Total filtrado', value:totalOrdens, icon:'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2', color:'var(--color-primary)' },
           { label:'Em Aberto na página', value:totalAberto, icon:'M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0z', color:'var(--color-warning)' },
-          { label:'Saldo da página', value:fmt(totalSaldo), icon:'M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6', color:'var(--color-success)' },
         ].map(k => (
           <div key={k.label} style={{ background:'var(--color-surface)', border:'1px solid var(--color-border)',
             borderRadius:'var(--radius-md)', padding:'var(--space-2) var(--space-3)',
