@@ -27,6 +27,20 @@ describe('print base', () => {
     expect(print.fmtDate('2026-05-23 10:15:00')).toBe('23/05/2026');
   });
 
+  it('escapes table cell values by default and requires explicit trusted HTML', () => {
+    const html = print.renderTable({
+      columns: [
+        { key: 'name', label: 'Nome' },
+        { key: 'total', label: 'Total', render: (row) => `<strong>${print.fmtMoney(row.total)}</strong>`, html: true },
+      ],
+      rows: [{ name: '<img src=x onerror=alert(1)>', total: 10 }],
+    });
+
+    expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
+    expect(html).not.toContain('<img src=x onerror=alert(1)>');
+    expect(html).toContain('<strong>R$&nbsp;10,00</strong>');
+  });
+
   it('sets print response headers compatible with the app CSP', () => {
     const headers = {};
     const res = {

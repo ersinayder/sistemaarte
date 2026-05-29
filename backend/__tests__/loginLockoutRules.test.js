@@ -58,4 +58,15 @@ describe('loginLockoutRules', () => {
       retryAfterMs: 0,
     });
   });
+
+  it('bounds stale username entries to avoid unbounded memory growth', () => {
+    const state = criarEstadoLockout();
+    const base = new Date('2026-05-18T12:00:00Z').getTime();
+
+    for (let i = 0; i < 2500; i += 1) {
+      registrarFalhaLogin(state, `usuario-${i}`, base + i);
+    }
+
+    expect(state.size).toBeLessThanOrEqual(1000);
+  });
 });

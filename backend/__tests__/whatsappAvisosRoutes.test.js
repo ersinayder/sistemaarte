@@ -80,7 +80,7 @@ describe('whatsapp avisos routes', () => {
 
     await handler({
       params: { id: '77', tipo: 'pedido_pronto' },
-      user: { id: 9, role: 'oficina' },
+      user: { id: 9, role: 'caixa' },
       body: {
         telefone: '5511999999999',
         mensagem: 'mensagem atacada',
@@ -102,6 +102,22 @@ describe('whatsapp avisos routes', () => {
       expect.stringContaining('Cliente Real'),
       9,
     ]));
+  });
+
+  it('forbids oficina from opening customer whatsapp notices', async () => {
+    db.getOne.mockReturnValueOnce(ordem);
+
+    const handler = businessHandler('post', '/:id/whatsapp-avisos/:tipo/abrir');
+    const res = makeRes();
+
+    await handler({
+      params: { id: '77', tipo: 'pedido_pronto' },
+      user: { id: 9, role: 'oficina' },
+      body: {},
+    }, res, vi.fn());
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith({ error: 'Aviso nao permitido para este usuario.' });
   });
 
   it('does not expose financial fields or forbidden confirmation notices in oficina list responses', async () => {

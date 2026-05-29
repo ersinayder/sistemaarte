@@ -21,6 +21,7 @@ const {
   getCnpjEmitente,
 } = require("../utils/nfeConfig");
 const { resetNFEWizard } = require("../utils/nfe");
+const { encryptSecret } = require("../utils/secrets");
 const {
   normalizarWhatsappConfig,
   validarWhatsappConfig,
@@ -413,6 +414,7 @@ router.put("/fiscal/certificado/senha", auth(["admin"]), (req, res, next) => {
   try {
     const senha = String(req.body?.senha ?? "");
     if (!senha.trim()) return res.status(400).json({ error: "Senha do certificado e obrigatoria" });
+    const senhaProtegida = encryptSecret(senha);
 
     run(
       `INSERT INTO fiscal_config (id, certificado_senha, updatedat)
@@ -420,7 +422,7 @@ router.put("/fiscal/certificado/senha", auth(["admin"]), (req, res, next) => {
        ON CONFLICT(id) DO UPDATE SET
          certificado_senha=excluded.certificado_senha,
          updatedat=datetime('now','localtime')`,
-      [senha]
+      [senhaProtegida]
     );
 
     resetNFEWizard();

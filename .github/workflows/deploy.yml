@@ -5,6 +5,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   testes:
     name: Testes Backend
@@ -31,7 +34,11 @@ jobs:
 
       - name: Instalar dependencias de teste
         working-directory: backend
-        run: npm install
+        run: npm ci
+
+      - name: Audit backend runtime dependencies
+        working-directory: backend
+        run: npm audit --omit=dev
 
       - name: Executar testes
         working-directory: backend
@@ -61,9 +68,23 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      - name: Verificar rotina de restart PM2
+        shell: powershell
+        run: |
+          $task = Get-ScheduledTask -TaskName "PM2-DeployRestart" -ErrorAction SilentlyContinue
+          if (-not $task) {
+            Write-Error "Tarefa PM2-DeployRestart nao encontrada. Recrie a rotina de restart antes do deploy."
+            exit 1
+          }
+          Write-Host "PM2-DeployRestart encontrado: $($task.State)"
+
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm install
+        run: npm ci
+
+      - name: Audit frontend runtime dependencies
+        working-directory: frontend
+        run: npm audit --omit=dev
 
       - name: Build frontend
         working-directory: frontend
@@ -87,15 +108,21 @@ jobs:
           $dest   = "C:\sistemaarte\backend"
           if (!(Test-Path $dest)) { New-Item -ItemType Directory -Path $dest -Force }
           robocopy $source $dest /MIR /E /NFL /NDL /NJH /NJS `
-            /XD node_modules data `
+            /XD node_modules data certs `
             /XF .env *.db
           if ($LASTEXITCODE -le 7) { exit 0 } else { exit $LASTEXITCODE }
 
-      - name: Install backend dependencies
+      - name: Install backend runtime dependencies
         shell: powershell
         run: |
           Set-Location "C:\sistemaarte\backend"
-          npm install --omit=dev --prefer-offline
+          npm ci --omit=dev --prefer-offline
+
+      - name: Audit deployed backend runtime dependencies
+        shell: powershell
+        run: |
+          Set-Location "C:\sistemaarte\backend"
+          npm audit --omit=dev
 
       - name: Sinalizar restart via sentinela
         shell: powershell

@@ -38,11 +38,11 @@ describe('whatsappAvisosRules', () => {
     expect(rules.normalizarTelefoneWhatsapp('123')).toBeNull();
   });
 
-  it('allows admin and caixa to use both notices but limits oficina to ready notices', () => {
+  it('allows admin and caixa to use customer whatsapp notices and blocks oficina', () => {
     expect(rules.podeUsarAviso('admin', 'confirmacao_pedido')).toBe(true);
     expect(rules.podeUsarAviso('caixa', 'confirmacao_pedido')).toBe(true);
     expect(rules.podeUsarAviso('oficina', 'confirmacao_pedido')).toBe(false);
-    expect(rules.podeUsarAviso('oficina', 'pedido_pronto')).toBe(true);
+    expect(rules.podeUsarAviso('oficina', 'pedido_pronto')).toBe(false);
   });
 
   it('builds confirmation messages with financial data only for admin and caixa', () => {
@@ -61,15 +61,13 @@ describe('whatsappAvisosRules', () => {
     expect(oficina.error).toBe('forbidden_notice_type');
   });
 
-  it('builds ready notices without exposing total or entry amounts to oficina', () => {
-    const msg = rules.montarMensagemAviso({ ...ordemBase, status: 'Pronto' }, 'pedido_pronto', { role: 'oficina' });
+  it('builds ready notices for caixa without exposing extra payment details in the basic text', () => {
+    const msg = rules.montarMensagemAviso({ ...ordemBase, status: 'Pronto' }, 'pedido_pronto', { role: 'caixa' });
 
     expect(msg.ok).toBe(true);
     expect(msg.text).toContain('Pedido Pronto');
     expect(msg.text).toContain('OS-0007');
     expect(msg.text).toContain('Quadro');
-    expect(msg.text).toContain('Saldo na retirada');
-    expect(msg.text).toContain('R$ 1.034,50');
     expect(msg.text).not.toContain('Valor Total');
     expect(msg.text).not.toContain('Entrada paga');
   });
@@ -77,8 +75,8 @@ describe('whatsappAvisosRules', () => {
   it('validates notice availability by OS status', () => {
     expect(rules.avisoDisponivelParaOrdem(ordemBase, 'confirmacao_pedido', 'caixa')).toEqual({ ok: true });
     expect(rules.avisoDisponivelParaOrdem({ ...ordemBase, status: 'Cancelado' }, 'confirmacao_pedido', 'caixa').ok).toBe(false);
-    expect(rules.avisoDisponivelParaOrdem({ ...ordemBase, status: 'Pronto' }, 'pedido_pronto', 'oficina')).toEqual({ ok: true });
-    expect(rules.avisoDisponivelParaOrdem({ ...ordemBase, status: 'Aguardando' }, 'pedido_pronto', 'oficina').ok).toBe(false);
+    expect(rules.avisoDisponivelParaOrdem({ ...ordemBase, status: 'Pronto' }, 'pedido_pronto', 'caixa')).toEqual({ ok: true });
+    expect(rules.avisoDisponivelParaOrdem({ ...ordemBase, status: 'Pronto' }, 'pedido_pronto', 'oficina').ok).toBe(false);
   });
 
   it('validates safe status transitions', () => {

@@ -12,6 +12,7 @@ const {
 } = require("../domain/loginLockoutRules");
 
 const IS_PROD = process.env.NODE_ENV === "production";
+const DUMMY_PASSWORD_HASH = "$2a$10$S.4ZIqKrMoR1gFmTBUCPG.rEU3spWl7WSzB5fsH/5ekhyXRcPXk5K";
 
 const COOKIE_OPTS = {
   httpOnly: true,
@@ -48,7 +49,8 @@ router.post("/login", loginLimiter, (req, res) => {
     "SELECT * FROM users WHERE username=? AND active=1",
     [username]
   );
-  if (!user || !bcrypt.compareSync(password, user.password)) {
+  const senhaValida = bcrypt.compareSync(password, user?.password || DUMMY_PASSWORD_HASH);
+  if (!user || !senhaValida) {
     registrarFalhaLogin(loginLockoutState, username);
     return res.status(401).json({ error: "Usuario ou senha invalidos" });
   }

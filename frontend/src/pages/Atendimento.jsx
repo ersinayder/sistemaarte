@@ -395,6 +395,7 @@ function QuickClientModal({ open, cliente, initialName, onClose, onSaved }) {
   const [cnpjLoading, setCnpjLoading] = useState(false)
   const [cpfError, setCpfError] = useState('')
   const [cnpjError, setCnpjError] = useState('')
+  const overlayDownRef = useRef(false)
 
   useEffect(() => {
     if (!open) return
@@ -537,7 +538,13 @@ function QuickClientModal({ open, cliente, initialName, onClose, onSaved }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div
+      className="modal-overlay"
+      onMouseDown={e => { overlayDownRef.current = e.target === e.currentTarget }}
+      onClick={e => {
+        if (overlayDownRef.current && e.target === e.currentTarget) onClose()
+        overlayDownRef.current = false
+      }}>
       <div className="modal" style={{ maxWidth: 660 }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h2 className="modal-title">{cliente?.id ? 'Dados fiscais do cliente' : 'Cadastrar cliente'}</h2>
