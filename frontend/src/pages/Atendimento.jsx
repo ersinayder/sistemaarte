@@ -1,12 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ReactDOM from 'react-dom'
+import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import {
   CheckCircle2,
   ClipboardList,
   DollarSign,
+  Eye,
   Package,
   Plus,
+  Printer,
   Search,
   UserPlus,
   X,
@@ -661,6 +664,7 @@ function QuickClientModal({ open, cliente, initialName, onClose, onSaved }) {
 }
 
 export default function Atendimento() {
+  const navigate = useNavigate()
   const [mode, setMode] = useState('home')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -683,6 +687,7 @@ export default function Atendimento() {
   const [selectedOs, setSelectedOs] = useState(null)
   const [paymentForm, setPaymentForm] = useState({ valor: '', pagamento: 'Pix' })
   const [deliveryPrompt, setDeliveryPrompt] = useState(null)
+  const [createdOS, setCreatedOS] = useState(null)
 
   const [saleItems, setSaleItems] = useState([])
   const [salePayment, setSalePayment] = useState('Pix')
@@ -830,6 +835,7 @@ export default function Atendimento() {
       setOsForm(formInicialOS())
       setClienteQuery('')
       setClienteSelecionado(null)
+      setCreatedOS({ id: data.id, numero: data.numero })
       await loadBase()
     } catch (err) {
       toast.error(err.response?.data?.error || 'Erro ao criar OS')
@@ -902,6 +908,21 @@ export default function Atendimento() {
     } finally {
       setSaving(false)
     }
+  }
+
+  const closeCreatedOSPrompt = () => setCreatedOS(null)
+
+  const viewCreatedOS = () => {
+    if (!createdOS?.id) return closeCreatedOSPrompt()
+    const id = createdOS.id
+    closeCreatedOSPrompt()
+    navigate(`/ordens/${id}`)
+  }
+
+  const printCreatedOS = () => {
+    if (!createdOS?.id) return closeCreatedOSPrompt()
+    window.open(`/api/ordens/${createdOS.id}/pdf`, '_blank', 'noopener,noreferrer')
+    closeCreatedOSPrompt()
   }
 
   const venderAvulso = async e => {
@@ -1315,6 +1336,31 @@ export default function Atendimento() {
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => setDeliveryPrompt(null)}>Depois</button>
               <button className="btn btn-primary" disabled={saving} onClick={confirmarEntrega}>Marcar entregue</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {createdOS && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && closeCreatedOSPrompt()}>
+          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">OS {createdOS.numero} criada</h2>
+              <button type="button" className="btn btn-icon btn-ghost" onClick={closeCreatedOSPrompt}><X size={18} /></button>
+            </div>
+            <div className="modal-body" style={{ display: 'grid', gap: 'var(--space-3)' }}>
+              <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
+                O que deseja fazer agora?
+              </p>
+              <button type="button" className="btn btn-primary" onClick={viewCreatedOS} style={{ justifyContent: 'center' }}>
+                <Eye size={16} /> Visualizar OS
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={printCreatedOS} style={{ justifyContent: 'center' }}>
+                <Printer size={16} /> Imprimir
+              </button>
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-ghost" onClick={closeCreatedOSPrompt}>Fechar</button>
             </div>
           </div>
         </div>
