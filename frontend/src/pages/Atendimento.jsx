@@ -976,9 +976,10 @@ export default function Atendimento() {
                     <span>{c.phone || c.cpf || 'Cliente cadastrado'}</span>
                   </button>
                 )) : (
-                  <div style={{ padding: 'var(--space-3)', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
-                    Cliente ainda não cadastrado
-                  </div>
+                  <button type="button" className="atendimento-suggestion" onMouseDown={e => e.preventDefault()} onClick={() => openClientModal(null)}>
+                    <span style={{ color: 'var(--color-text-muted)' }}>Cliente ainda nao cadastrado</span>
+                    <span style={{ color: 'var(--color-primary)', fontWeight: 900 }}>CADASTRAR CLIENTE</span>
+                  </button>
                 )}
               </div>
             )}
