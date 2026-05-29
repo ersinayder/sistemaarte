@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import ReactDOM from 'react-dom'
 import { toast } from 'react-hot-toast'
 import {
   CheckCircle2,
@@ -538,7 +539,7 @@ function QuickClientModal({ open, cliente, initialName, onClose, onSaved }) {
     }
   }
 
-  return (
+  return ReactDOM.createPortal(
     <div
       className="modal-overlay"
       onMouseDown={e => { overlayDownRef.current = e.target === e.currentTarget }}
@@ -654,7 +655,8 @@ function QuickClientModal({ open, cliente, initialName, onClose, onSaved }) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
