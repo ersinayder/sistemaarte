@@ -1021,15 +1021,6 @@ export default function Atendimento() {
               </button>
             </div>
           )}
-          {osForm.clientenome.trim().length > 2 && !clienteExiste && !osForm.clienteid && (
-            <div className="atendimento-inline-callout">
-              <div>
-                <strong>Novo cliente</strong>
-                <span>Cadastre o cliente sem sair da OS</span>
-              </div>
-              <button type="button" className="btn btn-secondary" onClick={() => openClientModal(null)} disabled={saving}>Cadastrar cliente</button>
-            </div>
-          )}
         </section>
 
         <section className="card atendimento-section">
