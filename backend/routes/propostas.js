@@ -5,6 +5,8 @@ const {
   normalizarStatusProposta,
   validarStatusProposta,
   podeGerarOS,
+  normalizarItensProposta,
+  validarDadosProposta,
 } = require("../domain/propostasRules");
 const { renderPropostaHtml } = require("../utils/propostaPdf");
 const { sendPrintHtml } = require("../utils/print/base");
@@ -33,15 +35,7 @@ function gerarNumeroOS() {
 }
 
 function normalizarItens(produtos = []) {
-  return (Array.isArray(produtos) ? produtos : [])
-    .map((p) => ({
-      produto_id: p.produto_id || p.id || null,
-      nome: String(p.nome || p.name || "").trim(),
-      quantidade: Math.max(1, Number(p.quantidade || p.qty || 1)),
-      preco_unitario: Math.max(0, Number(p.preco_unitario ?? p.preco ?? p.valor ?? 0)),
-      avulso: p.avulso ? 1 : 0,
-    }))
-    .filter((p) => p.nome);
+  return normalizarItensProposta(produtos);
 }
 
 function salvarItens(propostaId, produtos) {
@@ -57,10 +51,6 @@ function salvarItens(propostaId, produtos) {
 
 function itensProposta(id) {
   return getAll("SELECT * FROM proposta_itens WHERE propostaid=? ORDER BY id ASC", [id]);
-}
-
-function totalItens(produtos) {
-  return normalizarItens(produtos).reduce((acc, p) => acc + p.quantidade * p.preco_unitario, 0);
 }
 
 router.get("/", auth(["admin", "caixa"]), (req, res, next) => {
@@ -101,16 +91,9 @@ router.get("/:id/pdf", auth(["admin", "caixa"]), (req, res, next) => {
 
 router.post("/", auth(["admin", "caixa"]), (req, res, next) => {
   try {
-    const produtos = normalizarItens(req.body?.produtos);
-    const clientenome = String(req.body?.clientenome || "").trim();
-    if (!clientenome) return res.status(400).json({ error: "Cliente obrigatorio" });
-    if (produtos.length === 0) return res.status(400).json({ error: "Informe ao menos um item" });
+    const dados = validarDadosProposta(req.body || {});
+    if (!dados.ok) return res.status(400).json({ error: dados.error });
 
-    const status = normalizarStatusProposta(req.body?.status || "Novo lead");
-    const erroStatus = validarStatusProposta(status);
-    if (erroStatus) return res.status(400).json({ error: erroStatus });
-
-    const total = Number(req.body?.valortotal ?? totalItens(produtos));
     const id = transaction(() => {
       const numero = gerarNumeroProposta();
       const propostaId = runInsert(
@@ -121,19 +104,19 @@ router.post("/", auth(["admin", "caixa"]), (req, res, next) => {
         [
           numero,
           req.body?.cliente_id || req.body?.clienteid || null,
-          clientenome,
+          dados.clientenome,
           req.body?.clientetelefone || req.body?.telefone || null,
           req.body?.clientecpf || req.body?.cpf || null,
-          status,
+          dados.status,
           req.body?.origem || "balcao",
           req.body?.descricao || null,
-          total,
-          req.body?.prazoentrega || null,
+          dados.valortotal,
+          dados.prazoentrega,
           req.body?.observacoes || null,
           req.user.id,
         ]
       );
-      salvarItens(propostaId, produtos);
+      salvarItens(propostaId, dados.itens);
       return propostaId;
     });
 
@@ -176,6 +159,16 @@ router.post("/:id/gerar-os", auth(["admin", "caixa"]), (req, res, next) => {
     if (itens.length === 0) return res.status(400).json({ error: "Proposta sem itens" });
 
     const ordemId = transaction(() => {
+      const claim = run(
+        "UPDATE propostas SET updatedat=datetime('now','localtime') WHERE id=? AND ordemid IS NULL",
+        [proposta.id]
+      );
+      if (claim.changes === 0) {
+        const err = new Error("Esta proposta ja gerou uma OS.");
+        err.status = 409;
+        throw err;
+      }
+
       const numero = gerarNumeroOS();
       const id = runInsert(
         `INSERT INTO ordens
@@ -211,7 +204,15 @@ router.post("/:id/gerar-os", auth(["admin", "caixa"]), (req, res, next) => {
         "INSERT INTO statuslog (ordemid,statusanterior,statusnovo,usuarioid,obs) VALUES (?,?,?,?,?)",
         [id, null, "Aguardando", req.user.id, `Gerada pela proposta ${proposta.numero}`]
       );
-      run("UPDATE propostas SET ordemid=?, updatedat=datetime('now','localtime') WHERE id=?", [id, proposta.id]);
+      const link = run(
+        "UPDATE propostas SET ordemid=?, updatedat=datetime('now','localtime') WHERE id=? AND ordemid IS NULL",
+        [id, proposta.id]
+      );
+      if (link.changes === 0) {
+        const err = new Error("Esta proposta ja gerou uma OS.");
+        err.status = 409;
+        throw err;
+      }
       return id;
     });
 

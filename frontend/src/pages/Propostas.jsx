@@ -39,7 +39,7 @@ function PropostaModal({ proposta, onClose, onMove, onGerarOS, onOpenPdf, onOpen
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={{ maxWidth: 720 }} onClick={(e) => e.stopPropagation()}>
+      <div className="modal" style={{ maxWidth: 860 }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div>
             <h2>{proposta.numero}</h2>
@@ -49,7 +49,7 @@ function PropostaModal({ proposta, onClose, onMove, onGerarOS, onOpenPdf, onOpen
         </div>
 
         <div className="modal-body" style={{ display: 'grid', gap: 'var(--space-4)' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--space-3)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-3)' }}>
             <div>
               <div style={{ fontSize: 10, color: 'var(--color-text-faint)', textTransform: 'uppercase', fontWeight: 800 }}>Status</div>
               <StatusBadge status={proposta.status} />
@@ -62,18 +62,32 @@ function PropostaModal({ proposta, onClose, onMove, onGerarOS, onOpenPdf, onOpen
               <div style={{ fontSize: 10, color: 'var(--color-text-faint)', textTransform: 'uppercase', fontWeight: 800 }}>Criada</div>
               <div>{fmtDate(proposta.createdat)}</div>
             </div>
+            <div>
+              <div style={{ fontSize: 10, color: 'var(--color-text-faint)', textTransform: 'uppercase', fontWeight: 800 }}>Prazo</div>
+              <div>{fmtDate(proposta.prazoentrega) || 'A definir'}</div>
+            </div>
           </div>
+
+          {proposta.descricao && (
+            <div>
+              <div style={{ fontSize: 10, color: 'var(--color-text-faint)', textTransform: 'uppercase', fontWeight: 800 }}>Descricao</div>
+              <p style={{ margin: '4px 0 0', color: 'var(--color-text)' }}>{proposta.descricao}</p>
+            </div>
+          )}
 
           <div>
             <div style={{ fontSize: 10, color: 'var(--color-text-faint)', textTransform: 'uppercase', fontWeight: 800, marginBottom: 6 }}>Itens</div>
             <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
               {(proposta.itens || []).map((item) => (
-                <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '1fr 64px 96px', gap: 8, padding: '8px 10px', borderBottom: '1px solid var(--color-divider)' }}>
-                  <span>{item.nome}</span>
+                <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '1fr 72px 108px', gap: 10, padding: '10px 12px', borderBottom: '1px solid var(--color-divider)', alignItems: 'start' }}>
+                  <span style={{ whiteSpace: 'pre-wrap', lineHeight: 1.35 }}>{item.nome}</span>
                   <span style={{ textAlign: 'right', color: 'var(--color-text-muted)' }}>{Number(item.quantidade || 1).toLocaleString('pt-BR')}</span>
                   <strong style={{ textAlign: 'right' }}>{fmt(Number(item.quantidade || 1) * Number(item.preco_unitario || 0))}</strong>
                 </div>
               ))}
+              {(!proposta.itens || proposta.itens.length === 0) && (
+                <div style={{ padding: 'var(--space-4)', color: 'var(--color-text-faint)', textAlign: 'center', fontSize: 'var(--text-sm)' }}>Nenhum item cadastrado</div>
+              )}
             </div>
           </div>
 

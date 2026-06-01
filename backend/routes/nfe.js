@@ -438,7 +438,7 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
     }
 
     const itens = db.prepare(`
-      SELECT oi.*, p.nome, p.ncm, p.cfop, p.unidade, p.origem_fiscal, p.csosn
+      SELECT oi.*, p.nome AS produto_nome, p.ncm, p.cfop, p.unidade, p.origem_fiscal, p.csosn
       FROM ordem_itens oi
       LEFT JOIN produtos p ON oi.produto_id = p.id
       WHERE oi.ordemid = ?

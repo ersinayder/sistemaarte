@@ -289,6 +289,13 @@ describe('security configuration contracts', () => {
     expect(source).not.toMatch(/JSON\.stringify\(eventoPayload\)/);
     expect(source).not.toMatch(/JSON\.stringify\(payload\.infNFe\.dest\)/);
   });
+
+  it('preserves custom OS item names when loading items for NF-e emission', () => {
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/SELECT oi\.\*, p\.nome AS produto_nome/);
+    expect(source).not.toMatch(/SELECT oi\.\*, p\.nome,/);
+  });
 });
 
 describe('ordens route input contracts', () => {

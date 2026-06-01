@@ -5,6 +5,9 @@ const {
   normalizarStatusProposta,
   validarStatusProposta,
   podeGerarOS,
+  normalizarItensProposta,
+  calcularTotalItensProposta,
+  validarDadosProposta,
 } = await import('../domain/propostasRules.js');
 
 describe('propostasRules', () => {
@@ -39,5 +42,61 @@ describe('propostasRules', () => {
       ok: false,
       error: 'Esta proposta ja gerou uma OS.',
     });
+  });
+
+  it('normalizes arbitrary custom proposal items and calculates total on the backend', () => {
+    const itens = normalizarItensProposta([
+      { nome: 'Moldura personalizada', quantidade: '2', preco_unitario: '75.50' },
+      { name: 'Acabamento especial', qty: '1.5', valor: '20' },
+    ]);
+
+    expect(itens).toEqual([
+      {
+        produto_id: null,
+        nome: 'Moldura personalizada',
+        quantidade: 2,
+        preco_unitario: 75.5,
+        avulso: 1,
+      },
+      {
+        produto_id: null,
+        nome: 'Acabamento especial',
+        quantidade: 1.5,
+        preco_unitario: 20,
+        avulso: 1,
+      },
+    ]);
+    expect(calcularTotalItensProposta(itens)).toBe(181);
+  });
+
+  it('rejects invalid proposal items instead of clamping quantity and price', () => {
+    expect(validarDadosProposta({
+      clientenome: 'Cliente',
+      produtos: [{ nome: 'Item', quantidade: 0, preco_unitario: 10 }],
+    })).toMatchObject({ ok: false, error: expect.stringContaining('Quantidade') });
+
+    expect(validarDadosProposta({
+      clientenome: 'Cliente',
+      produtos: [{ nome: 'Item', quantidade: 1, preco_unitario: Number.POSITIVE_INFINITY }],
+    })).toMatchObject({ ok: false, error: expect.stringContaining('preco') });
+
+    expect(validarDadosProposta({
+      clientenome: 'Cliente',
+      produtos: [{ nome: '   ', quantidade: 1, preco_unitario: 10 }],
+    })).toMatchObject({ ok: false, error: expect.stringContaining('nome') });
+  });
+
+  it('rejects materially different frontend totals and invalid delivery deadlines', () => {
+    expect(validarDadosProposta({
+      clientenome: 'Cliente',
+      prazoentrega: '2026/05/25',
+      produtos: [{ nome: 'Item', quantidade: 1, preco_unitario: 10 }],
+    })).toMatchObject({ ok: false, error: 'Prazo deve estar no formato YYYY-MM-DD.' });
+
+    expect(validarDadosProposta({
+      clientenome: 'Cliente',
+      valortotal: 99,
+      produtos: [{ nome: 'Item', quantidade: 1, preco_unitario: 10 }],
+    })).toMatchObject({ ok: false, error: expect.stringContaining('Total') });
   });
 });
