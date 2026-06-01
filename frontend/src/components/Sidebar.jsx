@@ -92,7 +92,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
       <Icon {...ICONS[iconKey]} />
       {!collapsed && <span className="nav-label">{label}</span>}
       {badge > 0 && (
-        <span style={{ position: 'absolute', top: 6, right: collapsed ? 4 : 8, minWidth: 18, height: 18, borderRadius: 9, background: 'var(--color-notification)', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>
+        <span className="sidebar-badge">
           {badge > 99 ? '99+' : badge}
         </span>
       )}
@@ -148,7 +148,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
               {navItem('/clientes', 'Clientes', 'clientes')}
               {navItem('/produtos', 'Produtos', 'produtos')}
               {isAdmin && navItem('/usuarios', 'Usuários', 'usuarios')}
-              {isAdmin && navItem('/configuracoes', 'Configuracoes', 'config')}
+              {isAdmin && navItem('/configuracoes', 'Configurações', 'config')}
             </>
           )}
         </nav>

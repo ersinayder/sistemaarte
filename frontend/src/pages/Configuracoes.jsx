@@ -291,7 +291,7 @@ export default function Configuracoes() {
   }, [])
 
   useEffect(() => {
-    document.title = 'Configuracoes - Arte & Molduras'
+    document.title = 'Configurações - Arte & Molduras'
     loadConfiguracoes()
   }, [loadConfiguracoes])
 
@@ -977,7 +977,7 @@ export default function Configuracoes() {
     <div className="page-content-wide">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Configuracoes</h1>
+          <h1 className="page-title">Configurações</h1>
           <p className="text-muted">Central administrativa do sistema.</p>
         </div>
         {loading && <span className="badge badge-secondary">Carregando</span>}

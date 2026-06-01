@@ -453,12 +453,12 @@ export default function Clientes() {
   };
 
   return (
-    <div style={{ height:'calc(100vh - 60px - var(--space-12))', display:'flex', flexDirection:'column', minHeight:0 }}>
+    <div className="erp-page" style={{ height:'calc(100vh - 60px - var(--space-12))', display:'flex', flexDirection:'column', minHeight:0 }}>
 
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'var(--space-4)', flexShrink:0 }}>
+      <div className="erp-page-header" style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:0, flexShrink:0 }}>
         <div>
-          <h1 style={{ fontSize:'var(--text-xl)', fontWeight:800, margin:0 }}>Clientes</h1>
-          <p style={{ margin:0, fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>{clientesMeta.total ?? clientes.length} cadastrado{(clientesMeta.total ?? clientes.length)!==1?'s':''}</p>
+          <h1 className="erp-page-title" style={{ fontSize:'var(--text-xl)', fontWeight:800, margin:0 }}>Clientes</h1>
+          <p className="erp-page-subtitle" style={{ margin:0, fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>{clientesMeta.total ?? clientes.length} cadastrado{(clientesMeta.total ?? clientes.length)!==1?'s':''}</p>
         </div>
         {canEdit && (
           <button className="btn btn-primary" onClick={openNew}>
@@ -468,8 +468,8 @@ export default function Clientes() {
         )}
       </div>
 
-      <div style={{ marginBottom:'var(--space-3)', flexShrink:0 }}>
-        <div style={{ position:'relative' }}>
+      <div className="erp-filter-bar" style={{ marginBottom:0, flexShrink:0 }}>
+        <div className="erp-search" style={{ position:'relative' }}>
           <svg style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:'var(--color-text-faint)' }} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
           <input
             ref={searchRef}
@@ -482,7 +482,7 @@ export default function Clientes() {
         </div>
       </div>
 
-      <div style={{ flex:1, overflow:'hidden', display:'flex', gap:'var(--space-4)', minHeight:0 }}>
+      <div style={{ flex:1, overflow:'hidden', display:'flex', gap:'var(--space-4)', minHeight:0, padding:'var(--space-4)' }}>
 
         <div className="card" style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column', minWidth:0 }}>
           {loading ? (
@@ -499,7 +499,38 @@ export default function Clientes() {
               </div>
             </div>
           ) : (
-            <div style={{ overflowY:'auto', flex:1 }}>
+            <>
+            <div className="mobile-list">
+              {sorted.map(c => (
+                <article
+                  key={c.id}
+                  className="mobile-record-card"
+                  onClick={() => setDetailId(prev => prev===c.id ? null : c.id)}
+                >
+                  <div className="mobile-record-top">
+                    <div style={{ minWidth:0 }}>
+                      <div className="mobile-record-title">{c.name}</div>
+                      {c.email && <div className="mobile-record-sub truncate">{c.email}</div>}
+                      <div className="mobile-record-sub">{c.phone || 'Sem telefone'}</div>
+                    </div>
+                    <div className="mobile-record-value">{fmt(c.gastototal)}</div>
+                  </div>
+                  <div className="mobile-record-row">
+                    <div className="mobile-record-meta">
+                      <span className="badge badge-primary">{c.totalordens ?? 0} OS</span>
+                      {(c.cpf || c.ie) && <span className="badge badge-secondary">{c.cpf ? documentoLabel(c.cpf) : 'IE'}</span>}
+                    </div>
+                    {canEdit && (
+                      <div className="mobile-record-actions" onClick={e => e.stopPropagation()}>
+                        <button className="btn btn-secondary btn-sm" onClick={() => openEdit(c)}>Editar</button>
+                        <button className="btn btn-ghost btn-sm inline-danger" onClick={() => setConfirmDel(c)}>Excluir</button>
+                      </div>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+            <div className="desktop-table-area mobile-cards-hidden" style={{ overflowY:'auto', flex:1 }}>
               <table className="table">
                 <thead>
                   <tr>
@@ -549,6 +580,7 @@ export default function Clientes() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
           {!loading && (clientesMeta.totalPages || 1) > 1 && (
             <div style={{ padding:'var(--space-2) var(--space-3)', borderTop:'1px solid var(--color-border)',
@@ -568,7 +600,7 @@ export default function Clientes() {
         </div>
 
         {detailId && (
-          <div className="card" style={{ width:340, overflow:'hidden', display:'flex', flexDirection:'column', flexShrink:0 }}>
+          <div className="card client-detail-panel" style={{ width:340, overflow:'hidden', display:'flex', flexDirection:'column', flexShrink:0 }}>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0, padding:'var(--space-3) var(--space-4) var(--space-2)' }}>
               <span style={{ fontWeight:700, fontSize:'var(--text-sm)' }}>Detalhes do Cliente</span>
               <button className="btn btn-ghost btn-xs" onClick={() => setDetailId(null)}>✕</button>

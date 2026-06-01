@@ -261,7 +261,7 @@ export default function Produtos() {
   const baixoEstoque = produtos.filter(p => p.estoquemin > 0 && p.estoque <= p.estoquemin).length
 
   return (
-    <div>
+    <div className="page-content-wide">
       <div className="page-header">
         <div>
           <h1 className="page-title">Produtos</h1>
@@ -279,7 +279,7 @@ export default function Produtos() {
         )}
       </div>
 
-      <div style={{ display:'flex', gap:'var(--space-3)', marginBottom:'var(--space-4)', flexWrap:'wrap' }}>
+      <div className="erp-filter-bar" style={{ display:'flex', gap:'var(--space-3)', marginBottom:'var(--space-4)', flexWrap:'wrap', border:'1px solid var(--color-border)', borderRadius:'var(--radius-lg)' }}>
         <input className="form-input" placeholder="Buscar nome, categoria..." value={search} onChange={e=>setSearch(e.target.value)} style={{flex:1,minWidth:200}}/>
         <select className="form-input" value={catFiltro} onChange={e=>setCatFiltro(e.target.value)} style={{width:'auto'}}>
           <option value="">Todas categorias</option>
@@ -298,7 +298,41 @@ export default function Produtos() {
             {(isAdmin||isCaixa) && <button className="btn btn-primary" onClick={()=>setModal({open:true,edit:null})}>Novo Produto</button>}
           </div>
         ) : (
-          <div className="table-wrap">
+          <>
+          <div className="mobile-list">
+            {filtered.map(p => {
+              const baixo = p.estoquemin > 0 && p.estoque <= p.estoquemin
+              return (
+                <article key={p.id} className="mobile-record-card">
+                  <div className="mobile-record-top">
+                    <div style={{ minWidth:0 }}>
+                      <div className="mobile-record-title">{p.nome}</div>
+                      {p.descricao && <div className="mobile-record-sub truncate" title={p.descricao}>{p.descricao}</div>}
+                      <div className="mobile-record-meta" style={{ marginTop:'var(--space-2)' }}>
+                        <span className={`badge badge-${CATBADGE[p.categoria]||'primary'}`}>{p.categoria}</span>
+                        {baixo && <span className="badge badge-warning">Estoque baixo</span>}
+                      </div>
+                    </div>
+                    <div className="mobile-record-value">{fmt(p.preco)}</div>
+                  </div>
+                  <div className="mobile-record-row">
+                    <div className="mobile-record-sub">Estoque: <strong>{p.estoque}</strong> {p.unidade || ''}</div>
+                    <div className="mobile-record-sub">NCM {p.ncm || '---'} · CFOP {p.cfop || '---'}</div>
+                  </div>
+                  {(isAdmin||isCaixa) && (
+                    <div className="mobile-record-footer">
+                      <div />
+                      <div className="mobile-record-actions">
+                        <button className="btn btn-secondary btn-sm" onClick={()=>setModal({open:true,edit:p})}>Editar</button>
+                        {isAdmin && <button className="btn btn-ghost btn-sm inline-danger" onClick={()=>{setDeleteId(p.id);setDeleteName(p.nome)}}>Excluir</button>}
+                      </div>
+                    </div>
+                  )}
+                </article>
+              )
+            })}
+          </div>
+          <div className="table-wrap desktop-table-area mobile-cards-hidden">
             <table>
               <thead>
                 <tr><th>Nome</th><th>Categoria</th><th>NCM</th><th>CFOP</th><th>Preço</th><th>Estoque</th><th></th></tr>
@@ -339,6 +373,7 @@ export default function Produtos() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
 

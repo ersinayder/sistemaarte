@@ -197,10 +197,10 @@ export default function Caixa() {
   );
 
   return (
-    <div style={{ display:'flex', flexDirection:'column', height:'100%', overflow:'hidden' }}>
+    <div className="erp-page">
 
       {/* Header */}
-      <div style={{ padding:'var(--space-3) var(--space-6)', borderBottom:'1px solid var(--color-border)',
+      <div className="erp-page-header" style={{ padding:'var(--space-3) var(--space-6)', borderBottom:'1px solid var(--color-border)',
         display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0,
         background:'var(--color-surface)' }}>
         <div>
@@ -209,7 +209,7 @@ export default function Caixa() {
             {lancamentosFiltrados.length} lançamentos
           </p>
         </div>
-        <div style={{ display:'flex', gap:'var(--space-2)', alignItems:'center' }}>
+        <div className="erp-page-actions" style={{ display:'flex', gap:'var(--space-2)', alignItems:'center' }}>
           <div style={{ display:'flex', background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)',
             border:'1px solid var(--color-border)', overflow:'hidden' }}>
             {[['dia','Dia'],['mes','Mês']].map(([v,l]) => (
@@ -261,7 +261,7 @@ export default function Caixa() {
       </div>
 
       {/* KPIs */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)',
+      <div className="erp-kpi-grid cols-3" style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)',
         gap:'var(--space-2)', padding:'var(--space-2) var(--space-6)',
         borderBottom:'1px solid var(--color-border)', flexShrink:0 }}>
         {[
@@ -269,7 +269,7 @@ export default function Caixa() {
           { label:'Saídas',   value:fmt(saida),   color:'var(--color-error)',   icon:'M12 2v20M17 12H6' },
           { label:'Saldo',    value:fmt(saldo),   color: saldo>=0 ? 'var(--color-primary)' : 'var(--color-error)', icon:'M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6' },
         ].map(k => (
-          <div key={k.label} style={{ background:'var(--color-surface)', border:'1px solid var(--color-border)',
+          <div key={k.label} className="erp-kpi-card" style={{ background:'var(--color-surface)', border:'1px solid var(--color-border)',
             borderRadius:'var(--radius-md)', padding:'var(--space-2) var(--space-3)',
             display:'flex', alignItems:'center', gap:'var(--space-2)' }}>
             <div style={{ width:28, height:28, borderRadius:'var(--radius-sm)',
@@ -288,10 +288,10 @@ export default function Caixa() {
       </div>
 
       {/* Filtros */}
-      <div style={{ padding:'var(--space-2) var(--space-6)', display:'flex', gap:'var(--space-2)',
+      <div className="erp-filter-bar" style={{ padding:'var(--space-2) var(--space-6)', display:'flex', gap:'var(--space-2)',
         alignItems:'center', borderBottom:'1px solid var(--color-border)', flexShrink:0,
         background:'var(--color-surface)' }}>
-        <div style={{ position:'relative', flex:1, minWidth:140 }}>
+        <div className="erp-search" style={{ position:'relative', flex:1, minWidth:140 }}>
           <svg style={{ position:'absolute', left:7, top:'50%', transform:'translateY(-50%)',
             color:'var(--color-text-faint)', pointerEvents:'none' }}
             width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -326,8 +326,49 @@ export default function Caixa() {
       </div>
 
       {/* Tabela */}
-      <div style={{ flex:1, overflow:'auto' }}>
-        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'var(--text-xs)' }}>
+      <div className="mobile-list">
+        {paginated.length === 0 ? (
+          <div className="empty-state" style={{ background:'var(--color-surface)', borderRadius:'var(--radius-lg)' }}>
+            <h3>Nenhum lançamento encontrado</h3>
+            <p>Ajuste os filtros ou registre um novo lançamento manual.</p>
+          </div>
+        ) : paginated.map(l => (
+          <article key={l.id} className="mobile-record-card">
+            <div className="mobile-record-top">
+              <div style={{ minWidth:0 }}>
+                <div className="mobile-record-code">
+                  {l.data ? new Date(normalizeDate(l.data)+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}) : 'Sem data'}
+                </div>
+                <div className="mobile-record-title">{l.descricao || l.categoria || 'Lançamento'}</div>
+                {l.itens_resumo && <div className="mobile-record-sub truncate" title={l.itens_resumo}>{l.itens_resumo}</div>}
+              </div>
+              <div className="mobile-record-value" style={{ color: l.tipo==='Entrada' ? 'var(--color-success)' : 'var(--color-error)' }}>
+                {l.tipo==='Entrada' ? '+' : '-'} {fmt(l.valor)}
+              </div>
+            </div>
+            <div className="mobile-record-row">
+              <div className="mobile-record-meta">
+                <span className={`badge ${l.tipo==='Entrada' ? 'badge-success' : 'badge-error'}`}>{l.tipo}</span>
+                {l.pagamento && <span className={`badge badge-${String(l.pagamento).toLowerCase()}`}>{l.pagamento}</span>}
+                {l.categoria && <span className="badge badge-secondary">{l.categoria}</span>}
+              </div>
+              <div className="mobile-record-sub">{l.ordemnumero || 'Manual'}</div>
+            </div>
+            {isAdmin && (
+              <div className="mobile-record-footer">
+                <div />
+                <div className="mobile-record-actions">
+                  <button className="btn btn-secondary btn-sm" onClick={()=>{ setEditItem(l); setShowModal(true); }}>Editar</button>
+                  <button className="btn btn-ghost btn-sm inline-danger" onClick={()=>handleDelete(l.id)}>Excluir</button>
+                </div>
+              </div>
+            )}
+          </article>
+        ))}
+      </div>
+
+      <div className="desktop-table-area mobile-cards-hidden" style={{ flex:1, overflow:'auto' }}>
+        <table className="data-table" style={{ width:'100%', borderCollapse:'collapse', fontSize:'var(--text-xs)' }}>
           <thead style={{ position:'sticky', top:0, zIndex:10, background:'var(--color-surface-offset)' }}>
             <tr style={{ borderBottom:'1px solid var(--color-border)' }}>
               {['Data','Tipo','Categoria','Pagamento','OS','Descrição','Valor',''].map((h,i) => (

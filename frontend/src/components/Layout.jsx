@@ -56,14 +56,7 @@ export default function Layout() {
 
           <div style={{ flex: 1 }} />
 
-          <span style={{
-            fontSize: 'var(--text-xs)', fontWeight: 600,
-            color: ROLE_COLOR[user?.role],
-            padding: 'var(--space-1) var(--space-3)',
-            background: 'var(--color-surface-dynamic)',
-            borderRadius: 'var(--radius-full)',
-            whiteSpace: 'nowrap',
-          }}>
+          <span className="topbar-role-pill" style={{ color: ROLE_COLOR[user?.role] }}>
             {ROLE_LABEL[user?.role]}
             <span className="topbar-username"> · {user?.name}</span>
           </span>

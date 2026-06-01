@@ -50,7 +50,7 @@ function PropostaModal({ proposta, onClose, onMove, onGerarOS, onOpenPdf, onOpen
         </div>
 
         <div className="modal-body" style={{ display: 'grid', gap: 'var(--space-4)' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-3)' }}>
+          <div className="proposal-detail-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-3)' }}>
             <div>
               <div style={{ fontSize: 10, color: 'var(--color-text-faint)', textTransform: 'uppercase', fontWeight: 800 }}>Status</div>
               <StatusBadge status={proposta.status} />
@@ -78,9 +78,9 @@ function PropostaModal({ proposta, onClose, onMove, onGerarOS, onOpenPdf, onOpen
 
           <div>
             <div style={{ fontSize: 10, color: 'var(--color-text-faint)', textTransform: 'uppercase', fontWeight: 800, marginBottom: 6 }}>Itens</div>
-            <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+            <div className="proposal-items-list" style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
               {(proposta.itens || []).map((item) => (
-                <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '1fr 72px 108px', gap: 10, padding: '10px 12px', borderBottom: '1px solid var(--color-divider)', alignItems: 'start' }}>
+                <div className="proposal-item-row" key={item.id} style={{ display: 'grid', gridTemplateColumns: '1fr 72px 108px', gap: 10, padding: '10px 12px', borderBottom: '1px solid var(--color-divider)', alignItems: 'start' }}>
                   <span style={{ whiteSpace: 'pre-wrap', lineHeight: 1.35 }}>{item.nome}</span>
                   <span style={{ textAlign: 'right', color: 'var(--color-text-muted)' }}>{Number(item.quantidade || 1).toLocaleString('pt-BR')}</span>
                   <strong style={{ textAlign: 'right' }}>{fmt(Number(item.quantidade || 1) * Number(item.preco_unitario || 0))}</strong>
@@ -238,8 +238,8 @@ export default function Propostas() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      <div style={{
+    <div className="erp-page" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      <div className="erp-page-header" style={{
         padding: '6px var(--space-4)',
         borderBottom: '1px solid var(--color-divider)',
         display: 'flex',
@@ -256,7 +256,7 @@ export default function Propostas() {
             {totais.quantidade} em funil - {fmt(totais.valor)} - {totais.aprovadas} aprovadas
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'nowrap' }}>
+        <div className="erp-page-actions proposal-header-actions" style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
           <input
             className="form-input"
             value={q}
@@ -284,7 +284,7 @@ export default function Propostas() {
       {loading ? (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, color: 'var(--color-text-muted)' }}>Carregando...</div>
       ) : (
-        <div style={{ display: 'flex', gap: 'var(--space-4)', padding: 'var(--space-4)', overflow: 'auto', flex: 1, alignItems: 'stretch' }}>
+        <div className="kanban-board-scroll" style={{ display: 'flex', gap: 'var(--space-4)', padding: 'var(--space-4)', overflow: 'auto', flex: 1, alignItems: 'stretch' }}>
           {STATUS.map((col) => {
             const cards = porStatus(col.id);
             const isOver = dragOverCol === col.id;

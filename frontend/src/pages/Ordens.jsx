@@ -589,10 +589,10 @@ export default function Ordens() {
   );
 
   return (
-    <div style={{ display:'flex', flexDirection:'column', height:'100%', overflow:'hidden' }}>
+    <div className="erp-page">
 
       {/* Header */}
-      <div style={{ padding:'var(--space-3) var(--space-6)', borderBottom:'1px solid var(--color-border)',
+      <div className="erp-page-header" style={{ padding:'var(--space-3) var(--space-6)', borderBottom:'1px solid var(--color-border)',
         display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0,
         background:'var(--color-surface)' }}>
         <div>
@@ -601,7 +601,7 @@ export default function Ordens() {
             {totalOrdens} ativas de {ordens.length} total
           </p>
         </div>
-        <div style={{ display:'flex', gap:'var(--space-2)' }}>
+        <div className="erp-page-actions" style={{ display:'flex', gap:'var(--space-2)' }}>
           {canEdit && (
             <button className="btn btn-secondary" style={{ fontSize:'var(--text-xs)', display:'flex', alignItems:'center', gap:'var(--space-2)' }}
               onClick={() => navigate('/ordens/lixeira')}>
@@ -624,14 +624,14 @@ export default function Ordens() {
       </div>
 
       {/* KPIs */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)',
+      <div className="erp-kpi-grid cols-2" style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)',
         gap:'var(--space-2)', padding:'var(--space-2) var(--space-6)',
         borderBottom:'1px solid var(--color-border)', flexShrink:0 }}>
         {[
           { label:'Total filtrado', value:totalOrdens, icon:'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2', color:'var(--color-primary)' },
           { label:'Em Aberto na página', value:totalAberto, icon:'M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0z', color:'var(--color-warning)' },
         ].map(k => (
-          <div key={k.label} style={{ background:'var(--color-surface)', border:'1px solid var(--color-border)',
+          <div key={k.label} className="erp-kpi-card" style={{ background:'var(--color-surface)', border:'1px solid var(--color-border)',
             borderRadius:'var(--radius-md)', padding:'var(--space-2) var(--space-3)',
             display:'flex', alignItems:'center', gap:'var(--space-2)' }}>
             <div style={{ width:28, height:28, borderRadius:'var(--radius-sm)',
@@ -650,10 +650,10 @@ export default function Ordens() {
       </div>
 
       {/* Filtros */}
-      <div style={{ padding:'var(--space-2) var(--space-6)', display:'flex', gap:'var(--space-2)',
+      <div className="erp-filter-bar" style={{ padding:'var(--space-2) var(--space-6)', display:'flex', gap:'var(--space-2)',
         alignItems:'center', borderBottom:'1px solid var(--color-border)', flexShrink:0,
         background:'var(--color-surface)' }}>
-        <div style={{ position:'relative', flex:1, minWidth:160 }}>
+        <div className="erp-search" style={{ position:'relative', flex:1, minWidth:160 }}>
           <svg style={{ position:'absolute', left:8, top:'50%', transform:'translateY(-50%)', color:'var(--color-text-faint)', pointerEvents:'none' }}
             width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
@@ -674,8 +674,58 @@ export default function Ordens() {
       </div>
 
       {/* Tabela */}
-      <div style={{ flex:1, overflow:'auto' }}>
-        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'var(--text-xs)' }}>
+      <div className="mobile-list">
+        {paginated.length === 0 ? (
+          <div className="empty-state" style={{ background:'var(--color-surface)', borderRadius:'var(--radius-lg)' }}>
+            <h3>Nenhuma ordem encontrada</h3>
+            <p>Ajuste os filtros ou cadastre uma nova OS.</p>
+          </div>
+        ) : paginated.map(o => {
+          const vencida = o.prazoentrega && o.prazoentrega < today && !['Pronto', 'Entregue', 'Cancelado'].includes(o.status);
+          const saldo = Number(o.saldoaberto ?? 0);
+          const quitado = saldo <= 0.009;
+          const resumo = o.itens_resumo?.trim() || o.observacoes?.trim() || '';
+          return (
+            <article key={o.id} className="mobile-record-card" onClick={() => navigate(`/ordens/${o.id}`)}>
+              <div className="mobile-record-top">
+                <div style={{ minWidth:0 }}>
+                  <div className="mobile-record-code">{o.numero}</div>
+                  <div className="mobile-record-title">{o.clientenome}</div>
+                  {resumo && <div className="mobile-record-sub truncate" title={resumo}>{resumo}</div>}
+                </div>
+                <div className="mobile-record-value">
+                  <div>{fmt(o.valortotal || o.valor)}</div>
+                  <span style={{ fontSize:10, color: quitado ? 'var(--color-success)' : 'var(--color-warning)', fontWeight:800 }}>
+                    {quitado ? 'QUITADO' : fmt(saldo)}
+                  </span>
+                </div>
+              </div>
+              <div className="mobile-record-row">
+                <div className="mobile-record-meta">
+                  <span className={`badge badge-${tipoBadge(o.servico)}`}>{o.servico}</span>
+                  <span className={`badge badge-${statusColor(o.status)}`}>{o.status}</span>
+                  {o.prioridade === 'Urgente' && <span className="badge badge-error">Urgente</span>}
+                </div>
+                <div className="mobile-record-sub" style={{ color: vencida ? 'var(--color-error)' : 'var(--color-text-muted)', fontWeight: vencida ? 800 : 600 }}>
+                  Prazo {fmtD(o.prazoentrega)}
+                </div>
+              </div>
+              {canEdit && (
+                <div className="mobile-record-footer" onClick={e => e.stopPropagation()}>
+                  <div />
+                  <div className="mobile-record-actions">
+                    <button className="btn btn-secondary btn-sm" onClick={e=>{e.stopPropagation();openEdit(o.id);}}>Editar</button>
+                    <button className="btn btn-ghost btn-sm inline-danger" onClick={e=>handleDelete(o.id,e)}>Remover</button>
+                  </div>
+                </div>
+              )}
+            </article>
+          );
+        })}
+      </div>
+
+      <div className="desktop-table-area mobile-cards-hidden" style={{ flex:1, overflow:'auto' }}>
+        <table className="data-table" style={{ width:'100%', borderCollapse:'collapse', fontSize:'var(--text-xs)' }}>
           <thead style={{ position:'sticky', top:0, zIndex:10, background:'var(--color-surface-offset)' }}>
             <tr style={{ borderBottom:'1px solid var(--color-border)' }}>
               {['Nº','Cliente','Tipo','Descrição / Obs.','Prazo','Status','Valor','Restante',''].map((h,i) => (
