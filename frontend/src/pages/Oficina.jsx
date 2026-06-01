@@ -4,7 +4,7 @@ import { toast } from 'react-hot-toast';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { openWhatsappConversation } from '../utils/whatsappOficina';
-import { filtrarOrdensOficina, ordenarOrdensOficina } from '../utils/oficinaBoard';
+import { atualizarStatusOrdemOficina, filtrarOrdensOficina, ordenarOrdensOficina } from '../utils/oficinaBoard';
 
 const COLUNAS = [
   { status: 'Aguardando',  label: 'Aguardando',  slug: 'aguardando', color:'var(--status-aguardando,#9AA4B2)' },
@@ -43,6 +43,11 @@ const fmtD = d => {
 const hojeLocal = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+};
+
+const agoraLocal = () => {
+  const d = new Date();
+  return `${hojeLocal()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
 };
 
 /* Botão de avançar status com hover rico via estado React */
@@ -102,13 +107,13 @@ export default function Oficina() {
   const [whatsappMenu, setWhatsappMenu] = useState(null);
   const [openingAviso, setOpeningAviso] = useState(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async ({ showLoading = true } = {}) => {
+    if (showLoading) setLoading(true);
     try {
       const { data } = await api.get('/ordens');
       setOrdens(ordenarOrdensOficina(filtrarOrdensOficina(data, today)));
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   }, [today]);
 
@@ -207,13 +212,16 @@ export default function Oficina() {
   const avancarStatus = useCallback(async (ordem) => {
     const novoStatus = STATUSNEXT[ordem.status];
     if (!novoStatus) return;
+    const snapshot = ordens;
+    setOrdens(current => atualizarStatusOrdemOficina(current, ordem.id, novoStatus, agoraLocal(), today));
     try {
       await api.patch(`/ordens/${ordem.id}/status`, { status: novoStatus });
-      load();
+      await load({ showLoading: false });
     } catch(e) {
+      setOrdens(snapshot);
       alert(e?.response?.data?.error || 'Erro ao avançar status');
     }
-  }, [load]);
+  }, [load, ordens, today]);
 
   const onDragStart = useCallback((e, id) => {
     setDraggingId(id);
@@ -257,13 +265,16 @@ export default function Oficina() {
     if (!id) return;
     const ordem = ordens.find(o => String(o.id) === String(id));
     if (!ordem || ordem.status === novoStatus) return;
+    const snapshot = ordens;
+    setOrdens(current => atualizarStatusOrdemOficina(current, ordem.id, novoStatus, agoraLocal(), today));
     try {
       await api.patch(`/ordens/${ordem.id}/status`, { status: novoStatus });
-      load();
+      await load({ showLoading: false });
     } catch(e) {
+      setOrdens(snapshot);
       alert(e?.response?.data?.error || 'Erro ao mover');
     }
-  }, [ordens, load]);
+  }, [ordens, load, today]);
 
   const porStatus = useCallback((col) => {
     return ordens.filter(o => {
