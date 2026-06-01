@@ -96,6 +96,7 @@ function renderPrintDocument({
   documentClass = '',
   compact = false,
   extraStyles = '',
+  autoPrint = false,
 } = {}) {
   const logo = logoDataUri();
   const generatedAt = fmtDateTime();
@@ -165,6 +166,7 @@ function renderPrintDocument({
     ${body}
     <footer class="doc-footer">${footer || `Gerado em ${generatedAt}`}</footer>
   </main>
+  ${autoPrint ? '<script>window.addEventListener("load",function(){window.setTimeout(function(){window.print();},150);});</script>' : ''}
 </body>
 </html>`;
 }
