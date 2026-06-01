@@ -24,13 +24,27 @@ export function buildPropostaWhatsappUrl(proposta = {}) {
   const cliente = proposta.clientenome || 'cliente';
   const total = fmt(proposta.valortotal);
   const prazo = fmtDate(proposta.prazoentrega);
+  const descricao = proposta.descricao ? String(proposta.descricao).trim() : '';
+  const itens = Array.isArray(proposta.itens) ? proposta.itens : [];
 
   const lines = [
     `Ola, ${cliente}!`,
     '',
     `Segue a Proposta ${numero} da Arte e Molduras.`,
-    `Total: ${total}`,
   ];
+
+  if (descricao) lines.push(`Resumo: ${descricao}`);
+
+  if (itens.length) {
+    lines.push('', 'Itens principais:');
+    itens.slice(0, 5).forEach(item => {
+      const qtd = Number(item.quantidade || 1).toLocaleString('pt-BR');
+      lines.push(`- ${qtd}x ${item.nome}`);
+    });
+    if (itens.length > 5) lines.push(`- mais ${itens.length - 5} item(ns) no PDF`);
+  }
+
+  lines.push(`Total: ${total}`);
 
   if (prazo) lines.push(`Prazo previsto: ${prazo}`);
 

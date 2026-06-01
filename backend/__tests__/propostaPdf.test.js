@@ -17,6 +17,7 @@ describe('propostaPdf', () => {
       itens: [
         { nome: 'Moldura preta', quantidade: 2, preco_unitario: 100 },
         { nome: 'Vidro antirreflexo', quantidade: 1, preco_unitario: 50.5 },
+        { nome: 'Linha avulsa personalizada', quantidade: 1, preco_unitario: 0 },
       ],
     });
 
@@ -31,8 +32,10 @@ describe('propostaPdf', () => {
     expect(html).not.toContain('Origem');
     expect(html).not.toContain('Balcao');
     expect(html).toContain('Cliente Teste');
+    expect(html).toContain('25/05/2026');
     expect(html).toContain('Moldura preta');
     expect(html).toContain('Vidro antirreflexo');
+    expect(html).toContain('Linha avulsa personalizada');
     expect(html).toContain('R$&nbsp;250,50');
     expect(html).toContain('Imprimir / salvar PDF');
     expect(html).toContain('window.print();');
