@@ -35,6 +35,7 @@ describe('propostaPdf', () => {
     expect(html).toContain('Vidro antirreflexo');
     expect(html).toContain('R$&nbsp;250,50');
     expect(html).toContain('Imprimir / salvar PDF');
+    expect(html).toContain('window.print();');
     expect(html).toContain('.no-print { display: none !important; }');
   });
 
@@ -49,7 +50,7 @@ describe('propostaPdf', () => {
       itens: [{ nome: '<b>Item</b>', quantidade: 1, preco_unitario: 10 }],
     });
 
-    expect(html).not.toContain('<script>');
+    expect(html).not.toContain('<script>alert(1)</script>');
     expect(html).not.toContain('<b>Item</b>');
     expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
     expect(html).toContain('&lt;b&gt;Item&lt;/b&gt;');

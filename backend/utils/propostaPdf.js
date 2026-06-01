@@ -67,6 +67,7 @@ function renderPropostaHtml({ proposta, itens = [] }) {
     subtitle: numero,
     body,
     footer: '<strong>Arte e Molduras</strong> | Proposta valida por 7 dias. A producao inicia apos aprovacao e abertura da Ordem de Servico.',
+    autoPrint: true,
   });
 }
 

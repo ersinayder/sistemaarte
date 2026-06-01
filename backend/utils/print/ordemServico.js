@@ -210,6 +210,7 @@ function renderOrdemServicoHtml({ ordem = {}, itens = [], resumo = {} } = {}) {
     footer: `${esc(ordem.numero || 'OS')} | Documento para conferencia e assinatura`,
     documentClass: 'ordem-servico-print',
     extraStyles: ORDEM_SERVICO_A5_STYLES,
+    autoPrint: true,
   });
 }
 

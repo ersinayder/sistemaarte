@@ -20,6 +20,18 @@ describe('print base', () => {
     expect(html).toContain('.no-print { display: none !important; }');
     expect(html).toContain('Fechamento &lt;script&gt;');
     expect(html).not.toContain('<h1>Fechamento <script></h1>');
+    expect(html).not.toContain('window.addEventListener("load"');
+  });
+
+  it('can auto-open the browser print dialog when requested', () => {
+    const html = print.renderPrintDocument({
+      title: 'OS',
+      body: '<section>Conteudo</section>',
+      autoPrint: true,
+    });
+
+    expect(html).toContain('window.addEventListener("load"');
+    expect(html).toContain('window.print();');
   });
 
   it('formats money and dates for Brazilian print documents', () => {

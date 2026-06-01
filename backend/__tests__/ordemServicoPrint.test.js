@@ -39,6 +39,7 @@ describe('ordemServico print', () => {
     expect(html).toContain('R$&nbsp;200,00');
     expect(html).toContain('R$&nbsp;150,00');
     expect(html).toContain('Assinatura do Cliente');
+    expect(html).toContain('window.print();');
     expect(html).toContain('Ao aprovar esta Ordem de Serviço');
     expect(html).toContain('serviço/produto é personalizado');
     expect(html).toContain('início da produção');
@@ -57,7 +58,7 @@ describe('ordemServico print', () => {
       resumo: { total: 10, recebido: 0, saldo: 10 },
     });
 
-    expect(html).not.toContain('<script>');
+    expect(html).not.toContain('<script>alert(1)</script>');
     expect(html).not.toContain('<b>Item</b>');
     expect(html).toContain('OS-&lt;1&gt;');
     expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
