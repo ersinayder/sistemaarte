@@ -74,3 +74,16 @@ export function ordenarOrdensOficina(ordens) {
     return compareMovimento(a, b);
   });
 }
+
+export function atualizarStatusOrdemOficina(ordens, ordemId, novoStatus, statusalteradoem, today) {
+  const atualizadas = (ordens || []).map((ordem) => {
+    if (String(ordem.id) !== String(ordemId)) return ordem;
+    return {
+      ...ordem,
+      status: novoStatus,
+      statusalteradoem,
+      updatedat: statusalteradoem,
+    };
+  });
+  return ordenarOrdensOficina(filtrarOrdensOficina(atualizadas, today));
+}
