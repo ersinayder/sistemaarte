@@ -10,7 +10,7 @@ describe('propostaPdf', () => {
         clientenome: 'Cliente Teste',
         status: 'Orcamento enviado',
         valortotal: 250.5,
-        prazoentrega: '2026-05-25',
+        prazoentrega: '10 dias uteis',
         observacoes: 'Entrega combinada no balcao',
         createdat: '2026-05-19 10:30:00',
       },
@@ -32,7 +32,7 @@ describe('propostaPdf', () => {
     expect(html).not.toContain('Origem');
     expect(html).not.toContain('Balcao');
     expect(html).toContain('Cliente Teste');
-    expect(html).toContain('25/05/2026');
+    expect(html).toContain('10 dias uteis');
     expect(html).toContain('Moldura preta');
     expect(html).toContain('Vidro antirreflexo');
     expect(html).toContain('Linha avulsa personalizada');

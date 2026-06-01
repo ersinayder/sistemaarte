@@ -19,6 +19,7 @@ const fmtDate = (d) => {
   if (Number.isNaN(date.getTime())) return '';
   return date.toLocaleDateString('pt-BR');
 };
+const fmtPrazo = (value) => fmtDate(value) || String(value || '').trim();
 
 function StatusBadge({ status }) {
   const item = STATUS.find((s) => s.id === status) || STATUS[0];
@@ -64,7 +65,7 @@ function PropostaModal({ proposta, onClose, onMove, onGerarOS, onOpenPdf, onOpen
             </div>
             <div>
               <div style={{ fontSize: 10, color: 'var(--color-text-faint)', textTransform: 'uppercase', fontWeight: 800 }}>Prazo</div>
-              <div>{fmtDate(proposta.prazoentrega) || 'A definir'}</div>
+              <div>{fmtPrazo(proposta.prazoentrega) || 'A definir'}</div>
             </div>
           </div>
 
@@ -263,6 +264,13 @@ export default function Propostas() {
             placeholder="Buscar proposta ou cliente"
             style={{ width: 260, height: 28, fontSize: 11, padding: '0 var(--space-2)' }}
           />
+          <button
+            className="btn btn-secondary"
+            onClick={() => navigate('/orcamento/calculadora')}
+            style={{ height: 28, fontSize: 11, padding: '0 10px', whiteSpace: 'nowrap' }}
+          >
+            Calculadora
+          </button>
           <button
             className="btn btn-primary"
             onClick={() => navigate('/orcamento')}

@@ -10,8 +10,6 @@ const MAX_ITENS_PROPOSTA = 100;
 const MAX_NOME_ITEM_PROPOSTA = 200;
 const TOLERANCIA_TOTAL_PROPOSTA = 0.01;
 
-const { validarPrazo } = require('./ordensRules');
-
 const ALIASES_STATUS_PROPOSTA = {
   'orçamento enviado': 'Orcamento enviado',
   'orcamento enviado': 'Orcamento enviado',
@@ -109,6 +107,12 @@ function calcularTotalItensProposta(produtos = []) {
     .reduce((acc, p) => acc + p.quantidade * p.preco_unitario, 0));
 }
 
+function normalizarPrazoProposta(prazo) {
+  const value = String(prazo || '').trim();
+  if (!value) return null;
+  return value.slice(0, 120);
+}
+
 function validarDadosProposta(body = {}) {
   const clientenome = String(body.clientenome || '').trim();
   if (!clientenome) return { ok: false, error: 'Cliente obrigatorio' };
@@ -116,9 +120,6 @@ function validarDadosProposta(body = {}) {
   const status = normalizarStatusProposta(body.status || 'Novo lead');
   const erroStatus = validarStatusProposta(status);
   if (erroStatus) return { ok: false, error: erroStatus };
-
-  const erroPrazo = validarPrazo(body.prazoentrega || null);
-  if (erroPrazo) return { ok: false, error: erroPrazo };
 
   const itensResult = validarItensProposta(body.produtos);
   if (!itensResult.ok) return itensResult;
@@ -136,7 +137,7 @@ function validarDadosProposta(body = {}) {
     ok: true,
     clientenome,
     status,
-    prazoentrega: body.prazoentrega || null,
+    prazoentrega: normalizarPrazoProposta(body.prazoentrega),
     itens: itensResult.itens,
     valortotal,
   };
@@ -150,6 +151,7 @@ module.exports = {
   validarStatusProposta,
   podeGerarOS,
   normalizarItensProposta,
+  normalizarPrazoProposta,
   calcularTotalItensProposta,
   validarDadosProposta,
 };

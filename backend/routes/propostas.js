@@ -53,6 +53,21 @@ function itensProposta(id) {
   return getAll("SELECT * FROM proposta_itens WHERE propostaid=? ORDER BY id ASC", [id]);
 }
 
+function prazoOSFromProposta(prazo) {
+  const value = String(prazo || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const br = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (br) return `${br[3]}-${br[2]}-${br[1]}`;
+  return null;
+}
+
+function observacoesOSFromProposta(proposta) {
+  const obs = String(proposta.observacoes || "").trim();
+  const prazo = String(proposta.prazoentrega || "").trim();
+  if (!prazo || prazoOSFromProposta(prazo)) return obs || null;
+  return [obs, `Prazo previsto na proposta: ${prazo}`].filter(Boolean).join("\n\n");
+}
+
 router.get("/", auth(["admin", "caixa"]), (req, res, next) => {
   try {
     const { status, q } = req.query;
@@ -185,10 +200,10 @@ router.post("/:id/gerar-os", auth(["admin", "caixa"]), (req, res, next) => {
           proposta.descricao || "Proposta aprovada",
           proposta.valortotal,
           0,
-          proposta.prazoentrega || null,
+          prazoOSFromProposta(proposta.prazoentrega),
           "Normal",
           "Pix",
-          proposta.observacoes || null,
+          observacoesOSFromProposta(proposta),
           "Aguardando",
           req.user.id,
         ]

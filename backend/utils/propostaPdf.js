@@ -14,6 +14,12 @@ function numeroPropostaPrint(numero) {
   return String(numero || '').replace(/^PROP-/i, '');
 }
 
+function fmtPrazoProposta(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? fmtDate(raw) : esc(raw);
+}
+
 function renderPropostaHtml({ proposta, itens = [] }) {
   const numero = numeroPropostaPrint(proposta.numero);
   const rows = itens.map((item, idx) => ({
@@ -28,7 +34,7 @@ function renderPropostaHtml({ proposta, itens = [] }) {
         <div class="field"><span class="label">Numero</span><span class="value">${esc(numero)}</span></div>
         <div class="field"><span class="label">Cliente</span><span class="value">${esc(proposta.clientenome)}</span></div>
         <div class="field"><span class="label">Data</span><span class="value">${fmtDate(proposta.createdat)}</span></div>
-        <div class="field"><span class="label">Prazo previsto</span><span class="value">${fmtDate(proposta.prazoentrega)}</span></div>
+        <div class="field"><span class="label">Prazo previsto</span><span class="value">${fmtPrazoProposta(proposta.prazoentrega)}</span></div>
       </div>
     </section>
 
