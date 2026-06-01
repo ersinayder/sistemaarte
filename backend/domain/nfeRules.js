@@ -113,49 +113,93 @@ function montarImpostoSimples(item) {
   };
 }
 
-function montarItem(item) {
+function roundMoney(value) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+function montarItem(item, desconto = 0) {
   const qtd   = Number(item.quantidade)     || 1;
   const vUnit = Number(item.preco_unitario) || 0;
   const vProd = (qtd * vUnit).toFixed(2);
   const ncm   = (item.ncm  || '49119900').replace(/\D/g, '').padStart(8, '0');
   const cfop  = (item.cfop || '5102').replace(/\D/g, '');
+  const vDesc = Math.min(roundMoney(desconto), Number(vProd));
+
+  const prod = {
+    cProd:    String(item.produto_id || item.id || '000'),
+    cEAN:     'SEM GTIN',
+    xProd:    (item.nome || 'PRODUTO').substring(0, 120).toUpperCase(),
+    NCM:      ncm,
+    CFOP:     cfop,
+    uCom:     (item.unidade || 'UN').toUpperCase(),
+    qCom:     qtd.toFixed(4),
+    vUnCom:   vUnit.toFixed(10),
+    vProd,
+    cEANTrib: 'SEM GTIN',
+    uTrib:    (item.unidade || 'UN').toUpperCase(),
+    qTrib:    qtd.toFixed(4),
+    vUnTrib:  vUnit.toFixed(10),
+    indTot:   '1',
+  };
+
+  if (vDesc > 0) prod.vDesc = vDesc.toFixed(2);
 
   return {
-    prod: {
-      cProd:    String(item.produto_id || item.id || '000'),
-      cEAN:     'SEM GTIN',
-      xProd:    (item.nome || 'PRODUTO').substring(0, 120).toUpperCase(),
-      NCM:      ncm,
-      CFOP:     cfop,
-      uCom:     (item.unidade || 'UN').toUpperCase(),
-      qCom:     qtd.toFixed(4),
-      vUnCom:   vUnit.toFixed(10),
-      vProd,
-      cEANTrib: 'SEM GTIN',
-      uTrib:    (item.unidade || 'UN').toUpperCase(),
-      qTrib:    qtd.toFixed(4),
-      vUnTrib:  vUnit.toFixed(10),
-      indTot:   '1',
-    },
+    prod,
     imposto: montarImpostoSimples(item),
   };
 }
 
-function calcularTotais(itens) {
-  const vProd = itens.reduce((acc, item) =>
-    acc + (Number(item.quantidade) || 1) * (Number(item.preco_unitario) || 0), 0);
+function valorProdutoItem(item) {
+  return (Number(item.quantidade) || 1) * (Number(item.preco_unitario) || 0);
+}
+
+function distribuirDesconto(itens, descontoTotal) {
+  const totalProdutos = roundMoney(itens.reduce((acc, item) => acc + valorProdutoItem(item), 0));
+  const desconto = Math.min(Math.max(0, roundMoney(descontoTotal)), totalProdutos);
+  if (desconto <= 0 || totalProdutos <= 0) return itens.map(() => 0);
+
+  let distribuido = 0;
+  return itens.map((item, index) => {
+    const vProd = roundMoney(valorProdutoItem(item));
+    if (index === itens.length - 1) {
+      return Math.min(vProd, roundMoney(desconto - distribuido));
+    }
+    const descontoItem = Math.min(vProd, roundMoney(desconto * (vProd / totalProdutos)));
+    distribuido = roundMoney(distribuido + descontoItem);
+    return descontoItem;
+  });
+}
+
+function descontoDaOrdem(ordem, itens) {
+  const informado = Number(ordem.descontovalor || 0);
+  if (informado > 0) return informado;
+
+  const totalProdutos = roundMoney(itens.reduce((acc, item) => acc + valorProdutoItem(item), 0));
+  const totalOS = roundMoney(Number(ordem.valortotal || 0));
+  return totalOS > 0 && totalOS < totalProdutos ? roundMoney(totalProdutos - totalOS) : 0;
+}
+
+function calcularTotais(itens, descontoTotal = 0) {
+  const vProd = itens.reduce((acc, item) => acc + valorProdutoItem(item), 0);
+  const desconto = Math.min(roundMoney(descontoTotal), roundMoney(vProd));
   const v = vProd.toFixed(2);
+  const d = desconto.toFixed(2);
+  const nf = roundMoney(vProd - desconto).toFixed(2);
   return {
-    ICMSTot: {
-      vBC: '0.00', vICMS: '0.00', vICMSDeson: '0.00',
-      vFCP: '0.00', vBCST: '0.00', vST: '0.00',
-      vFCPST: '0.00', vFCPSTRet: '0.00',
-      vProd: v, vFrete: '0.00', vSeg: '0.00',
-      vDesc: '0.00', vII: '0.00', vIPI: '0.00',
-      vIPIDevol: '0.00',
-      vPIS: '0.00', vCOFINS: '0.00', vOutro: '0.00',
-      vNF: v, vTotTrib: '0.00',
+    total: {
+      ICMSTot: {
+        vBC: '0.00', vICMS: '0.00', vICMSDeson: '0.00',
+        vFCP: '0.00', vBCST: '0.00', vST: '0.00',
+        vFCPST: '0.00', vFCPSTRet: '0.00',
+        vProd: v, vFrete: '0.00', vSeg: '0.00',
+        vDesc: d, vII: '0.00', vIPI: '0.00',
+        vIPIDevol: '0.00',
+        vPIS: '0.00', vCOFINS: '0.00', vOutro: '0.00',
+        vNF: nf, vTotTrib: '0.00',
+      },
     },
+    vNF: nf,
   };
 }
 
@@ -178,6 +222,8 @@ function resolverTpAmb(ambiente) {
 
 function montarNFe({ ordem, itens, cliente, emitente, numero, serie, ambiente, autXML }) {
   const tpAmb = resolverTpAmb(ambiente);
+  const descontosItens = distribuirDesconto(itens, descontoDaOrdem(ordem, itens));
+  const totais = calcularTotais(itens, descontosItens.reduce((acc, value) => acc + value, 0));
 
   // emit usa CNPJCPF — a lib valida e converte para a tag CNPJ ou CPF no XML
   const emit = {
@@ -213,13 +259,13 @@ function montarNFe({ ordem, itens, cliente, emitente, numero, serie, ambiente, a
     },
     emit,
     dest:   montarDest(cliente),
-    det:    itens.map((item) => montarItem(item)),
-    total:  calcularTotais(itens),
+    det:    itens.map((item, index) => montarItem(item, descontosItens[index])),
+    total:  totais.total,
     transp: { modFrete: '9' },
     pag: {
       detPag: [{
         tPag: mapTpPag(ordem.pagamento),
-        vPag: Number(ordem.valortotal || 0).toFixed(2),
+        vPag: totais.vNF,
       }],
     },
   };

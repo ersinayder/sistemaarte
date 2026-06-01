@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { aplicarDescontoOS } from '../utils/descontoOS';
 
 // ------- Componente de busca de produtos -------
 function ProdutoInput({ produtos, onAdd }) {
@@ -98,7 +99,7 @@ function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEd
   const [form, setForm] = useState({
     clienteid:'', clientenome:'', clientetelefone:'', clientecpf:'',
     servico:'Quadro', descricao:'',
-    valortotal:'', valorentrada:'', pagamento:'Pix',
+    valortotal:'', descontoinput:'', valorentrada:'', pagamento:'Pix',
     formapagamentoentrada:'', observacoes:'', prazoentrega:'', prioridade:'Normal',
     status:'Aguardando', produtos:[], dataEntrada: toDateInputValue(), dataRecebimento: toDateInputValue(),
   });
@@ -122,6 +123,7 @@ function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEd
         servico: o.servico || 'Quadro',
         descricao: o.descricao || '',
         valortotal: o.valortotal || '',
+        descontoinput: o.descontoinput || '',
         valorentrada: o.valorentrada || '',
         pagamento: o.pagamento || 'Pix',
         formapagamentoentrada: o.formapagamentoentrada || '',
@@ -184,11 +186,18 @@ function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEd
     e.preventDefault();
     setSaving(true);
     try {
+      const desconto = aplicarDescontoOS(form.valortotal, form.descontoinput);
+      if (isNew && !(desconto.totalLiquido > 0)) {
+        toast.error('Valor final da OS deve ser maior que zero.');
+        setSaving(false);
+        return;
+      }
       const payload = {
         ...form,
         descricao: '',
         observacoes: form.observacoes,
-        valortotal: Number(form.valortotal) || 0,
+        valortotal: isNew ? desconto.totalBruto : Number(form.valortotal) || 0,
+        descontoinput: isNew ? form.descontoinput : undefined,
         valorentrada: Number(form.valorentrada) || 0,
         prazoentrega: form.prazoentrega || null,
         clienteid: form.clienteid || null,
@@ -222,6 +231,7 @@ function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEd
   const produtosSugestoes = useMemo(() =>
     todosProdutos.filter(p => !(form.produtos||[]).find(fp => fp.produto_id && fp.produto_id === p.id))
   , [todosProdutos, form.produtos]);
+  const descontoOS = aplicarDescontoOS(form.valortotal, form.descontoinput);
 
   const overlayProps = {
     onMouseDown: e => { overlayDownRef.current = e.target === e.currentTarget; },
@@ -431,6 +441,13 @@ function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEd
                 <input className="form-input" type="number" step="0.01" value={form.valortotal}
                   onChange={e=>set('valortotal',e.target.value)} required min={0} />
               </div>
+              {isNew && (
+                <div>
+                  <label className="form-label">Desconto</label>
+                  <input className="form-input" value={form.descontoinput}
+                    onChange={e=>set('descontoinput',e.target.value)} placeholder="10% ou 10,00" />
+                </div>
+              )}
               <div>
                 <label className="form-label">Forma de Pagamento</label>
                 <select className="form-input" value={form.pagamento} onChange={e=>set('pagamento',e.target.value)}>
@@ -438,6 +455,11 @@ function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEd
                 </select>
               </div>
             </div>
+            {isNew && form.descontoinput && (
+              <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginTop:-6 }}>
+                Desconto: {fmt(descontoOS.desconto)} · Total final: <strong style={{ color:'var(--color-primary)' }}>{fmt(descontoOS.totalLiquido)}</strong>
+              </div>
+            )}
             {isNew && (
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'var(--space-3)' }}>
                 <div>
