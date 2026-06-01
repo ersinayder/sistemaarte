@@ -977,6 +977,9 @@ export default function Orcamento() {
           <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)', marginTop: 2 }}>Monte itens e calcule o preço final</div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button className="btn btn-secondary btn-sm" onClick={() => navigate('/orcamento')}>
+            Proposta formal
+          </button>
           {items.length > 0 && (
             <button className="btn btn-ghost btn-sm" onClick={() => setShowConfirm(true)}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>

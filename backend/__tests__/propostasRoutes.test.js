@@ -104,7 +104,20 @@ describe('propostas routes', () => {
     ]));
   });
 
-  it('rejects invalid proposal delivery deadlines before insert', async () => {
+  it('accepts flexible proposal deadlines as commercial text', async () => {
+    db.getOne
+      .mockReturnValueOnce({ ultimo: 9 })
+      .mockReturnValueOnce({
+        id: 123,
+        numero: 'PROP-0009',
+        clientenome: 'Cliente',
+        valortotal: 10,
+        prazoentrega: '25/05/2026',
+      });
+    db.getAll.mockReturnValueOnce([
+      { nome: 'Item', quantidade: 1, preco_unitario: 10, avulso: 1 },
+    ]);
+
     const handler = businessHandler('post', '/');
     const res = makeRes();
 
@@ -117,9 +130,8 @@ describe('propostas routes', () => {
       user: { id: 7, role: 'caixa' },
     }, res, vi.fn());
 
-    expect(res.status).toHaveBeenCalledWith(400);
-    expect(res.json).toHaveBeenCalledWith({ error: 'Prazo deve estar no formato YYYY-MM-DD.' });
-    expect(db.runInsert).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(201);
+    expect(db.runInsert.mock.calls[0][1]).toEqual(expect.arrayContaining(['25/05/2026']));
   });
 
   it('uses an atomic proposta update when generating OS to harden duplicate conversion', async () => {
@@ -131,7 +143,8 @@ describe('propostas routes', () => {
         clientenome: 'Cliente',
         status: 'Aprovado',
         valortotal: 90,
-        prazoentrega: '2026-06-03',
+        prazoentrega: '10 dias uteis',
+        observacoes: 'Produzir apos sinal',
         ordemid: null,
       })
       .mockReturnValueOnce({ ultimo: 44 })
@@ -152,6 +165,10 @@ describe('propostas routes', () => {
 
     if (next.mock.calls.length) throw next.mock.calls[0][0];
     expect(res.status).toHaveBeenCalledWith(201);
+    const ordemInsert = db.runInsert.mock.calls.find(([sql]) => sql.includes('INSERT INTO ordens'));
+    expect(ordemInsert[1][9]).toBeNull();
+    expect(ordemInsert[1][12]).toContain('Produzir apos sinal');
+    expect(ordemInsert[1][12]).toContain('Prazo previsto na proposta: 10 dias uteis');
     expect(db.run).toHaveBeenCalledWith(
       expect.stringMatching(/UPDATE propostas SET ordemid=\?, updatedat=datetime\('now','localtime'\) WHERE id=\? AND ordemid IS NULL/),
       [555, 12],

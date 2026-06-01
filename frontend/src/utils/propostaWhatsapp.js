@@ -8,6 +8,12 @@ function fmtDate(value) {
   return `${day}/${month}/${year}`;
 }
 
+function fmtPrazo(value) {
+  if (!value) return null;
+  const raw = String(value).trim();
+  return fmtDate(raw) || raw;
+}
+
 export function formatarTelefoneWhatsapp(tel) {
   if (!tel) return null;
   const digits = String(tel).replace(/\D/g, '');
@@ -23,7 +29,7 @@ export function buildPropostaWhatsappUrl(proposta = {}) {
   const numero = proposta.numero || `#${proposta.id || ''}`.trim();
   const cliente = proposta.clientenome || 'cliente';
   const total = fmt(proposta.valortotal);
-  const prazo = fmtDate(proposta.prazoentrega);
+  const prazo = fmtPrazo(proposta.prazoentrega);
   const descricao = proposta.descricao ? String(proposta.descricao).trim() : '';
   const itens = Array.isArray(proposta.itens) ? proposta.itens : [];
 

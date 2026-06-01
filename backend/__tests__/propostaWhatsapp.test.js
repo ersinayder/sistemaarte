@@ -36,4 +36,17 @@ describe('propostaWhatsapp frontend helper', () => {
   it('returns null when proposal has no client phone', () => {
     expect(buildPropostaWhatsappUrl({ numero: 'PROP-0008', clientenome: 'Sem Telefone' })).toBeNull();
   });
+
+  it('keeps textual production deadlines in WhatsApp messages', () => {
+    const url = buildPropostaWhatsappUrl({
+      numero: 'PROP-0009',
+      clientenome: 'Maria Silva',
+      clientetelefone: '(31) 99999-0000',
+      valortotal: 100,
+      prazoentrega: '10 dias uteis',
+    });
+
+    const text = decodeURIComponent(url.split('text=')[1]);
+    expect(text).toContain('Prazo previsto: 10 dias uteis');
+  });
 });

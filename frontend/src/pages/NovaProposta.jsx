@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
-import { CalendarDays, FileText, PackagePlus, Printer, Save, Search, Send, Trash2, UserRound } from 'lucide-react'
+import { Calculator, CalendarDays, ClipboardList, FileText, PackagePlus, Printer, Save, Search, Send, Trash2, UserRound } from 'lucide-react'
 import api from '../services/api'
 
 const moeda = value => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -239,18 +239,22 @@ function ProdutoPicker({ produtos, onAdd }) {
   )
 }
 
-function ItensPropostaEditor({ itens, onChange, produtos, onAdd }) {
+function ItensPropostaEditor({ itens, onChange, produtos, onAdd, total }) {
   const update = (index, field, value) => onChange(itens.map((item, i) => i === index ? { ...item, [field]: value } : item))
   const remove = index => onChange(itens.filter((_, i) => i !== index))
 
   return (
-    <section className="card card-pad" style={{ display: 'grid', gap: 'var(--space-3)', padding: 'var(--space-4)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+    <section className="card card-pad" style={{ display: 'grid', gap: 'var(--space-4)', padding: 'var(--space-4)', minWidth: 0 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', alignItems: 'start', gap: 14 }}>
         <div>
           <h2 style={{ margin: 0, fontSize: 'var(--text-base)' }}>Itens da proposta</h2>
           <p style={{ margin: '2px 0 0', color: 'var(--color-text-faint)', fontSize: 'var(--text-xs)' }}>Produtos cadastrados ou servicos personalizados.</p>
         </div>
-        <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)', fontWeight: 800 }}>{itens.length} item{itens.length === 1 ? '' : 's'}</span>
+        <div style={{ textAlign: 'right', minWidth: 156 }}>
+          <div style={{ fontSize: 10, color: 'var(--color-text-faint)', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Total</div>
+          <div style={{ fontSize: 24, fontWeight: 900, color: 'var(--color-primary)', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{moeda(total)}</div>
+          <div style={{ marginTop: 4, color: 'var(--color-text-muted)', fontSize: 11, fontWeight: 800 }}>{itens.length} item{itens.length === 1 ? '' : 's'}</div>
+        </div>
       </div>
 
       <ProdutoPicker produtos={produtos} onAdd={onAdd} />
@@ -268,8 +272,7 @@ function ItensPropostaEditor({ itens, onChange, produtos, onAdd }) {
             const subtotal = numero(item.quantidade || 1) * numero(item.preco_unitario)
             return (
               <div key={item.localId || index} style={{
-                display: 'grid', gridTemplateColumns: 'minmax(180px, 1fr) 86px 110px 118px 34px',
-                gap: 8, alignItems: 'start', padding: 'var(--space-3)',
+                display: 'grid', gap: 8, padding: 'var(--space-3)',
                 border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)',
                 background: 'var(--color-surface-offset)',
               }}>
@@ -293,53 +296,34 @@ function ItensPropostaEditor({ itens, onChange, produtos, onAdd }) {
                     {item.avulso ? 'Item avulso' : 'Produto cadastrado'}
                   </span>
                 </div>
-                <Campo label="Qtd.">
-                  <input className="form-input" type="number" min="0.01" step="0.01" value={item.quantidade}
-                    onFocus={selectInputValue}
-                    onChange={event => update(index, 'quantidade', event.target.value)}
-                    style={{ height: 34, textAlign: 'center', fontWeight: 800 }} />
-                </Campo>
-                <Campo label="Unitario">
-                  <input className="form-input" type="number" min="0" step="0.01" value={item.preco_unitario}
-                    onFocus={selectInputValue}
-                    onChange={event => update(index, 'preco_unitario', event.target.value)}
-                    style={{ height: 34, textAlign: 'right', fontWeight: 800 }} />
-                </Campo>
-                <Campo label="Subtotal">
-                  <div style={{ height: 34, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', fontWeight: 900, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
-                    {moeda(subtotal)}
-                  </div>
-                </Campo>
-                <button type="button" className="btn btn-icon btn-ghost" onClick={() => remove(index)} title="Remover item" style={{ width: 32, height: 32, marginTop: 16, color: 'var(--color-error)' }}>
-                  <Trash2 size={15} />
-                </button>
+                <div style={{ display: 'grid', gridTemplateColumns: '86px 120px minmax(110px, 1fr) 34px', gap: 8, alignItems: 'end' }}>
+                  <Campo label="Qtd.">
+                    <input className="form-input" type="number" min="0.01" step="0.01" value={item.quantidade}
+                      onFocus={selectInputValue}
+                      onChange={event => update(index, 'quantidade', event.target.value)}
+                      style={{ height: 34, textAlign: 'center', fontWeight: 800 }} />
+                  </Campo>
+                  <Campo label="Unitario">
+                    <input className="form-input" type="number" min="0" step="0.01" value={item.preco_unitario}
+                      onFocus={selectInputValue}
+                      onChange={event => update(index, 'preco_unitario', event.target.value)}
+                      style={{ height: 34, textAlign: 'right', fontWeight: 800 }} />
+                  </Campo>
+                  <Campo label="Subtotal">
+                    <div style={{ height: 34, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', fontWeight: 900, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                      {moeda(subtotal)}
+                    </div>
+                  </Campo>
+                  <button type="button" className="btn btn-icon btn-ghost" onClick={() => remove(index)} title="Remover item" style={{ width: 32, height: 32, color: 'var(--color-error)' }}>
+                    <Trash2 size={15} />
+                  </button>
+                </div>
               </div>
             )
           })}
         </div>
       )}
     </section>
-  )
-}
-
-function ResumoProposta({ total, itens }) {
-  return (
-    <aside className="card card-pad" style={{ padding: 'var(--space-4)', display: 'grid', gap: 'var(--space-3)', position: 'sticky', top: 12 }}>
-      <div>
-        <div style={{ fontSize: 10, color: 'var(--color-text-faint)', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Total da proposta</div>
-        <div style={{ fontSize: 30, fontWeight: 900, color: 'var(--color-primary)', fontVariantNumeric: 'tabular-nums', lineHeight: 1.1 }}>{moeda(total)}</div>
-      </div>
-      <div style={{ borderTop: '1px solid var(--color-divider)', paddingTop: 'var(--space-3)', display: 'grid', gap: 8 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)' }}>
-          <span>Itens</span>
-          <strong>{itens.length}</strong>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)' }}>
-          <span>Quantidade total</span>
-          <strong>{itens.reduce((acc, item) => acc + numero(item.quantidade || 1), 0).toLocaleString('pt-BR')}</strong>
-        </div>
-      </div>
-    </aside>
   )
 }
 
@@ -449,13 +433,19 @@ export default function NovaProposta() {
             Monte uma proposta formal com itens avulsos, produtos, prazo e condicoes comerciais.
           </div>
         </div>
-        <button className="btn btn-secondary btn-sm" onClick={() => navigate('/propostas')}>
-          Ver funil
-        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <button className="btn btn-secondary btn-sm" onClick={() => navigate('/orcamento/calculadora')}>
+            <Calculator size={14} />
+            Calculadora
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={() => navigate('/propostas')}>
+            Ver funil
+          </button>
+        </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 'var(--space-4)', alignItems: 'start' }}>
-        <section className="card card-pad" style={{ padding: 'var(--space-4)', display: 'grid', gap: 'var(--space-3)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 420px), 1fr))', gap: 'var(--space-4)', alignItems: 'start' }}>
+        <section className="card card-pad" style={{ padding: 'var(--space-4)', display: 'grid', gap: 'var(--space-3)', minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <FileText size={17} color="var(--color-primary)" />
             <h2 style={{ margin: 0, fontSize: 'var(--text-base)' }}>Dados comerciais</h2>
@@ -471,7 +461,7 @@ export default function NovaProposta() {
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
             <Campo label="Prazo de producao">
-              <input className="form-input" type="date" value={form.prazoentrega} onChange={event => set('prazoentrega', event.target.value)} />
+              <input className="form-input" value={form.prazoentrega} onChange={event => set('prazoentrega', event.target.value)} placeholder="Ex: 10 dias uteis, 7 dias ou 15/06/2026" />
             </Campo>
             <Campo label="Validade">
               <input className="form-input" type="date" value={form.validade} onChange={event => set('validade', event.target.value)} />
@@ -487,9 +477,19 @@ export default function NovaProposta() {
           </Campo>
         </section>
 
-        <ItensPropostaEditor itens={itens} onChange={setItens} produtos={produtos} onAdd={addItem} />
-
-        <ResumoProposta total={total} itens={itens} />
+        <div style={{ display: 'grid', gap: 'var(--space-4)', minWidth: 0 }}>
+          <ItensPropostaEditor itens={itens} onChange={setItens} produtos={produtos} onAdd={addItem} total={total} />
+          <section className="card card-pad" style={{ padding: 'var(--space-4)', display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 'var(--space-3)', alignItems: 'center' }}>
+            <ClipboardList size={18} color="var(--color-primary)" />
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 'var(--text-sm)' }}>Resumo operacional</div>
+              <div style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)' }}>
+                {itens.length} item{itens.length === 1 ? '' : 's'} - {itens.reduce((acc, item) => acc + numero(item.quantidade || 1), 0).toLocaleString('pt-BR')} unidades
+              </div>
+            </div>
+            <strong style={{ fontSize: 'var(--text-lg)', color: 'var(--color-primary)', fontVariantNumeric: 'tabular-nums' }}>{moeda(total)}</strong>
+          </section>
+        </div>
       </div>
 
       <div style={{

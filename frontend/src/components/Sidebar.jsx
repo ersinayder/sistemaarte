@@ -133,7 +133,6 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
               {navItem('/dashboard', 'Resumo', 'resumo')}
               {navItem('/caixa', 'Caixa', 'caixa')}
               {navItemBadge('/ordens', 'Ordens de Serviço', 'ordens', vencidas)}
-              {navItem('/orcamento', 'Nova Proposta', 'orcamento')}
               {navItem('/propostas', 'Propostas', 'propostas')}
 
               {section('Fiscal')}

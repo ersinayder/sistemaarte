@@ -86,12 +86,12 @@ describe('propostasRules', () => {
     })).toMatchObject({ ok: false, error: expect.stringContaining('nome') });
   });
 
-  it('rejects materially different frontend totals and invalid delivery deadlines', () => {
+  it('accepts flexible proposal production deadlines and rejects mismatched totals', () => {
     expect(validarDadosProposta({
       clientenome: 'Cliente',
-      prazoentrega: '2026/05/25',
+      prazoentrega: '10 dias uteis apos aprovacao',
       produtos: [{ nome: 'Item', quantidade: 1, preco_unitario: 10 }],
-    })).toMatchObject({ ok: false, error: 'Prazo deve estar no formato YYYY-MM-DD.' });
+    })).toMatchObject({ ok: true, prazoentrega: '10 dias uteis apos aprovacao' });
 
     expect(validarDadosProposta({
       clientenome: 'Cliente',
