@@ -9,6 +9,7 @@ const {
 } = require("../domain/ordensRules");
 const { sendWhatsAppConfirmacao } = require("../utils/whatsapp");
 const { getResumoFinanceiroOS } = require('../domain/financeiroRules');
+const { calcularDescontoOS } = require('../domain/descontoRules');
 const { normalizarPaginacao, montarMetaPaginacao } = require("../domain/paginationRules");
 const {
   normalizarTipoAviso,
@@ -30,6 +31,13 @@ const SEL_ORDEM = `
     o.prazoentrega AS prazo,
     o.observacoes AS obs,
     o.createdat AS criadoem,
+    COALESCE((
+      SELECT sl.createdat
+      FROM statuslog sl
+      WHERE sl.ordemid=o.id AND sl.statusnovo=o.status
+      ORDER BY sl.createdat DESC, sl.id DESC
+      LIMIT 1
+    ), o.updatedat, o.createdat) AS statusalteradoem,
     COALESCE((SELECT SUM(l.valor) FROM lancamentos l WHERE l.ordemid=o.id AND l.pago=1 AND l.deletedat IS NULL),0) AS valorrecebido,
     CASE
       WHEN (o.valortotal - COALESCE((SELECT SUM(l.valor) FROM lancamentos l WHERE l.ordemid=o.id AND l.pago=1 AND l.deletedat IS NULL),0)) < 0
@@ -181,6 +189,8 @@ function redactOrdemForRole(row, role) {
     entrada,
     valorrecebido,
     saldoaberto,
+    descontoinput,
+    descontovalor,
     pagamento,
     nfe_status,
     nfe_chave,
@@ -314,7 +324,7 @@ router.get("/:id", auth(), (req, res, next) => {
 router.post("/", auth(["admin","caixa"]), (req, res, next) => {
   const {
     clienteid, clientenome, clientetelefone, clientecpf,
-    servico, descricao, valortotal, valorentrada,
+    servico, descricao, valortotal, valorentrada, descontoinput,
     prazoentrega, prioridade, pagamento, observacoes, dataEntrada,
     produtos,
   } = req.body ?? {};
@@ -322,7 +332,8 @@ router.post("/", auth(["admin","caixa"]), (req, res, next) => {
   if (!clientenome || !servico || valortotal == null)
     return res.status(400).json({ error: "clientenome, servico e valortotal sao obrigatorios" });
 
-  const total = toNumber(valortotal);
+  const desconto = calcularDescontoOS(valortotal, descontoinput);
+  const total = desconto.valortotal;
   const entrada = toNumber(valorentrada);
 
   const erroEntrada = validarEntradaOS(total, entrada);
@@ -350,8 +361,9 @@ router.post("/", auth(["admin","caixa"]), (req, res, next) => {
       const numero = nextNumero();
       const id = runInsert(
         `INSERT INTO ordens (numero,clienteid,clientenome,clientetelefone,clientecpf,servico,descricao,
-        valortotal,valorentrada,prazoentrega,prioridade,pagamento,observacoes,status,criadopor,createdat) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [numero, cidResolvido, clientenome, telFinal, cpfFinal, servico, descricao||null, total, entrada,
+        valortotal,descontoinput,descontovalor,valorentrada,prazoentrega,prioridade,pagamento,observacoes,status,criadopor,createdat) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [numero, cidResolvido, clientenome, telFinal, cpfFinal, servico, descricao||null, total,
+         desconto.descontoinput || null, desconto.descontovalor, entrada,
          prazoentrega||null, prioridade||"Normal", pagamento||"Pix", observacoes||null, "Aguardando", req.user.id, createdatOS]
       );
       runInsert(
@@ -385,7 +397,7 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
     if (!old) return res.status(404).json({ error: "Nao encontrado ou OS cancelada" });
 
     const {
-      descricao, valortotal, valorentrada,
+      descricao, valortotal, valorentrada, descontoinput,
       prazoentrega, prioridade, pagamento, observacoes,
       clientenome, clientetelefone, clientecpf, servico, clienteid,
       produtos,
@@ -416,7 +428,14 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
       return res.json({ ok: true });
     }
 
-    const total = toNumber(valortotal ?? old.valortotal);
+    const desconto = descontoinput !== undefined
+      ? calcularDescontoOS(valortotal ?? old.valortotal, descontoinput)
+      : {
+          valortotal: toNumber(valortotal ?? old.valortotal),
+          descontoinput: old.descontoinput || null,
+          descontovalor: toNumber(old.descontovalor),
+        };
+    const total = desconto.valortotal;
     const entrada = toNumber(valorentrada ?? old.valorentrada);
 
     const erroEntrada = validarEntradaOS(total, entrada);
@@ -454,10 +473,10 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
     transaction(() => {
       run(
         `UPDATE ordens SET clienteid=?,clientenome=?,clientetelefone=?,clientecpf=?,servico=?,descricao=?,
-        valortotal=?,valorentrada=?,prazoentrega=?,prioridade=?,pagamento=?,
+        valortotal=?,descontoinput=?,descontovalor=?,valorentrada=?,prazoentrega=?,prioridade=?,pagamento=?,
         observacoes=?,status=?,updatedat=datetime('now','localtime') WHERE id=?`,
         [novoCid, novoCliente, telFinal, cpfFinal, novoServico, descricao !== undefined ? descricao : old.descricao,
-         total, entrada, novoPrazo, prioridade||old.prioridade, novoPagamento,
+         total, desconto.descontoinput || null, desconto.descontovalor, entrada, novoPrazo, prioridade||old.prioridade, novoPagamento,
          observacoes !== undefined ? observacoes : old.observacoes, ns, req.params.id]
       );
       if (ns !== old.status)

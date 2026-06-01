@@ -4,6 +4,7 @@ import { toast } from 'react-hot-toast';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { openWhatsappConversation } from '../utils/whatsappOficina';
+import { filtrarOrdensOficina, ordenarOrdensOficina } from '../utils/oficinaBoard';
 
 const COLUNAS = [
   { status: 'Aguardando',  label: 'Aguardando',  slug: 'aguardando', color:'var(--status-aguardando,#9AA4B2)' },
@@ -37,6 +38,11 @@ const fmtD = d => {
   if (!d) return '';
   const [y,m,dia] = d.split('-');
   return `${dia}/${m}`;
+};
+
+const hojeLocal = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 };
 
 /* Botão de avançar status com hover rico via estado React */
@@ -92,33 +98,19 @@ export default function Oficina() {
   const [filterTipo,  setFilterTipo]  = useState('todos');
   const [filterPrio,  setFilterPrio]  = useState('todas');
   const [viewMode,    setViewMode]    = useState('kanban');
-  const [today,       setToday]       = useState('');
+  const [today]       = useState(hojeLocal);
   const [whatsappMenu, setWhatsappMenu] = useState(null);
   const [openingAviso, setOpeningAviso] = useState(null);
-
-  useEffect(() => {
-    const d = new Date();
-    const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    setToday(iso);
-  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const { data } = await api.get('/ordens');
-      const all = (data || []).filter(o => o.status !== 'Cancelado' && o.status !== 'Entregue' ||
-        (o.status === 'Entregue' && o.prazoentrega >= new Date(Date.now()-7*86400000).toISOString().slice(0,10)));
-      all.sort((a,b) => {
-        if (!a.prazoentrega && !b.prazoentrega) return new Date(a.criadoem) - new Date(b.criadoem);
-        if (!a.prazoentrega) return 1;
-        if (!b.prazoentrega) return -1;
-        return new Date(a.prazoentrega) - new Date(b.prazoentrega);
-      });
-      setOrdens(all);
+      setOrdens(ordenarOrdensOficina(filtrarOrdensOficina(data, today)));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [today]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -206,14 +198,7 @@ export default function Oficina() {
     setLoading(true);
     try {
       const { data } = await api.get('/ordens');
-      const all = (data || []);
-      all.sort((a,b) => {
-        if (!a.prazoentrega && !b.prazoentrega) return new Date(a.criadoem) - new Date(b.criadoem);
-        if (!a.prazoentrega) return 1;
-        if (!b.prazoentrega) return -1;
-        return new Date(a.prazoentrega) - new Date(b.prazoentrega);
-      });
-      setOrdens(all);
+      setOrdens(ordenarOrdensOficina(data));
     } finally {
       setLoading(false);
     }

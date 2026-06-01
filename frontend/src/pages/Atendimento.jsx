@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import api from '../services/api'
 import { emit } from '../services/eventBus'
+import { aplicarDescontoOS } from '../utils/descontoOS'
 
 const PAGAMENTOS = ['Pix', 'Dinheiro', 'Cartão de Débito', 'Cartão de Crédito', 'Transferência', 'Outros']
 const SERVICOS = ['Quadro', 'Caixas', 'Corte a Laser', 'Sublimacao', 'Diversos']
@@ -172,6 +173,7 @@ function formInicialOS() {
     prazoentrega: '',
     observacoes: '',
     valortotal: '',
+    descontoinput: '',
     valorentrada: '',
     pagamento: 'Pix',
     produtos: [],
@@ -181,6 +183,8 @@ function formInicialOS() {
 function totalItens(itens) {
   return itens.reduce((total, item) => total + numero(item.quantidade || 1) * numero(item.preco_unitario), 0)
 }
+
+const selectInputValue = event => event.target.select()
 
 function saldoOS(os) {
   return Number(os?.saldoaberto ?? os?.saldo ?? 0)
@@ -375,9 +379,11 @@ function ItensEditor({ itens, onChange, emptyText }) {
             </div>
           </div>
           <input className="form-input" type="number" min="1" step="1" value={item.quantidade}
+            onFocus={selectInputValue}
             onChange={e => update(index, 'quantidade', e.target.value)}
             style={{ height: 34, textAlign: 'center', fontWeight: 800 }} />
           <input className="form-input" type="number" min="0" step="0.01" value={item.preco_unitario}
+            onFocus={selectInputValue}
             onChange={e => update(index, 'preco_unitario', e.target.value)}
             style={{ height: 34, textAlign: 'right', fontWeight: 800 }} />
           <div style={{ textAlign: 'right', fontWeight: 900, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
@@ -809,14 +815,17 @@ export default function Atendimento() {
 
   const createOS = async e => {
     e.preventDefault()
-    const total = numero(osForm.valortotal) || totalItens(osForm.produtos)
+    const totalBruto = numero(osForm.valortotal) || totalItens(osForm.produtos)
+    const desconto = aplicarDescontoOS(totalBruto, osForm.descontoinput)
     if (!osForm.clientenome.trim()) return toast.error('Informe o cliente.')
-    if (!(total > 0)) return toast.error('Informe o valor da OS.')
+    if (!(totalBruto > 0)) return toast.error('Informe o valor da OS.')
+    if (!(desconto.totalLiquido > 0)) return toast.error('Valor final da OS deve ser maior que zero.')
     setSaving(true)
     try {
       const payload = {
         ...osForm,
-        valortotal: total,
+        valortotal: totalBruto,
+        descontoinput: osForm.descontoinput,
         valorentrada: numero(osForm.valorentrada),
         clienteid: osForm.clienteid || null,
         prazoentrega: osForm.prazoentrega || null,
@@ -983,7 +992,11 @@ export default function Atendimento() {
     </div>
   )
 
-  const renderNovaOS = () => (
+  const renderNovaOS = () => {
+    const totalBrutoOS = numero(osForm.valortotal) || totalItens(osForm.produtos)
+    const descontoOS = aplicarDescontoOS(totalBrutoOS, osForm.descontoinput)
+
+    return (
     <form onSubmit={createOS} className="atendimento-form atendimento-nova-grid">
       <div className="atendimento-flow-column">
         <section className="card atendimento-section">
@@ -1085,9 +1098,12 @@ export default function Atendimento() {
           <div className="atendimento-section-title">
             <DollarSign size={16} /> Pagamento
           </div>
-          <div className="atendimento-grid-3">
+          <div className="atendimento-grid-4">
             <Campo label="Total">
               <input className="form-input" type="number" min="0" step="0.01" value={osForm.valortotal} onChange={e => setOsForm(f => ({ ...f, valortotal: e.target.value }))} placeholder="0,00" />
+            </Campo>
+            <Campo label="Desconto">
+              <input className="form-input" value={osForm.descontoinput} onChange={e => setOsForm(f => ({ ...f, descontoinput: e.target.value }))} placeholder="10% ou 10,00" />
             </Campo>
             <Campo label="Entrada">
               <input className="form-input" type="number" min="0" step="0.01" value={osForm.valorentrada} onChange={e => setOsForm(f => ({ ...f, valorentrada: e.target.value }))} placeholder="0,00" />
@@ -1103,7 +1119,7 @@ export default function Atendimento() {
         <div className="atendimento-submit-row">
           <div>
             <span>Total</span>
-            <strong>{moeda(numero(osForm.valortotal) || totalItens(osForm.produtos))}</strong>
+            <strong>{moeda(descontoOS.totalLiquido)}</strong>
           </div>
           <button className="btn btn-primary" disabled={saving} style={{ minWidth: 150 }}>
             Criar OS
@@ -1111,7 +1127,8 @@ export default function Atendimento() {
         </div>
       </div>
     </form>
-  )
+    )
+  }
 
   const renderReceber = () => (
     <form onSubmit={receberOS} className="atendimento-form atendimento-receber-grid">
@@ -1253,6 +1270,7 @@ export default function Atendimento() {
         .atendimento-section-title { display:flex; align-items:center; gap: var(--space-2); font-weight:900; font-size: var(--text-sm); }
         .atendimento-grid-2 { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
         .atendimento-grid-3 { display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); }
+        .atendimento-grid-4 { display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); }
         .atendimento-popover { position:absolute; top:calc(100% + 5px); left:0; right:0; z-index:45; background:var(--color-surface-2); border:1px solid var(--color-border); border-radius:var(--radius-md); box-shadow:var(--shadow-lg); overflow:hidden; }
         .atendimento-suggestion { width:100%; border:none; border-bottom:1px solid var(--color-divider); background:transparent; color:var(--color-text); text-align:left; padding:var(--space-2) var(--space-3); display:flex; justify-content:space-between; gap:var(--space-3); cursor:pointer; font-size:var(--text-xs); }
         .atendimento-inline-callout { display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); padding:var(--space-3); border:1px solid var(--color-primary); border-radius:var(--radius-md); background:color-mix(in oklab, var(--color-primary) 10%, var(--color-surface)); }
@@ -1275,7 +1293,7 @@ export default function Atendimento() {
           .atendimento-kpis { grid-template-columns:repeat(2, minmax(0, 1fr)); }
         }
         @media (max-width: 780px) {
-          .atendimento-kpis, .atendimento-cards, .atendimento-grid-2, .atendimento-grid-3 { grid-template-columns:1fr; }
+          .atendimento-kpis, .atendimento-cards, .atendimento-grid-2, .atendimento-grid-3, .atendimento-grid-4 { grid-template-columns:1fr; }
           .atendimento-panel-head { align-items:flex-start; flex-direction:column; }
           .atendimento-mode-buttons { justify-content:flex-start; }
           .atendimento-mode-button span { display:none; }

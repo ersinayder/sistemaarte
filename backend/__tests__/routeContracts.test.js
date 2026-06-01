@@ -161,6 +161,13 @@ describe('route persistence contracts', () => {
     expect(source).toMatch(/atendimento-venda-grid/);
   });
 
+  it('selects Atendimento item quantity and price fields on focus', () => {
+    const source = fs.readFileSync(new URL('../../frontend/src/pages/Atendimento.jsx', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/const selectInputValue/);
+    expect(source).toMatch(/onFocus=\{selectInputValue\}/);
+  });
+
   it('mounts admin financeiro API and paying accounts creates a caixa output', async () => {
     const serverSource = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
     const source = fs.readFileSync(new URL('../routes/financeiro.js', import.meta.url), 'utf8');
@@ -195,6 +202,7 @@ describe('route persistence contracts', () => {
     expect(source).toMatch(/function redactOrdemForRole/);
     expect(source).toMatch(/role !== 'oficina'/);
     expect(source).toMatch(/saldoaberto/);
+    expect(source).toMatch(/descontoinput,\s*\n\s*descontovalor,/);
     expect(source).toMatch(/function redactItensForRole/);
     expect(source).toMatch(/\{\s*preco_unitario,\s*subtotal,\s*\.\.\.item\s*\}/);
     expect(source).toMatch(/lancamentos:\s*req\.user\.role === 'oficina' \? \[\] : lancamentos/);
@@ -301,6 +309,13 @@ describe('pagination route contracts', () => {
     expect(source).toMatch(/COUNT\(\*\) AS total[\s\S]+FROM ordens o/);
     expect(source).toMatch(/LIMIT \? OFFSET \?/);
     expect(source).toMatch(/res\.json\(\{\s*data:\s*anexarAvisosWhatsApp\(rows,\s*req\.user\.role\),\s*meta:/);
+  });
+
+  it('exposes latest status movement timestamp for Oficina ordering', () => {
+    const source = fs.readFileSync(new URL('../routes/ordens.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/AS statusalteradoem/);
+    expect(source).toMatch(/FROM statuslog sl[\s\S]+sl\.ordemid=o\.id[\s\S]+sl\.statusnovo=o\.status/);
   });
 
   it('paginates clientes with matching count metadata', () => {

@@ -47,6 +47,8 @@ CREATE TABLE IF NOT EXISTS ordens (
   servico           TEXT NOT NULL,
   descricao         TEXT,
   valortotal        REAL NOT NULL DEFAULT 0,
+  descontoinput     TEXT,
+  descontovalor     REAL NOT NULL DEFAULT 0,
   valorentrada      REAL DEFAULT 0,
   status            TEXT NOT NULL DEFAULT 'Aguardando',
   prioridade        TEXT DEFAULT 'Normal',
@@ -461,6 +463,9 @@ function initDB() {
     )`,
     "CREATE INDEX IF NOT EXISTS idx_whatsapp_avisos_ordemid ON whatsapp_avisos(ordemid)",
     "CREATE INDEX IF NOT EXISTS idx_whatsapp_avisos_status ON whatsapp_avisos(status)",
+    // v14 - desconto persistido em OS para rastreio financeiro e NF-e
+    "ALTER TABLE ordens ADD COLUMN descontoinput TEXT",
+    "ALTER TABLE ordens ADD COLUMN descontovalor REAL NOT NULL DEFAULT 0",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {}

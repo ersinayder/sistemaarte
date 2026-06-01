@@ -84,6 +84,39 @@ describe('montarNFe', () => {
     expect(Number(infNFe.total.ICMSTot.vNF)).toBeCloseTo(150.00, 2);
   });
 
+  it('informa desconto da OS nos totais fiscais e distribui nos itens', () => {
+    const { infNFe } = montarNFe({
+      ordem: { ...ordem, valortotal: 135, descontovalor: 15 },
+      itens,
+      cliente,
+      emitente,
+      numero: 6,
+      serie: '1',
+    });
+
+    expect(infNFe.det[0].prod.vDesc).toBe('10.00');
+    expect(infNFe.det[1].prod.vDesc).toBe('5.00');
+    expect(infNFe.total.ICMSTot.vProd).toBe('150.00');
+    expect(infNFe.total.ICMSTot.vDesc).toBe('15.00');
+    expect(infNFe.total.ICMSTot.vNF).toBe('135.00');
+    expect(infNFe.pag.detPag[0].vPag).toBe('135.00');
+  });
+
+  it('infere desconto quando OS legada tem total menor que os itens', () => {
+    const { infNFe } = montarNFe({
+      ordem: { ...ordem, valortotal: 140 },
+      itens,
+      cliente,
+      emitente,
+      numero: 7,
+      serie: '1',
+    });
+
+    expect(infNFe.total.ICMSTot.vDesc).toBe('10.00');
+    expect(infNFe.total.ICMSTot.vNF).toBe('140.00');
+    expect(infNFe.pag.detPag[0].vPag).toBe('140.00');
+  });
+
   it('aplica ICMSSN102 para CSOSN 400 e PISNT/COFINSNT CST 07 para Simples Nacional', () => {
     // ICMSSN400 nao existe no XSD da SEFAZ - CSOSN 400 mapeia para ICMSSN102
     // PIS/COFINS no Simples Nacional usa PISNT/COFINSNT com CST 07 (nao tributado)
