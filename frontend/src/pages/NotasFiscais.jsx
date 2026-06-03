@@ -253,14 +253,14 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
       onClick={e => e.target === e.currentTarget && onClose()}
     >
       <div style={{
-        width: '100%', maxWidth: 980,
+        width: 'min(1180px, calc(100vw - 40px))', maxWidth: 'none',
         background: 'var(--color-surface)',
         borderRadius: 'var(--radius-xl)',
         boxShadow: 'var(--shadow-lg)',
         display: 'flex', flexDirection: 'column',
-        maxHeight: '90vh', overflow: 'hidden',
+        maxHeight: '92vh', overflow: 'hidden',
       }}>
-        <div style={{ padding: 'var(--space-5) var(--space-6)', borderBottom: '1px solid var(--color-divider)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-4)' }}>
+        <div style={{ padding: 'var(--space-4) var(--space-5)', borderBottom: '1px solid var(--color-divider)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-4)' }}>
           <div>
             <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, margin: 0 }}>Emitir NF-e</h2>
             <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
@@ -348,21 +348,21 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
         )}
 
         {etapa === 'revisar' && (
-          <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--space-5) var(--space-6)', display: 'grid', gap: 'var(--space-4)' }}>
+          <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--space-4) var(--space-5)', display: 'grid', gap: 'var(--space-3)' }}>
             {loadingPrevia ? (
               <div style={{ minHeight: 260, display: 'grid', placeItems: 'center', color: 'var(--color-text-muted)' }}>
                 <div style={{ display: 'grid', justifyItems: 'center', gap: 'var(--space-3)' }}><div className="spinner"/>Montando previa...</div>
               </div>
             ) : previa && (
               <>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 'var(--space-3)' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 'var(--space-3)' }}>
                   {[
                     ['OS', previa.ordem?.numero, previa.ordem?.servico],
                     ['Cliente', previa.cliente?.nome, previa.cliente?.documento || 'Sem documento'],
                     ['Emitente', previa.emitente?.xNome, `Serie ${previa.fiscal?.serie || '1'} - ${previa.fiscal?.ambiente === 1 ? 'Producao' : 'Homologacao'}`],
                     ['Total', fmt(previa.ordem?.valortotal), previa.ordem?.pagamento || 'Pagamento nao informado'],
                   ].map(([label, value, detail]) => (
-                    <div key={label} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', background: 'var(--color-surface-offset)', padding: 'var(--space-3)', minWidth: 0 }}>
+                    <div key={label} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', background: 'var(--color-surface-offset)', padding: 'var(--space-2) var(--space-3)', minWidth: 0 }}>
                       <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>{label}</div>
                       <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value || '-'}</div>
                       <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{detail || '-'}</div>
@@ -370,25 +370,25 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
                   ))}
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 'var(--space-3)' }}>
-                  <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4)', display: 'grid', gap: 'var(--space-3)' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.55fr) minmax(300px, 0.85fr)', gap: 'var(--space-3)' }}>
+                  <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-3)', display: 'grid', gap: 'var(--space-2)' }}>
                     <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800 }}>Dados do cliente</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 'var(--space-3)' }}>
-                      <div style={{ gridColumn: '1 / -1' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 'var(--space-2)' }}>
+                      <div style={{ gridColumn: 'span 2' }}>
                         <CampoClienteEmissao label="Nome" field="nome" value={previa.cliente?.nome} onChange={atualizarCliente} />
                       </div>
                       <CampoClienteEmissao label="CPF/CNPJ" field="documento" value={previa.cliente?.documento} onChange={atualizarCliente} />
                       <CampoClienteEmissao label="IE" field="ie" value={previa.cliente?.ie} onChange={atualizarCliente} />
-                      <div style={{ gridColumn: '1 / -1' }}>
+                      <div style={{ gridColumn: 'span 2' }}>
                         <CampoClienteEmissao label="Logradouro" field="logradouro" value={previa.cliente?.logradouro} onChange={atualizarCliente} />
                       </div>
                       <CampoClienteEmissao label="Numero" field="numero" value={previa.cliente?.numero} onChange={atualizarCliente} />
                       <CampoClienteEmissao label="Bairro" field="bairro" value={previa.cliente?.bairro} onChange={atualizarCliente} />
-                      <CampoClienteEmissao label="Cidade" field="cidade" value={previa.cliente?.cidade} onChange={atualizarCliente} />
-                      <div style={{ display: 'grid', gridTemplateColumns: '72px minmax(0, 1fr)', gap: 'var(--space-2)' }}>
-                        <CampoClienteEmissao label="UF" field="uf" value={previa.cliente?.uf} onChange={atualizarCliente} />
-                        <CampoClienteEmissao label="CEP" field="cep" value={previa.cliente?.cep} onChange={atualizarCliente} />
+                      <div style={{ gridColumn: 'span 2' }}>
+                        <CampoClienteEmissao label="Cidade" field="cidade" value={previa.cliente?.cidade} onChange={atualizarCliente} />
                       </div>
+                      <CampoClienteEmissao label="UF" field="uf" value={previa.cliente?.uf} onChange={atualizarCliente} />
+                      <CampoClienteEmissao label="CEP" field="cep" value={previa.cliente?.cep} onChange={atualizarCliente} />
                     </div>
                   </div>
 
@@ -401,7 +401,7 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
                       ['Endereco', [previa.emitente?.enderEmit?.xLgr, previa.emitente?.enderEmit?.nro, previa.emitente?.enderEmit?.xBairro].filter(Boolean).join(', ')],
                     ]],
                   ].map(([title, rows]) => (
-                    <div key={title} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4)', display: 'grid', gap: 6 }}>
+                    <div key={title} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-3)', display: 'grid', gap: 4 }}>
                       <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800 }}>{title}</div>
                       {rows.map(([label, value]) => (
                         <div key={label} style={{ display: 'grid', gridTemplateColumns: '86px minmax(0, 1fr)', gap: 'var(--space-2)', fontSize: 'var(--text-xs)' }}>
@@ -414,7 +414,7 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
                 </div>
 
                 <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
-                  <div style={{ padding: 'var(--space-3) var(--space-4)', borderBottom: '1px solid var(--color-divider)', display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div style={{ padding: 'var(--space-2) var(--space-3)', borderBottom: '1px solid var(--color-divider)', display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
                     <div>
                       <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800 }}>Itens da NF-e</div>
                       <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>Campos fiscais editaveis nesta emissao</div>
@@ -453,7 +453,7 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
           </div>
         )}
 
-        <div style={{ padding: 'var(--space-4) var(--space-6)', borderTop: '1px solid var(--color-divider)', display: 'flex', gap: 'var(--space-3)', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ padding: 'var(--space-3) var(--space-5)', borderTop: '1px solid var(--color-divider)', display: 'flex', gap: 'var(--space-3)', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
           <button className="btn btn-ghost" onClick={etapa === 'revisar' && !ordemInicial ? () => setEtapa('selecionar') : onClose} disabled={emitindo || loadingPrevia}>
             {etapa === 'revisar' && !ordemInicial ? 'Voltar' : 'Cancelar'}
           </button>
