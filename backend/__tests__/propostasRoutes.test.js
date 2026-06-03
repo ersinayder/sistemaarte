@@ -27,6 +27,8 @@ function makeRes() {
   const res = {};
   res.status = vi.fn().mockReturnValue(res);
   res.json = vi.fn().mockReturnValue(res);
+  res.setHeader = vi.fn().mockReturnValue(res);
+  res.send = vi.fn().mockReturnValue(res);
   return res;
 }
 
@@ -173,5 +175,48 @@ describe('propostas routes', () => {
       expect.stringMatching(/UPDATE propostas SET ordemid=\?, updatedat=datetime\('now','localtime'\) WHERE id=\? AND ordemid IS NULL/),
       [555, 12],
     );
+  });
+
+  it('prints proposal PDF with company configuration in the header', async () => {
+    db.getOne
+      .mockReturnValueOnce({
+        id: 12,
+        numero: 'PROP-0012',
+        clientenome: 'Cliente',
+        valortotal: 90,
+        createdat: '2026-06-03 09:00:00',
+      })
+      .mockReturnValueOnce({
+        razaosocial: 'Arte e Molduras Ltda',
+        nomefantasia: 'Arte & Molduras',
+        cnpj: '07500718000196',
+        telefone: '31999990000',
+        email: 'loja@arteemolduras.com.br',
+        logradouro: 'Rua das Molduras',
+        numero: '123',
+        bairro: 'Centro',
+        municipio: 'Ipatinga',
+        uf: 'MG',
+        cep: '35160000',
+      });
+    db.getAll.mockReturnValueOnce([
+      { nome: 'Item customizado', quantidade: 1, preco_unitario: 90, avulso: 1 },
+    ]);
+
+    const handler = businessHandler('get', '/:id/pdf');
+    const res = makeRes();
+    const next = vi.fn();
+
+    await handler({
+      params: { id: '12' },
+      user: { id: 7, role: 'caixa' },
+    }, res, next);
+
+    if (next.mock.calls.length) throw next.mock.calls[0][0];
+    expect(res.send).toHaveBeenCalled();
+    const html = res.send.mock.calls[0][0];
+    expect(html).toContain('Arte &amp; Molduras');
+    expect(html).toContain('CNPJ 07.500.718/0001-96');
+    expect(html).toContain('Rua das Molduras, 123 - Centro');
   });
 });

@@ -42,6 +42,39 @@ describe('propostaPdf', () => {
     expect(html).toContain('.no-print { display: none !important; }');
   });
 
+  it('renders company identity details in the proposal header when available', () => {
+    const html = renderPropostaHtml({
+      empresa: {
+        razaosocial: 'Arte e Molduras Ltda',
+        nomefantasia: 'Arte & Molduras',
+        cnpj: '07500718000196',
+        telefone: '31999990000',
+        email: 'loja@arteemolduras.com.br',
+        logradouro: 'Rua das Molduras',
+        numero: '123',
+        bairro: 'Centro',
+        municipio: 'Ipatinga',
+        uf: 'MG',
+        cep: '35160000',
+      },
+      proposta: {
+        numero: 'PROP-0010',
+        clientenome: 'Cliente Teste',
+        valortotal: 180,
+      },
+      itens: [{ nome: 'Moldura sob medida', quantidade: 1, preco_unitario: 180 }],
+    });
+
+    expect(html).toContain('class="doc-header has-brand-details"');
+    expect(html).toContain('Arte &amp; Molduras');
+    expect(html).toContain('Arte e Molduras Ltda');
+    expect(html).toContain('CNPJ 07.500.718/0001-96');
+    expect(html).toContain('(31) 99999-0000');
+    expect(html).toContain('loja@arteemolduras.com.br');
+    expect(html).toContain('Rua das Molduras, 123 - Centro');
+    expect(html).toContain('Ipatinga/MG - CEP 35160-000');
+  });
+
   it('escapes proposal and item data before rendering', () => {
     const html = renderPropostaHtml({
       proposta: {

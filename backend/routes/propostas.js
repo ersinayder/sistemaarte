@@ -17,6 +17,13 @@ const SEL_PROPOSTA = `
   FROM propostas p
 `;
 
+const SEL_EMPRESA_PRINT = `
+  SELECT razaosocial, nomefantasia, cnpj, telefone, email,
+         logradouro, numero, bairro, municipio, uf, cep
+  FROM empresa_config
+  WHERE id = 1
+`;
+
 function gerarNumeroSequencia(nome, prefixo) {
   run("INSERT OR IGNORE INTO sequencias (nome, ultimo) VALUES (?, 0)", [nome]);
   const row = getOne(
@@ -51,6 +58,10 @@ function salvarItens(propostaId, produtos) {
 
 function itensProposta(id) {
   return getAll("SELECT * FROM proposta_itens WHERE propostaid=? ORDER BY id ASC", [id]);
+}
+
+function empresaPrint() {
+  return getOne(SEL_EMPRESA_PRINT) || {};
 }
 
 function prazoOSFromProposta(prazo) {
@@ -99,7 +110,7 @@ router.get("/:id/pdf", auth(["admin", "caixa"]), (req, res, next) => {
   try {
     const proposta = getOne(`${SEL_PROPOSTA} WHERE p.id=?`, [req.params.id]);
     if (!proposta) return res.status(404).json({ error: "Proposta nao encontrada" });
-    const html = renderPropostaHtml({ proposta, itens: itensProposta(req.params.id) });
+    const html = renderPropostaHtml({ proposta, itens: itensProposta(req.params.id), empresa: empresaPrint() });
     sendPrintHtml(res, `proposta-${proposta.numero || proposta.id}.html`, html);
   } catch (e) { next(e); }
 });
