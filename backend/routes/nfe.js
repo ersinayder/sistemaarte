@@ -21,6 +21,10 @@ const {
   getCnpjEmitente,
   getSerieNFe,
 } = require('../utils/nfeConfig');
+const {
+  aplicarOverridesItensNFe,
+  serializarItemPreviaNFe,
+} = require('../domain/nfeEmissionRules');
 
 // Diretório canônico para XMLs — obrigação legal 5 anos
 const NFE_XMLS_DIR = path.resolve(__dirname, '..', 'data', 'nfe_xmls');
@@ -107,6 +111,71 @@ function proximoNumero(db, serie = '1') {
   const proximo = row.ultimo_numero + 1;
   db.prepare('UPDATE nfe_sequencias SET ultimo_numero = ? WHERE serie = ?').run(proximo, serie);
   return pad(proximo, 9);
+}
+
+function buscarOrdemParaNFe(db, osId) {
+  return db.prepare(`
+    SELECT o.*, c.name AS clientenome, c.cpf, c.ie, c.logradouro,
+           c.numero AS c_numero, c.bairro, c.cidade, c.uf, c.cep
+    FROM ordens o
+    LEFT JOIN clientes c ON o.clienteid = c.id
+    WHERE o.id = ? AND o.deletedat IS NULL
+  `).get(osId);
+}
+
+function buscarItensParaNFe(db, ordemId) {
+  return db.prepare(`
+    SELECT oi.*, p.nome AS produto_nome, p.ncm, p.cfop, p.unidade, p.origem_fiscal, p.csosn
+    FROM ordem_itens oi
+    LEFT JOIN produtos p ON oi.produto_id = p.id
+    WHERE oi.ordemid = ?
+  `).all(ordemId);
+}
+
+function validarOrdemEmitivel(os, itens) {
+  if (!os) return { status: 404, erro: 'OS nao encontrada' };
+  if (os.nfe_status === 'autorizado') return { status: 409, erro: 'NF-e ja autorizada para esta OS' };
+  if (!STATUS_NFE_EMISSAO.includes(os.status)) {
+    return { status: 422, erro: `Status invalido para emissao: ${os.status}` };
+  }
+  if (!itens.length) {
+    return { status: 422, erro: 'OS nao possui itens - nao e possivel emitir NF-e' };
+  }
+  return null;
+}
+
+function serializarPreviaEmissaoNFe({ os, itens, ambiente, serie }) {
+  return {
+    ordem: {
+      id: os.id,
+      numero: os.numero,
+      status: os.status,
+      servico: os.servico,
+      descricao: os.descricao,
+      pagamento: os.pagamento,
+      prazoentrega: os.prazoentrega,
+      valortotal: Number(os.valortotal || 0),
+      descontovalor: Number(os.descontovalor || 0),
+    },
+    cliente: {
+      nome: os.clientenome || os.clientenome_os || 'CONSUMIDOR FINAL',
+      documento: os.cpf || '',
+      ie: os.ie || '',
+      logradouro: os.logradouro || '',
+      numero: os.c_numero || '',
+      bairro: os.bairro || '',
+      cidade: os.cidade || '',
+      uf: os.uf || '',
+      cep: os.cep || '',
+    },
+    emitente: getEmitenteConfig(),
+    fiscal: {
+      ambiente,
+      serie,
+      autXML: getAutXmlParaNFe(os.cpf),
+    },
+    itens: itens.map(serializarItemPreviaNFe),
+  };
 }
 
 /**
@@ -389,6 +458,27 @@ router.get('/eventos/:eventoId/xml', auth(['admin', 'caixa']), (req, res) => {
   }
 });
 
+// GET /api/nfe/emitir/:id/preview
+router.get('/emitir/:id/preview', auth(['admin', 'caixa']), (req, res) => {
+  try {
+    const db = getDB();
+    const os = buscarOrdemParaNFe(db, req.params.id);
+    const itens = os ? buscarItensParaNFe(db, os.id) : [];
+    const erro = validarOrdemEmitivel(os, itens);
+    if (erro) return res.status(erro.status).json({ erro: erro.erro });
+
+    res.json(serializarPreviaEmissaoNFe({
+      os,
+      itens,
+      ambiente: tpAmbAtual(),
+      serie: getSerieNFe(),
+    }));
+  } catch (e) {
+    console.error('[NF-e] GET /emitir/:id/preview:', e.message);
+    res.status(500).json({ erro: 'Erro ao montar previa de emissao da NF-e' });
+  }
+});
+
 // POST /api/nfe/emitir/:id
 router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
   let respondido = false;
@@ -416,37 +506,19 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
       return res.status(500).json({ erro: 'CNPJ do emitente nao configurado na tela fiscal ou no .env' });
     }
 
-    const os = db.prepare(`
-      SELECT o.*, c.name AS clientenome, c.cpf, c.ie, c.logradouro,
-             c.numero AS c_numero, c.bairro, c.cidade, c.uf, c.cep
-      FROM ordens o
-      LEFT JOIN clientes c ON o.clienteid = c.id
-      WHERE o.id = ? AND o.deletedat IS NULL
-    `).get(osId);
-
-    if (!os) {
+    const os = buscarOrdemParaNFe(db, osId);
+    const itensBase = os ? buscarItensParaNFe(db, os.id) : [];
+    const erroOrdem = validarOrdemEmitivel(os, itensBase);
+    if (erroOrdem) {
       clearTimeout(guardTimeout); respondido = true;
-      return res.status(404).json({ erro: 'OS nao encontrada' });
-    }
-    if (os.nfe_status === 'autorizado') {
-      clearTimeout(guardTimeout); respondido = true;
-      return res.status(409).json({ erro: 'NF-e ja autorizada para esta OS' });
-    }
-    if (!STATUS_NFE_EMISSAO.includes(os.status)) {
-      clearTimeout(guardTimeout); respondido = true;
-      return res.status(422).json({ erro: `Status invalido para emissao: ${os.status}` });
+      return res.status(erroOrdem.status).json({ erro: erroOrdem.erro });
     }
 
-    const itens = db.prepare(`
-      SELECT oi.*, p.nome AS produto_nome, p.ncm, p.cfop, p.unidade, p.origem_fiscal, p.csosn
-      FROM ordem_itens oi
-      LEFT JOIN produtos p ON oi.produto_id = p.id
-      WHERE oi.ordemid = ?
-    `).all(os.id);
-
-    if (!itens.length) {
+    const overrides = req.body?.itens || req.body?.itensFiscal || [];
+    const itensComOverrides = aplicarOverridesItensNFe(itensBase, overrides);
+    if (!itensComOverrides.ok) {
       clearTimeout(guardTimeout); respondido = true;
-      return res.status(422).json({ erro: 'OS nao possui itens - nao e possivel emitir NF-e' });
+      return res.status(400).json({ erro: itensComOverrides.erro });
     }
 
     // ── MUTEX: tenta adquirir o lock de emissao ────────────────────────────────
@@ -472,7 +544,7 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
 
     const payload = montarNFe({
       ordem:    os,
-      itens,
+      itens:    itensComOverrides.itens,
       cliente:  os,
       emitente: getEmitenteConfig(),
       numero:   parseInt(numero, 10),
