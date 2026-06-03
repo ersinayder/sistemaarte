@@ -306,6 +306,17 @@ describe('security configuration contracts', () => {
     expect(source).toMatch(/aplicarOverridesItensNFe\(itensBase,\s*overrides\)/);
     expect(source).toMatch(/return res\.status\(400\)\.json\(\{\s*erro:\s*itensComOverrides\.erro\s*\}\)/);
   });
+
+  it('uses editable customer data in NF-e emission and persists it only after authorization', () => {
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/aplicarOverrideClienteNFe\(os,\s*req\.body\?\.cliente\)/);
+    expect(source).toMatch(/cliente:\s*clienteComOverrides\.cliente/);
+    expect(source).toMatch(/getAutXmlParaNFe\(clienteComOverrides\.cliente\.cpf\)/);
+    expect(source).toMatch(/function salvarClienteCadastroAposEmissao/);
+    expect(source).toMatch(/UPDATE clientes SET[\s\S]+name = \?[\s\S]+cpf = \?[\s\S]+WHERE id = \? AND deletedat IS NULL/);
+    expect(source.indexOf('const autorizado = cStat ===')).toBeLessThan(source.indexOf('salvarClienteCadastroAposEmissao(db, os, clienteComOverrides.cliente)'));
+  });
 });
 
 describe('ordens route input contracts', () => {

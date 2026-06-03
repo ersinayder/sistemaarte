@@ -107,8 +107,74 @@ function serializarItemPreviaNFe(item) {
   };
 }
 
+function normalizarTexto(value, max = 120) {
+  return String(value ?? '').trim().slice(0, max);
+}
+
+function hasOwn(obj, field) {
+  return Object.prototype.hasOwnProperty.call(obj, field);
+}
+
+function normalizarClienteOverride(raw = {}) {
+  const override = {};
+  const nome = raw.nome ?? raw.name ?? raw.clientenome;
+  const documento = raw.documento ?? raw.cpf ?? raw.clientecpf;
+
+  if (nome !== undefined) {
+    const name = normalizarTexto(nome, 200);
+    if (!name) return { ok: false, erro: 'Nome do cliente e obrigatorio.' };
+    override.clientenome = name;
+  }
+
+  if (documento !== undefined) {
+    const cpf = onlyDigits(documento);
+    if (cpf && cpf.length !== 11 && cpf.length !== 14) {
+      return { ok: false, erro: 'CPF/CNPJ do cliente deve ter 11 ou 14 digitos.' };
+    }
+    override.cpf = cpf;
+  }
+
+  if (hasOwn(raw, 'ie')) override.ie = normalizarTexto(raw.ie, 30);
+  if (hasOwn(raw, 'logradouro')) override.logradouro = normalizarTexto(raw.logradouro, 200);
+  if (hasOwn(raw, 'numero')) override.c_numero = normalizarTexto(raw.numero, 20);
+  if (hasOwn(raw, 'c_numero')) override.c_numero = normalizarTexto(raw.c_numero, 20);
+  if (hasOwn(raw, 'bairro')) override.bairro = normalizarTexto(raw.bairro, 80);
+  if (hasOwn(raw, 'cidade')) override.cidade = normalizarTexto(raw.cidade, 80);
+
+  if (hasOwn(raw, 'uf')) {
+    const uf = normalizarTexto(raw.uf, 2).toUpperCase();
+    if (uf && !/^[A-Z]{2}$/.test(uf)) return { ok: false, erro: 'UF do cliente deve ter 2 letras.' };
+    override.uf = uf;
+  }
+
+  if (hasOwn(raw, 'cep')) {
+    const cep = onlyDigits(raw.cep);
+    if (cep && cep.length !== 8) return { ok: false, erro: 'CEP do cliente deve ter 8 digitos.' };
+    override.cep = cep;
+  }
+
+  return { ok: true, cliente: override };
+}
+
+function aplicarOverrideClienteNFe(os, raw) {
+  if (!raw || typeof raw !== 'object') return { ok: true, cliente: { ...os } };
+
+  const resultado = normalizarClienteOverride(raw);
+  if (!resultado.ok) return resultado;
+
+  return {
+    ok: true,
+    cliente: {
+      ...os,
+      ...resultado.cliente,
+    },
+  };
+}
+
 module.exports = {
   aplicarOverridesItensNFe,
+  aplicarOverrideClienteNFe,
   normalizarItemFiscalOverride,
+  normalizarClienteOverride,
   serializarItemPreviaNFe,
 };
