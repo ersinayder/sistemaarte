@@ -74,6 +74,7 @@ describe('route authorization contracts', () => {
     const nfeRouter = await loadRouter('../routes/nfe.js');
 
     expect(routeRoles(nfeRouter, 'get', '/status-servico')).toEqual(['admin', 'caixa']);
+    expect(routeRoles(nfeRouter, 'get', '/emitir/:id/preview')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'post', '/emitir/:id')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'post', '/:chave/cce')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'post', '/:chave/cancelar')).toEqual(['admin', 'caixa']);
@@ -295,6 +296,15 @@ describe('security configuration contracts', () => {
 
     expect(source).toMatch(/SELECT oi\.\*, p\.nome AS produto_nome/);
     expect(source).not.toMatch(/SELECT oi\.\*, p\.nome,/);
+  });
+
+  it('reviews and validates per-emission fiscal item overrides before issuing NF-e', () => {
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/router\.get\(['"]\/emitir\/:id\/preview['"]/);
+    expect(source).toMatch(/serializarPreviaEmissaoNFe/);
+    expect(source).toMatch(/aplicarOverridesItensNFe\(itensBase,\s*overrides\)/);
+    expect(source).toMatch(/return res\.status\(400\)\.json\(\{\s*erro:\s*itensComOverrides\.erro\s*\}\)/);
   });
 });
 
