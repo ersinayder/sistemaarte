@@ -93,7 +93,7 @@ function CampoClienteEmissao({ label, field, value, onChange }) {
         className="form-input"
         value={value || ''}
         onChange={e => onChange(field, e.target.value)}
-        style={{ width, height: 36, padding: '7px 9px', fontSize: 'var(--text-xs)' }}
+        style={{ width: '100%', height: 36, padding: '7px 9px', fontSize: 'var(--text-xs)' }}
       />
     </label>
   )
