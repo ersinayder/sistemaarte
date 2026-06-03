@@ -42,7 +42,7 @@ describe('propostaPdf', () => {
     expect(html).toContain('.no-print { display: none !important; }');
   });
 
-  it('renders company identity details in the proposal header when available', () => {
+  it('renders company identity details in a readable proposal header without email', () => {
     const html = renderPropostaHtml({
       empresa: {
         razaosocial: 'Arte e Molduras Ltda',
@@ -66,13 +66,18 @@ describe('propostaPdf', () => {
     });
 
     expect(html).toContain('class="doc-header has-brand-details"');
+    expect(html).toContain('class="brand-line brand-main"');
+    expect(html).toContain('class="brand-line brand-legal"');
+    expect(html).toContain('class="brand-line brand-contact"');
+    expect(html).toContain('class="proposta-print"');
     expect(html).toContain('Arte &amp; Molduras');
     expect(html).toContain('Arte e Molduras Ltda');
     expect(html).toContain('CNPJ 07.500.718/0001-96');
     expect(html).toContain('(31) 99999-0000');
-    expect(html).toContain('loja@arteemolduras.com.br');
+    expect(html).not.toContain('loja@arteemolduras.com.br');
     expect(html).toContain('Rua das Molduras, 123 - Centro');
     expect(html).toContain('Ipatinga/MG - CEP 35160-000');
+    expect(html).toContain('.proposta-print .brand-details');
   });
 
   it('escapes proposal and item data before rendering', () => {

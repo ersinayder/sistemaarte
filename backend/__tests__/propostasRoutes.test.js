@@ -218,5 +218,7 @@ describe('propostas routes', () => {
     expect(html).toContain('Arte &amp; Molduras');
     expect(html).toContain('CNPJ 07.500.718/0001-96');
     expect(html).toContain('Rua das Molduras, 123 - Centro');
+    expect(html).toContain('class="brand-line brand-contact"');
+    expect(html).not.toContain('loja@arteemolduras.com.br');
   });
 });

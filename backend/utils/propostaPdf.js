@@ -43,14 +43,28 @@ function fmtPrazoProposta(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? fmtDate(raw) : esc(raw);
 }
 
+const PROPOSTA_PRINT_STYLES = `
+  .proposta-print .doc-header.has-brand-details { grid-template-columns: minmax(0, 118mm) minmax(0, 1fr); gap: 8mm; align-items: center; padding-bottom: 7mm; }
+  .proposta-print .doc-header.has-brand-details .brand { grid-template-columns: 33mm minmax(0, 1fr); gap: 5mm; align-items: center; }
+  .proposta-print .doc-header.has-brand-details .brand-logo { max-width: 31mm; max-height: 22mm; }
+  .proposta-print .brand-details { color: #26364a; font-size: 10.6px; line-height: 1.46; }
+  .proposta-print .brand-line { display: block; margin-top: .45mm; overflow-wrap: anywhere; }
+  .proposta-print .brand-main { margin: 0 0 .8mm; color: #111827; font-size: 14px; font-weight: 900; letter-spacing: .03em; text-transform: uppercase; line-height: 1.08; }
+  .proposta-print .brand-legal { color: #334155; font-size: 9.6px; font-weight: 800; }
+  .proposta-print .brand-doc { color: #111827; font-size: 9.8px; font-weight: 900; }
+  .proposta-print .brand-address { color: #334155; }
+  .proposta-print .brand-contact { color: #111827; font-weight: 900; }
+  .proposta-print .doc-title h1 { font-size: 22px; line-height: 1.14; }
+  .proposta-print .doc-title .subtitle { color: #111827; font-size: 13px; font-weight: 900; }
+  .proposta-print .section { margin-top: 7mm; }
+  .proposta-print .note { padding: 4mm; line-height: 1.55; }
+`;
+
 function renderEmpresaHeaderDetails(empresa = {}) {
   const nome = empresa.nomefantasia || empresa.razaosocial || 'Arte e Molduras';
   const razao = empresa.razaosocial && empresa.razaosocial !== nome ? empresa.razaosocial : '';
   const cnpj = empresa.cnpj ? `CNPJ ${formatCnpj(empresa.cnpj)}` : '';
-  const contato = [
-    empresa.telefone ? `Tel. ${formatPhone(empresa.telefone)}` : '',
-    empresa.email ? esc(empresa.email) : '',
-  ].filter(Boolean).join(' | ');
+  const contato = empresa.telefone ? `Tel. ${formatPhone(empresa.telefone)}` : '';
   const endereco1 = [
     empresa.logradouro,
     empresa.numero,
@@ -65,12 +79,12 @@ function renderEmpresaHeaderDetails(empresa = {}) {
   const cep = empresa.cep ? `CEP ${formatCep(empresa.cep)}` : '';
 
   const lines = [
-    `<strong>${esc(nome)}</strong>`,
-    razao ? `<span>${esc(razao)}</span>` : '',
-    cnpj ? `<span>${cnpj}</span>` : '',
-    endereco1 || endereco2 ? `<span>${esc([endereco1, endereco2].filter(Boolean).join(' - '))}</span>` : '',
-    cidade || cep ? `<span>${esc([cidade, cep].filter(Boolean).join(' - '))}</span>` : '',
-    contato ? `<span>${contato}</span>` : '',
+    `<strong class="brand-line brand-main">${esc(nome)}</strong>`,
+    razao ? `<span class="brand-line brand-legal">${esc(razao)}</span>` : '',
+    cnpj ? `<span class="brand-line brand-doc">${cnpj}</span>` : '',
+    endereco1 || endereco2 ? `<span class="brand-line brand-address">${esc([endereco1, endereco2].filter(Boolean).join(' - '))}</span>` : '',
+    cidade || cep ? `<span class="brand-line brand-address">${esc([cidade, cep].filter(Boolean).join(' - '))}</span>` : '',
+    contato ? `<span class="brand-line brand-contact">${contato}</span>` : '',
   ].filter(Boolean);
 
   return lines.length ? lines.join('') : '';
@@ -130,6 +144,8 @@ function renderPropostaHtml({ proposta, itens = [], empresa = {} }) {
     body,
     footer: '<strong>Arte e Molduras</strong> | Proposta valida por 7 dias. A producao inicia apos aprovacao e abertura da Ordem de Servico.',
     brandDetails: renderEmpresaHeaderDetails(empresa),
+    documentClass: 'proposta-print',
+    extraStyles: PROPOSTA_PRINT_STYLES,
     autoPrint: true,
   });
 }
