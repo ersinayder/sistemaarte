@@ -10,6 +10,29 @@ function subtotalItem(item) {
   return Number(item?.quantidade || 1) * Number(item?.preco_unitario || 0);
 }
 
+function onlyDigits(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+function formatCnpj(value) {
+  const digits = onlyDigits(value);
+  if (digits.length !== 14) return esc(value);
+  return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`;
+}
+
+function formatPhone(value) {
+  const digits = onlyDigits(value);
+  if (digits.length === 11) return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  if (digits.length === 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  return esc(value);
+}
+
+function formatCep(value) {
+  const digits = onlyDigits(value);
+  if (digits.length !== 8) return esc(value);
+  return `${digits.slice(0, 5)}-${digits.slice(5)}`;
+}
+
 function numeroPropostaPrint(numero) {
   return String(numero || '').replace(/^PROP-/i, '');
 }
@@ -20,7 +43,40 @@ function fmtPrazoProposta(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? fmtDate(raw) : esc(raw);
 }
 
-function renderPropostaHtml({ proposta, itens = [] }) {
+function renderEmpresaHeaderDetails(empresa = {}) {
+  const nome = empresa.nomefantasia || empresa.razaosocial || 'Arte e Molduras';
+  const razao = empresa.razaosocial && empresa.razaosocial !== nome ? empresa.razaosocial : '';
+  const cnpj = empresa.cnpj ? `CNPJ ${formatCnpj(empresa.cnpj)}` : '';
+  const contato = [
+    empresa.telefone ? `Tel. ${formatPhone(empresa.telefone)}` : '',
+    empresa.email ? esc(empresa.email) : '',
+  ].filter(Boolean).join(' | ');
+  const endereco1 = [
+    empresa.logradouro,
+    empresa.numero,
+  ].filter(Boolean).join(', ');
+  const endereco2 = [
+    empresa.bairro,
+  ].filter(Boolean).join('');
+  const cidade = [
+    empresa.municipio,
+    empresa.uf,
+  ].filter(Boolean).join('/');
+  const cep = empresa.cep ? `CEP ${formatCep(empresa.cep)}` : '';
+
+  const lines = [
+    `<strong>${esc(nome)}</strong>`,
+    razao ? `<span>${esc(razao)}</span>` : '',
+    cnpj ? `<span>${cnpj}</span>` : '',
+    endereco1 || endereco2 ? `<span>${esc([endereco1, endereco2].filter(Boolean).join(' - '))}</span>` : '',
+    cidade || cep ? `<span>${esc([cidade, cep].filter(Boolean).join(' - '))}</span>` : '',
+    contato ? `<span>${contato}</span>` : '',
+  ].filter(Boolean);
+
+  return lines.length ? lines.join('') : '';
+}
+
+function renderPropostaHtml({ proposta, itens = [], empresa = {} }) {
   const numero = numeroPropostaPrint(proposta.numero);
   const rows = itens.map((item, idx) => ({
     ...item,
@@ -73,6 +129,7 @@ function renderPropostaHtml({ proposta, itens = [] }) {
     subtitle: numero,
     body,
     footer: '<strong>Arte e Molduras</strong> | Proposta valida por 7 dias. A producao inicia apos aprovacao e abertura da Ordem de Servico.',
+    brandDetails: renderEmpresaHeaderDetails(empresa),
     autoPrint: true,
   });
 }

@@ -96,10 +96,12 @@ function renderPrintDocument({
   documentClass = '',
   compact = false,
   extraStyles = '',
+  brandDetails = '',
   autoPrint = false,
 } = {}) {
   const logo = logoDataUri();
   const generatedAt = fmtDateTime();
+  const headerClass = brandDetails ? 'doc-header has-brand-details' : 'doc-header';
   return `<!doctype html>
 <html lang="pt-BR">
 <head>
@@ -117,6 +119,12 @@ function renderPrintDocument({
   .brand { display: flex; align-items: center; justify-content: flex-start; min-height: 25mm; }
   .brand-logo { max-width: 40mm; max-height: 24mm; object-fit: contain; display: block; }
   .brand-fallback { font-size: 15px; font-weight: 900; letter-spacing: .02em; text-transform: uppercase; }
+  .doc-header.has-brand-details { grid-template-columns: minmax(0, 116mm) 1fr; gap: 8mm; align-items: start; }
+  .doc-header.has-brand-details .brand { display: grid; grid-template-columns: 34mm minmax(0, 1fr); gap: 4mm; align-items: center; min-height: auto; }
+  .doc-header.has-brand-details .brand-logo { max-width: 32mm; max-height: 21mm; }
+  .brand-details { color: #334155; font-size: 10px; line-height: 1.35; }
+  .brand-details strong { display: block; color: #111827; font-size: 12px; font-weight: 900; letter-spacing: .04em; text-transform: uppercase; }
+  .brand-details span { display: block; margin-top: .6mm; overflow-wrap: anywhere; }
   .doc-title { text-align: right; }
   h1 { margin: 0; font-size: ${compact ? '18px' : '22px'}; text-transform: uppercase; letter-spacing: .08em; color: #111827; }
   .subtitle { margin-top: 4px; color: #64748b; font-weight: 700; }
@@ -154,9 +162,10 @@ function renderPrintDocument({
 <body class="${esc(documentClass)}">
   <div class="actions no-print"><button type="button" class="print-btn" onclick="window.print()">Imprimir / salvar PDF</button></div>
   <main class="sheet">
-    <header class="doc-header">
+    <header class="${headerClass}">
       <div class="brand">
         ${logo ? `<img class="brand-logo" src="${logo}" alt="Arte e Molduras">` : '<div class="brand-fallback">Arte e Molduras</div>'}
+        ${brandDetails ? `<div class="brand-details">${brandDetails}</div>` : ''}
       </div>
       <div class="doc-title">
         <h1>${esc(title)}</h1>
