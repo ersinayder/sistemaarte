@@ -85,6 +85,20 @@ function CampoFiscal({ item, index, field, width, onChange }) {
   )
 }
 
+function CampoClienteEmissao({ label, field, value, onChange }) {
+  return (
+    <label style={{ display: 'grid', gap: 4, minWidth: 0 }}>
+      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>{label}</span>
+      <input
+        className="form-input"
+        value={value || ''}
+        onChange={e => onChange(field, e.target.value)}
+        style={{ width, height: 36, padding: '7px 9px', fontSize: 'var(--text-xs)' }}
+      />
+    </label>
+  )
+}
+
 function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
   const [ordens, setOrdens]               = useState([])
   const [loadingOS, setLoadingOS]         = useState(true)
@@ -149,7 +163,46 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
     })
   }
 
+  const atualizarCliente = (field, value) => {
+    setPrevia(prev => {
+      if (!prev) return prev
+      const normalizado =
+        field === 'documento' || field === 'cep'
+          ? value.replace(/\D/g, '').slice(0, field === 'documento' ? 14 : 8)
+          : field === 'uf'
+            ? value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2)
+            : value
+      return {
+        ...prev,
+        cliente: {
+          ...prev.cliente,
+          [field]: normalizado,
+        },
+      }
+    })
+  }
+
   const validarItens = () => {
+    const cliente = previa?.cliente || {}
+    const documento = String(cliente.documento || '').replace(/\D/g, '')
+    const cep = String(cliente.cep || '').replace(/\D/g, '')
+    if (!String(cliente.nome || '').trim()) {
+      setErroFiscal('Informe o nome do cliente.')
+      return false
+    }
+    if (documento && documento.length !== 11 && documento.length !== 14) {
+      setErroFiscal('CPF/CNPJ do cliente deve ter 11 ou 14 digitos.')
+      return false
+    }
+    if (cep && cep.length !== 8) {
+      setErroFiscal('CEP do cliente deve ter 8 digitos.')
+      return false
+    }
+    if (cliente.uf && !/^[A-Z]{2}$/.test(String(cliente.uf))) {
+      setErroFiscal('UF do cliente deve ter 2 letras.')
+      return false
+    }
+
     const itemInvalido = (previa?.itens || []).find(item =>
       String(item.ncm || '').replace(/\D/g, '').length !== 8 ||
       String(item.cfop || '').replace(/\D/g, '').length !== 4 ||
@@ -178,7 +231,7 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
         origem_fiscal: item.origem_fiscal,
         unidade: item.unidade,
       }))
-      await api.post(`/nfe/emitir/${ordemSel.id}`, { itens }, { timeout: 80000, skipGlobalErrorToast: true })
+      await api.post(`/nfe/emitir/${ordemSel.id}`, { cliente: previa.cliente, itens }, { timeout: 80000, skipGlobalErrorToast: true })
       toast.success(`NF-e emitida com sucesso para ${ordemSel.numero || previa.ordem?.numero}!`)
       onSuccess()
       onClose()
@@ -317,15 +370,29 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
                   ))}
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 'var(--space-3)' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 'var(--space-3)' }}>
+                  <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4)', display: 'grid', gap: 'var(--space-3)' }}>
+                    <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800 }}>Dados do cliente</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 'var(--space-3)' }}>
+                      <div style={{ gridColumn: '1 / -1' }}>
+                        <CampoClienteEmissao label="Nome" field="nome" value={previa.cliente?.nome} onChange={atualizarCliente} />
+                      </div>
+                      <CampoClienteEmissao label="CPF/CNPJ" field="documento" value={previa.cliente?.documento} onChange={atualizarCliente} />
+                      <CampoClienteEmissao label="IE" field="ie" value={previa.cliente?.ie} onChange={atualizarCliente} />
+                      <div style={{ gridColumn: '1 / -1' }}>
+                        <CampoClienteEmissao label="Logradouro" field="logradouro" value={previa.cliente?.logradouro} onChange={atualizarCliente} />
+                      </div>
+                      <CampoClienteEmissao label="Numero" field="numero" value={previa.cliente?.numero} onChange={atualizarCliente} />
+                      <CampoClienteEmissao label="Bairro" field="bairro" value={previa.cliente?.bairro} onChange={atualizarCliente} />
+                      <CampoClienteEmissao label="Cidade" field="cidade" value={previa.cliente?.cidade} onChange={atualizarCliente} />
+                      <div style={{ display: 'grid', gridTemplateColumns: '72px minmax(0, 1fr)', gap: 'var(--space-2)' }}>
+                        <CampoClienteEmissao label="UF" field="uf" value={previa.cliente?.uf} onChange={atualizarCliente} />
+                        <CampoClienteEmissao label="CEP" field="cep" value={previa.cliente?.cep} onChange={atualizarCliente} />
+                      </div>
+                    </div>
+                  </div>
+
                   {[
-                    ['Dados do cliente', [
-                      ['Nome', previa.cliente?.nome],
-                      ['CPF/CNPJ', previa.cliente?.documento],
-                      ['IE', previa.cliente?.ie],
-                      ['Endereco', [previa.cliente?.logradouro, previa.cliente?.numero, previa.cliente?.bairro].filter(Boolean).join(', ')],
-                      ['Cidade', [previa.cliente?.cidade, previa.cliente?.uf, previa.cliente?.cep].filter(Boolean).join(' - ')],
-                    ]],
                     ['Dados do emitente', [
                       ['Razao', previa.emitente?.xNome],
                       ['Fantasia', previa.emitente?.xFant],

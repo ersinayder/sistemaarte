@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   aplicarOverridesItensNFe,
+  aplicarOverrideClienteNFe,
   normalizarItemFiscalOverride,
   serializarItemPreviaNFe,
 } from '../domain/nfeEmissionRules.js';
@@ -69,5 +70,54 @@ describe('nfeEmissionRules', () => {
       origem_fiscal: '0',
       unidade: 'UN',
     });
+  });
+
+  it('applies customer overrides for the NF-e payload using customer-table field names', () => {
+    const os = {
+      clienteid: 9,
+      clientenome: 'Cliente antigo',
+      cpf: '12345678901',
+      ie: '',
+      logradouro: 'Rua A',
+      c_numero: '10',
+      bairro: 'Centro',
+      cidade: 'Ipatinga',
+      uf: 'MG',
+      cep: '35160000',
+    };
+
+    const resultado = aplicarOverrideClienteNFe(os, {
+      nome: 'Cliente atualizado',
+      documento: '07.500.718/0001-96',
+      ie: 'ISENTO',
+      logradouro: 'Rua Nova',
+      numero: '22',
+      bairro: 'Veneza',
+      cidade: 'Ipatinga',
+      uf: 'mg',
+      cep: '35.162-123',
+    });
+
+    expect(resultado.ok).toBe(true);
+    expect(resultado.cliente).toMatchObject({
+      clientenome: 'Cliente atualizado',
+      cpf: '07500718000196',
+      ie: 'ISENTO',
+      logradouro: 'Rua Nova',
+      c_numero: '22',
+      bairro: 'Veneza',
+      cidade: 'Ipatinga',
+      uf: 'MG',
+      cep: '35162123',
+    });
+  });
+
+  it('rejects invalid customer document overrides before issuing NF-e', () => {
+    const resultado = aplicarOverrideClienteNFe({ clientenome: 'Cliente' }, {
+      documento: '12345',
+    });
+
+    expect(resultado.ok).toBe(false);
+    expect(resultado.erro).toContain('CPF/CNPJ');
   });
 });

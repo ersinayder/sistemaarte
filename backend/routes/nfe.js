@@ -22,6 +22,7 @@ const {
   getSerieNFe,
 } = require('../utils/nfeConfig');
 const {
+  aplicarOverrideClienteNFe,
   aplicarOverridesItensNFe,
   serializarItemPreviaNFe,
 } = require('../domain/nfeEmissionRules');
@@ -158,6 +159,7 @@ function serializarPreviaEmissaoNFe({ os, itens, ambiente, serie }) {
       descontovalor: Number(os.descontovalor || 0),
     },
     cliente: {
+      id: os.clienteid || null,
       nome: os.clientenome || os.clientenome_os || 'CONSUMIDOR FINAL',
       documento: os.cpf || '',
       ie: os.ie || '',
@@ -176,6 +178,35 @@ function serializarPreviaEmissaoNFe({ os, itens, ambiente, serie }) {
     },
     itens: itens.map(serializarItemPreviaNFe),
   };
+}
+
+function salvarClienteCadastroAposEmissao(db, os, cliente) {
+  if (!os.clienteid) return;
+
+  db.prepare(`
+    UPDATE clientes SET
+      name = ?,
+      cpf = ?,
+      ie = ?,
+      logradouro = ?,
+      numero = ?,
+      bairro = ?,
+      cidade = ?,
+      uf = ?,
+      cep = ?
+    WHERE id = ? AND deletedat IS NULL
+  `).run(
+    cliente.clientenome || os.clientenome || null,
+    cliente.cpf || null,
+    cliente.ie || null,
+    cliente.logradouro || null,
+    cliente.c_numero || null,
+    cliente.bairro || null,
+    cliente.cidade || null,
+    cliente.uf || null,
+    cliente.cep || null,
+    os.clienteid
+  );
 }
 
 /**
@@ -521,6 +552,12 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
       return res.status(400).json({ erro: itensComOverrides.erro });
     }
 
+    const clienteComOverrides = aplicarOverrideClienteNFe(os, req.body?.cliente);
+    if (!clienteComOverrides.ok) {
+      clearTimeout(guardTimeout); respondido = true;
+      return res.status(400).json({ erro: clienteComOverrides.erro });
+    }
+
     // ── MUTEX: tenta adquirir o lock de emissao ────────────────────────────────
     // UPDATE só executa se o status NÃO for 'emitindo' nem 'autorizado'.
     // Se changes === 0, outro processo já pegou o lock — rejeita com 409.
@@ -545,12 +582,12 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
     const payload = montarNFe({
       ordem:    os,
       itens:    itensComOverrides.itens,
-      cliente:  os,
+      cliente:  clienteComOverrides.cliente,
       emitente: getEmitenteConfig(),
       numero:   parseInt(numero, 10),
       serie,
       ambiente,
-      autXML:   getAutXmlParaNFe(os.cpf),
+      autXML:   getAutXmlParaNFe(clienteComOverrides.cliente.cpf),
     });
 
     const tpAmbLabel = ambiente === 1 ? '1(PROD)' : '2(HOMOL)';
@@ -652,6 +689,8 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
         nfe_cancel_motivo = NULL
       WHERE id = ?
     `).run(numero, serie, chave, protocolo, agora, xmlAutorizacao, osId);
+
+    salvarClienteCadastroAposEmissao(db, os, clienteComOverrides.cliente);
 
     if (chave) {
       salvarXmlDisco(`${chave}.xml`, xmlAutorizacao);
