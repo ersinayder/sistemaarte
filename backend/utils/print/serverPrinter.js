@@ -37,20 +37,65 @@ function psString(value) {
 }
 
 function buildPrintScript({ htmlPath, printerName, copies }) {
-  const printVerb = printerName ? 'PrintTo' : 'Print';
   const printerLine = printerName ? `$printerName = ${psString(printerName)}` : '$printerName = $null';
-  const argumentLine = printerName ? ' -ArgumentList $printerName' : '';
 
   return `
 $ErrorActionPreference = 'Stop'
 $htmlPath = ${psString(htmlPath)}
 ${printerLine}
-for ($i = 0; $i -lt ${normalizePrintCopies(copies)}; $i++) {
-  $process = Start-Process -FilePath $htmlPath -Verb ${printVerb}${argumentLine} -PassThru
-  if ($process) {
-    $process.WaitForExit(30000) | Out-Null
+$browserCandidates = @(
+  "$env:ProgramFiles\\Google\\Chrome\\Application\\chrome.exe",
+  "\${env:ProgramFiles(x86)}\\Google\\Chrome\\Application\\chrome.exe",
+  "$env:ProgramFiles\\Microsoft\\Edge\\Application\\msedge.exe",
+  "\${env:ProgramFiles(x86)}\\Microsoft\\Edge\\Application\\msedge.exe"
+)
+$browser = $browserCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $browser) {
+  throw 'Chrome ou Edge nao encontrado no servidor para impressao HTML.'
+}
+
+$oldDefault = Get-CimInstance Win32_Printer | Where-Object { $_.Default } | Select-Object -First 1
+if ($printerName) {
+  $printer = Get-CimInstance Win32_Printer | Where-Object { $_.Name -eq $printerName } | Select-Object -First 1
+  if (-not $printer -and $printerName.StartsWith('\\\\')) {
+    Add-Printer -ConnectionName $printerName
+    Start-Sleep -Seconds 2
+    $printer = Get-CimInstance Win32_Printer | Where-Object { $_.Name -eq $printerName } | Select-Object -First 1
   }
-  Start-Sleep -Milliseconds 800
+  if (-not $printer) {
+    throw "Impressora nao encontrada no servidor: $printerName"
+  }
+  Invoke-CimMethod -InputObject $printer -MethodName SetDefaultPrinter | Out-Null
+}
+
+$fileUri = ([System.Uri]$htmlPath).AbsoluteUri
+for ($i = 0; $i -lt ${normalizePrintCopies(copies)}; $i++) {
+  $userDataDir = Join-Path $env:TEMP ("sistema-arte-print-browser-" + [System.Guid]::NewGuid().ToString("N"))
+  New-Item -ItemType Directory -Force -Path $userDataDir | Out-Null
+  $args = @(
+    "--kiosk-printing",
+    "--disable-print-preview",
+    "--no-first-run",
+    "--disable-extensions",
+    "--user-data-dir=$userDataDir",
+    $fileUri
+  )
+  $process = Start-Process -FilePath $browser -ArgumentList $args -PassThru
+  Start-Sleep -Seconds 8
+  if ($process -and -not $process.HasExited) {
+    $process.CloseMainWindow() | Out-Null
+    Start-Sleep -Seconds 1
+    if (-not $process.HasExited) { $process.Kill() }
+  }
+  Remove-Item -LiteralPath $userDataDir -Recurse -Force -ErrorAction SilentlyContinue
+  Start-Sleep -Milliseconds 500
+}
+
+if ($printerName -and $oldDefault) {
+  $currentOldDefault = Get-CimInstance Win32_Printer | Where-Object { $_.Name -eq $oldDefault.Name } | Select-Object -First 1
+  if ($currentOldDefault) {
+    Invoke-CimMethod -InputObject $currentOldDefault -MethodName SetDefaultPrinter | Out-Null
+  }
 }
 `.trim();
 }

@@ -192,6 +192,7 @@ function renderTesteImpressaoHtml(config = {}) {
       <p><strong>Destino:</strong> ${String(destino).replace(/[<>&]/g, (ch) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[ch]))}</p>
     </section>
   </main>
+  <script>window.addEventListener("load",function(){window.setTimeout(function(){window.print();},150);});</script>
 </body>
 </html>`;
 }

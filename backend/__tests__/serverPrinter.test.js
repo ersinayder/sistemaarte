@@ -20,7 +20,7 @@ describe('server printer helper', () => {
     expect(printer.resolvePrinterName({})).toBe('\\\\ARTESERVER\\Impressoraloja');
   });
 
-  it('builds a Windows PrintTo script that sends one job per requested copy', () => {
+  it('builds a browser kiosk print script without relying on .html file associations', () => {
     const script = printer.buildPrintScript({
       htmlPath: 'C:\\Temp\\ordem.html',
       printerName: '\\\\ARTESERVER\\Impressoraloja',
@@ -30,8 +30,12 @@ describe('server printer helper', () => {
     expect(script).toContain("$htmlPath = 'C:\\Temp\\ordem.html'");
     expect(script).toContain("$printerName = '\\\\ARTESERVER\\Impressoraloja'");
     expect(script).toContain('$i -lt 2');
-    expect(script).toContain('-Verb PrintTo');
-    expect(script).toContain('-ArgumentList $printerName');
+    expect(script).toContain('chrome.exe');
+    expect(script).toContain('msedge.exe');
+    expect(script).toContain('Add-Printer -ConnectionName $printerName');
+    expect(script).toContain('SetDefaultPrinter');
+    expect(script).toContain('--kiosk-printing');
+    expect(script).not.toContain('-Verb PrintTo');
   });
 
   it('prints by writing a temporary HTML file and invoking PowerShell', async () => {
@@ -52,6 +56,7 @@ describe('server printer helper', () => {
 
     expect(writeTempHtml).toHaveBeenCalledWith('<html>OS</html>', 'ordem-OS-0042');
     expect(runPowerShell).toHaveBeenCalledWith(expect.stringContaining("$printerName = '\\\\192.168.0.45\\Impressoraloja'"));
+    expect(runPowerShell).toHaveBeenCalledWith(expect.not.stringContaining('-Verb PrintTo'));
     expect(result).toEqual({ ok: true, printerName: '\\\\192.168.0.45\\Impressoraloja', copies: 2 });
   });
 
