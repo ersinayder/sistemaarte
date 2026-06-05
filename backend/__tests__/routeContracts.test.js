@@ -29,6 +29,13 @@ vi.mock('../utils/nfe.js', () => ({
   callSEFAZ: vi.fn(),
   resetNFEWizard: vi.fn(),
   getSefazErrorInfo: vi.fn(() => ({ tipo: 'comunicacao', cstat: 'comunicacao', mensagem: 'Falha SEFAZ' })),
+  formatarRejeicaoSefaz: vi.fn(({ cStat, xMotivo }) => ({
+    cstat: cStat,
+    campo: 'Rejeicao SEFAZ',
+    item: null,
+    motivoOriginal: xMotivo,
+    mensagem: `SEFAZ rejeitou a emissao: ${xMotivo}`,
+  })),
 }));
 
 function makeRes() {

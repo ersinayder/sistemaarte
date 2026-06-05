@@ -9,6 +9,7 @@ const {
   getNFEWizard,
   callSEFAZ,
   getSefazErrorInfo,
+  formatarRejeicaoSefaz,
 } = require('../utils/nfe');
 const { montarNFe } = require('../domain/nfeRules');
 const { renderDanfeHtml } = require('../utils/danfe');
@@ -652,6 +653,7 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
         || resultado?.retEnviNFe?.xMotivo
         || resultado?.retEnviNFe?.protNFe?.infProt?.xMotivo
         || `cStat ${cStat || 'desconhecido'}`;
+      const rejeicao = formatarRejeicaoSefaz({ cStat, xMotivo: motivo, contexto: 'autorizacao' });
       db.prepare(`UPDATE ordens SET nfe_status='rejeitado' WHERE id=?`).run(osId);
       const xmlRejeicao = serializarXmlFiscal(resultado);
       registrarEventoFiscal(db, {
@@ -659,14 +661,20 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
         chave: chave || os.nfe_chave || `OS-${os.id}`,
         tipo: 'rejeicao',
         cstat: cStat || null,
-        motivo,
-        texto: 'Rejeicao de autorizacao NF-e',
+        motivo: rejeicao.mensagem,
+        texto: `Rejeicao de autorizacao NF-e. Retorno original: ${rejeicao.motivoOriginal}`,
         xml: xmlRejeicao,
       });
       console.error(`[NF-e] Rejeitado OS#${os.id}: cStat=${cStat} motivo=${motivo}`);
       if (!respondido) {
         clearTimeout(guardTimeout); respondido = true;
-        return res.status(422).json({ erro: `SEFAZ rejeitou: ${motivo}`, cStat });
+        return res.status(422).json({
+          erro: rejeicao.mensagem,
+          cStat,
+          campo: rejeicao.campo,
+          item: rejeicao.item,
+          motivoOriginal: rejeicao.motivoOriginal,
+        });
       }
       return;
     }
@@ -834,10 +842,17 @@ router.post('/:chave/cce', auth(['admin', 'caixa']), async (req, res) => {
 
     if (!autorizado) {
       const xMotivo = parsed.xMotivo || `cStat ${parsed.cStat || 'desconhecido'}`;
+      const rejeicao = formatarRejeicaoSefaz({ cStat: parsed.cStat, xMotivo, contexto: 'cce' });
       console.error(`[NF-e] CC-e rejeitada: cStat=${parsed.cStat} motivo=${xMotivo}`);
       if (!respondido) {
         clearTimeout(guardTimeout); respondido = true;
-        return res.status(422).json({ erro: `SEFAZ rejeitou CC-e: ${xMotivo}`, cStat: parsed.cStat });
+        return res.status(422).json({
+          erro: rejeicao.mensagem,
+          cStat: parsed.cStat,
+          campo: rejeicao.campo,
+          item: rejeicao.item,
+          motivoOriginal: rejeicao.motivoOriginal,
+        });
       }
       return;
     }
@@ -990,10 +1005,17 @@ router.post('/:chave/cancelar', auth(['admin', 'caixa']), async (req, res) => {
 
     if (!cancelado) {
       const xMotivo = parsed.xMotivo || `cStat ${cStatResp || 'desconhecido'}`;
+      const rejeicao = formatarRejeicaoSefaz({ cStat: cStatResp, xMotivo, contexto: 'cancelamento' });
       console.error(`[NF-e] Cancelamento rejeitado: cStat=${cStatResp} motivo=${xMotivo}`);
       if (!respondido) {
         clearTimeout(guardTimeout); respondido = true;
-        return res.status(422).json({ erro: `SEFAZ rejeitou cancelamento: ${xMotivo}`, cStat: cStatResp });
+        return res.status(422).json({
+          erro: rejeicao.mensagem,
+          cStat: cStatResp,
+          campo: rejeicao.campo,
+          item: rejeicao.item,
+          motivoOriginal: rejeicao.motivoOriginal,
+        });
       }
       return;
     }
