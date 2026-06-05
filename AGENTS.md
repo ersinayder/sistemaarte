@@ -175,7 +175,7 @@ frontend/src/
 
 - **Branch protegida:** `main` — requer PR + testes passando
 - **Branch de trabalho:** `develop` — commits diretos permitidos
-- **Fluxo:** `develop` → PR → testes (Vitest, 142 testes) → merge → deploy automático
+- **Fluxo:** `develop` → PR → testes (Vitest, 290 testes backend em 2026-06-05) → merge → deploy automático
 - **Deploy:** `robocopy` sincroniza `backend/` e `frontend/dist/` no servidor, PM2 reinicia via `ecosystem.config.js`
 - **O `.env` nunca é copiado pelo deploy** (`/XF .env` no robocopy)
 
@@ -187,6 +187,184 @@ frontend/src/
 - Frontend buildado e servido em producao; build esperado usa `vite v8.0.13`.
 - Backend reiniciado via PM2 apos pull/install/build.
 - O aviso de console do Cloudflare Insights bloqueado por CSP vem do `helmet()` e nao indica falha da aplicacao.
+
+---
+
+## Estado atual consolidado em 2026-06-05
+
+Esta secao resume o que ja foi implementado e validado no sistema ate agora. Use como mapa rapido antes de mexer no codigo.
+
+### Modulos de negocio em producao/desenvolvimento
+
+| Modulo | Estado | Pontos importantes |
+|---|---|---|
+| Atendimento | Implementado | Tela principal para criar OS, cliente, itens, desconto, pagamento, imprimir e seguir para detalhe/caixa. Rota frontend: `/atendimento`. |
+| Ordens de Servico | Implementado | CRUD, itens, status log, lixeira, restauracao, exclusao permanente admin, impressao A5, saldo oficial por `getResumoFinanceiroOS()`. |
+| Oficina | Implementado | Visao operacional por status/kanban, acesso restrito para `oficina`, movimentacao otimista no frontend, sem dados financeiros/fiscais sensiveis para oficina. |
+| Caixa | Implementado | Entradas/saidas, pagamento parcial/total de OS, venda avulsa com itens estruturados, fechamento imprimivel e soft delete auditado. |
+| Clientes | Implementado | CRUD, busca paginada, detalhe com historico de OS, consulta CNPJ via BrasilAPI, campos fiscais completos para NF-e. |
+| Produtos | Implementado | CRUD, estoque/cadastro, campos fiscais por produto (`ncm`, `cfop`, `csosn`, `origem_fiscal`, `unidade`) e soft delete. |
+| Propostas | Implementado | Funil comercial separado de OS, itens, status, PDF/HTML imprimivel, mensagem WhatsApp manual e geracao de OS somente apos aprovacao. |
+| Financeiro admin | Implementado | Resumo mensal, contas a pagar, baixa criando lancamento no caixa, contas a receber, DRE e relatorios imprimiveis. Admin only. |
+| NF-e | Implementado em homologacao | Emissao, cancelamento, CC-e, DANFE HTML real, XML legal em banco e disco, eventos fiscais, preview/edit fiscal antes de emitir, catalogo de rejeicoes SEFAZ. |
+| Configuracoes | Implementado | Empresa, fiscal, certificado `.pfx`, senha criptografavel, autorizados XML, WhatsApp, backup, seguranca e saude do sistema. Admin only. |
+| Backups | Implementado localmente | Backup local diario 2h BRT, rotacao, `backup-status.json`, endpoint/status na Configuracoes. Offsite ainda pendente. |
+| WhatsApp | Parcial/operacional | Meta Cloud API em backend, configuracao em `/configuracoes`, avisos manuais/assistidos para confirmacao e pedido pronto, proposta abre `wa.me` com mensagem pronta. |
+| Relatorios/prints | Implementado | OS A5, fechamento de caixa, resumo financeiro, contas a pagar/receber, DRE, relatorio de producao, proposta e DANFE em HTML imprimivel. |
+
+### Frontend atual
+
+- SPA React 18 + Vite 8, com rotas lazy-loaded em `frontend/src/App.jsx`.
+- Rota padrao:
+  - `oficina` entra em `/oficina`.
+  - `admin` e `caixa` entram em `/atendimento`.
+- Rotas principais:
+  - `/atendimento`
+  - `/dashboard`
+  - `/ordens`
+  - `/ordens/lixeira`
+  - `/ordens/:id`
+  - `/oficina`
+  - `/oficina/:id`
+  - `/caixa`
+  - `/clientes`
+  - `/financeiro`
+  - `/orcamento`
+  - `/orcamento/calculadora`
+  - `/propostas`
+  - `/produtos`
+  - `/usuarios`
+  - `/configuracoes`
+  - `/nfe`
+- Layout operacional foi redesenhado com paleta neutralizada, componentes mais densos e foco de SaaS interno.
+- Evitar landing page, hero decorativo ou UI de marketing: o sistema e ferramenta de operacao diaria.
+
+### Backend atual
+
+Rotas montadas em `backend/server.js`:
+
+```txt
+/api/auth
+/api/users
+/api/clientes
+/api/ordens
+/api/ordens        # tambem monta pdf/print de OS
+/api/propostas
+/api/caixa
+/api/relatorios
+/api/financeiro
+/api/consulta
+/api/backup
+/api/produtos
+/api/configuracoes
+/api/kpis
+/api/nfe
+/api/health
+```
+
+Middlewares globais:
+
+- `helmet()`
+- `cors({ origin: allowedOrigins, credentials: true })`
+- `express.json()`
+- `cookieParser()`
+- `csrfOriginGuard({ allowedOrigins })` em `/api`
+- rate limit global `/api`: `60 req/min`
+- `errorHandler` no final
+- SPA fallback para `frontend/dist` fora de desenvolvimento
+
+### Banco atual
+
+Tabelas principais criadas/geridas em `backend/database.js`:
+
+- `users`
+- `clientes`
+- `ordens`
+- `ordem_itens`
+- `lancamentos`
+- `lancamento_itens`
+- `statuslog`
+- `produtos`
+- `propostas`
+- `proposta_itens`
+- `contas_pagar`
+- `sequencias`
+- `empresa_config`
+- `fiscal_config`
+- `nfe_sequencias`
+- `nfe_autxml`
+- `nfe_eventos`
+- `whatsapp_config`
+- `whatsapp_avisos`
+
+Regras de migration:
+
+- Nunca recriar tabela existente em producao.
+- Usar `ALTER TABLE ADD COLUMN` no array `migrations[]`.
+- Para tabelas novas, usar `CREATE TABLE IF NOT EXISTS`.
+- Banco real (`backend/data/oficina.db`) e XMLs fiscais nunca entram no git.
+
+### Impressao e documentos
+
+- Toda impressao operacional e HTML imprimivel servido pelo backend, nao PDF binario gerado no servidor.
+- `sendPrintHtml()` aplica headers corretos e CSP especifica de impressao.
+- OS usa `renderOrdemServicoHtml()` e resumo financeiro oficial.
+- Impressao direta no servidor usa `backend/utils/print/serverPrinter.js`.
+- Impressora padrao: `\\ARTESERVER\Impressoraloja`, sobrescrita por `ORDEM_PRINTER_NAME`.
+- `normalizePrintCopies()` valida copias antes de mandar para PowerShell/Windows.
+
+### Testes atuais
+
+Validacao fresca em 2026-06-05:
+
+```powershell
+cd backend
+npm.cmd test
+```
+
+Resultado:
+
+```txt
+46 arquivos de teste
+290 testes passando
+```
+
+Observacao Windows:
+
+- Usar `npm.cmd`, nao `npm`, quando o PowerShell bloquear `npm.ps1` por execution policy.
+
+### Mudancas recentes importantes
+
+- Revisao fiscal antes de emitir NF-e:
+  - `GET /api/nfe/emitir/:id/preview`
+  - modal de emissao em `/nfe` permite revisar cliente, emitente e itens
+  - campos fiscais editaveis por emissao: `NCM`, `CFOP`, `CSOSN`, `Origem`, `Unidade`
+  - dados do cliente editaveis na emissao e persistidos no cadastro somente apos autorizacao
+- Itens personalizados da OS preservados na NF-e:
+  - query usa `SELECT oi.*, p.nome AS produto_nome`
+  - `serializarItemPreviaNFe()` prioriza `oi.nome`
+- Catalogo de rejeicoes SEFAZ:
+  - `backend/utils/nfe.js` exporta `formatarRejeicaoSefaz()`
+  - usado em emissao, CC-e e cancelamento
+  - mantem `cStat`, `campo`, `item` e `motivoOriginal`
+  - mensagens especificas para NCM inexistente/completo, CFOP/CSOSN, CST/CSOSN, CPF/CNPJ, IE, endereco, totais, duplicidade, certificado/ambiente e eventos
+- Proposta:
+  - PDF/HTML imprimivel com cabecalho da empresa
+  - botao WhatsApp com mensagem pronta
+  - geracao de OS controlada apos aprovacao
+- Atendimento:
+  - fluxo pos-criacao de OS com acoes operacionais
+  - selecao automatica de campos de quantidade/preco
+  - desconto de OS com rastreio
+- Oficina:
+  - quadro semanal/kanban
+  - mudancas otimistas de status
+  - redacao de campos financeiros, fiscais e PII para role `oficina`
+- UI:
+  - redesign responsivo profissional
+  - paleta operacional neutralizada
+  - modal de NF-e mais largo para revisao fiscal
+  - politicas de impressao operacional refinadas
 
 ---
 
@@ -467,6 +645,62 @@ POST /api/nfe/:chave/cancelar         # cancela NF-e autorizada
 
 Eventos fiscais ficam em `nfe_eventos` com `tipo`: `autorizacao`, `rejeicao`, `cce`, `cancelamento`.
 Novas emissões registram autorização/rejeição nessa tabela. Notas antigas podem ter `nfe_xml` e dados de cancelamento em `ordens`, mas não necessariamente eventos retroativos em `nfe_eventos`.
+
+### Rejeições SEFAZ — mensagens operacionais
+
+`backend/utils/nfe.js` centraliza mensagens de comunicação e rejeição fiscal:
+
+- `getSefazErrorInfo(err)` trata erro lançado pela chamada HTTP/SOAP:
+  - timeout
+  - `ECONNRESET`
+  - `ETIMEDOUT`
+  - HTTP 404/endpoint
+  - falha temporaria de comunicação
+- `formatarRejeicaoSefaz({ cStat, xMotivo, contexto })` trata rejeição fiscal retornada pela SEFAZ:
+  - preserva `cStat`
+  - preserva `motivoOriginal`
+  - extrai `nItem` quando a SEFAZ envia `[nItem:1]`
+  - devolve `campo`, `item`, `origem` e `mensagem`
+  - nunca deve esconder o retorno original, porque ele e necessario para auditoria fiscal
+
+Contextos suportados:
+
+```txt
+autorizacao
+cce
+cancelamento
+```
+
+Catalogo operacional atual:
+
+| Grupo | Exemplos de cStat/padrao | Mensagem deve orientar |
+|---|---|---|
+| NCM | `471`, `777`, `778`, texto com `NCM` | Corrigir NCM do item; 8 digitos, valido e vigente |
+| CFOP/CSOSN/CST | `386`, `387`, `388`, `591`, `725`, texto com `CFOP`, `CSOSN`, `CST` | Revisar combinacao fiscal do item |
+| Cliente/destinatario | `208`, `210`, `220`, `232`, `233`, `234`, `237`, `302`, `303` | Corrigir CPF/CNPJ, IE ou situacao cadastral |
+| Emitente | `207`, `209`, `226`, `245` | Revisar CNPJ/IE/UF/credenciamento do emitente |
+| Totais | `531`, `532`, `533`, `564`, `602`, `603`, `610`, texto com total/somatorio/valor | Revisar quantidade, preco, desconto, pagamento e totais fiscais |
+| Duplicidade/numeracao | `204`, `205`, `206`, `539` | Nao reutilizar numero; revisar serie/sequencia fiscal |
+| Eventos | `217`, `218`, `573` | Conferir chave/protocolo/historico antes de reenviar |
+| Data/hora | `703`, `704` | Conferir relogio do servidor |
+| Certificado/ambiente | texto com certificado/assinatura/ambiente/credenciamento | Revisar certificado, senha, ambiente e credenciamento |
+
+Exemplo de rejeicao NCM:
+
+```txt
+SEFAZ: Rejeicao: Informado NCM inexistente [nItem:1]
+Sistema: SEFAZ rejeitou a emissao: NCM do item 1 invalido ou inexistente. NCM invalido ou inexistente na tabela oficial; corrija o NCM no item da emissao e tente novamente. Retorno original: Rejeicao: Informado NCM inexistente [nItem:1]
+```
+
+Quando adicionar novo caso:
+
+1. Preferir catalogar por `cStat` em `REJEICOES_SEFAZ_CATALOGADAS`.
+2. Usar fallback por palavra-chave apenas quando o codigo ainda nao estiver mapeado.
+3. Adicionar teste em `backend/__tests__/nfeCommunication.test.js`.
+4. Manter a resposta HTTP:
+   - `422` para rejeicao fiscal da SEFAZ
+   - `504` para comunicacao/timeout
+   - `409` para mutex/duplicidade interna de emissao
 
 ### 🔌 Contingência
 
@@ -803,6 +1037,8 @@ Caminho esperado:
 ## Sessão Codex — 2026-05-19
 
 **Tema:** atualização pós-`npm audit`, `nfewizard-io`, hardening básico e validação em produção.
+
+> Nota: as contagens de teste nas sessoes historicas abaixo sao snapshots da epoca. O estado atual consolidado fica na secao "Estado atual consolidado em 2026-06-05" e, nesta data, o backend tem 46 arquivos de teste e 290 testes passando.
 
 ### Estado confirmado
 
