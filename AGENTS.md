@@ -656,6 +656,7 @@ Novas emissões registram autorização/rejeição nessa tabela. Notas antigas p
   - `ETIMEDOUT`
   - HTTP 404/endpoint
   - falha temporaria de comunicação
+  - erros XML `cvc-*` de CEP, CPF/CNPJ, endereco, NCM, CFOP e tributacao
 - `formatarRejeicaoSefaz({ cStat, xMotivo, contexto })` trata rejeição fiscal retornada pela SEFAZ:
   - preserva `cStat`
   - preserva `motivoOriginal`
@@ -684,6 +685,13 @@ Catalogo operacional atual:
 | Eventos | `217`, `218`, `573` | Conferir chave/protocolo/historico antes de reenviar |
 | Data/hora | `703`, `704` | Conferir relogio do servidor |
 | Certificado/ambiente | texto com certificado/assinatura/ambiente/credenciamento | Revisar certificado, senha, ambiente e credenciamento |
+
+Validacao preventiva antes da SEFAZ:
+
+- Cliente deve ter nome, CPF/CNPJ com 11 ou 14 digitos, logradouro, numero, bairro, cidade, UF e CEP com 8 digitos.
+- Emitente deve ter CNPJ, razao social, IE, CRT `1/2/3`, endereco completo e codigo IBGE do municipio com 7 digitos.
+- Item deve ter quantidade/preco maiores que zero, NCM com 8 digitos, CFOP com 4 digitos, CSOSN `101/102/103/300/400/500/900`, origem fiscal `0..8` e unidade.
+- A rota `POST /api/nfe/emitir/:id` deve retornar `400` para esses erros locais antes de adquirir o mutex `emitindo`, antes de consumir numeracao e antes de montar/enviar XML.
 
 Exemplo de rejeicao NCM:
 

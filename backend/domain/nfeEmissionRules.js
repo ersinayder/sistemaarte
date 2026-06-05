@@ -31,6 +31,9 @@ function normalizarItemFiscalOverride(raw = {}) {
   if (Object.prototype.hasOwnProperty.call(raw, 'csosn')) {
     const csosn = onlyDigits(raw.csosn);
     if (csosn.length !== 3) return { ok: false, erro: 'CSOSN deve ter 3 digitos.' };
+    if (!CSOSN_VALIDOS_NFE.has(csosn)) {
+      return { ok: false, erro: 'CSOSN invalido. Use 101, 102, 103, 300, 400, 500 ou 900.' };
+    }
     override.csosn = csosn;
   }
 
@@ -111,6 +114,8 @@ function normalizarTexto(value, max = 120) {
   return String(value ?? '').trim().slice(0, max);
 }
 
+const CSOSN_VALIDOS_NFE = new Set(['101', '102', '103', '300', '400', '500', '900']);
+
 function hasOwn(obj, field) {
   return Object.prototype.hasOwnProperty.call(obj, field);
 }
@@ -171,53 +176,92 @@ function aplicarOverrideClienteNFe(os, raw) {
   };
 }
 
-function primeiroErroEnderecoCliente(cliente = {}) {
-  const enderecoCampos = [
-    cliente.logradouro,
-    cliente.c_numero ?? cliente.numero,
-    cliente.bairro,
-    cliente.cidade,
-    cliente.uf,
-    cliente.cep,
-  ];
-  const temEndereco = enderecoCampos.some(value => String(value ?? '').trim());
-  if (!temEndereco) return null;
-
-  if (!String(cliente.logradouro || '').trim()) return 'Logradouro do cliente e obrigatorio quando o endereco fiscal e informado.';
-  if (!String(cliente.c_numero ?? cliente.numero ?? '').trim()) return 'Numero do endereco do cliente e obrigatorio quando o endereco fiscal e informado.';
-  if (!String(cliente.bairro || '').trim()) return 'Bairro do cliente e obrigatorio quando o endereco fiscal e informado.';
-  if (!String(cliente.cidade || '').trim()) return 'Cidade do cliente e obrigatoria quando o endereco fiscal e informado.';
-  if (!/^[A-Z]{2}$/.test(String(cliente.uf || '').trim().toUpperCase())) return 'UF do cliente deve ter 2 letras.';
-
-  const cep = onlyDigits(cliente.cep);
-  if (!cep) return 'CEP do cliente e obrigatorio quando o endereco fiscal e informado.';
-  if (cep.length !== 8) return 'CEP do cliente deve ter 8 digitos.';
-
-  return null;
+function montarMensagemCamposFaltandoCliente(campos) {
+  if (!campos.length) return '';
+  if (campos.length === 1) return `Preencha os dados fiscais do cliente: ${campos[0]}.`;
+  return `Preencha os dados fiscais do cliente: ${campos.slice(0, -1).join(', ')} e ${campos[campos.length - 1]}.`;
 }
 
 function validarClienteFiscalNFe(cliente = {}) {
+  const nome = normalizarTexto(cliente.clientenome ?? cliente.name, 200);
   const documento = onlyDigits(cliente.cpf);
+  const cep = onlyDigits(cliente.cep);
+  const uf = normalizarTexto(cliente.uf, 2).toUpperCase();
+  const camposFaltando = [];
+
+  if (!nome) camposFaltando.push('nome');
+  if (!documento) camposFaltando.push('CPF/CNPJ');
+  if (!String(cliente.logradouro || '').trim()) camposFaltando.push('logradouro');
+  if (!String(cliente.c_numero ?? cliente.numero ?? '').trim()) camposFaltando.push('numero');
+  if (!String(cliente.bairro || '').trim()) camposFaltando.push('bairro');
+  if (!String(cliente.cidade || '').trim()) camposFaltando.push('cidade');
+  if (!uf) camposFaltando.push('UF');
+  if (!cep) camposFaltando.push('CEP');
+
+  if (camposFaltando.length) {
+    return { ok: false, erro: montarMensagemCamposFaltandoCliente(camposFaltando) };
+  }
+
   if (documento && documento.length !== 11 && documento.length !== 14) {
     return { ok: false, erro: 'CPF/CNPJ do cliente deve ter 11 ou 14 digitos.' };
   }
+  if (!/^[A-Z]{2}$/.test(uf)) return { ok: false, erro: 'UF do cliente deve ter 2 letras.' };
+  if (cep.length !== 8) return { ok: false, erro: 'CEP do cliente deve ter 8 digitos.' };
 
-  const erroEndereco = primeiroErroEnderecoCliente(cliente);
-  if (erroEndereco) return { ok: false, erro: erroEndereco };
+  return { ok: true };
+}
+
+function nomeItemFiscal(item, index) {
+  return String(item?.nome || item?.produto_nome || `item ${index + 1}`).trim();
+}
+
+function validarItensFiscaisNFe(itens = []) {
+  if (!Array.isArray(itens) || itens.length === 0) {
+    return { ok: false, erro: 'NF-e precisa de pelo menos um item.' };
+  }
+
+  for (const [index, item] of itens.entries()) {
+    const nome = nomeItemFiscal(item, index);
+    const ncm = onlyDigits(item?.ncm);
+    const cfop = onlyDigits(item?.cfop);
+    const csosn = onlyDigits(item?.csosn);
+    const origem = onlyDigits(item?.origem_fiscal);
+    const unidade = normalizarTexto(item?.unidade, 6).toUpperCase();
+    const quantidade = Number(item?.quantidade);
+    const precoUnitario = Number(item?.preco_unitario);
+
+    if (!nome) return { ok: false, erro: `Item ${index + 1}: nome do produto e obrigatorio.` };
+    if (!(quantidade > 0)) return { ok: false, erro: `Item "${nome}": quantidade deve ser maior que zero.` };
+    if (!(precoUnitario > 0)) return { ok: false, erro: `Item "${nome}": preco unitario deve ser maior que zero.` };
+    if (ncm.length !== 8) return { ok: false, erro: `Item "${nome}": NCM deve ter 8 digitos.` };
+    if (cfop.length !== 4) return { ok: false, erro: `Item "${nome}": CFOP deve ter 4 digitos.` };
+    if (!CSOSN_VALIDOS_NFE.has(csosn)) {
+      return { ok: false, erro: `Item "${nome}": CSOSN invalido. Use 101, 102, 103, 300, 400, 500 ou 900.` };
+    }
+    if (!/^[0-8]$/.test(origem)) return { ok: false, erro: `Item "${nome}": origem fiscal deve ser um digito de 0 a 8.` };
+    if (!unidade) return { ok: false, erro: `Item "${nome}": unidade fiscal e obrigatoria.` };
+  }
 
   return { ok: true };
 }
 
 function validarEmitenteFiscalNFe(emitente = {}) {
   const end = emitente.enderEmit || {};
+  const cnpj = onlyDigits(emitente.CNPJ);
   const cep = onlyDigits(end.CEP);
+  if (cnpj.length !== 14) return { ok: false, erro: 'CNPJ do emitente deve ter 14 digitos. Revise Configuracoes > Empresa.' };
+  if (!String(emitente.xNome || '').trim()) return { ok: false, erro: 'Razao social do emitente e obrigatoria. Revise Configuracoes > Empresa.' };
+  if (!String(emitente.IE || '').trim()) return { ok: false, erro: 'IE do emitente e obrigatoria. Revise Configuracoes > Empresa.' };
+  if (!['1', '2', '3'].includes(String(emitente.CRT || '').trim())) {
+    return { ok: false, erro: 'CRT do emitente deve ser 1, 2 ou 3. Revise Configuracoes > Empresa.' };
+  }
   if (cep.length !== 8) {
     return { ok: false, erro: 'CEP do emitente deve ter 8 digitos. Revise Configuracoes > Empresa.' };
   }
   if (!String(end.xLgr || '').trim()) return { ok: false, erro: 'Logradouro do emitente e obrigatorio. Revise Configuracoes > Empresa.' };
   if (!String(end.nro || '').trim()) return { ok: false, erro: 'Numero do emitente e obrigatorio. Revise Configuracoes > Empresa.' };
   if (!String(end.xBairro || '').trim()) return { ok: false, erro: 'Bairro do emitente e obrigatorio. Revise Configuracoes > Empresa.' };
-  if (!String(end.cMun || '').trim()) return { ok: false, erro: 'Codigo do municipio do emitente e obrigatorio. Revise Configuracoes > Empresa.' };
+  if (!/^\d{7}$/.test(String(end.cMun || '').trim())) return { ok: false, erro: 'Codigo do municipio do emitente deve ter 7 digitos. Revise Configuracoes > Empresa.' };
   if (!String(end.xMun || '').trim()) return { ok: false, erro: 'Municipio do emitente e obrigatorio. Revise Configuracoes > Empresa.' };
   if (!/^[A-Z]{2}$/.test(String(end.UF || '').trim().toUpperCase())) {
     return { ok: false, erro: 'UF do emitente deve ter 2 letras. Revise Configuracoes > Empresa.' };
@@ -233,5 +277,6 @@ module.exports = {
   normalizarClienteOverride,
   validarClienteFiscalNFe,
   validarEmitenteFiscalNFe,
+  validarItensFiscaisNFe,
   serializarItemPreviaNFe,
 };

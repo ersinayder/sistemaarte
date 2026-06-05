@@ -355,6 +355,10 @@ function getSefazHttpStatus(err) {
 function getSefazErrorInfo(err) {
   const rawMessage = String(err?.message || err || '');
   const normalizedMessage = semAcentos(rawMessage).toLowerCase();
+  const isXmlValidationError = normalizedMessage.includes('validacao do xml') ||
+    normalizedMessage.includes('cvc-') ||
+    normalizedMessage.includes('facet-valid') ||
+    normalizedMessage.includes('anontype');
 
   if (
     normalizedMessage.includes('cvc-pattern-valid') &&
@@ -364,6 +368,67 @@ function getSefazErrorInfo(err) {
       tipo: 'validacao_xml',
       cstat: 'xml_cep',
       mensagem: 'CEP do cliente ou do emitente esta vazio/invalido. Informe um CEP com 8 digitos antes de emitir a NF-e.',
+    };
+  }
+
+  if (
+    isXmlValidationError &&
+    (normalizedMessage.includes('cnpjcpf') || normalizedMessage.includes('cpf') || normalizedMessage.includes('cnpj'))
+  ) {
+    return {
+      tipo: 'validacao_xml',
+      cstat: 'xml_documento_cliente',
+      mensagem: 'CPF/CNPJ do cliente esta vazio/invalido. Informe CPF com 11 digitos ou CNPJ com 14 digitos antes de emitir a NF-e.',
+    };
+  }
+
+  if (
+    isXmlValidationError &&
+    (
+      normalizedMessage.includes('tendereco') ||
+      normalizedMessage.includes('xlgr') ||
+      normalizedMessage.includes('nro') ||
+      normalizedMessage.includes('xbairro') ||
+      normalizedMessage.includes('xmun') ||
+      normalizedMessage.includes('uf')
+    )
+  ) {
+    return {
+      tipo: 'validacao_xml',
+      cstat: 'xml_endereco',
+      mensagem: 'Endereco fiscal do cliente ou do emitente esta incompleto. Preencha logradouro, numero, bairro, cidade, UF e CEP antes de emitir a NF-e.',
+    };
+  }
+
+  if (isXmlValidationError && normalizedMessage.includes('ncm')) {
+    return {
+      tipo: 'validacao_xml',
+      cstat: 'xml_ncm',
+      mensagem: 'NCM do item esta vazio/invalido. Informe NCM com 8 digitos e valido na tabela oficial antes de emitir a NF-e.',
+    };
+  }
+
+  if (isXmlValidationError && normalizedMessage.includes('cfop')) {
+    return {
+      tipo: 'validacao_xml',
+      cstat: 'xml_cfop',
+      mensagem: 'CFOP do item esta vazio/invalido. Informe CFOP com 4 digitos coerente com a operacao antes de emitir a NF-e.',
+    };
+  }
+
+  if (isXmlValidationError && (normalizedMessage.includes('csosn') || normalizedMessage.includes('cst'))) {
+    return {
+      tipo: 'validacao_xml',
+      cstat: 'xml_tributacao_item',
+      mensagem: 'Tributacao do item esta invalida. Revise CSOSN/CST, PIS e COFINS antes de emitir a NF-e.',
+    };
+  }
+
+  if (isXmlValidationError) {
+    return {
+      tipo: 'validacao_xml',
+      cstat: 'xml_schema',
+      mensagem: 'XML da NF-e ficou invalido por dados fiscais ausentes ou incorretos. Revise cliente, emitente e itens antes de emitir.',
     };
   }
 

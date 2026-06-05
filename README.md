@@ -14,7 +14,7 @@ Validado localmente em 2026-06-05:
 | Frontend | React 18 + Vite 8 |
 | Banco | SQLite com `better-sqlite3` e WAL |
 | Auth | JWT em cookie HttpOnly, sessao 12h |
-| Testes backend | 46 arquivos, 290 testes passando |
+| Testes backend | 46 arquivos, 300 testes passando |
 | Deploy | Windows Server, PM2, GitHub Actions self-hosted |
 | Dominio | `arteemolduras.com.br` |
 
@@ -90,6 +90,11 @@ Pontos fiscais importantes:
   - PIS/COFINS usam `PISNT`/`COFINSNT` com `CST: '07'`
 - XML fiscal e salvo em banco (`ordens.nfe_xml`/`nfe_eventos.xml`) e disco (`backend/data/nfe_xmls/`).
 - Rejeicoes SEFAZ sao formatadas por `formatarRejeicaoSefaz()` em `backend/utils/nfe.js`.
+- Antes de chamar a SEFAZ, a emissao valida dados fiscais obrigatorios:
+  - Cliente: nome, CPF/CNPJ, logradouro, numero, bairro, cidade, UF e CEP.
+  - Emitente: CNPJ, razao social, IE, CRT, endereco completo e codigo IBGE do municipio.
+  - Itens: quantidade/preco maiores que zero, NCM, CFOP, CSOSN permitido, origem fiscal e unidade.
+- Erros tecnicos de XML `cvc-*` devem virar mensagens operacionais especificas em `getSefazErrorInfo()`, nunca timeout generico.
 
 ## Rodar Localmente
 

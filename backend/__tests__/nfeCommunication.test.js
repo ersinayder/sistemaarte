@@ -78,4 +78,24 @@ describe('nfe communication errors', () => {
       mensagem: 'CEP do cliente ou do emitente esta vazio/invalido. Informe um CEP com 8 digitos antes de emitir a NF-e.',
     });
   });
+
+  it('traduz erro tecnico de schema XML para documento do cliente', () => {
+    const err = new Error("Erro na Validacao do XML: cvc-pattern-valid. Value '' is not facet-valid with respect to pattern '[0-9]{11}|[0-9]{14}' for type '#AnonType_CNPJCPFTDest'.");
+
+    expect(nfeUtils.getSefazErrorInfo(err)).toMatchObject({
+      tipo: 'validacao_xml',
+      cstat: 'xml_documento_cliente',
+      mensagem: 'CPF/CNPJ do cliente esta vazio/invalido. Informe CPF com 11 digitos ou CNPJ com 14 digitos antes de emitir a NF-e.',
+    });
+  });
+
+  it('traduz erro tecnico de schema XML para endereco fiscal incompleto', () => {
+    const err = new Error("Erro na Validacao do XML: cvc-minLength-valid. Value '' with length = '0' is not facet-valid with respect to minLength '2' for type '#AnonType_xLgrTEndereco'.");
+
+    expect(nfeUtils.getSefazErrorInfo(err)).toMatchObject({
+      tipo: 'validacao_xml',
+      cstat: 'xml_endereco',
+      mensagem: 'Endereco fiscal do cliente ou do emitente esta incompleto. Preencha logradouro, numero, bairro, cidade, UF e CEP antes de emitir a NF-e.',
+    });
+  });
 });
