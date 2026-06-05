@@ -83,7 +83,7 @@ describe('ordem service order server printing route', () => {
     db.getAll.mockReturnValue([]);
     resumoFinanceiro.mockReturnValue({ total: 100, recebido: 0, saldo: 100 });
     renderOrdemServicoHtml.mockReturnValue('<html>OS-0042</html>');
-    getImpressaoConfig.mockReturnValue({ printerName: 'Impressoraloja', printerIp: '192.168.0.45' });
+    getImpressaoConfig.mockReturnValue({ directPrintEnabled: true, printerName: 'Impressoraloja', printerIp: '192.168.0.45' });
     printHtml.mockImplementation(({ copies }) => Promise.resolve({
       ok: true,
       printerName: '\\\\192.168.0.45\\Impressoraloja',
@@ -117,13 +117,34 @@ describe('ordem service order server printing route', () => {
       html: '<html>OS-0042</html>',
       jobName: 'ordem-OS-0042',
       copies: 2,
-      printerConfig: { printerName: 'Impressoraloja', printerIp: '192.168.0.45' },
+      printerConfig: { directPrintEnabled: true, printerName: 'Impressoraloja', printerIp: '192.168.0.45' },
     });
     expect(res.json).toHaveBeenCalledWith({
       ok: true,
+      mode: 'server',
       message: 'OS OS-0042 enviada para impressao.',
       copies: 2,
       printerName: '\\\\192.168.0.45\\Impressoraloja',
+    });
+  });
+
+  it('returns an in-page browser print target when direct server printing is disabled', async () => {
+    getImpressaoConfig.mockReturnValue({
+      directPrintEnabled: false,
+      status: { status: 'OK', missing: [] },
+    });
+    const { handler } = await loadPrintHandler();
+    const res = makeRes();
+
+    await handler({ params: { id: '42' }, body: { copies: 2 } }, res);
+
+    expect(printHtml).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith({
+      ok: true,
+      mode: 'browser',
+      message: 'Abra a impressao da OS OS-0042 no navegador.',
+      copies: 2,
+      printUrl: '/api/ordens/42/pdf?embedded=1',
     });
   });
 

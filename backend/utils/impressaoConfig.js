@@ -6,7 +6,7 @@ const {
 } = require('../domain/impressaoConfigRules');
 
 const SEL_IMPRESSAO = `
-  SELECT printer_name, printer_ip, paper_size, color, updatedat
+  SELECT printer_name, printer_ip, paper_size, color, direct_print_enabled, updatedat
   FROM impressao_config
   WHERE id = 1
 `;

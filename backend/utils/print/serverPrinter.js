@@ -58,9 +58,13 @@ $oldDefault = Get-CimInstance Win32_Printer | Where-Object { $_.Default } | Sele
 if ($printerName) {
   $printer = Get-CimInstance Win32_Printer | Where-Object { $_.Name -eq $printerName } | Select-Object -First 1
   if (-not $printer -and $printerName.StartsWith('\\\\')) {
-    Add-Printer -ConnectionName $printerName
-    Start-Sleep -Seconds 2
-    $printer = Get-CimInstance Win32_Printer | Where-Object { $_.Name -eq $printerName } | Select-Object -First 1
+    $shareName = Split-Path -Leaf $printerName
+    $printer = Get-CimInstance Win32_Printer | Where-Object { $_.ShareName -eq $shareName } | Select-Object -First 1
+    if (-not $printer) {
+      Add-Printer -ConnectionName $printerName
+      Start-Sleep -Seconds 2
+      $printer = Get-CimInstance Win32_Printer | Where-Object { $_.Name -eq $printerName -or $_.ShareName -eq $shareName } | Select-Object -First 1
+    }
   }
   if (-not $printer) {
     throw "Impressora nao encontrada no servidor: $printerName"
@@ -81,6 +85,15 @@ for ($i = 0; $i -lt ${normalizePrintCopies(copies)}; $i++) {
     $fileUri
   )
   $process = Start-Process -FilePath $browser -ArgumentList $args -PassThru
+  $shell = New-Object -ComObject WScript.Shell
+  for ($attempt = 0; $attempt -lt 16; $attempt++) {
+    Start-Sleep -Milliseconds 500
+    if ($shell.AppActivate('Print')) {
+      Start-Sleep -Milliseconds 250
+      $shell.SendKeys('{ENTER}')
+      break
+    }
+  }
   Start-Sleep -Seconds 8
   if ($process -and -not $process.HasExited) {
     $process.CloseMainWindow() | Out-Null

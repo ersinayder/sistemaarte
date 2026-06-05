@@ -143,7 +143,7 @@ const ORDEM_SERVICO_A5_STYLES = `
   }
 `;
 
-function renderOrdemServicoHtml({ ordem = {}, itens = [], resumo = {} } = {}) {
+function renderOrdemServicoHtml({ ordem = {}, itens = [], resumo = {}, autoPrint = true } = {}) {
   const total = Number(resumo.total ?? ordem.valortotal ?? 0);
   const recebido = Number(resumo.recebido ?? ordem.valorrecebido ?? 0);
   const saldo = Number(resumo.saldo ?? ordem.saldoaberto ?? Math.max(0, total - recebido));
@@ -210,7 +210,7 @@ function renderOrdemServicoHtml({ ordem = {}, itens = [], resumo = {} } = {}) {
     footer: `${esc(ordem.numero || 'OS')} | Documento para conferencia e assinatura`,
     documentClass: 'ordem-servico-print',
     extraStyles: ORDEM_SERVICO_A5_STYLES,
-    autoPrint: true,
+    autoPrint,
   });
 }
 

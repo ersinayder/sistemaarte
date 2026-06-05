@@ -46,6 +46,7 @@ const EMPTY_IMPRESSAO = {
   printerIp: '',
   paperSize: 'A5',
   color: true,
+  directPrintEnabled: false,
 }
 
 const SECTIONS = [
@@ -104,6 +105,7 @@ function normalizeLoadedImpressao(impressao = {}) {
     printerIp: impressao.printerIp || '',
     paperSize: impressao.paperSize || 'A5',
     color: Boolean(impressao.color ?? true),
+    directPrintEnabled: Boolean(impressao.directPrintEnabled),
   }
 }
 
@@ -642,6 +644,7 @@ export default function Configuracoes() {
         printerIp: impressaoForm.printerIp.trim(),
         paperSize: 'A5',
         color: 1,
+        directPrintEnabled: impressaoForm.directPrintEnabled,
       }
       const res = await api.put('/configuracoes/impressao', payload)
       applyImpressaoResponse(res.data)
@@ -664,7 +667,10 @@ export default function Configuracoes() {
     } catch (e) {
       const fieldErrors = e.response?.data?.errors
       if (fieldErrors) setImpressaoErrors(fieldErrors)
-      toast.error(e.response?.data?.error || 'Erro ao testar impressao')
+      const message = e.response?.data?.detail
+        ? `${e.response?.data?.error || 'Erro ao testar impressao'}: ${e.response.data.detail}`
+        : e.response?.data?.error || 'Erro ao testar impressao'
+      toast.error(message)
     } finally {
       setTestingImpressao(false)
     }
@@ -912,11 +918,24 @@ export default function Configuracoes() {
         ) : (
           <>
             <div className="settings-info-grid">
-              <InfoRow label="Destino resolvido" value={impressaoInfo?.destino || 'Nao configurado'} />
+              <InfoRow
+                label="Destino resolvido"
+                value={impressaoInfo?.directPrintEnabled ? (impressaoInfo?.destino || 'Nao configurado') : 'Navegador do usuario'}
+              />
+              <InfoRow label="Modo" value={impressaoInfo?.directPrintEnabled ? 'Direta no servidor' : 'Navegador do usuario'} />
               <InfoRow label="Papel" value={impressaoInfo?.paperSize || 'A5'} />
               <InfoRow label="Cor" value={impressaoInfo?.color ? 'Ativada' : 'Ativada no documento'} />
               <InfoRow label="Atualizado em" value={impressaoInfo?.updatedat} />
             </div>
+
+            <label className="settings-check" style={{ alignSelf: 'start', marginTop: 0 }}>
+              <input
+                type="checkbox"
+                checked={impressaoForm.directPrintEnabled}
+                onChange={(e) => setImpressaoField('directPrintEnabled', e.target.checked)}
+              />
+              Impressao direta no servidor
+            </label>
 
             <div className="form-grid-2">
               <Field
@@ -926,6 +945,7 @@ export default function Configuracoes() {
                 errors={impressaoErrors}
                 onChange={setImpressaoField}
                 placeholder="Impressoraloja ou \\\\ARTESERVER\\Impressoraloja"
+                disabled={!impressaoForm.directPrintEnabled}
               />
               <Field
                 label="IP da impressora"
@@ -935,6 +955,7 @@ export default function Configuracoes() {
                 onChange={setImpressaoField}
                 inputMode="numeric"
                 placeholder="192.168.0.45"
+                disabled={!impressaoForm.directPrintEnabled}
               />
               <Field label="Papel" name="paperSize" form={impressaoForm} errors={impressaoErrors} onChange={setImpressaoField}>
                 <input id="paperSize" className="form-input" value="A5" disabled />
@@ -947,7 +968,7 @@ export default function Configuracoes() {
 
             <div className="settings-actions">
               <button type="button" className="btn btn-ghost" onClick={loadImpressao} disabled={savingImpressao || testingImpressao}>Cancelar</button>
-              <button type="button" className="btn btn-secondary" onClick={testarImpressao} disabled={savingImpressao || testingImpressao}>
+              <button type="button" className="btn btn-secondary" onClick={testarImpressao} disabled={savingImpressao || testingImpressao || !impressaoForm.directPrintEnabled}>
                 {testingImpressao ? <><div className="spinner" style={{ width: 14, height: 14 }} /> Enviando...</> : 'Testar A5 colorido'}
               </button>
               <button type="submit" className="btn btn-primary" disabled={savingImpressao || testingImpressao}>
@@ -961,11 +982,11 @@ export default function Configuracoes() {
       <div className="settings-planned-grid">
         <div className="settings-planned-item">
           <strong>Fila instalada</strong>
-          <span>Use o nome da impressora do Windows Server ou o caminho compartilhado completo.</span>
+          <span>Use somente quando a impressao direta no servidor estiver ativada.</span>
         </div>
         <div className="settings-planned-item">
-          <strong>IP direto</strong>
-          <span>Com IP e nome da fila, o sistema envia para o destino compartilhado por IP.</span>
+          <strong>Navegador</strong>
+          <span>Com a direta desligada, a OS abre a janela de impressao no computador do usuario.</span>
         </div>
         <div className="settings-planned-item">
           <strong>OS A5</strong>

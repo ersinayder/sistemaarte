@@ -32,9 +32,13 @@ describe('server printer helper', () => {
     expect(script).toContain('$i -lt 2');
     expect(script).toContain('chrome.exe');
     expect(script).toContain('msedge.exe');
+    expect(script).toContain('$shareName = Split-Path -Leaf $printerName');
+    expect(script).toContain('$_.ShareName -eq $shareName');
     expect(script).toContain('Add-Printer -ConnectionName $printerName');
     expect(script).toContain('SetDefaultPrinter');
     expect(script).toContain('--kiosk-printing');
+    expect(script).toContain('WScript.Shell');
+    expect(script).toContain("SendKeys('{ENTER}')");
     expect(script).not.toContain('-Verb PrintTo');
   });
 

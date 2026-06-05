@@ -346,15 +346,16 @@ router.put("/impressao", auth(["admin"]), (req, res, next) => {
     }
 
     run(
-      `INSERT INTO impressao_config (id, printer_name, printer_ip, paper_size, color, updatedat)
-       VALUES (1, ?, ?, 'A5', 1, datetime('now','localtime'))
+      `INSERT INTO impressao_config (id, printer_name, printer_ip, paper_size, color, direct_print_enabled, updatedat)
+       VALUES (1, ?, ?, 'A5', 1, ?, datetime('now','localtime'))
        ON CONFLICT(id) DO UPDATE SET
          printer_name=excluded.printer_name,
          printer_ip=excluded.printer_ip,
          paper_size='A5',
          color=1,
+         direct_print_enabled=excluded.direct_print_enabled,
          updatedat=datetime('now','localtime')`,
-      [config.printerName, config.printerIp]
+      [config.printerName, config.printerIp, config.directPrintEnabled]
     );
 
     const impressao = getImpressaoConfig();
@@ -365,6 +366,11 @@ router.put("/impressao", auth(["admin"]), (req, res, next) => {
 router.post("/impressao/teste", auth(["admin"]), async (_req, res, next) => {
   try {
     const impressao = getImpressaoConfig();
+    if (!impressao.directPrintEnabled) {
+      return res.status(400).json({
+        error: "Ative a impressao direta no servidor para enviar teste pela impressora do servidor.",
+      });
+    }
     const validacao = validarImpressaoConfig(impressao);
     if (!validacao.ok) {
       return res.status(400).json({

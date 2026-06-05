@@ -6,12 +6,19 @@ function cleanText(value, max = 160) {
   return String(value ?? '').trim().slice(0, max);
 }
 
+function flag(value) {
+  return ['1', 'true', 'on', 'yes'].includes(String(value ?? '').trim().toLowerCase()) || value === 1 || value === true
+    ? 1
+    : 0;
+}
+
 function normalizarImpressaoConfig(input = {}) {
   return {
     printerName: cleanText(input.printerName ?? input.printer_name),
     printerIp: cleanText(input.printerIp ?? input.printer_ip, 45),
     paperSize: 'A5',
     color: 1,
+    directPrintEnabled: flag(input.directPrintEnabled ?? input.direct_print_enabled),
   };
 }
 
@@ -44,8 +51,9 @@ function validarImpressaoConfig(config = {}) {
 }
 
 function statusImpressaoConfig(config = {}) {
+  const directPrintEnabled = Boolean(Number(config.directPrintEnabled ?? config.direct_print_enabled ?? 0));
   const missing = [];
-  if (!cleanText(config.printerName ?? config.printer_name)) missing.push('printerName');
+  if (directPrintEnabled && !cleanText(config.printerName ?? config.printer_name)) missing.push('printerName');
   return {
     status: missing.length === 0 ? 'OK' : 'Pendente',
     missing,
@@ -67,6 +75,7 @@ function pickImpressaoConfig(row = {}) {
     printerIp: row.printerIp ?? row.printer_ip ?? '',
     paperSize: row.paperSize ?? row.paper_size ?? 'A5',
     color: Boolean(Number(row.color ?? 1)),
+    directPrintEnabled: Boolean(Number(row.directPrintEnabled ?? row.direct_print_enabled ?? 0)),
     updatedat: row.updatedat ?? null,
   };
   return config;

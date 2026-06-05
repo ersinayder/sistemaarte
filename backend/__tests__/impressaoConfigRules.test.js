@@ -16,6 +16,7 @@ describe('impressaoConfigRules', () => {
       printerIp: ' 192.168.0.45 ',
       paperSize: 'A4',
       color: false,
+      directPrintEnabled: true,
     });
 
     expect(out).toEqual({
@@ -23,6 +24,7 @@ describe('impressaoConfigRules', () => {
       printerIp: '192.168.0.45',
       paperSize: 'A5',
       color: 1,
+      directPrintEnabled: 1,
     });
   });
 
@@ -46,14 +48,20 @@ describe('impressaoConfigRules', () => {
     expect(result.errors.printerIp).toBe('IP da impressora invalido');
   });
 
-  it('allows saving only the IP while keeping the configuration pending', () => {
+  it('normalizes string flags for direct printing safely', () => {
+    expect(normalizarImpressaoConfig({ direct_print_enabled: '0' }).directPrintEnabled).toBe(0);
+    expect(normalizarImpressaoConfig({ directPrintEnabled: 'true' }).directPrintEnabled).toBe(1);
+  });
+
+  it('allows saving only the IP while direct printing is disabled', () => {
     const config = normalizarImpressaoConfig({
       printerName: '',
       printerIp: '192.168.0.45',
+      directPrintEnabled: false,
     });
 
     expect(validarImpressaoConfig(config).ok).toBe(true);
-    expect(statusImpressaoConfig(config).status).toBe('Pendente');
+    expect(statusImpressaoConfig(config).status).toBe('OK');
   });
 
   it('builds a shared printer path from IP plus queue name', () => {
@@ -68,12 +76,16 @@ describe('impressaoConfigRules', () => {
     })).toBe('\\\\ARTESERVER\\Impressoraloja');
   });
 
-  it('marks printing pending until a printer name is configured', () => {
-    expect(statusImpressaoConfig({ printerName: '', printerIp: '192.168.0.45' })).toEqual({
+  it('marks printing pending only when direct server printing needs a printer name', () => {
+    expect(statusImpressaoConfig({ directPrintEnabled: true, printerName: '', printerIp: '192.168.0.45' })).toEqual({
       status: 'Pendente',
       missing: ['printerName'],
     });
-    expect(statusImpressaoConfig({ printerName: 'Impressoraloja' })).toEqual({
+    expect(statusImpressaoConfig({ directPrintEnabled: false, printerName: '' })).toEqual({
+      status: 'OK',
+      missing: [],
+    });
+    expect(statusImpressaoConfig({ directPrintEnabled: true, printerName: 'Impressoraloja' })).toEqual({
       status: 'OK',
       missing: [],
     });
@@ -85,6 +97,7 @@ describe('impressaoConfigRules', () => {
       printer_ip: '192.168.0.45',
       paper_size: 'A5',
       color: 1,
+      direct_print_enabled: 1,
       updatedat: '2026-06-05 12:00:00',
       secret: 'ignored',
     });
@@ -94,6 +107,7 @@ describe('impressaoConfigRules', () => {
       printerIp: '192.168.0.45',
       paperSize: 'A5',
       color: true,
+      directPrintEnabled: true,
       updatedat: '2026-06-05 12:00:00',
     });
   });
