@@ -5,6 +5,7 @@ const { getResumoFinanceiroOS } = require("../domain/financeiroRules");
 const { renderOrdemServicoHtml } = require("../utils/print/ordemServico");
 const { sendPrintHtml } = require("../utils/print/base");
 const { normalizePrintCopies, printHtml } = require("../utils/print/serverPrinter");
+const { getImpressaoConfig } = require("../utils/impressaoConfig");
 
 const SEL_ORDEM = `
   SELECT o.*,
@@ -74,10 +75,12 @@ router.post("/:id/print", auth(["admin", "caixa"]), async (req, res) => {
     );
     const resumo = getResumoFinanceiroOS(req.params.id);
     const html = renderOrdemServicoHtml({ ordem: os, itens, logs, resumo });
+    const printerConfig = getImpressaoConfig();
     const result = await printHtml({
       html,
       jobName: `ordem-${os.numero || os.id}`,
       copies,
+      printerConfig,
     });
 
     res.json({

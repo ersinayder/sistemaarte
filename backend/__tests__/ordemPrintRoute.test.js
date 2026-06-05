@@ -12,6 +12,7 @@ const db = {
 const resumoFinanceiro = vi.fn();
 const renderOrdemServicoHtml = vi.fn();
 const printHtml = vi.fn();
+const getImpressaoConfig = vi.fn();
 const normalizePrintCopies = (value = 1) => {
   const copies = Number(value ?? 1);
   if (!Number.isInteger(copies) || ![1, 2].includes(copies)) {
@@ -46,6 +47,12 @@ require.cache[require.resolve('../utils/print/serverPrinter.js')] = {
   loaded: true,
   exports: { normalizePrintCopies, printHtml },
 };
+require.cache[require.resolve('../utils/impressaoConfig.js')] = {
+  id: require.resolve('../utils/impressaoConfig.js'),
+  filename: require.resolve('../utils/impressaoConfig.js'),
+  loaded: true,
+  exports: { getImpressaoConfig },
+};
 
 function makeRes() {
   const res = {};
@@ -76,9 +83,10 @@ describe('ordem service order server printing route', () => {
     db.getAll.mockReturnValue([]);
     resumoFinanceiro.mockReturnValue({ total: 100, recebido: 0, saldo: 100 });
     renderOrdemServicoHtml.mockReturnValue('<html>OS-0042</html>');
+    getImpressaoConfig.mockReturnValue({ printerName: 'Impressoraloja', printerIp: '192.168.0.45' });
     printHtml.mockImplementation(({ copies }) => Promise.resolve({
       ok: true,
-      printerName: '\\\\ARTESERVER\\Impressoraloja',
+      printerName: '\\\\192.168.0.45\\Impressoraloja',
       copies,
     }));
   });
@@ -109,12 +117,13 @@ describe('ordem service order server printing route', () => {
       html: '<html>OS-0042</html>',
       jobName: 'ordem-OS-0042',
       copies: 2,
+      printerConfig: { printerName: 'Impressoraloja', printerIp: '192.168.0.45' },
     });
     expect(res.json).toHaveBeenCalledWith({
       ok: true,
       message: 'OS OS-0042 enviada para impressao.',
       copies: 2,
-      printerName: '\\\\ARTESERVER\\Impressoraloja',
+      printerName: '\\\\192.168.0.45\\Impressoraloja',
     });
   });
 

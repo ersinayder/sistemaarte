@@ -282,6 +282,19 @@ describe('security configuration contracts', () => {
     expect(source).toMatch(/lockoutLoginPorUsuario:\s*true/);
   });
 
+  it('keeps print configuration admin-only and sanitized before server printing', async () => {
+    const configuracoesRouter = await loadRouter('../routes/configuracoes.js');
+    const source = fs.readFileSync(new URL('../routes/configuracoes.js', import.meta.url), 'utf8');
+
+    expect(routeRoles(configuracoesRouter, 'get', '/impressao')).toEqual(['admin']);
+    expect(routeRoles(configuracoesRouter, 'put', '/impressao')).toEqual(['admin']);
+    expect(routeRoles(configuracoesRouter, 'post', '/impressao/teste')).toEqual(['admin']);
+    expect(source).toMatch(/normalizarImpressaoConfig/);
+    expect(source).toMatch(/validarImpressaoConfig/);
+    expect(source).toMatch(/renderTesteImpressaoHtml/);
+    expect(source).toMatch(/printHtml\(\{\s*html,\s*jobName:\s*["']teste-impressao-a5["']/);
+  });
+
   it('keeps fiscal event XML downloads scoped to active OS for non-admin users', () => {
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
 

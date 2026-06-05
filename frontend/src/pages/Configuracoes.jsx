@@ -41,10 +41,18 @@ const EMPTY_WHATSAPP = {
   templateConfirmacao: 'confirmacao_pedido',
 }
 
+const EMPTY_IMPRESSAO = {
+  printerName: '',
+  printerIp: '',
+  paperSize: 'A5',
+  color: true,
+}
+
 const SECTIONS = [
   { id: 'empresa', label: 'Empresa', desc: 'Dados cadastrais e endereco do emitente.' },
   { id: 'fiscal', label: 'Fiscal', desc: 'Certificado, ambiente e numeracao fiscal.' },
   { id: 'whatsapp', label: 'WhatsApp', desc: 'Provedor, token e mensagens automaticas.' },
+  { id: 'impressao', label: 'Impressao', desc: 'Destino da impressora de OS e testes A5.' },
   { id: 'backups', label: 'Backups', desc: 'Rotina local, offsite e verificacao diaria.' },
   { id: 'seguranca', label: 'Seguranca', desc: 'Acesso, limites e protecoes da aplicacao.' },
   { id: 'sistema', label: 'Sistema', desc: 'Parametros gerais e saude operacional.' },
@@ -86,6 +94,16 @@ function normalizeLoadedWhatsapp(whatsapp = {}) {
     token: '',
     templatePronto: whatsapp.templatePronto || EMPTY_WHATSAPP.templatePronto,
     templateConfirmacao: whatsapp.templateConfirmacao || EMPTY_WHATSAPP.templateConfirmacao,
+  }
+}
+
+function normalizeLoadedImpressao(impressao = {}) {
+  return {
+    ...EMPTY_IMPRESSAO,
+    printerName: impressao.printerName || '',
+    printerIp: impressao.printerIp || '',
+    paperSize: impressao.paperSize || 'A5',
+    color: Boolean(impressao.color ?? true),
   }
 }
 
@@ -180,6 +198,12 @@ export default function Configuracoes() {
   const [whatsappErrors, setWhatsappErrors] = useState({})
   const [loadingWhatsapp, setLoadingWhatsapp] = useState(false)
   const [savingWhatsapp, setSavingWhatsapp] = useState(false)
+  const [impressaoInfo, setImpressaoInfo] = useState(null)
+  const [impressaoForm, setImpressaoForm] = useState(EMPTY_IMPRESSAO)
+  const [impressaoErrors, setImpressaoErrors] = useState({})
+  const [loadingImpressao, setLoadingImpressao] = useState(false)
+  const [savingImpressao, setSavingImpressao] = useState(false)
+  const [testingImpressao, setTestingImpressao] = useState(false)
   const [backupsInfo, setBackupsInfo] = useState(null)
   const [loadingBackups, setLoadingBackups] = useState(false)
   const [runningBackup, setRunningBackup] = useState(false)
@@ -224,6 +248,13 @@ export default function Configuracoes() {
     setStatusMap((current) => ({ ...current, whatsapp: whatsapp.status || current.whatsapp }))
   }, [])
 
+  const applyImpressaoResponse = useCallback((data = {}) => {
+    const impressao = data.impressao || {}
+    setImpressaoInfo(impressao)
+    setImpressaoForm(normalizeLoadedImpressao(impressao))
+    setStatusMap((current) => ({ ...current, impressao: impressao.status || current.impressao }))
+  }, [])
+
   const loadFiscal = useCallback(async () => {
     setLoadingFiscal(true)
     try {
@@ -250,6 +281,19 @@ export default function Configuracoes() {
       setLoadingWhatsapp(false)
     }
   }, [applyWhatsappResponse])
+
+  const loadImpressao = useCallback(async () => {
+    setLoadingImpressao(true)
+    try {
+      const res = await api.get('/configuracoes/impressao')
+      applyImpressaoResponse(res.data)
+      setImpressaoErrors({})
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Erro ao carregar impressao')
+    } finally {
+      setLoadingImpressao(false)
+    }
+  }, [applyImpressaoResponse])
 
   const loadBackups = useCallback(async () => {
     setLoadingBackups(true)
@@ -302,6 +346,9 @@ export default function Configuracoes() {
     if (activeSection === 'whatsapp' && !whatsappInfo && !loadingWhatsapp) {
       loadWhatsapp()
     }
+    if (activeSection === 'impressao' && !impressaoInfo && !loadingImpressao) {
+      loadImpressao()
+    }
     if (activeSection === 'backups' && !backupsInfo && !loadingBackups) {
       loadBackups()
     }
@@ -319,6 +366,9 @@ export default function Configuracoes() {
     whatsappInfo,
     loadingWhatsapp,
     loadWhatsapp,
+    impressaoInfo,
+    loadingImpressao,
+    loadImpressao,
     backupsInfo,
     loadingBackups,
     loadBackups,
@@ -368,6 +418,16 @@ export default function Configuracoes() {
   const setWhatsappField = (field, value) => {
     setWhatsappForm((form) => ({ ...form, [field]: value }))
     setWhatsappErrors((current) => {
+      if (!current[field]) return current
+      const next = { ...current }
+      delete next[field]
+      return next
+    })
+  }
+
+  const setImpressaoField = (field, value) => {
+    setImpressaoForm((form) => ({ ...form, [field]: value }))
+    setImpressaoErrors((current) => {
       if (!current[field]) return current
       const next = { ...current }
       delete next[field]
@@ -568,6 +628,45 @@ export default function Configuracoes() {
       toast.error(e.response?.data?.error || 'Erro ao salvar WhatsApp')
     } finally {
       setSavingWhatsapp(false)
+    }
+  }
+
+  const saveImpressao = async (event) => {
+    event.preventDefault()
+    setSavingImpressao(true)
+    setImpressaoErrors({})
+
+    try {
+      const payload = {
+        printerName: impressaoForm.printerName.trim(),
+        printerIp: impressaoForm.printerIp.trim(),
+        paperSize: 'A5',
+        color: 1,
+      }
+      const res = await api.put('/configuracoes/impressao', payload)
+      applyImpressaoResponse(res.data)
+      toast.success('Configuracao de impressao salva')
+    } catch (e) {
+      const fieldErrors = e.response?.data?.errors
+      if (fieldErrors) setImpressaoErrors(fieldErrors)
+      toast.error(e.response?.data?.error || 'Erro ao salvar impressao')
+    } finally {
+      setSavingImpressao(false)
+    }
+  }
+
+  const testarImpressao = async () => {
+    setTestingImpressao(true)
+    try {
+      const res = await api.post('/configuracoes/impressao/teste', {}, { skipGlobalErrorToast: true })
+      toast.success(res.data?.message || 'Teste enviado para impressao')
+      await loadImpressao()
+    } catch (e) {
+      const fieldErrors = e.response?.data?.errors
+      if (fieldErrors) setImpressaoErrors(fieldErrors)
+      toast.error(e.response?.data?.error || 'Erro ao testar impressao')
+    } finally {
+      setTestingImpressao(false)
     }
   }
 
@@ -789,6 +888,88 @@ export default function Configuracoes() {
         <div className="settings-planned-item">
           <strong>Segredo protegido</strong>
           <span>O token pode ser trocado, mas nao aparece de volta na tela.</span>
+        </div>
+      </div>
+    </div>
+  )
+
+  const renderImpressao = () => (
+    <div className="settings-stack">
+      <form className="card card-pad" onSubmit={saveImpressao}>
+        <div className="settings-section-head">
+          <div>
+            <h2>{active.label}</h2>
+            <p className="text-muted">{active.desc}</p>
+          </div>
+          <StatusPill value={statusMap.impressao} />
+        </div>
+
+        {loadingImpressao ? (
+          <div className="loading-center">
+            <div className="spinner" />
+            <span>Carregando impressao...</span>
+          </div>
+        ) : (
+          <>
+            <div className="settings-info-grid">
+              <InfoRow label="Destino resolvido" value={impressaoInfo?.destino || 'Nao configurado'} />
+              <InfoRow label="Papel" value={impressaoInfo?.paperSize || 'A5'} />
+              <InfoRow label="Cor" value={impressaoInfo?.color ? 'Ativada' : 'Ativada no documento'} />
+              <InfoRow label="Atualizado em" value={impressaoInfo?.updatedat} />
+            </div>
+
+            <div className="form-grid-2">
+              <Field
+                label="Nome ou compartilhamento"
+                name="printerName"
+                form={impressaoForm}
+                errors={impressaoErrors}
+                onChange={setImpressaoField}
+                placeholder="Impressoraloja ou \\\\ARTESERVER\\Impressoraloja"
+              />
+              <Field
+                label="IP da impressora"
+                name="printerIp"
+                form={impressaoForm}
+                errors={impressaoErrors}
+                onChange={setImpressaoField}
+                inputMode="numeric"
+                placeholder="192.168.0.45"
+              />
+              <Field label="Papel" name="paperSize" form={impressaoForm} errors={impressaoErrors} onChange={setImpressaoField}>
+                <input id="paperSize" className="form-input" value="A5" disabled />
+              </Field>
+              <label className="settings-check">
+                <input type="checkbox" checked readOnly />
+                Imprimir documento em cores
+              </label>
+            </div>
+
+            <div className="settings-actions">
+              <button type="button" className="btn btn-ghost" onClick={loadImpressao} disabled={savingImpressao || testingImpressao}>Cancelar</button>
+              <button type="button" className="btn btn-secondary" onClick={testarImpressao} disabled={savingImpressao || testingImpressao}>
+                {testingImpressao ? <><div className="spinner" style={{ width: 14, height: 14 }} /> Enviando...</> : 'Testar A5 colorido'}
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={savingImpressao || testingImpressao}>
+                <SavingLabel saving={savingImpressao} idle="Salvar impressao" />
+              </button>
+            </div>
+          </>
+        )}
+      </form>
+
+      <div className="settings-planned-grid">
+        <div className="settings-planned-item">
+          <strong>Fila instalada</strong>
+          <span>Use o nome da impressora do Windows Server ou o caminho compartilhado completo.</span>
+        </div>
+        <div className="settings-planned-item">
+          <strong>IP direto</strong>
+          <span>Com IP e nome da fila, o sistema envia para o destino compartilhado por IP.</span>
+        </div>
+        <div className="settings-planned-item">
+          <strong>OS A5</strong>
+          <span>A ordem de servico continua usando folha A5 e cores no documento impresso.</span>
         </div>
       </div>
     </div>
@@ -1057,6 +1238,8 @@ export default function Configuracoes() {
             renderFiscal()
           ) : activeSection === 'whatsapp' ? (
             renderWhatsapp()
+          ) : activeSection === 'impressao' ? (
+            renderImpressao()
           ) : activeSection === 'backups' ? (
             renderBackups()
           ) : activeSection === 'seguranca' ? (

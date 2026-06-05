@@ -13,6 +13,10 @@ describe('server printer helper', () => {
 
   it('uses the configured store printer with the shared Canon path as fallback', () => {
     expect(printer.resolvePrinterName({ ORDEM_PRINTER_NAME: 'Canon Loja' })).toBe('Canon Loja');
+    expect(printer.resolvePrinterName(
+      { ORDEM_PRINTER_NAME: 'Canon Loja' },
+      { printerName: 'Impressoraloja', printerIp: '192.168.0.45' }
+    )).toBe('\\\\192.168.0.45\\Impressoraloja');
     expect(printer.resolvePrinterName({})).toBe('\\\\ARTESERVER\\Impressoraloja');
   });
 
@@ -39,6 +43,7 @@ describe('server printer helper', () => {
       jobName: 'ordem-OS-0042',
       copies: 2,
       env: { ORDEM_PRINTER_NAME: 'Canon Loja' },
+      printerConfig: { printerName: 'Impressoraloja', printerIp: '192.168.0.45' },
       platform: 'win32',
       writeTempHtml,
       runPowerShell,
@@ -46,8 +51,8 @@ describe('server printer helper', () => {
     });
 
     expect(writeTempHtml).toHaveBeenCalledWith('<html>OS</html>', 'ordem-OS-0042');
-    expect(runPowerShell).toHaveBeenCalledWith(expect.stringContaining("$printerName = 'Canon Loja'"));
-    expect(result).toEqual({ ok: true, printerName: 'Canon Loja', copies: 2 });
+    expect(runPowerShell).toHaveBeenCalledWith(expect.stringContaining("$printerName = '\\\\192.168.0.45\\Impressoraloja'"));
+    expect(result).toEqual({ ok: true, printerName: '\\\\192.168.0.45\\Impressoraloja', copies: 2 });
   });
 
   it('refuses direct server printing outside Windows', async () => {

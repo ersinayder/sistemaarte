@@ -27,6 +27,13 @@ const {
   validarWhatsappConfig,
 } = require("../domain/whatsappConfigRules");
 const { getWhatsappPublicConfig } = require("../utils/whatsappConfig");
+const {
+  normalizarImpressaoConfig,
+  validarImpressaoConfig,
+  statusImpressaoConfig,
+} = require("../domain/impressaoConfigRules");
+const { getImpressaoConfig } = require("../utils/impressaoConfig");
+const { printHtml } = require("../utils/print/serverPrinter");
 const { buildBackupStatus } = require("../utils/backupStatus");
 const pkg = require("../package.json");
 
@@ -116,12 +123,14 @@ function empresaAtual() {
 function statusConfiguracoes(empresa) {
   const fiscal = getFiscalConfig();
   const whatsapp = getWhatsappPublicConfig();
+  const impressao = getImpressaoConfig();
   const backups = backupAtual();
   const seguranca = segurancaAtual();
   return {
     empresa: statusEmpresaConfig(empresa),
     fiscal: fiscal.status,
     whatsapp: whatsapp.status,
+    impressao: impressao.status,
     backups: backups.status,
     seguranca: seguranca.status,
     sistema: sistemaAtual().status,
@@ -139,6 +148,52 @@ function whatsappRowAtual() {
     FROM whatsapp_config
     WHERE id = 1
   `);
+}
+
+function renderTesteImpressaoHtml(config = {}) {
+  const destino = config.destino || "Impressora nao resolvida";
+  return `<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Teste de impressao A5</title>
+  <style>
+    @page { size: A5; margin: 6mm; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Arial, sans-serif; color: #111827; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .sheet { width: 148mm; min-height: 210mm; padding: 8mm; border: 2px solid #111827; }
+    .band { padding: 6mm; background: #009246; color: #fff; border-radius: 6px; }
+    h1 { margin: 0; font-size: 22px; letter-spacing: .03em; }
+    p { font-size: 12px; line-height: 1.45; }
+    .swatches { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3mm; margin-top: 8mm; }
+    .swatch { height: 24mm; border-radius: 6px; border: 1px solid #111827; }
+    .c1 { background: #009246; }
+    .c2 { background: #facc15; }
+    .c3 { background: #ef4444; }
+    .c4 { background: #2563eb; }
+    .meta { margin-top: 8mm; padding: 4mm; border: 1px solid #cbd5e1; background: #f8fafc; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <main class="sheet">
+    <section class="band">
+      <h1>Teste de impressao A5 colorida</h1>
+      <p>Sistema Arte e Molduras</p>
+    </section>
+    <div class="swatches">
+      <div class="swatch c1"></div>
+      <div class="swatch c2"></div>
+      <div class="swatch c3"></div>
+      <div class="swatch c4"></div>
+    </div>
+    <section class="meta">
+      <p><strong>Papel:</strong> A5</p>
+      <p><strong>Cor:</strong> Ativada no documento</p>
+      <p><strong>Destino:</strong> ${String(destino).replace(/[<>&]/g, (ch) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[ch]))}</p>
+    </section>
+  </main>
+</body>
+</html>`;
 }
 
 function segurancaAtual() {
@@ -269,6 +324,80 @@ router.get("/whatsapp", auth(["admin"]), (_req, res, next) => {
   try {
     res.json({ whatsapp: getWhatsappPublicConfig() });
   } catch (e) { next(e); }
+});
+
+router.get("/impressao", auth(["admin"]), (_req, res, next) => {
+  try {
+    res.json({ impressao: getImpressaoConfig() });
+  } catch (e) { next(e); }
+});
+
+router.put("/impressao", auth(["admin"]), (req, res, next) => {
+  try {
+    const config = normalizarImpressaoConfig(req.body || {});
+    const validacao = validarImpressaoConfig(config);
+
+    if (!validacao.ok) {
+      return res.status(400).json({
+        error: "Verifique a configuracao de impressao",
+        errors: validacao.errors,
+      });
+    }
+
+    run(
+      `INSERT INTO impressao_config (id, printer_name, printer_ip, paper_size, color, updatedat)
+       VALUES (1, ?, ?, 'A5', 1, datetime('now','localtime'))
+       ON CONFLICT(id) DO UPDATE SET
+         printer_name=excluded.printer_name,
+         printer_ip=excluded.printer_ip,
+         paper_size='A5',
+         color=1,
+         updatedat=datetime('now','localtime')`,
+      [config.printerName, config.printerIp]
+    );
+
+    const impressao = getImpressaoConfig();
+    res.json({ impressao, status: statusImpressaoConfig(impressao) });
+  } catch (e) { next(e); }
+});
+
+router.post("/impressao/teste", auth(["admin"]), async (_req, res, next) => {
+  try {
+    const impressao = getImpressaoConfig();
+    const validacao = validarImpressaoConfig(impressao);
+    if (!validacao.ok) {
+      return res.status(400).json({
+        error: "Verifique a configuracao de impressao",
+        errors: validacao.errors,
+      });
+    }
+    if (impressao.status?.status !== "OK") {
+      return res.status(400).json({
+        error: "Configure a impressora antes de imprimir o teste",
+        errors: { printerName: "Nome da impressora e obrigatorio" },
+      });
+    }
+
+    const html = renderTesteImpressaoHtml(impressao);
+    const result = await printHtml({
+      html,
+      jobName: "teste-impressao-a5",
+      copies: 1,
+      printerConfig: impressao,
+    });
+
+    res.json({
+      ok: true,
+      message: "Teste de impressao A5 enviado.",
+      printerName: result.printerName,
+      copies: result.copies,
+    });
+  } catch (e) {
+    res.status(500).json({
+      error: "Nao foi possivel enviar o teste para a impressora do servidor.",
+      detail: e.message,
+    });
+  }
 });
 
 router.put("/whatsapp", auth(["admin"]), (req, res, next) => {
