@@ -2,6 +2,7 @@ const childProcess = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { montarDestinoImpressora } = require('../../domain/impressaoConfigRules');
 
 const DEFAULT_ORDEM_PRINTER = '\\\\ARTESERVER\\Impressoraloja';
 const PRINT_TIMEOUT_MS = 45000;
@@ -15,7 +16,9 @@ function normalizePrintCopies(value = 1) {
   return copies;
 }
 
-function resolvePrinterName(env = process.env) {
+function resolvePrinterName(env = process.env, printerConfig = null) {
+  const fromConfig = montarDestinoImpressora(printerConfig || {});
+  if (fromConfig) return fromConfig;
   const configured = String(env.ORDEM_PRINTER_NAME || '').trim();
   return configured || DEFAULT_ORDEM_PRINTER;
 }
@@ -90,6 +93,7 @@ async function printHtml({
   html,
   jobName,
   copies = 1,
+  printerConfig = null,
   env = process.env,
   platform = process.platform,
   writeTempHtml: writeTemp = writeTempHtml,
@@ -102,7 +106,7 @@ async function printHtml({
   if (!html) throw new Error('Documento de impressao vazio.');
 
   const normalizedCopies = normalizePrintCopies(copies);
-  const printerName = resolvePrinterName(env);
+  const printerName = resolvePrinterName(env, printerConfig);
   const htmlPath = writeTemp(html, jobName);
   const script = buildPrintScript({ htmlPath, printerName, copies: normalizedCopies });
 

@@ -17,6 +17,7 @@ import {
 import api from '../services/api'
 import { emit } from '../services/eventBus'
 import { aplicarDescontoOS } from '../utils/descontoOS'
+import { buscarEnderecoPorCep, maskCep } from '../utils/cep'
 import { printOrdem } from '../utils/printOrdem'
 
 const PAGAMENTOS = ['Pix', 'Dinheiro', 'Cartão de Débito', 'Cartão de Crédito', 'Transferência', 'Outros']
@@ -464,15 +465,15 @@ function QuickClientModal({ open, cliente, initialName, onClose, onSaved }) {
     if (cep.length !== 8) return
     setCepLoading(true)
     try {
-      const r = await fetch(`https://viacep.com.br/ws/${cep}/json/`)
-      const d = await r.json()
-      if (!d.erro) {
+      const endereco = await buscarEnderecoPorCep(cep)
+      if (endereco) {
         setForm(f => ({
           ...f,
-          logradouro: f.logradouro.trim() ? f.logradouro : (d.logradouro || ''),
-          bairro: f.bairro.trim() ? f.bairro : (d.bairro || ''),
-          cidade: f.cidade.trim() ? f.cidade : (d.localidade || ''),
-          uf: f.uf.trim() ? f.uf : (d.uf || ''),
+          cep: endereco.cep,
+          logradouro: endereco.logradouro || f.logradouro,
+          bairro: endereco.bairro || f.bairro,
+          cidade: endereco.cidade || f.cidade,
+          uf: endereco.uf || f.uf,
         }))
       }
     } catch {}
@@ -625,7 +626,7 @@ function QuickClientModal({ open, cliente, initialName, onClose, onSaved }) {
 
           <div className="atendimento-grid-3">
             <Campo label="CEP">
-              <input className="form-input" value={form.cep} onChange={e => { set('cep', e.target.value); buscarCep(e.target.value) }} placeholder="00000-000" inputMode="numeric" />
+              <input className="form-input" value={form.cep} onChange={e => { const cep = maskCep(e.target.value); set('cep', cep); buscarCep(cep) }} placeholder="00000-000" inputMode="numeric" />
               {cepLoading && <span style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>buscando CEP...</span>}
             </Campo>
             <Campo label="Número">

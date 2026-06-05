@@ -224,6 +224,16 @@ CREATE TABLE IF NOT EXISTS whatsapp_config (
   updatedat             TEXT DEFAULT (datetime('now','localtime'))
 );
 INSERT OR IGNORE INTO whatsapp_config (id) VALUES (1);
+CREATE TABLE IF NOT EXISTS impressao_config (
+  id                    INTEGER PRIMARY KEY CHECK (id = 1),
+  printer_name          TEXT,
+  printer_ip            TEXT,
+  paper_size            TEXT DEFAULT 'A5',
+  color                 INTEGER DEFAULT 1,
+  updatedat             TEXT DEFAULT (datetime('now','localtime'))
+);
+INSERT OR IGNORE INTO impressao_config (id, printer_name, paper_size, color)
+VALUES (1, '\\\\ARTESERVER\\Impressoraloja', 'A5', 1);
 CREATE TABLE IF NOT EXISTS whatsapp_avisos (
   id                INTEGER PRIMARY KEY AUTOINCREMENT,
   ordemid           INTEGER NOT NULL,
@@ -466,6 +476,16 @@ function initDB() {
     // v14 - desconto persistido em OS para rastreio financeiro e NF-e
     "ALTER TABLE ordens ADD COLUMN descontoinput TEXT",
     "ALTER TABLE ordens ADD COLUMN descontovalor REAL NOT NULL DEFAULT 0",
+    // v15 - configuracao de impressao A5 da loja
+    `CREATE TABLE IF NOT EXISTS impressao_config (
+      id                    INTEGER PRIMARY KEY CHECK (id = 1),
+      printer_name          TEXT,
+      printer_ip            TEXT,
+      paper_size            TEXT DEFAULT 'A5',
+      color                 INTEGER DEFAULT 1,
+      updatedat             TEXT DEFAULT (datetime('now','localtime'))
+    )`,
+    "INSERT OR IGNORE INTO impressao_config (id, printer_name, paper_size, color) VALUES (1, '\\\\ARTESERVER\\Impressoraloja', 'A5', 1)",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {}
@@ -540,6 +560,17 @@ function initDB() {
       updatedat             TEXT DEFAULT (datetime('now','localtime'))
     );
     INSERT OR IGNORE INTO whatsapp_config (id) VALUES (1);
+
+    CREATE TABLE IF NOT EXISTS impressao_config (
+      id                    INTEGER PRIMARY KEY CHECK (id = 1),
+      printer_name          TEXT,
+      printer_ip            TEXT,
+      paper_size            TEXT DEFAULT 'A5',
+      color                 INTEGER DEFAULT 1,
+      updatedat             TEXT DEFAULT (datetime('now','localtime'))
+    );
+    INSERT OR IGNORE INTO impressao_config (id, printer_name, paper_size, color)
+    VALUES (1, '\\\\ARTESERVER\\Impressoraloja', 'A5', 1);
   `);
 
   // Normalizar status legados
