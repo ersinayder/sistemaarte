@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { buscarEnderecoPorCep, maskCep } from '../utils/cep';
 
 const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
@@ -144,19 +145,18 @@ export default function Clientes() {
   };
 
   const buscarCep = async (cep) => {
-    const c = cep.replace(/\D/g,'');
-    if (c.length !== 8) return;
+    if (onlyDigits(cep).length !== 8) return;
     setCepLoading(true);
     try {
-      const r = await fetch(`https://viacep.com.br/ws/${c}/json/`);
-      const d = await r.json();
-      if (!d.erro) {
+      const endereco = await buscarEnderecoPorCep(cep);
+      if (endereco) {
         setForm(f => ({
           ...f,
-          logradouro: f.logradouro.trim() ? f.logradouro : (d.logradouro || ''),
-          bairro:     f.bairro.trim()     ? f.bairro     : (d.bairro || ''),
-          cidade:     f.cidade.trim()     ? f.cidade     : (d.localidade || ''),
-          uf:         f.uf.trim()         ? f.uf         : (d.uf || ''),
+          cep:        endereco.cep,
+          logradouro: endereco.logradouro || f.logradouro,
+          bairro:     endereco.bairro     || f.bairro,
+          cidade:     endereco.cidade     || f.cidade,
+          uf:         endereco.uf         || f.uf,
         }));
       }
     } catch {}
@@ -680,7 +680,7 @@ export default function Clientes() {
                     <span>CEP</span>
                     {cepLoading && <span style={{fontSize:'var(--text-xs)',color:'var(--color-text-muted)',fontWeight:400}}>buscando…</span>}
                   </label>
-                  <input className="form-input" value={form.cep} onChange={e => { set('cep', e.target.value); buscarCep(e.target.value); }} placeholder="00000-000" inputMode="numeric" />
+                  <input className="form-input" value={form.cep} onChange={e => { const cep = maskCep(e.target.value); set('cep', cep); buscarCep(cep); }} placeholder="00000-000" inputMode="numeric" />
                 </div>
 
                 <div />

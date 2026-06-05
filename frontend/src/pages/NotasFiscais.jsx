@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import toast from 'react-hot-toast'
 import api from '../services/api'
+import { buscarEnderecoPorCep, maskCep } from '../utils/cep'
 
 const fmt = (v) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v ?? 0)
@@ -132,6 +133,7 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
   const [loadingPrevia, setLoadingPrevia] = useState(Boolean(ordemInicial))
   const [emitindo, setEmitindo]           = useState(false)
   const [erroFiscal, setErroFiscal]       = useState('')
+  const [cepLoading, setCepLoading]       = useState(false)
   const inputRef = useRef(null)
 
   const carregarPrevia = useCallback(async (ordem) => {
@@ -186,15 +188,45 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
     })
   }
 
+  const buscarCepCliente = async (value) => {
+    if (String(value || '').replace(/\D/g, '').length !== 8) return
+    setCepLoading(true)
+    try {
+      const endereco = await buscarEnderecoPorCep(value)
+      if (endereco) {
+        setPrevia(prev => {
+          if (!prev) return prev
+          return {
+            ...prev,
+            cliente: {
+              ...prev.cliente,
+              cep: endereco.cep,
+              logradouro: endereco.logradouro || prev.cliente?.logradouro || '',
+              bairro: endereco.bairro || prev.cliente?.bairro || '',
+              cidade: endereco.cidade || prev.cliente?.cidade || '',
+              uf: endereco.uf || prev.cliente?.uf || '',
+            },
+          }
+        })
+      }
+    } catch {
+      toast.error('Nao foi possivel buscar o CEP')
+    } finally {
+      setCepLoading(false)
+    }
+  }
+
   const atualizarCliente = (field, value) => {
-    setPrevia(prev => {
-      if (!prev) return prev
-      const normalizado =
-        field === 'documento' || field === 'cep'
-          ? value.replace(/\D/g, '').slice(0, field === 'documento' ? 14 : 8)
+    const normalizado =
+      field === 'documento'
+        ? value.replace(/\D/g, '').slice(0, 14)
+        : field === 'cep'
+          ? maskCep(value)
           : field === 'uf'
             ? value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2)
             : value
+    setPrevia(prev => {
+      if (!prev) return prev
       return {
         ...prev,
         cliente: {
@@ -203,6 +235,7 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
         },
       }
     })
+    if (field === 'cep') buscarCepCliente(normalizado)
   }
 
   const validarItens = () => {
@@ -408,6 +441,7 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
                       </div>
                       <CampoClienteEmissao label="CPF/CNPJ" field="documento" value={previa.cliente?.documento} onChange={atualizarCliente} />
                       <CampoClienteEmissao label="IE" field="ie" value={previa.cliente?.ie} onChange={atualizarCliente} />
+                      <CampoClienteEmissao label={cepLoading ? 'CEP buscando...' : 'CEP'} field="cep" value={previa.cliente?.cep} onChange={atualizarCliente} />
                       <div style={{ gridColumn: 'span 2' }}>
                         <CampoClienteEmissao label="Logradouro" field="logradouro" value={previa.cliente?.logradouro} onChange={atualizarCliente} />
                       </div>
@@ -417,7 +451,6 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
                         <CampoClienteEmissao label="Cidade" field="cidade" value={previa.cliente?.cidade} onChange={atualizarCliente} />
                       </div>
                       <CampoClienteEmissao label="UF" field="uf" value={previa.cliente?.uf} onChange={atualizarCliente} />
-                      <CampoClienteEmissao label="CEP" field="cep" value={previa.cliente?.cep} onChange={atualizarCliente} />
                     </div>
                   </div>
 
