@@ -194,8 +194,36 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
       setErroFiscal('CPF/CNPJ do cliente deve ter 11 ou 14 digitos.')
       return false
     }
+    const enderecoInformado = [
+      cliente.logradouro,
+      cliente.numero,
+      cliente.bairro,
+      cliente.cidade,
+      cliente.uf,
+      cliente.cep,
+    ].some(v => String(v || '').trim())
+    if (enderecoInformado && !cep) {
+      setErroFiscal('CEP do cliente e obrigatorio quando o endereco fiscal e informado.')
+      return false
+    }
     if (cep && cep.length !== 8) {
       setErroFiscal('CEP do cliente deve ter 8 digitos.')
+      return false
+    }
+    if (enderecoInformado && !String(cliente.logradouro || '').trim()) {
+      setErroFiscal('Logradouro do cliente e obrigatorio quando o endereco fiscal e informado.')
+      return false
+    }
+    if (enderecoInformado && !String(cliente.numero || '').trim()) {
+      setErroFiscal('Numero do cliente e obrigatorio quando o endereco fiscal e informado.')
+      return false
+    }
+    if (enderecoInformado && !String(cliente.bairro || '').trim()) {
+      setErroFiscal('Bairro do cliente e obrigatorio quando o endereco fiscal e informado.')
+      return false
+    }
+    if (enderecoInformado && !String(cliente.cidade || '').trim()) {
+      setErroFiscal('Cidade do cliente e obrigatoria quando o endereco fiscal e informado.')
       return false
     }
     if (cliente.uf && !/^[A-Z]{2}$/.test(String(cliente.uf))) {

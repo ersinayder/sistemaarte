@@ -26,6 +26,8 @@ const {
   aplicarOverrideClienteNFe,
   aplicarOverridesItensNFe,
   serializarItemPreviaNFe,
+  validarClienteFiscalNFe,
+  validarEmitenteFiscalNFe,
 } = require('../domain/nfeEmissionRules');
 
 // Diretório canônico para XMLs — obrigação legal 5 anos
@@ -559,6 +561,18 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
       return res.status(400).json({ erro: clienteComOverrides.erro });
     }
 
+    const emitente = getEmitenteConfig();
+    const erroClienteFiscal = validarClienteFiscalNFe(clienteComOverrides.cliente);
+    if (!erroClienteFiscal.ok) {
+      clearTimeout(guardTimeout); respondido = true;
+      return res.status(400).json({ erro: erroClienteFiscal.erro });
+    }
+    const erroEmitenteFiscal = validarEmitenteFiscalNFe(emitente);
+    if (!erroEmitenteFiscal.ok) {
+      clearTimeout(guardTimeout); respondido = true;
+      return res.status(400).json({ erro: erroEmitenteFiscal.erro });
+    }
+
     // ── MUTEX: tenta adquirir o lock de emissao ────────────────────────────────
     // UPDATE só executa se o status NÃO for 'emitindo' nem 'autorizado'.
     // Se changes === 0, outro processo já pegou o lock — rejeita com 409.
@@ -584,7 +598,7 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
       ordem:    os,
       itens:    itensComOverrides.itens,
       cliente:  clienteComOverrides.cliente,
-      emitente: getEmitenteConfig(),
+      emitente,
       numero:   parseInt(numero, 10),
       serie,
       ambiente,
@@ -618,7 +632,7 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
       });
       if (!respondido) {
         clearTimeout(guardTimeout); respondido = true;
-        return res.status(504).json({
+        return res.status(sefazInfo.tipo === 'validacao_xml' ? 422 : 504).json({
           erro: sefazInfo.mensagem,
           tipo: sefazInfo.tipo,
           detalhe: sefazErr.message,

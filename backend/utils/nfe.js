@@ -353,6 +353,20 @@ function getSefazHttpStatus(err) {
 }
 
 function getSefazErrorInfo(err) {
+  const rawMessage = String(err?.message || err || '');
+  const normalizedMessage = semAcentos(rawMessage).toLowerCase();
+
+  if (
+    normalizedMessage.includes('cvc-pattern-valid') &&
+    (normalizedMessage.includes('ceptendereco') || normalizedMessage.includes('[0-9]{8}'))
+  ) {
+    return {
+      tipo: 'validacao_xml',
+      cstat: 'xml_cep',
+      mensagem: 'CEP do cliente ou do emitente esta vazio/invalido. Informe um CEP com 8 digitos antes de emitir a NF-e.',
+    };
+  }
+
   const httpStatus = getSefazHttpStatus(err);
   if (httpStatus) {
     return {

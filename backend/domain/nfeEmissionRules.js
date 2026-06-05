@@ -171,10 +171,67 @@ function aplicarOverrideClienteNFe(os, raw) {
   };
 }
 
+function primeiroErroEnderecoCliente(cliente = {}) {
+  const enderecoCampos = [
+    cliente.logradouro,
+    cliente.c_numero ?? cliente.numero,
+    cliente.bairro,
+    cliente.cidade,
+    cliente.uf,
+    cliente.cep,
+  ];
+  const temEndereco = enderecoCampos.some(value => String(value ?? '').trim());
+  if (!temEndereco) return null;
+
+  if (!String(cliente.logradouro || '').trim()) return 'Logradouro do cliente e obrigatorio quando o endereco fiscal e informado.';
+  if (!String(cliente.c_numero ?? cliente.numero ?? '').trim()) return 'Numero do endereco do cliente e obrigatorio quando o endereco fiscal e informado.';
+  if (!String(cliente.bairro || '').trim()) return 'Bairro do cliente e obrigatorio quando o endereco fiscal e informado.';
+  if (!String(cliente.cidade || '').trim()) return 'Cidade do cliente e obrigatoria quando o endereco fiscal e informado.';
+  if (!/^[A-Z]{2}$/.test(String(cliente.uf || '').trim().toUpperCase())) return 'UF do cliente deve ter 2 letras.';
+
+  const cep = onlyDigits(cliente.cep);
+  if (!cep) return 'CEP do cliente e obrigatorio quando o endereco fiscal e informado.';
+  if (cep.length !== 8) return 'CEP do cliente deve ter 8 digitos.';
+
+  return null;
+}
+
+function validarClienteFiscalNFe(cliente = {}) {
+  const documento = onlyDigits(cliente.cpf);
+  if (documento && documento.length !== 11 && documento.length !== 14) {
+    return { ok: false, erro: 'CPF/CNPJ do cliente deve ter 11 ou 14 digitos.' };
+  }
+
+  const erroEndereco = primeiroErroEnderecoCliente(cliente);
+  if (erroEndereco) return { ok: false, erro: erroEndereco };
+
+  return { ok: true };
+}
+
+function validarEmitenteFiscalNFe(emitente = {}) {
+  const end = emitente.enderEmit || {};
+  const cep = onlyDigits(end.CEP);
+  if (cep.length !== 8) {
+    return { ok: false, erro: 'CEP do emitente deve ter 8 digitos. Revise Configuracoes > Empresa.' };
+  }
+  if (!String(end.xLgr || '').trim()) return { ok: false, erro: 'Logradouro do emitente e obrigatorio. Revise Configuracoes > Empresa.' };
+  if (!String(end.nro || '').trim()) return { ok: false, erro: 'Numero do emitente e obrigatorio. Revise Configuracoes > Empresa.' };
+  if (!String(end.xBairro || '').trim()) return { ok: false, erro: 'Bairro do emitente e obrigatorio. Revise Configuracoes > Empresa.' };
+  if (!String(end.cMun || '').trim()) return { ok: false, erro: 'Codigo do municipio do emitente e obrigatorio. Revise Configuracoes > Empresa.' };
+  if (!String(end.xMun || '').trim()) return { ok: false, erro: 'Municipio do emitente e obrigatorio. Revise Configuracoes > Empresa.' };
+  if (!/^[A-Z]{2}$/.test(String(end.UF || '').trim().toUpperCase())) {
+    return { ok: false, erro: 'UF do emitente deve ter 2 letras. Revise Configuracoes > Empresa.' };
+  }
+
+  return { ok: true };
+}
+
 module.exports = {
   aplicarOverridesItensNFe,
   aplicarOverrideClienteNFe,
   normalizarItemFiscalOverride,
   normalizarClienteOverride,
+  validarClienteFiscalNFe,
+  validarEmitenteFiscalNFe,
   serializarItemPreviaNFe,
 };

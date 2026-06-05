@@ -68,4 +68,14 @@ describe('nfe communication errors', () => {
       origem: 'palavra-chave',
     });
   });
+
+  it('traduz erro tecnico de schema XML para CEP fiscal', () => {
+    const err = new Error("Erro na Validacao do XML: cvc-pattern-valid. Value '' is not facet-valid with respect to pattern '[0-9]{8}' for type '#AnonType_CEPTEndereco'.");
+
+    expect(nfeUtils.getSefazErrorInfo(err)).toMatchObject({
+      tipo: 'validacao_xml',
+      cstat: 'xml_cep',
+      mensagem: 'CEP do cliente ou do emitente esta vazio/invalido. Informe um CEP com 8 digitos antes de emitir a NF-e.',
+    });
+  });
 });

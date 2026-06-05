@@ -4,6 +4,8 @@ import {
   aplicarOverrideClienteNFe,
   normalizarItemFiscalOverride,
   serializarItemPreviaNFe,
+  validarClienteFiscalNFe,
+  validarEmitenteFiscalNFe,
 } from '../domain/nfeEmissionRules.js';
 
 describe('nfeEmissionRules', () => {
@@ -119,5 +121,39 @@ describe('nfeEmissionRules', () => {
 
     expect(resultado.ok).toBe(false);
     expect(resultado.erro).toContain('CPF/CNPJ');
+  });
+
+  it('rejects customer fiscal address with blank CEP before XML generation', () => {
+    const resultado = validarClienteFiscalNFe({
+      clientenome: 'Cliente com endereco',
+      cpf: '12345678901',
+      logradouro: 'Rua dos Tocantins',
+      c_numero: '55',
+      bairro: 'Iguacu',
+      cidade: 'Ipatinga',
+      uf: 'MG',
+      cep: '',
+    });
+
+    expect(resultado.ok).toBe(false);
+    expect(resultado.erro).toBe('CEP do cliente e obrigatorio quando o endereco fiscal e informado.');
+  });
+
+  it('rejects emitente with invalid CEP before XML generation', () => {
+    const resultado = validarEmitenteFiscalNFe({
+      xNome: 'ARTE E MOLDURAS LTDA',
+      enderEmit: {
+        xLgr: 'Rua Topazio',
+        nro: '75',
+        xBairro: 'Iguacu',
+        cMun: '3131307',
+        xMun: 'Ipatinga',
+        UF: 'MG',
+        CEP: '',
+      },
+    });
+
+    expect(resultado.ok).toBe(false);
+    expect(resultado.erro).toBe('CEP do emitente deve ter 8 digitos. Revise Configuracoes > Empresa.');
   });
 });
