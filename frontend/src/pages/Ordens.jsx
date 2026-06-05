@@ -71,7 +71,7 @@ const fmt  = v => `R$ ${Number(v||0).toFixed(2).replace('.',',')}`;
 const fmtD = d => { if (!d) return '—'; const [y,m,dia]=d.split('-'); return `${dia}/${m}/${y}`; };
 
 const statusColor = s => ({
-  'Aguardando':'secondary','Em Produção':'blue','Pronto':'success','Entregue':'primary','Cancelado':'danger'
+  'Aguardando':'aguardando','Em Produção':'emproducao','Pronto':'pronto','Entregue':'entregue','Cancelado':'cancelado'
 }[s]||'secondary');
 
 const tipoBadge = t => ({

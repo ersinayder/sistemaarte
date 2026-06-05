@@ -27,24 +27,24 @@ const getHoje = () => new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 
 const getMesPadrao = () => getHoje().slice(0, 7)
 
 const STATUS_BADGE = {
-  'Recebido': 'recebido', 'Em Produção': 'emproducao',
+  'Recebido': 'aguardando', 'Aguardando': 'aguardando', 'Em Produção': 'emproducao',
   'Pronto': 'pronto', 'Entregue': 'entregue', 'Cancelado': 'cancelado'
 }
 
-const C_PRIMARY      = '#01696f'
-const C_PRIMARY_LIGHT= '#4f98a3'
-const C_BG_DARK      = '#1c1b19'
-const C_BORDER_DARK  = '#393836'
-const C_TEXT_MUTED   = '#797876'
-const C_TEXT_FAINT   = '#5a5957'
-const C_DIVIDER      = '#262523'
+const C_PRIMARY      = '#0f5f63'
+const C_PRIMARY_LIGHT= '#74a8b7'
+const C_BG_DARK      = '#fbf8f0'
+const C_BORDER_DARK  = '#d1c6b3'
+const C_TEXT_MUTED   = '#746a5b'
+const C_TEXT_FAINT   = '#a79b8a'
+const C_DIVIDER      = '#ded4c3'
 
 const PAG_COLORS = {
-  Pix:      '#01696f',
-  Dinheiro: '#d19900',
-  Credito:  '#da7101',
-  Debito:   '#006494',
-  Link:     '#7a39bb',
+  Pix:      '#0f5f63',
+  Dinheiro: '#a77b28',
+  Credito:  '#b56a2d',
+  Debito:   '#2f677d',
+  Link:     '#765c86',
 }
 const PAG_LABELS = {
   Pix:      'Pix',

@@ -8,7 +8,7 @@ const STATUS = [
   { id: 'Novo lead', label: 'Novo lead', slug: 'proposta-novo', color: '#38BDF8' },
   { id: 'Orcamento enviado', label: 'Orcamento enviado', slug: 'proposta-enviado', color: '#A78BFA' },
   { id: 'Negociacao', label: 'Negociacao', slug: 'proposta-negociacao', color: '#F59E0B' },
-  { id: 'Aprovado', label: 'Aprovado', slug: 'proposta-aprovado', color: '#22C55E' },
+  { id: 'Aprovado', label: 'Aprovado', slug: 'proposta-aprovado', color: 'var(--status-pronto)' },
   { id: 'Perdido', label: 'Perdido', slug: 'proposta-perdido', color: '#94A3B8' },
 ];
 

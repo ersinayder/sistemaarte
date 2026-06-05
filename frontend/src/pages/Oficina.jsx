@@ -8,8 +8,8 @@ import { atualizarStatusOrdemOficina, filtrarOrdensOficina, ordenarOrdensOficina
 
 const COLUNAS = [
   { status: 'Aguardando',  label: 'Aguardando',  slug: 'aguardando', color:'var(--status-aguardando,#9AA4B2)' },
-  { status: 'Em Produção', label: 'Em Produção', slug: 'producao',   color:'var(--status-producao,#3B82F6)' },
-  { status: 'Pronto',      label: 'Pronto',      slug: 'pronto',     color:'var(--status-pronto,#22C55E)' },
+  { status: 'Em Produção', label: 'Em Produção', slug: 'producao',   color:'var(--status-producao,#2f677d)' },
+  { status: 'Pronto',      label: 'Pronto',      slug: 'pronto',     color:'var(--status-pronto,#3f8b4a)' },
   { status: 'Entregue',    label: 'Entregue',    slug: 'entregue',   color:'var(--status-entregue,#5A6474)' },
 ];
 
@@ -21,9 +21,9 @@ const STATUSNEXT = {
 
 // Cor sólida para o fill do hover de cada transição
 const NEXT_COLOR = {
-  'Aguardando': '#3B82F6',   // azul  → Em Produção
-  'Em Produção': '#22C55E',  // verde → Pronto
-  'Pronto': '#6B7280',       // cinza → Entregue
+  'Aguardando': '#2f677d',
+  'Em Produção': '#3f8b4a',
+  'Pronto': '#2f6f49',
 };
 
 const TIPOBADGE = {
@@ -62,17 +62,17 @@ function AvancarBtn({ ordem, colColor, onAvancar }) {
     padding: '3px 8px',
     borderRadius: 'var(--radius-full)',
     cursor: 'pointer',
-    fontWeight: 700,
+    fontWeight: 800,
     whiteSpace: 'nowrap',
     border: `1px solid ${hovered ? hoverBg : colColor + '44'}`,
-    background: hovered ? hoverBg : 'rgba(255,255,255,0.06)',
+    background: hovered ? hoverBg : 'var(--color-surface)',
     color: hovered ? '#fff' : colColor,
     boxShadow: hovered
-      ? `0 0 10px ${hoverBg}66, 0 2px 8px rgba(0,0,0,0.30)`
+      ? `0 8px 18px ${hoverBg}33`
       : 'none',
-    transform: pressed ? 'scale(0.92)' : hovered ? 'scale(1.07)' : 'scale(1)',
+    transform: pressed ? 'translateY(1px)' : hovered ? 'translateY(-1px)' : 'translateY(0)',
     transition: 'all 0.18s cubic-bezier(0.16,1,0.3,1)',
-    letterSpacing: hovered ? '0.03em' : '0',
+    letterSpacing: 0,
   };
 
   return (
@@ -323,7 +323,7 @@ export default function Oficina() {
           gap: 4,
           fontSize: 9,
           fontWeight: 800,
-          color: isDone ? 'var(--color-text-faint)' : '#22C55E',
+          color: isDone ? 'var(--color-text-faint)' : 'var(--status-pronto)',
           background: isDone ? 'rgba(255,255,255,0.05)' : 'rgba(34,197,94,0.12)',
           border: `1px solid ${isDone ? 'var(--color-border)' : 'rgba(34,197,94,0.35)'}`,
           borderRadius: 'var(--radius-full)',
@@ -344,7 +344,7 @@ export default function Oficina() {
               border: 'none',
               borderRadius: '50%',
               background: 'rgba(34,197,94,0.2)',
-              color: '#22C55E',
+              color: 'var(--status-pronto)',
               fontSize: 10,
               lineHeight: '14px',
               cursor: 'pointer',
@@ -385,13 +385,13 @@ export default function Oficina() {
         borderBottom: '1px solid var(--color-divider)',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         flexShrink: 0,
-        background: 'var(--color-surface)',
+        background: 'linear-gradient(90deg, var(--color-surface), var(--color-surface-2))',
         gap: 'var(--space-3)',
         minHeight: 44,
       }}>
         <div style={{ flexShrink: 0 }}>
-          <h1 style={{ fontWeight:800, fontSize:'var(--text-sm)', margin:0, color:'var(--color-text)', whiteSpace:'nowrap' }}>Fila da Oficina</h1>
-          <p style={{ fontSize:10, color:'var(--color-text-faint)', margin:0 }}>
+          <h1 style={{ fontWeight:900, fontSize:'var(--text-sm)', margin:0, color:'var(--color-text)', whiteSpace:'nowrap' }}>Fila da Oficina</h1>
+          <p style={{ fontSize:10, color:'var(--color-text-muted)', margin:0 }}>
             {ordens.filter(o=>o.status!=='Entregue').length} ordens ativas
           </p>
         </div>
@@ -480,7 +480,7 @@ export default function Oficina() {
                 style={{
                   flex:'1 1 260px', minWidth:220, maxWidth:380,
                   display:'flex', flexDirection:'column',
-                  background:'var(--color-surface-offset)',
+                  background:'color-mix(in oklch, var(--color-surface-offset) 72%, var(--color-surface))',
                   borderRadius:'var(--radius-lg)',
                   border: isOver
                     ? `2px solid ${col.color}`
@@ -495,14 +495,15 @@ export default function Oficina() {
                   borderBottom:'1px solid var(--color-divider)',
                   flexShrink:0,
                   display:'flex', alignItems:'center', justifyContent:'space-between',
-                  borderTop:`3px solid ${col.color}`
+                  background: `color-mix(in oklch, ${col.color} 10%, var(--color-surface))`,
+                  borderTop:`4px solid ${col.color}`
                 }}>
                   <span style={{ fontWeight:700, fontSize:'var(--text-xs)', color: col.color, letterSpacing:'0.04em', textTransform:'uppercase' }}>
                     {col.label}
                   </span>
                   <span style={{
                     fontSize:11, fontWeight:700,
-                    background:'rgba(255,255,255,0.07)',
+                    background:'var(--color-surface)',
                     color: col.color,
                     borderRadius:'var(--radius-full)',
                     padding:'2px 8px',
@@ -562,7 +563,7 @@ export default function Oficina() {
                           onClick={() => navigate(`/ordens/${o.id}`)}
                           style={{
                             padding:'var(--space-3)',
-                            ...(vencida ? { borderLeftColor:'#EF4444 !important' } : {}),
+                            ...(vencida ? { borderLeftColor:'var(--color-error) !important' } : {}),
                           }}
                         >
                           {/* Linha 1: número + badge tipo */}
@@ -572,8 +573,8 @@ export default function Oficina() {
                             </span>
                             <div style={{ display:'flex', gap:4, alignItems:'center' }}>
                               {isUrgente && (
-                                <span style={{ fontSize:9, fontWeight:700, color:'#EF4444',
-                                  background:'rgba(239,68,68,0.12)', borderRadius:'var(--radius-full)',
+                                <span style={{ fontSize:9, fontWeight:700, color:'var(--color-error)',
+                                  background:'var(--color-error-hl)', borderRadius:'var(--radius-full)',
                                   padding:'1px 5px', letterSpacing:'0.03em' }}>URGENTE</span>
                               )}
                               <WhatsappAvisoTag ordem={o} />

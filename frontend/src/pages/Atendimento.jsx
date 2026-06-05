@@ -17,6 +17,7 @@ import {
 import api from '../services/api'
 import { emit } from '../services/eventBus'
 import { aplicarDescontoOS } from '../utils/descontoOS'
+import { printOrdem } from '../utils/printOrdem'
 
 const PAGAMENTOS = ['Pix', 'Dinheiro', 'Cartão de Débito', 'Cartão de Crédito', 'Transferência', 'Outros']
 const SERVICOS = ['Quadro', 'Caixas', 'Corte a Laser', 'Sublimacao', 'Diversos']
@@ -694,6 +695,7 @@ export default function Atendimento() {
   const [paymentForm, setPaymentForm] = useState({ valor: '', pagamento: 'Pix' })
   const [deliveryPrompt, setDeliveryPrompt] = useState(null)
   const [createdOS, setCreatedOS] = useState(null)
+  const [printingCopies, setPrintingCopies] = useState(null)
 
   const [saleItems, setSaleItems] = useState([])
   const [salePayment, setSalePayment] = useState('Pix')
@@ -928,10 +930,18 @@ export default function Atendimento() {
     navigate(`/ordens/${id}`)
   }
 
-  const printCreatedOS = () => {
+  const printCreatedOS = async (copies) => {
     if (!createdOS?.id) return closeCreatedOSPrompt()
-    window.open(`/api/ordens/${createdOS.id}/pdf`, '_blank', 'noopener,noreferrer')
-    closeCreatedOSPrompt()
+    setPrintingCopies(copies)
+    try {
+      await printOrdem(api, createdOS.id, copies)
+      toast.success(`${copies} ${copies === 1 ? 'via enviada' : 'vias enviadas'} para impressao`)
+      closeCreatedOSPrompt()
+    } catch (err) {
+      toast.error(err.response?.data?.error || err.response?.data?.detail || err.message || 'Erro ao imprimir OS')
+    } finally {
+      setPrintingCopies(null)
+    }
   }
 
   const venderAvulso = async e => {
@@ -1373,8 +1383,11 @@ export default function Atendimento() {
               <button type="button" className="btn btn-primary" onClick={viewCreatedOS} style={{ justifyContent: 'center' }}>
                 <Eye size={16} /> Visualizar OS
               </button>
-              <button type="button" className="btn btn-secondary" onClick={printCreatedOS} style={{ justifyContent: 'center' }}>
-                <Printer size={16} /> Imprimir
+              <button type="button" className="btn btn-secondary" disabled={printingCopies !== null} onClick={() => printCreatedOS(1)} style={{ justifyContent: 'center' }}>
+                <Printer size={16} /> {printingCopies === 1 ? 'Imprimindo...' : 'Imprimir 1 via'}
+              </button>
+              <button type="button" className="btn btn-secondary" disabled={printingCopies !== null} onClick={() => printCreatedOS(2)} style={{ justifyContent: 'center' }}>
+                <Printer size={16} /> {printingCopies === 2 ? 'Imprimindo...' : 'Imprimir 2 vias'}
               </button>
             </div>
             <div className="modal-footer">
