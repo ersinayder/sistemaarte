@@ -102,12 +102,32 @@ describe('ordemServico print', () => {
     });
 
     expect(html).toContain('body class="ordem-servico-print"');
-    expect(html).toContain('@page { size: A5; margin: 0; }');
+    expect(html).toContain('@page { size: A5 portrait; margin: 4mm; }');
     expect(html).toContain('.ordem-servico-print { font-size: 13px; line-height: 1.34; }');
     expect(html).toContain('.ordem-servico-print .sheet { width: 148mm; min-height: 210mm; padding: 6mm; }');
+    expect(html).toContain('.ordem-servico-print .sheet { width: 100%; min-height: 202mm; padding: 0; }');
+    expect(html).toContain('.ordem-servico-print .os-form-frame { min-height: 194mm; padding: 5mm 5.5mm 3.5mm; }');
     expect(html).toContain('.ordem-servico-print .os-row { display: grid; grid-template-columns: repeat(2, 1fr);');
     expect(html).toContain('.ordem-servico-print .os-box-value { min-height: 6.2mm;');
     expect(html).toContain('.ordem-servico-print .os-items-box { border: 1px solid #d7dee8; border-radius: 7px; min-height: 50mm;');
+  });
+
+  it('leaves the prazo field blank when no delivery date is defined', () => {
+    const html = renderOrdemServicoHtml({
+      ordem: {
+        numero: 'OS-0124',
+        createdat: '2026-05-25',
+        prazoentrega: null,
+        clientenome: 'Cliente Modelo',
+      },
+      itens: [],
+      resumo: { total: 0, recebido: 0, saldo: 0 },
+    });
+
+    expect(html).toContain('<span class="label">Prazo</span>');
+    expect(html).toContain('<div class="os-box-value">&nbsp;</div>');
+    expect(html).not.toContain('&amp;mdash;');
+    expect(html).not.toContain('&mdash;');
   });
 
   it('renders service orders as a boxed A5 form with only total, entrada and restante', () => {

@@ -29,7 +29,7 @@ describe('server printer helper', () => {
 
     expect(script).toContain("$htmlPath = 'C:\\Temp\\ordem.html'");
     expect(script).toContain("$printerName = '\\\\ARTESERVER\\Impressoraloja'");
-    expect(script).toContain('$i -lt 2');
+    expect(script).toContain('$copies = 2');
     expect(script).toContain('chrome.exe');
     expect(script).toContain('msedge.exe');
     expect(script).toContain('$shareName = Split-Path -Leaf $printerName');
@@ -37,8 +37,20 @@ describe('server printer helper', () => {
     expect(script).toContain('Add-Printer -ConnectionName $printerName');
     expect(script).toContain('SetDefaultPrinter');
     expect(script).toContain('--kiosk-printing');
-    expect(script).toContain('WScript.Shell');
-    expect(script).toContain("SendKeys('{ENTER}')");
+    expect(script).toContain('PRINT_PREVIEW_STICKY_SETTINGS');
+    expect(script).toContain('print_preview_sticky_settings');
+    expect(script).toContain('appState');
+    expect(script).toContain('ISO_A5');
+    expect(script).toContain('copies = $copies');
+    expect(script).toContain('scaling = 92');
+    expect(script).toContain('sistema-arte-print-browser-profile');
+    expect(script).toContain('Start-Sleep -Milliseconds 1500');
+    expect(script).not.toContain('WScript.Shell');
+    expect(script).not.toContain("SendKeys('{ENTER}')");
+    expect(script).not.toContain('--disable-print-preview');
+    expect(script).not.toContain('Start-Sleep -Seconds 8');
+    expect(script).not.toContain('Start-Sleep -Seconds 3');
+    expect(script).not.toContain('for ($i = 0;');
     expect(script).not.toContain('-Verb PrintTo');
   });
 
