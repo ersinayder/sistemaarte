@@ -763,6 +763,7 @@ Implementar contingência real é backlog — documentar para o usuário que a e
 | NF-e: go-live sem `pm2 restart` | `.env` não recarrega — continua em homologação | `pm2 restart sistemaarte-backend` após alterar `NFE_AMBIENTE_NUM` |
 | NF-e: cancelar nota >24h | SEFAZ rejeita "Prazo superior ao previsto" | Resetar `nfe_status` no banco e reemitir antes de cancelar |
 | NF-e: `wizard.NFeRecepcaoEvento is not a function` | PM2 rodando código antigo em memória | `pm2 restart sistemaarte-backend` após `git pull` |
+| NF-e: `cvc-pattern-valid` / `CEPTEndereco` | CEP vazio no cliente ou emitente gera erro XML genérico | Validar CEP com 8 dígitos antes de montar/enviar XML; rota deve retornar mensagem operacional |
 | PowerShell: aspas mistas em `-e` node | `SyntaxError: Invalid or unexpected token` | Usar apenas aspas simples dentro do `-e`: `node -e "...db.prepare('SQL').run()..."` |
 | PowerShell: `-WebSession` com cookie HttpOnly | Cookie não é reenviado — todas as chamadas retornam 401 | Extrair token do `Set-Cookie` e passar como `Bearer` (ver seção "Testes via PowerShell") |
 
