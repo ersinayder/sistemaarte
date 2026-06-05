@@ -43,6 +43,7 @@ function buildPrintScript({ htmlPath, printerName, copies }) {
 $ErrorActionPreference = 'Stop'
 $htmlPath = ${psString(htmlPath)}
 ${printerLine}
+$copies = ${normalizePrintCopies(copies)}
 $browserCandidates = @(
   "$env:ProgramFiles\\Google\\Chrome\\Application\\chrome.exe",
   "\${env:ProgramFiles(x86)}\\Google\\Chrome\\Application\\chrome.exe",
@@ -73,35 +74,54 @@ if ($printerName) {
 }
 
 $fileUri = ([System.Uri]$htmlPath).AbsoluteUri
-for ($i = 0; $i -lt ${normalizePrintCopies(copies)}; $i++) {
-  $userDataDir = Join-Path $env:TEMP ("sistema-arte-print-browser-" + [System.Guid]::NewGuid().ToString("N"))
-  New-Item -ItemType Directory -Force -Path $userDataDir | Out-Null
-  $args = @(
-    "--kiosk-printing",
-    "--disable-print-preview",
-    "--no-first-run",
-    "--disable-extensions",
-    "--user-data-dir=$userDataDir",
-    $fileUri
-  )
-  $process = Start-Process -FilePath $browser -ArgumentList $args -PassThru
-  $shell = New-Object -ComObject WScript.Shell
-  for ($attempt = 0; $attempt -lt 16; $attempt++) {
-    Start-Sleep -Milliseconds 500
-    if ($shell.AppActivate('Print')) {
-      Start-Sleep -Milliseconds 250
-      $shell.SendKeys('{ENTER}')
-      break
+$destinationId = if ($printer) { $printer.Name } elseif ($printerName) { $printerName } else { '' }
+$printPreviewSettings = @{
+  recentDestinations = @(@{ id = $destinationId; origin = 'local'; account = '' })
+  selectedDestinationId = $destinationId
+  version = 2
+  isHeaderFooterEnabled = $false
+  isLandscapeEnabled = $false
+  marginsType = 1
+  scalingType = 3
+  scaling = 92
+  color = 2
+  copies = $copies
+  mediaSize = @{
+    name = 'ISO_A5'
+    width_microns = 148000
+    height_microns = 210000
+    custom_display_name = 'A5'
+  }
+}
+$appState = $printPreviewSettings | ConvertTo-Json -Compress -Depth 8
+$env:PRINT_PREVIEW_STICKY_SETTINGS = $appState
+$userDataDir = Join-Path $env:TEMP "sistema-arte-print-browser-profile"
+New-Item -ItemType Directory -Force -Path $userDataDir | Out-Null
+$defaultProfileDir = Join-Path $userDataDir "Default"
+New-Item -ItemType Directory -Force -Path $defaultProfileDir | Out-Null
+$preferences = @{
+  printing = @{
+    print_preview_sticky_settings = @{
+      appState = $appState
     }
   }
-  Start-Sleep -Seconds 8
-  if ($process -and -not $process.HasExited) {
-    $process.CloseMainWindow() | Out-Null
-    Start-Sleep -Seconds 1
-    if (-not $process.HasExited) { $process.Kill() }
-  }
-  Remove-Item -LiteralPath $userDataDir -Recurse -Force -ErrorAction SilentlyContinue
+} | ConvertTo-Json -Compress -Depth 8
+Set-Content -LiteralPath (Join-Path $defaultProfileDir "Preferences") -Value $preferences -Encoding UTF8
+$args = @(
+  "--kiosk-printing",
+  "--no-first-run",
+  "--disable-extensions",
+  "--disable-background-networking",
+  "--disable-component-update",
+  "--user-data-dir=$userDataDir",
+  $fileUri
+)
+$process = Start-Process -FilePath $browser -ArgumentList $args -PassThru
+Start-Sleep -Milliseconds 1500
+if ($process -and -not $process.HasExited) {
+  $process.CloseMainWindow() | Out-Null
   Start-Sleep -Milliseconds 500
+  if (-not $process.HasExited) { $process.Kill() }
 }
 
 if ($printerName -and $oldDefault) {
