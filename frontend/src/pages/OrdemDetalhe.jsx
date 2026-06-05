@@ -13,7 +13,7 @@ const today = () => new Date(Date.now()-3*60*60*1000).toISOString().slice(0,10)
 
 const STATUS_FLOW  = ['Aguardando','Em Produção','Pronto','Entregue']
 const STATUS_BADGE = { 'Aguardando':'secondary','Em Produção':'emproducao','Pronto':'pronto','Entregue':'entregue','Cancelado':'cancelado' }
-const STATUS_COLOR = { 'Aguardando':'var(--color-gold)','Em Produção':'var(--color-orange)','Pronto':'var(--color-primary)','Entregue':'var(--color-success)','Cancelado':'var(--color-text-faint)' }
+const STATUS_COLOR = { 'Aguardando':'var(--status-aguardando)','Em Produção':'var(--status-producao)','Pronto':'var(--status-pronto)','Entregue':'var(--status-entregue)','Cancelado':'var(--status-cancelado)' }
 const STATUS_NFE_EMISSAO = ['Aguardando', 'Pronto', 'Entregue']
 const PAG_BADGE    = { Pix:'pix', Dinheiro:'dinheiro', Credito:'credito', Debito:'debito', Link:'link' }
 const PAG_LABEL    = { Credito:'Crédito', Débito:'Débito', Link:'Link Pag.' }

@@ -53,11 +53,12 @@ const validaCNPJ = cnpj => {
 };
 
 const STATUS_COLOR = {
-  'Recebido':    'var(--color-primary)',
-  'Em Produção': 'var(--color-warning)',
-  'Pronto':      'var(--color-blue)',
-  'Entregue':    'var(--color-success)',
-  'Cancelado':   'var(--color-error)',
+  'Recebido':    'var(--status-aguardando)',
+  'Aguardando':  'var(--status-aguardando)',
+  'Em Produção': 'var(--status-producao)',
+  'Pronto':      'var(--status-pronto)',
+  'Entregue':    'var(--status-entregue)',
+  'Cancelado':   'var(--status-cancelado)',
 };
 
 export default function Clientes() {
