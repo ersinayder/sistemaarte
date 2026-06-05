@@ -28,6 +28,7 @@ const {
   serializarItemPreviaNFe,
   validarClienteFiscalNFe,
   validarEmitenteFiscalNFe,
+  validarItensFiscaisNFe,
 } = require('../domain/nfeEmissionRules');
 
 // Diretório canônico para XMLs — obrigação legal 5 anos
@@ -553,6 +554,11 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
     if (!itensComOverrides.ok) {
       clearTimeout(guardTimeout); respondido = true;
       return res.status(400).json({ erro: itensComOverrides.erro });
+    }
+    const erroItensFiscais = validarItensFiscaisNFe(itensComOverrides.itens);
+    if (!erroItensFiscais.ok) {
+      clearTimeout(guardTimeout); respondido = true;
+      return res.status(400).json({ erro: erroItensFiscais.erro });
     }
 
     const clienteComOverrides = aplicarOverrideClienteNFe(os, req.body?.cliente);

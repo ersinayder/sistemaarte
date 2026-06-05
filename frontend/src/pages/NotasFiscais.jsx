@@ -27,6 +27,7 @@ const EVENTO_LABEL = {
 
 const HOMOLOGACAO_ALVO = 10
 const STATUS_NFE_EMISSAO = ['Aguardando', 'Pronto', 'Entregue']
+const CSOSN_VALIDOS_NFE = new Set(['101', '102', '103', '300', '400', '500', '900'])
 
 async function baixarArquivo(url, nomeArquivo) {
   const r = await api.get(url, { responseType: 'blob', timeout: 45000 })
@@ -97,6 +98,28 @@ function CampoClienteEmissao({ label, field, value, onChange }) {
       />
     </label>
   )
+}
+
+function mensagemCamposFiscaisCliente(campos) {
+  if (campos.length === 1) return `Preencha os dados fiscais do cliente: ${campos[0]}.`
+  return `Preencha os dados fiscais do cliente: ${campos.slice(0, -1).join(', ')} e ${campos[campos.length - 1]}.`
+}
+
+function erroItemFiscal(item) {
+  const nome = item?.nome || 'item da NF-e'
+  const ncm = String(item?.ncm ?? '').replace(/\D/g, '')
+  const cfop = String(item?.cfop ?? '').replace(/\D/g, '')
+  const csosn = String(item?.csosn ?? '').replace(/\D/g, '')
+  const origem = String(item?.origem_fiscal ?? '').replace(/\D/g, '')
+  const unidade = String(item?.unidade ?? '').trim()
+  if (!(Number(item?.quantidade) > 0)) return `Item "${nome}": quantidade deve ser maior que zero.`
+  if (!(Number(item?.preco_unitario) > 0)) return `Item "${nome}": preco unitario deve ser maior que zero.`
+  if (ncm.length !== 8) return `Item "${nome}": NCM deve ter 8 digitos.`
+  if (cfop.length !== 4) return `Item "${nome}": CFOP deve ter 4 digitos.`
+  if (!CSOSN_VALIDOS_NFE.has(csosn)) return `Item "${nome}": CSOSN invalido. Use 101, 102, 103, 300, 400, 500 ou 900.`
+  if (!/^[0-8]$/.test(origem)) return `Item "${nome}": origem fiscal deve ser um digito de 0 a 8.`
+  if (!unidade) return `Item "${nome}": unidade fiscal e obrigatoria.`
+  return ''
 }
 
 function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
@@ -190,56 +213,34 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
       setErroFiscal('Informe o nome do cliente.')
       return false
     }
-    if (documento && documento.length !== 11 && documento.length !== 14) {
+    const camposFaltando = []
+    if (!documento) camposFaltando.push('CPF/CNPJ')
+    if (!String(cliente.logradouro || '').trim()) camposFaltando.push('logradouro')
+    if (!String(cliente.numero || '').trim()) camposFaltando.push('numero')
+    if (!String(cliente.bairro || '').trim()) camposFaltando.push('bairro')
+    if (!String(cliente.cidade || '').trim()) camposFaltando.push('cidade')
+    if (!String(cliente.uf || '').trim()) camposFaltando.push('UF')
+    if (!cep) camposFaltando.push('CEP')
+    if (camposFaltando.length) {
+      setErroFiscal(mensagemCamposFiscaisCliente(camposFaltando))
+      return false
+    }
+    if (documento.length !== 11 && documento.length !== 14) {
       setErroFiscal('CPF/CNPJ do cliente deve ter 11 ou 14 digitos.')
       return false
     }
-    const enderecoInformado = [
-      cliente.logradouro,
-      cliente.numero,
-      cliente.bairro,
-      cliente.cidade,
-      cliente.uf,
-      cliente.cep,
-    ].some(v => String(v || '').trim())
-    if (enderecoInformado && !cep) {
-      setErroFiscal('CEP do cliente e obrigatorio quando o endereco fiscal e informado.')
-      return false
-    }
-    if (cep && cep.length !== 8) {
+    if (cep.length !== 8) {
       setErroFiscal('CEP do cliente deve ter 8 digitos.')
       return false
     }
-    if (enderecoInformado && !String(cliente.logradouro || '').trim()) {
-      setErroFiscal('Logradouro do cliente e obrigatorio quando o endereco fiscal e informado.')
-      return false
-    }
-    if (enderecoInformado && !String(cliente.numero || '').trim()) {
-      setErroFiscal('Numero do cliente e obrigatorio quando o endereco fiscal e informado.')
-      return false
-    }
-    if (enderecoInformado && !String(cliente.bairro || '').trim()) {
-      setErroFiscal('Bairro do cliente e obrigatorio quando o endereco fiscal e informado.')
-      return false
-    }
-    if (enderecoInformado && !String(cliente.cidade || '').trim()) {
-      setErroFiscal('Cidade do cliente e obrigatoria quando o endereco fiscal e informado.')
-      return false
-    }
-    if (cliente.uf && !/^[A-Z]{2}$/.test(String(cliente.uf))) {
+    if (!/^[A-Z]{2}$/.test(String(cliente.uf))) {
       setErroFiscal('UF do cliente deve ter 2 letras.')
       return false
     }
 
-    const itemInvalido = (previa?.itens || []).find(item =>
-      String(item.ncm || '').replace(/\D/g, '').length !== 8 ||
-      String(item.cfop || '').replace(/\D/g, '').length !== 4 ||
-      String(item.csosn || '').replace(/\D/g, '').length !== 3 ||
-      !/^[0-8]$/.test(String(item.origem_fiscal || '')) ||
-      !String(item.unidade || '').trim()
-    )
-    if (itemInvalido) {
-      setErroFiscal(`Revise os campos fiscais do item "${itemInvalido.nome}".`)
+    const erroItem = (previa?.itens || []).map(erroItemFiscal).find(Boolean)
+    if (erroItem) {
+      setErroFiscal(erroItem)
       return false
     }
     setErroFiscal('')

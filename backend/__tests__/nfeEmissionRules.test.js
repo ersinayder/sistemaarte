@@ -6,6 +6,7 @@ import {
   serializarItemPreviaNFe,
   validarClienteFiscalNFe,
   validarEmitenteFiscalNFe,
+  validarItensFiscaisNFe,
 } from '../domain/nfeEmissionRules.js';
 
 describe('nfeEmissionRules', () => {
@@ -136,12 +137,78 @@ describe('nfeEmissionRules', () => {
     });
 
     expect(resultado.ok).toBe(false);
-    expect(resultado.erro).toBe('CEP do cliente e obrigatorio quando o endereco fiscal e informado.');
+    expect(resultado.erro).toBe('Preencha os dados fiscais do cliente: CEP.');
+  });
+
+  it('rejects customer without fiscal data before XML generation', () => {
+    const resultado = validarClienteFiscalNFe({
+      clientenome: 'CONSUMIDOR FINAL',
+      cpf: '',
+      logradouro: '',
+      c_numero: '',
+      bairro: '',
+      cidade: '',
+      uf: '',
+      cep: '',
+    });
+
+    expect(resultado.ok).toBe(false);
+    expect(resultado.erro).toBe('Preencha os dados fiscais do cliente: CPF/CNPJ, logradouro, numero, bairro, cidade, UF e CEP.');
+  });
+
+  it('accepts customer with all required fiscal data before XML generation', () => {
+    const resultado = validarClienteFiscalNFe({
+      clientenome: 'Eduardo Rodrigues Sinayder',
+      cpf: '12804239608',
+      logradouro: 'Rua dos Tocantins',
+      c_numero: '55',
+      bairro: 'Iguacu',
+      cidade: 'Ipatinga',
+      uf: 'MG',
+      cep: '35162131',
+    });
+
+    expect(resultado.ok).toBe(true);
+  });
+
+  it('rejects item with invalid fiscal fields before XML generation', () => {
+    const resultado = validarItensFiscaisNFe([{
+      nome: 'Produto teste',
+      quantidade: 1,
+      preco_unitario: 123,
+      ncm: '49119900',
+      cfop: '5102',
+      csosn: '999',
+      origem_fiscal: '0',
+      unidade: 'UN',
+    }]);
+
+    expect(resultado.ok).toBe(false);
+    expect(resultado.erro).toBe('Item "Produto teste": CSOSN invalido. Use 101, 102, 103, 300, 400, 500 ou 900.');
+  });
+
+  it('rejects item with zero quantity before XML generation', () => {
+    const resultado = validarItensFiscaisNFe([{
+      nome: 'Produto zerado',
+      quantidade: 0,
+      preco_unitario: 123,
+      ncm: '49119900',
+      cfop: '5102',
+      csosn: '400',
+      origem_fiscal: '0',
+      unidade: 'UN',
+    }]);
+
+    expect(resultado.ok).toBe(false);
+    expect(resultado.erro).toBe('Item "Produto zerado": quantidade deve ser maior que zero.');
   });
 
   it('rejects emitente with invalid CEP before XML generation', () => {
     const resultado = validarEmitenteFiscalNFe({
+      CNPJ: '07500718000196',
       xNome: 'ARTE E MOLDURAS LTDA',
+      IE: '3133592250027',
+      CRT: '1',
       enderEmit: {
         xLgr: 'Rua Topazio',
         nro: '75',
@@ -155,5 +222,26 @@ describe('nfeEmissionRules', () => {
 
     expect(resultado.ok).toBe(false);
     expect(resultado.erro).toBe('CEP do emitente deve ter 8 digitos. Revise Configuracoes > Empresa.');
+  });
+
+  it('rejects emitente with invalid CNPJ before XML generation', () => {
+    const resultado = validarEmitenteFiscalNFe({
+      CNPJ: '',
+      xNome: 'ARTE E MOLDURAS LTDA',
+      IE: '3133592250027',
+      CRT: '1',
+      enderEmit: {
+        xLgr: 'Rua Topazio',
+        nro: '75',
+        xBairro: 'Iguacu',
+        cMun: '3131307',
+        xMun: 'Ipatinga',
+        UF: 'MG',
+        CEP: '35162131',
+      },
+    });
+
+    expect(resultado.ok).toBe(false);
+    expect(resultado.erro).toBe('CNPJ do emitente deve ter 14 digitos. Revise Configuracoes > Empresa.');
   });
 });
