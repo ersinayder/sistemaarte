@@ -65,6 +65,18 @@ describe('ordemServico print', () => {
     expect(html).toContain('&lt;b&gt;Item&lt;/b&gt;');
   });
 
+  it('can render the service order without automatic print for embedded browser printing', () => {
+    const html = renderOrdemServicoHtml({
+      ordem: { numero: 'OS-0042', clientenome: 'Cliente Teste' },
+      itens: [],
+      resumo: { total: 0, recebido: 0, saldo: 0 },
+      autoPrint: false,
+    });
+
+    expect(html).not.toContain('window.addEventListener("load"');
+    expect(html).toContain('onclick="window.print()"');
+  });
+
   it('uses a readable A5 print layout for service orders', () => {
     const html = renderOrdemServicoHtml({
       ordem: {

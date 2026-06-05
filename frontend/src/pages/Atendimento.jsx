@@ -935,8 +935,14 @@ export default function Atendimento() {
     if (!createdOS?.id) return closeCreatedOSPrompt()
     setPrintingCopies(copies)
     try {
-      await printOrdem(api, createdOS.id, copies)
-      toast.success(`${copies} ${copies === 1 ? 'via enviada' : 'vias enviadas'} para impressao`)
+      const res = await printOrdem(api, createdOS.id, copies)
+      if (res.data?.mode === 'browser') {
+        toast.success(copies === 2
+          ? 'Impressao aberta. Selecione 2 copias na janela do navegador.'
+          : 'Impressao aberta no navegador.')
+      } else {
+        toast.success(`${copies} ${copies === 1 ? 'via enviada' : 'vias enviadas'} para impressao`)
+      }
       closeCreatedOSPrompt()
     } catch (err) {
       toast.error(err.response?.data?.error || err.response?.data?.detail || err.message || 'Erro ao imprimir OS')

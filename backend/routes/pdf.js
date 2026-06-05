@@ -42,7 +42,13 @@ router.get("/:id/pdf", auth(["admin", "caixa"]), (req, res) => {
       [req.params.id]
     );
     const resumo = getResumoFinanceiroOS(req.params.id);
-    const html = renderOrdemServicoHtml({ ordem: os, itens, logs, resumo });
+    const html = renderOrdemServicoHtml({
+      ordem: os,
+      itens,
+      logs,
+      resumo,
+      autoPrint: req.query?.embedded !== "1",
+    });
 
     sendPrintHtml(res, `ordem-${os.numero || os.id}.html`, html);
   } catch (e) {
@@ -74,8 +80,17 @@ router.post("/:id/print", auth(["admin", "caixa"]), async (req, res) => {
       [req.params.id]
     );
     const resumo = getResumoFinanceiroOS(req.params.id);
-    const html = renderOrdemServicoHtml({ ordem: os, itens, logs, resumo });
     const printerConfig = getImpressaoConfig();
+    if (!printerConfig.directPrintEnabled) {
+      return res.json({
+        ok: true,
+        mode: "browser",
+        message: `Abra a impressao da OS ${os.numero || os.id} no navegador.`,
+        copies,
+        printUrl: `/api/ordens/${os.id}/pdf?embedded=1`,
+      });
+    }
+    const html = renderOrdemServicoHtml({ ordem: os, itens, logs, resumo });
     const result = await printHtml({
       html,
       jobName: `ordem-${os.numero || os.id}`,
@@ -85,6 +100,7 @@ router.post("/:id/print", auth(["admin", "caixa"]), async (req, res) => {
 
     res.json({
       ok: true,
+      mode: "server",
       message: `OS ${os.numero || os.id} enviada para impressao.`,
       copies: result.copies,
       printerName: result.printerName,

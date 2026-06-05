@@ -230,6 +230,7 @@ CREATE TABLE IF NOT EXISTS impressao_config (
   printer_ip            TEXT,
   paper_size            TEXT DEFAULT 'A5',
   color                 INTEGER DEFAULT 1,
+  direct_print_enabled  INTEGER DEFAULT 0,
   updatedat             TEXT DEFAULT (datetime('now','localtime'))
 );
 INSERT OR IGNORE INTO impressao_config (id, printer_name, paper_size, color)
@@ -483,9 +484,11 @@ function initDB() {
       printer_ip            TEXT,
       paper_size            TEXT DEFAULT 'A5',
       color                 INTEGER DEFAULT 1,
+      direct_print_enabled  INTEGER DEFAULT 0,
       updatedat             TEXT DEFAULT (datetime('now','localtime'))
     )`,
     "INSERT OR IGNORE INTO impressao_config (id, printer_name, paper_size, color) VALUES (1, '\\\\ARTESERVER\\Impressoraloja', 'A5', 1)",
+    "ALTER TABLE impressao_config ADD COLUMN direct_print_enabled INTEGER DEFAULT 0",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {}
@@ -567,6 +570,7 @@ function initDB() {
       printer_ip            TEXT,
       paper_size            TEXT DEFAULT 'A5',
       color                 INTEGER DEFAULT 1,
+      direct_print_enabled  INTEGER DEFAULT 0,
       updatedat             TEXT DEFAULT (datetime('now','localtime'))
     );
     INSERT OR IGNORE INTO impressao_config (id, printer_name, paper_size, color)
