@@ -40,9 +40,14 @@ describe('GitHub workflow security contracts', () => {
   it('keeps manual deploy aligned with the production PM2 ecosystem app', () => {
     const source = fs.readFileSync(new URL('../../deploy.sh', import.meta.url), 'utf8');
 
+    expect(source).toContain('DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"');
+    expect(source).toContain('git -C "$REPO_DIR" pull origin "$DEPLOY_BRANCH"');
+    expect(source).toContain('git -C "$REPO_DIR" rev-parse --short HEAD');
+    expect(source).toContain('PM2_BIN');
     expect(source).toContain('sistemaarte-backend');
     expect(source).toContain('ecosystem.config.js');
     expect(source).toContain('--env production');
+    expect(source).not.toContain('AVISO: pm2 nao encontrado');
     expect(source).not.toMatch(/--name sistemaarte\b/);
   });
 });
