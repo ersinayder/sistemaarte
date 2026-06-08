@@ -127,12 +127,14 @@ function cleanPayload(form) {
 
 function statusClass(status) {
   if (status === 'OK') return 'badge-success'
+  if (status === 'Falhou' || status === 'Atrasado') return 'badge-error'
+  if (status === 'Pendente') return 'badge-warning'
   if (status === 'Inativo') return 'badge-secondary'
   return 'badge-warning'
 }
 
 function StatusPill({ value }) {
-  const status = value?.status || 'Pendente'
+  const status = typeof value === 'string' ? value : value?.status || 'Pendente'
   return <span className={`badge ${statusClass(status)}`}>{status}</span>
 }
 
@@ -739,7 +741,12 @@ export default function Configuracoes() {
             <div className="settings-info-grid">
               <InfoRow label="Origem do ambiente" value={fiscalInfo?.ambienteOrigem === 'banco' ? 'Tela fiscal' : fiscalInfo?.ambienteOrigem || 'padrao'} />
               <InfoRow label="Configuracao salva" value={fiscalInfo?.configurado ? 'Sim' : 'Ainda usando fallback'} />
-              <InfoRow label="Certificado" value={fiscalInfo?.certificado?.configurado ? `${fiscalInfo.certificado.nome || 'Configurado'} (${fiscalInfo.certificado.origem})` : 'Nao configurado'} />
+              <InfoRow
+                label="Certificado"
+                value={fiscalInfo?.certificado?.configurado
+                  ? `${fiscalInfo.certificado.nome || 'Configurado'}${fiscalInfo.certificado.origem ? ` (${fiscalInfo.certificado.origem})` : ''}`
+                  : 'Nao configurado'}
+              />
             </div>
 
             <div className="form-grid-2">
@@ -1105,11 +1112,25 @@ export default function Configuracoes() {
                 <h2>Backup offsite</h2>
                 <p className="text-muted">Destino externo versionado antes de venda SaaS.</p>
               </div>
-              <span className="badge badge-warning">{offsite.status || 'Pendente'}</span>
+              <StatusPill value={offsite.status || 'Pendente'} />
+            </div>
+            <div className="settings-info-grid">
+              <InfoRow label="Destino" value={offsite.provider === 'oracle' ? 'Oracle Object Storage' : 'Nao configurado'} />
+              <InfoRow label="Bucket" value={offsite.bucket || '-'} />
+              <InfoRow label="Retencao" value={offsite.retencaoDias ? `${offsite.retencaoDias} dias` : '-'} />
+              <InfoRow label="Ultimo envio" value={offsite.ultimo?.uploadedat || '-'} />
+              <InfoRow label="Arquivo" value={offsite.ultimo?.nome || '-'} />
+              <InfoRow label="Tamanho" value={offsite.ultimo ? formatBytes(offsite.ultimo.bytes) : '-'} />
             </div>
             <div className="settings-planned-item">
-              <strong>Proximo passo operacional</strong>
-              <span>{offsite.missing?.includes('destino-offsite') ? 'Configurar copia diaria fora do servidor, como storage versionado, OneDrive empresarial ou S3.' : 'Destino offsite configurado.'}</span>
+              <strong>{offsite.ultimoErro ? 'Ultima falha' : 'Protecao externa'}</strong>
+              <span>
+                {offsite.ultimoErro
+                  ? offsite.ultimoErro.mensagem
+                  : offsite.status === 'OK'
+                    ? 'Backup offsite recente registrado.'
+                    : 'Aguardando primeiro envio offsite para o Oracle.'}
+              </span>
             </div>
           </div>
         </div>

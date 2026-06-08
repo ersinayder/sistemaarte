@@ -441,10 +441,35 @@ describe('backup route contracts', () => {
 
   it('writes backup-status.json after backup attempts', () => {
     const source = fs.readFileSync(new URL('../database.js', import.meta.url), 'utf8');
+    const configuracoesSource = fs.readFileSync(new URL('../routes/configuracoes.js', import.meta.url), 'utf8');
 
     expect(source).toMatch(/utils\/backupStatus/);
     expect(source).toMatch(/writeBackupStatus/);
     expect(source).toMatch(/buildBackupStatus/);
+    expect(source).toMatch(/runOffsiteBackup/);
+    expect(configuracoesSource).toMatch(/readBackupStatus/);
+    expect(configuracoesSource).not.toMatch(/function backupAtual\(\)\s*\{\s*return buildBackupStatus\(BACKUPS_DIR\);/);
+  });
+
+  it('keeps local backup success when offsite upload fails', () => {
+    const source = fs.readFileSync(new URL('../database.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/offsiteResult\?\.ok === false/);
+    expect(source).toMatch(/statusAnterior\.offsite\.ultimo/);
+    expect(source).toMatch(/return \{\s*ok: true/);
+  });
+
+  it('sanitizes local backup failure before persisting and logging it', () => {
+    const source = fs.readFileSync(new URL('../database.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/const mensagem = sanitizeMessage\(e\.message\)/);
+    expect(source).toMatch(/offsiteSnapshotToBuildInput\(statusAnterior\.offsite\)/);
+    expect(source).not.toMatch(/buildBackupStatus\(bdir,\s*\{\s*offsite:\s*statusAnterior\.offsite\s*\}\)/);
+    expect(source).toMatch(/ultimoErro = \{\s*mensagem,/);
+    expect(source).toMatch(/console\.error\("\[Backup\] Erro:",\s*mensagem\)/);
+    expect(source).toMatch(/throw new Error\(mensagem\)/);
+    expect(source).toMatch(/console\.log\("\[Backup\] Salvo:",\s*path\.basename\(dest\)\)/);
+    expect(source).not.toMatch(/console\.log\("\[Backup\] Salvo:",\s*dest\)/);
   });
 });
 

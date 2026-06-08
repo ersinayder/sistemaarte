@@ -8,6 +8,7 @@ const {
   backupStatusPath,
   buildBackupStatus,
   readBackupStatus,
+  sanitizeMessage,
   writeBackupStatus,
 } = await import('../utils/backupStatus.js');
 
@@ -18,6 +19,10 @@ function touchBackup(nome, mtime) {
   fs.writeFileSync(file, 'backup');
   fs.utimesSync(file, mtime, mtime);
   return file;
+}
+
+function expectUniqueMissing(status) {
+  expect(status.status.missing).toEqual([...new Set(status.status.missing)]);
 }
 
 describe('backupStatus', () => {
@@ -76,6 +81,186 @@ describe('backupStatus', () => {
     expect(status.local.arquivos[0].nome).toBe('backup-2026-05-18T14-00-00.db');
   });
 
+  it('reports OK when local and Oracle offsite backups are recent', () => {
+    touchBackup('backup-2026-06-08T02-00-00.db', new Date('2026-06-08T02:00:00-03:00'));
+
+    const status = buildBackupStatus(tmpDir, {
+      now: new Date('2026-06-08T10:00:00-03:00'),
+      offsite: {
+        enabled: true,
+        provider: 'oracle',
+        bucket: 'sistemaarte-backups',
+        retentionDays: 60,
+        latest: {
+          nome: 'sistemaarte-2026-06-08T02-00-00.zip.enc',
+          bytes: 1024,
+          sha256: 'a'.repeat(64),
+          uploadedat: new Date('2026-06-08T02:05:00-03:00').toISOString(),
+        },
+      },
+    });
+
+    expect(status.status.status).toBe('OK');
+    expect(status.status.missing).toEqual([]);
+    expect(status.offsite.status).toBe('OK');
+    expect(status.offsite.provider).toBe('oracle');
+    expect(status.offsite.bucket).toBe('sistemaarte-backups');
+    expect(status.offsite.retencaoDias).toBe(60);
+    expect(status.offsite.ultimo.nome).toBe('sistemaarte-2026-06-08T02-00-00.zip.enc');
+  });
+
+  it('marks offsite stale when the last upload is older than 30 hours', () => {
+    touchBackup('backup-2026-06-08T02-00-00.db', new Date('2026-06-08T02:00:00-03:00'));
+
+    const status = buildBackupStatus(tmpDir, {
+      now: new Date('2026-06-10T10:00:00-03:00'),
+      offsite: {
+        enabled: true,
+        provider: 'oracle',
+        bucket: 'sistemaarte-backups',
+        retentionDays: 60,
+        latest: {
+          nome: 'sistemaarte-2026-06-08T02-00-00.zip.enc',
+          bytes: 1024,
+          sha256: 'b'.repeat(64),
+          uploadedat: new Date('2026-06-08T02:05:00-03:00').toISOString(),
+        },
+      },
+    });
+
+    expect(status.status.status).toBe('Pendente');
+    expect(status.status.missing).toContain('backup-offsite-recente');
+    expect(status.offsite.status).toBe('Atrasado');
+  });
+
+  it('sanitizes offsite errors and never exposes secrets', () => {
+    touchBackup('backup-2026-06-08T02-00-00.db', new Date('2026-06-08T02:00:00-03:00'));
+
+    const status = buildBackupStatus(tmpDir, {
+      now: new Date('2026-06-08T10:00:00-03:00'),
+      offsite: {
+        enabled: true,
+        provider: 'oracle',
+        bucket: 'sistemaarte-backups',
+        retentionDays: 60,
+        ultimoErro: {
+          mensagem: 'Falha usando ORACLE_OBJECT_STORAGE_SECRET_KEY=abc123 no C:\\sistemaarte\\.env',
+          createdat: new Date('2026-06-08T02:05:00-03:00').toISOString(),
+        },
+      },
+    });
+
+    const body = JSON.stringify(status);
+    expect(status.status.missing).toContain('backup-offsite-falhou');
+    expect(body).not.toContain('abc123');
+    expect(body).not.toContain('SECRET_KEY');
+    expect(body).not.toContain('C:\\sistemaarte');
+  });
+
+  it('sanitizes common credential and path leak formats', () => {
+    const dirty = [
+      'Authorization: Bearer eyJhbGciOiJsecret',
+      'Authorization: Basic dXNlcjpwYXNz',
+      'token: "abc123"',
+      '"password":"super-secret"',
+      'https://user:pass@example.com/backups?token=qwerty&secret=hidden&ok=1',
+      'C:\\sistemaarte\\.env',
+      '\\\\ARTESERVER\\share\\backup.zip',
+      '/var/backups/sistemaarte/.env',
+    ].join(' ');
+
+    const clean = sanitizeMessage(dirty);
+
+    expect(clean).not.toContain('eyJhbGciOiJsecret');
+    expect(clean).not.toContain('dXNlcjpwYXNz');
+    expect(clean).not.toContain('abc123');
+    expect(clean).not.toContain('super-secret');
+    expect(clean).not.toContain('user:pass@');
+    expect(clean).not.toContain('token=qwerty');
+    expect(clean).not.toContain('secret=hidden');
+    expect(clean).not.toContain('C:\\sistemaarte');
+    expect(clean).not.toContain('\\\\ARTESERVER\\share');
+    expect(clean).not.toContain('/var/backups/sistemaarte');
+  });
+
+  it('sanitizes sensitive data from persisted status snapshots', () => {
+    const persisted = {
+      status: {
+        status: 'Pendente',
+        missing: ['backup-offsite-falhou'],
+      },
+      local: {
+        diretorio: 'C:\\sistemaarte\\backend\\data\\backups',
+      },
+      ultimoErro: {
+        mensagem: 'Authorization: Bearer top-secret-token em /var/backups/sistemaarte/.env',
+      },
+      offsite: {
+        status: 'Falhou',
+        ultimoErro: {
+          mensagem: 'Falha em https://user:pass@example.com?secret=hidden no \\\\ARTESERVER\\share',
+        },
+      },
+    };
+    fs.writeFileSync(backupStatusPath(tmpDir), JSON.stringify(persisted, null, 2));
+
+    const loaded = readBackupStatus(tmpDir);
+    const body = JSON.stringify(loaded);
+
+    expect(loaded.local).not.toHaveProperty('diretorio');
+    expect(body).not.toContain('top-secret-token');
+    expect(body).not.toContain('/var/backups/sistemaarte');
+    expect(body).not.toContain('user:pass@');
+    expect(body).not.toContain('secret=hidden');
+    expect(body).not.toContain('\\\\ARTESERVER\\share');
+  });
+
+  it('keeps only local stale missing when local is late and offsite is OK', () => {
+    touchBackup('backup-2026-06-08T02-00-00.db', new Date('2026-06-08T02:00:00-03:00'));
+
+    const status = buildBackupStatus(tmpDir, {
+      now: new Date('2026-06-10T10:00:00-03:00'),
+      offsite: {
+        enabled: true,
+        provider: 'oracle',
+        bucket: 'sistemaarte-backups',
+        retentionDays: 60,
+        latest: {
+          nome: 'sistemaarte-2026-06-10T09-00-00.zip.enc',
+          bytes: 1024,
+          sha256: 'c'.repeat(64),
+          uploadedat: new Date('2026-06-10T09:00:00-03:00').toISOString(),
+        },
+      },
+    });
+
+    expect(status.status.missing).toEqual(['backup-recente']);
+    expect(status.offsite.status).toBe('OK');
+    expectUniqueMissing(status);
+  });
+
+  it('keeps only offsite failure missing when local is OK and offsite failed', () => {
+    touchBackup('backup-2026-06-08T02-00-00.db', new Date('2026-06-08T02:00:00-03:00'));
+
+    const status = buildBackupStatus(tmpDir, {
+      now: new Date('2026-06-08T10:00:00-03:00'),
+      offsite: {
+        enabled: true,
+        provider: 'oracle',
+        bucket: 'sistemaarte-backups',
+        retentionDays: 60,
+        ultimoErro: {
+          mensagem: 'Falha com token: "abc123"',
+          createdat: new Date('2026-06-08T02:05:00-03:00').toISOString(),
+        },
+      },
+    });
+
+    expect(status.status.missing).toEqual(['backup-offsite-falhou']);
+    expect(status.offsite.status).toBe('Falhou');
+    expectUniqueMissing(status);
+  });
+
   it('reports stale when the last backup is older than 30 hours', () => {
     touchBackup('backup-2026-05-16T08-00-00.db', new Date('2026-05-16T08:00:00-03:00'));
 
@@ -108,17 +293,83 @@ describe('backupStatus', () => {
   });
 
   it('writes and reads backup-status.json beside local backup files', () => {
+    const now = new Date('2026-05-18T15:00:00-03:00');
     const status = buildBackupStatus(tmpDir, {
-      now: new Date('2026-05-18T15:00:00-03:00'),
+      now,
     });
 
     const file = writeBackupStatus(tmpDir, status);
-    const loaded = readBackupStatus(tmpDir);
+    const loaded = readBackupStatus(tmpDir, { now });
 
     expect(path.basename(file)).toBe(BACKUP_STATUS_FILE);
     expect(file).toBe(backupStatusPath(tmpDir));
     expect(fs.existsSync(file)).toBe(true);
     expect(loaded).toEqual(status);
+  });
+
+  it('recalculates local freshness when reading a persisted offsite status snapshot', () => {
+    touchBackup('backup-2026-06-08T02-00-00.db', new Date('2026-06-08T02:00:00-03:00'));
+    const persisted = buildBackupStatus(tmpDir, {
+      now: new Date('2026-06-08T10:00:00-03:00'),
+      offsite: {
+        enabled: true,
+        provider: 'oracle',
+        bucket: 'sistemaarte-backups',
+        retentionDays: 60,
+        latest: {
+          nome: 'sistemaarte-2026-06-10T09-00-00.zip.enc',
+          bytes: 1024,
+          sha256: 'd'.repeat(64),
+          uploadedat: new Date('2026-06-10T09:00:00-03:00').toISOString(),
+        },
+      },
+    });
+    writeBackupStatus(tmpDir, persisted);
+
+    const loaded = readBackupStatus(tmpDir, {
+      now: new Date('2026-06-10T10:00:00-03:00'),
+    });
+
+    expect(loaded.status.missing).toEqual(['backup-recente']);
+    expect(loaded.local.horasDesdeUltimo).toBeGreaterThan(30);
+    expect(loaded.offsite.status).toBe('OK');
+    expect(loaded.offsite.ultimo.nome).toBe('sistemaarte-2026-06-10T09-00-00.zip.enc');
+  });
+
+  it('preserves a persisted local backup failure while recalculating local freshness', () => {
+    touchBackup('backup-2026-06-08T09-00-00.db', new Date('2026-06-08T09:00:00-03:00'));
+    const persisted = {
+      status: {
+        status: 'Pendente',
+        missing: ['backup-falhou'],
+      },
+      ultimoErro: {
+        mensagem: 'Falha local usando PASSWORD=abc123 em C:\\sistemaarte\\.env',
+        createdat: new Date('2026-06-08T09:05:00-03:00').toISOString(),
+      },
+      offsite: {
+        status: 'Pendente',
+        missing: ['destino-offsite'],
+      },
+    };
+    fs.writeFileSync(backupStatusPath(tmpDir), JSON.stringify(persisted, null, 2));
+
+    const loaded = readBackupStatus(tmpDir, {
+      now: new Date('2026-06-08T10:00:00-03:00'),
+    });
+    const body = JSON.stringify(loaded);
+
+    expect(loaded.local.ultimo.nome).toBe('backup-2026-06-08T09-00-00.db');
+    expect(loaded.local.horasDesdeUltimo).toBe(1);
+    expect(loaded.status.missing).toContain('backup-falhou');
+    expect(loaded.alertas).toContainEqual({
+      nivel: 'critico',
+      codigo: 'backup-falhou',
+      mensagem: 'Ultima tentativa de backup local falhou.',
+    });
+    expect(loaded.ultimoErro.mensagem).not.toContain('abc123');
+    expect(body).not.toContain('PASSWORD');
+    expect(body).not.toContain('C:\\sistemaarte');
   });
 
   it('reads a live status snapshot when backup-status.json does not exist yet', () => {
