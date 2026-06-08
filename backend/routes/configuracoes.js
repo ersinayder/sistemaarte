@@ -34,7 +34,7 @@ const {
 } = require("../domain/impressaoConfigRules");
 const { getImpressaoConfig } = require("../utils/impressaoConfig");
 const { printHtml } = require("../utils/print/serverPrinter");
-const { buildBackupStatus } = require("../utils/backupStatus");
+const { readBackupStatus } = require("../utils/backupStatus");
 const pkg = require("../package.json");
 
 const EMPRESA_COLUMNS = [
@@ -138,7 +138,7 @@ function statusConfiguracoes(empresa) {
 }
 
 function backupAtual() {
-  return buildBackupStatus(BACKUPS_DIR);
+  return readBackupStatus(BACKUPS_DIR);
 }
 
 function whatsappRowAtual() {

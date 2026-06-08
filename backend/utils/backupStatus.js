@@ -34,6 +34,11 @@ const ALERTAS_BACKUP = {
     codigo: "retencao-local",
     mensagem: "Ha mais backups locais que o limite de retencao esperado.",
   },
+  "backup-falhou": {
+    nivel: "critico",
+    codigo: "backup-falhou",
+    mensagem: "Ultima tentativa de backup local falhou.",
+  },
   "destino-offsite": {
     nivel: "atencao",
     codigo: "destino-offsite",
@@ -193,13 +198,56 @@ function sanitizeStatusSnapshot(value) {
   return value;
 }
 
+function offsiteSnapshotToBuildInput(offsite) {
+  if (!offsite || typeof offsite !== "object") return undefined;
+
+  const missing = Array.isArray(offsite.missing) ? offsite.missing : [];
+  const disabled = missing.includes("destino-offsite")
+    || (!offsite.provider && !offsite.bucket && !offsite.ultimo && !offsite.latest && !offsite.ultimoErro);
+
+  return {
+    enabled: !disabled,
+    provider: offsite.provider || null,
+    bucket: offsite.bucket || null,
+    retentionDays: offsite.retencaoDias ?? offsite.retentionDays ?? null,
+    latest: offsite.latest || offsite.ultimo || null,
+    ultimoErro: offsite.ultimoErro || null,
+  };
+}
+
+function preservePersistedLocalFailure(rebuilt, snapshot) {
+  const missing = Array.isArray(snapshot?.status?.missing) ? snapshot.status.missing : [];
+  if (!missing.includes("backup-falhou")) return rebuilt;
+
+  const statusMissing = Array.from(new Set([...(rebuilt.status.missing || []), "backup-falhou"]));
+  const status = {
+    ...rebuilt,
+    status: {
+      ...rebuilt.status,
+      status: "Pendente",
+      missing: statusMissing,
+    },
+    alertas: buildAlertas(statusMissing),
+  };
+
+  if (snapshot.ultimoErro) {
+    status.ultimoErro = snapshot.ultimoErro;
+  }
+
+  return status;
+}
+
 function readBackupStatus(backupsDir, options = {}) {
   const file = backupStatusPath(backupsDir);
   if (!fs.existsSync(file)) return buildBackupStatus(backupsDir, options);
 
   try {
-    const status = JSON.parse(fs.readFileSync(file, "utf8"));
-    return sanitizeStatusSnapshot(status);
+    const status = sanitizeStatusSnapshot(JSON.parse(fs.readFileSync(file, "utf8")));
+    const rebuilt = buildBackupStatus(backupsDir, {
+      ...options,
+      offsite: offsiteSnapshotToBuildInput(status.offsite),
+    });
+    return preservePersistedLocalFailure(rebuilt, status);
   } catch {
     return buildBackupStatus(backupsDir, options);
   }

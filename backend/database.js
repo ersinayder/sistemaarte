@@ -2,7 +2,8 @@ const Database = require("better-sqlite3");
 const bcrypt    = require("bcryptjs");
 const path      = require("path");
 const fs        = require("fs");
-const { buildBackupStatus, writeBackupStatus } = require("./utils/backupStatus");
+const { buildBackupStatus, readBackupStatus, sanitizeMessage, writeBackupStatus } = require("./utils/backupStatus");
+const { runOffsiteBackup } = require("./utils/offsiteBackup");
 const { encryptSecretIfPossible, isEncryptedSecret } = require("./utils/secrets");
 
 const DATA_DIR = path.join(__dirname, "data");
@@ -657,24 +658,53 @@ function backup() {
   const bdir = path.join(DATA_DIR,"backups");
   fs.mkdirSync(bdir,{recursive:true});
   const dest = path.join(bdir,`backup-${now}.db`);
-  return db.backup(dest).then(()=>{
+  return db.backup(dest).then(async ()=>{
     const files = fs.readdirSync(bdir).filter(f=>f.endsWith(".db")).sort();
     while (files.length > 7) fs.unlinkSync(path.join(bdir,files.shift()));
-    const status = buildBackupStatus(bdir);
+    const statusAnterior = readBackupStatus(bdir);
+    let offsiteResult;
+    try {
+      offsiteResult = await runOffsiteBackup({ backupFile: dest, dataDir: DATA_DIR, backupsDir: bdir });
+      if (offsiteResult?.ok === false) {
+        console.error("[Backup] Offsite falhou:", offsiteResult.status?.ultimoErro?.mensagem || "erro desconhecido");
+      }
+    } catch (e) {
+      const mensagem = sanitizeMessage(e.message);
+      offsiteResult = {
+        ok: false,
+        status: {
+          enabled: true,
+          provider: "oracle",
+          ultimoErro: {
+            mensagem,
+            createdat: new Date().toISOString(),
+          },
+        },
+      };
+      console.error("[Backup] Offsite falhou:", mensagem);
+    }
+    if (offsiteResult?.ok === false && statusAnterior.offsite.ultimo) {
+      offsiteResult.status = {
+        ...offsiteResult.status,
+        latest: statusAnterior.offsite.ultimo,
+      };
+    }
+    const status = buildBackupStatus(bdir, { offsite: offsiteResult?.status });
     writeBackupStatus(bdir, status);
     console.log("[Backup] Salvo:",dest);
     return { ok: true, arquivo: path.basename(dest), status };
   }).catch(e=>{
+    const mensagem = sanitizeMessage(e.message);
     const status = buildBackupStatus(bdir);
     status.status.status = "Pendente";
     status.status.missing = Array.from(new Set([...(status.status.missing || []), "backup-falhou"]));
     status.ultimoErro = {
-      mensagem: e.message,
+      mensagem,
       createdat: new Date().toISOString(),
     };
     writeBackupStatus(bdir, status);
-    console.error("[Backup] Erro:",e.message);
-    throw e;
+    console.error("[Backup] Erro:", mensagem);
+    throw new Error(mensagem);
   });
 }
 
