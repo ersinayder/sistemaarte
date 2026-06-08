@@ -259,6 +259,7 @@ module.exports = {
   buildOffsiteStatus,
   backupStatusPath,
   buildBackupStatus,
+  offsiteSnapshotToBuildInput,
   readBackupStatus,
   sanitizeMessage,
   writeBackupStatus,

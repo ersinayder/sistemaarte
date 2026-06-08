@@ -2,7 +2,13 @@ const Database = require("better-sqlite3");
 const bcrypt    = require("bcryptjs");
 const path      = require("path");
 const fs        = require("fs");
-const { buildBackupStatus, readBackupStatus, sanitizeMessage, writeBackupStatus } = require("./utils/backupStatus");
+const {
+  buildBackupStatus,
+  offsiteSnapshotToBuildInput,
+  readBackupStatus,
+  sanitizeMessage,
+  writeBackupStatus,
+} = require("./utils/backupStatus");
 const { runOffsiteBackup } = require("./utils/offsiteBackup");
 const { encryptSecretIfPossible, isEncryptedSecret } = require("./utils/secrets");
 
@@ -658,10 +664,10 @@ function backup() {
   const bdir = path.join(DATA_DIR,"backups");
   fs.mkdirSync(bdir,{recursive:true});
   const dest = path.join(bdir,`backup-${now}.db`);
+  const statusAnterior = readBackupStatus(bdir);
   return db.backup(dest).then(async ()=>{
     const files = fs.readdirSync(bdir).filter(f=>f.endsWith(".db")).sort();
     while (files.length > 7) fs.unlinkSync(path.join(bdir,files.shift()));
-    const statusAnterior = readBackupStatus(bdir);
     let offsiteResult;
     try {
       offsiteResult = await runOffsiteBackup({ backupFile: dest, dataDir: DATA_DIR, backupsDir: bdir });
@@ -691,11 +697,11 @@ function backup() {
     }
     const status = buildBackupStatus(bdir, { offsite: offsiteResult?.status });
     writeBackupStatus(bdir, status);
-    console.log("[Backup] Salvo:",dest);
+    console.log("[Backup] Salvo:", path.basename(dest));
     return { ok: true, arquivo: path.basename(dest), status };
   }).catch(e=>{
     const mensagem = sanitizeMessage(e.message);
-    const status = buildBackupStatus(bdir);
+    const status = buildBackupStatus(bdir, { offsite: offsiteSnapshotToBuildInput(statusAnterior.offsite) });
     status.status.status = "Pendente";
     status.status.missing = Array.from(new Set([...(status.status.missing || []), "backup-falhou"]));
     status.ultimoErro = {

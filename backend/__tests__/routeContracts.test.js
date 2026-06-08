@@ -463,9 +463,13 @@ describe('backup route contracts', () => {
     const source = fs.readFileSync(new URL('../database.js', import.meta.url), 'utf8');
 
     expect(source).toMatch(/const mensagem = sanitizeMessage\(e\.message\)/);
+    expect(source).toMatch(/offsiteSnapshotToBuildInput\(statusAnterior\.offsite\)/);
+    expect(source).not.toMatch(/buildBackupStatus\(bdir,\s*\{\s*offsite:\s*statusAnterior\.offsite\s*\}\)/);
     expect(source).toMatch(/ultimoErro = \{\s*mensagem,/);
     expect(source).toMatch(/console\.error\("\[Backup\] Erro:",\s*mensagem\)/);
     expect(source).toMatch(/throw new Error\(mensagem\)/);
+    expect(source).toMatch(/console\.log\("\[Backup\] Salvo:",\s*path\.basename\(dest\)\)/);
+    expect(source).not.toMatch(/console\.log\("\[Backup\] Salvo:",\s*dest\)/);
   });
 });
 
