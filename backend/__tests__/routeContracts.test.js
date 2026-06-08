@@ -315,6 +315,15 @@ describe('security configuration contracts', () => {
     expect(serverSource).toMatch(/createWhatsappWorker/);
   });
 
+  it('exposes whatsapp web local settings in the configuration UI', () => {
+    const configuracoesSource = fs.readFileSync(new URL('../../frontend/src/pages/Configuracoes.jsx', import.meta.url), 'utf8');
+
+    expect(configuracoesSource).toMatch(/web_local/);
+    expect(configuracoesSource).toMatch(/webBaseUrl/);
+    expect(configuracoesSource).toMatch(/webInstance/);
+    expect(configuracoesSource).toMatch(/\/configuracoes\/whatsapp\/web-status/);
+  });
+
   it('uses the internal API for CEP lookup so production CSP does not block address autofill', () => {
     const cepSource = fs.readFileSync(new URL('../../frontend/src/utils/cep.js', import.meta.url), 'utf8');
     const configuracoesSource = fs.readFileSync(new URL('../../frontend/src/pages/Configuracoes.jsx', import.meta.url), 'utf8');
