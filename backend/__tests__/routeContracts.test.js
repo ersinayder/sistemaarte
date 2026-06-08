@@ -85,6 +85,9 @@ describe('route authorization contracts', () => {
     expect(routeRoles(nfeRouter, 'post', '/emitir/:id')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'post', '/:chave/cce')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'post', '/:chave/cancelar')).toEqual(['admin', 'caixa']);
+    expect(routeRoles(nfeRouter, 'get', '/lixeira')).toEqual(['admin']);
+    expect(routeRoles(nfeRouter, 'delete', '/:id')).toEqual(['admin']);
+    expect(routeRoles(nfeRouter, 'post', '/:id/restore')).toEqual(['admin']);
   });
 
   it('restricts sensitive read routes away from oficina', async () => {
@@ -105,6 +108,12 @@ describe('route authorization contracts', () => {
     expect(routeRoles(clientesRouter, 'get', '/:id/ordens')).toEqual(['admin', 'caixa']);
     expect(routeRoles(produtosRouter, 'get', '/')).toEqual(['admin', 'caixa']);
     expect(routeRoles(produtosRouter, 'get', '/:id')).toEqual(['admin', 'caixa']);
+  });
+
+  it('keeps CEP lookup behind the authenticated API for admin and caixa', async () => {
+    const consultaRouter = await loadRouter('../routes/consulta.js');
+
+    expect(routeRoles(consultaRouter, 'get', '/cep/:cep')).toEqual(['admin', 'caixa']);
   });
 });
 
@@ -295,6 +304,25 @@ describe('security configuration contracts', () => {
     expect(source).toMatch(/printHtml\(\{\s*html,\s*jobName:\s*["']teste-impressao-a5["']/);
   });
 
+  it('uses the internal API for CEP lookup so production CSP does not block address autofill', () => {
+    const cepSource = fs.readFileSync(new URL('../../frontend/src/utils/cep.js', import.meta.url), 'utf8');
+    const configuracoesSource = fs.readFileSync(new URL('../../frontend/src/pages/Configuracoes.jsx', import.meta.url), 'utf8');
+
+    expect(cepSource).toMatch(/from ['"]\.\.\/services\/api['"]/);
+    expect(cepSource).toMatch(/api\.get\(`\/consulta\/cep\/\$\{cep\}`\)/);
+    expect(cepSource).not.toMatch(/viacep\.com\.br/);
+    expect(configuracoesSource).toMatch(/buscarEnderecoPorCep/);
+    expect(configuracoesSource).toMatch(/buscarCepEmpresa/);
+  });
+
+  it('shows the NF-e homologation target only while the fiscal environment is homologation', () => {
+    const source = fs.readFileSync(new URL('../../frontend/src/pages/NotasFiscais.jsx', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/const mostraHomologacao = Number\(nfeMeta\.ambiente\) === 2/);
+    expect(source).toMatch(/\{mostraHomologacao && !lixeira && <div/);
+    expect(source).not.toMatch(/Ambiente atual: producao/);
+  });
+
   it('keeps fiscal event XML downloads scoped to active OS for non-admin users', () => {
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
 
@@ -336,6 +364,28 @@ describe('security configuration contracts', () => {
     expect(source).toMatch(/function salvarClienteCadastroAposEmissao/);
     expect(source).toMatch(/UPDATE clientes SET[\s\S]+name = \?[\s\S]+cpf = \?[\s\S]+WHERE id = \? AND deletedat IS NULL/);
     expect(source.indexOf('const autorizado = cStat ===')).toBeLessThan(source.indexOf('salvarClienteCadastroAposEmissao(db, os, clienteComOverrides.cliente)'));
+  });
+
+  it('keeps NF-e trash as a soft delete that is hidden from the main list', () => {
+    const databaseSource = fs.readFileSync(new URL('../database.js', import.meta.url), 'utf8');
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+
+    expect(databaseSource).toMatch(/ALTER TABLE ordens ADD COLUMN nfe_deletedat TEXT/);
+    expect(databaseSource).toMatch(/ALTER TABLE ordens ADD COLUMN nfe_deletedpor INTEGER/);
+    expect(databaseSource).toMatch(/ALTER TABLE ordens ADD COLUMN nfe_deletedreason TEXT/);
+    expect(source).toMatch(/WHERE o\.nfe_status IS NOT NULL AND o\.deletedat IS NULL AND o\.nfe_deletedat IS NULL/);
+    expect(source).toMatch(/router\.get\(['"]\/lixeira['"],\s*auth\(\['admin'\]\)/);
+    expect(source).toMatch(/o\.nfe_deletedat IS NOT NULL/);
+    expect(source).toMatch(/UPDATE ordens SET nfe_deletedat=datetime\('now','localtime'\), nfe_deletedpor=\?, nfe_deletedreason=\?/);
+    expect(source).toMatch(/UPDATE ordens SET nfe_deletedat=NULL, nfe_deletedpor=NULL, nfe_deletedreason=NULL/);
+  });
+
+  it('blocks moving authorized or cancelled NF-e records to fiscal trash', () => {
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/const STATUS_NFE_LIXEIRA = \['rejeitado'\]/);
+    expect(source).toMatch(/!STATUS_NFE_LIXEIRA\.includes\(nota\.nfe_status\)/);
+    expect(source).toMatch(/NF-e autorizada ou cancelada nao pode ser movida para a lixeira/);
   });
 });
 

@@ -36,6 +36,7 @@ const NFE_XMLS_DIR = path.resolve(__dirname, '..', 'data', 'nfe_xmls');
 const CCE_COND_USO =
   'A Carta de Correcao e disciplinada pelo paragrafo 1o-A do art. 7o do Convenio S/N, de 15 de dezembro de 1970 e pode ser utilizada para regularizacao de erro ocorrido na emissao de documento fiscal, desde que o erro nao esteja relacionado com: I - as variaveis que determinam o valor do imposto tais como: base de calculo, aliquota, diferenca de preco, quantidade, valor da operacao ou da prestacao; II - a correcao de dados cadastrais que implique mudanca do remetente ou do destinatario; III - a data de emissao ou de saida.';
 const STATUS_NFE_EMISSAO = ['Aguardando', 'Pronto', 'Entregue'];
+const STATUS_NFE_LIXEIRA = ['rejeitado'];
 const NFE_ROUTE_TIMEOUT_MS = 75_000;
 
 function pad(n, len) { return String(n).padStart(len, '0'); }
@@ -277,6 +278,7 @@ router.get('/', auth(['admin', 'caixa']), (req, res) => {
       SELECT o.id, o.numero, o.clienteid, COALESCE(c.name, o.clientenome) AS clientenome, o.servico, o.valortotal, o.status,
              o.nfe_numero, o.nfe_serie, o.nfe_chave, o.nfe_protocolo, o.nfe_status,
              o.nfe_emitida_em, o.nfe_cancelado_em, o.nfe_cancel_protocolo, o.nfe_cancel_motivo,
+             o.nfe_deletedat, o.nfe_deletedpor, o.nfe_deletedreason,
              (SELECT COUNT(*) FROM nfe_eventos e WHERE e.chave = o.nfe_chave AND e.tipo = 'cce') AS nfe_cce_count,
              (SELECT MAX(createdat) FROM nfe_eventos e WHERE e.chave = o.nfe_chave AND e.tipo = 'cce') AS nfe_cce_ultima_em,
              (SELECT e.motivo FROM nfe_eventos e WHERE e.ordemid = o.id AND e.tipo = 'rejeicao' ORDER BY e.createdat DESC, e.id DESC LIMIT 1) AS nfe_rejeicao_motivo,
@@ -284,7 +286,7 @@ router.get('/', auth(['admin', 'caixa']), (req, res) => {
              (SELECT COUNT(*) FROM nfe_eventos e WHERE e.chave = o.nfe_chave OR (o.nfe_chave IS NULL AND e.ordemid = o.id)) AS nfe_eventos_count
       FROM ordens o
       LEFT JOIN clientes c ON o.clienteid = c.id
-      WHERE o.nfe_status IS NOT NULL AND o.deletedat IS NULL
+      WHERE o.nfe_status IS NOT NULL AND o.deletedat IS NULL AND o.nfe_deletedat IS NULL
       ORDER BY o.nfe_emitida_em DESC
     `).all();
     const alvoHomologacao = Number(process.env.NFE_HOMOLOGACAO_ALVO || 10);
@@ -300,6 +302,29 @@ router.get('/', auth(['admin', 'caixa']), (req, res) => {
   } catch (e) {
     console.error('[NF-e] GET /:', e.message);
     res.status(500).json({ erro: 'Erro ao listar notas fiscais' });
+  }
+});
+
+// GET /api/nfe/lixeira
+router.get('/lixeira', auth(['admin']), (req, res) => {
+  try {
+    const rows = getDB().prepare(`
+      SELECT o.id, o.numero, o.clienteid, COALESCE(c.name, o.clientenome) AS clientenome, o.servico, o.valortotal, o.status,
+             o.nfe_numero, o.nfe_serie, o.nfe_chave, o.nfe_protocolo, o.nfe_status,
+             o.nfe_emitida_em, o.nfe_cancelado_em, o.nfe_cancel_protocolo, o.nfe_cancel_motivo,
+             o.nfe_deletedat, o.nfe_deletedpor, o.nfe_deletedreason,
+             (SELECT e.motivo FROM nfe_eventos e WHERE e.ordemid = o.id AND e.tipo = 'rejeicao' ORDER BY e.createdat DESC, e.id DESC LIMIT 1) AS nfe_rejeicao_motivo,
+             (SELECT e.cstat FROM nfe_eventos e WHERE e.ordemid = o.id AND e.tipo = 'rejeicao' ORDER BY e.createdat DESC, e.id DESC LIMIT 1) AS nfe_rejeicao_cstat,
+             (SELECT COUNT(*) FROM nfe_eventos e WHERE e.chave = o.nfe_chave OR (o.nfe_chave IS NULL AND e.ordemid = o.id)) AS nfe_eventos_count
+      FROM ordens o
+      LEFT JOIN clientes c ON o.clienteid = c.id
+      WHERE o.nfe_status IS NOT NULL AND o.deletedat IS NULL AND o.nfe_deletedat IS NOT NULL
+      ORDER BY o.nfe_deletedat DESC
+    `).all();
+    res.json({ notas: rows, meta: { ambiente: tpAmbAtual() } });
+  } catch (e) {
+    console.error('[NF-e] GET /lixeira:', e.message);
+    res.status(500).json({ erro: 'Erro ao listar lixeira de notas fiscais' });
   }
 });
 
@@ -514,6 +539,65 @@ router.get('/emitir/:id/preview', auth(['admin', 'caixa']), (req, res) => {
   }
 });
 
+// DELETE /api/nfe/:id  (soft delete operacional da NF-e)
+router.delete('/:id', auth(['admin']), (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ erro: 'ID de OS invalido' });
+  }
+
+  try {
+    const db = getDB();
+    const nota = db.prepare(`
+      SELECT id, nfe_status, nfe_deletedat
+      FROM ordens
+      WHERE id = ? AND deletedat IS NULL AND nfe_status IS NOT NULL
+    `).get(id);
+
+    if (!nota) return res.status(404).json({ erro: 'NF-e nao encontrada' });
+    if (nota.nfe_deletedat) return res.json({ ok: true, jaNaLixeira: true });
+    if (!STATUS_NFE_LIXEIRA.includes(nota.nfe_status)) {
+      return res.status(409).json({ erro: 'NF-e autorizada ou cancelada nao pode ser movida para a lixeira' });
+    }
+
+    const reason = String(req.body?.motivo || req.body?.reason || 'Ocultada da tela fiscal').trim().slice(0, 250);
+    db.prepare("UPDATE ordens SET nfe_deletedat=datetime('now','localtime'), nfe_deletedpor=?, nfe_deletedreason=? WHERE id=?")
+      .run(req.user?.id || null, reason, id);
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[NF-e] DELETE /:id:', e.message);
+    res.status(500).json({ erro: 'Erro ao mover NF-e para a lixeira' });
+  }
+});
+
+// POST /api/nfe/:id/restore
+router.post('/:id/restore', auth(['admin']), (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ erro: 'ID de OS invalido' });
+  }
+
+  try {
+    const db = getDB();
+    const nota = db.prepare(`
+      SELECT id
+      FROM ordens
+      WHERE id = ? AND deletedat IS NULL AND nfe_status IS NOT NULL AND nfe_deletedat IS NOT NULL
+    `).get(id);
+
+    if (!nota) return res.status(404).json({ erro: 'NF-e nao encontrada na lixeira' });
+
+    db.prepare('UPDATE ordens SET nfe_deletedat=NULL, nfe_deletedpor=NULL, nfe_deletedreason=NULL WHERE id=?')
+      .run(id);
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[NF-e] POST /:id/restore:', e.message);
+    res.status(500).json({ erro: 'Erro ao restaurar NF-e' });
+  }
+});
+
 // POST /api/nfe/emitir/:id
 router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
   let respondido = false;
@@ -584,7 +668,10 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
     // Se changes === 0, outro processo já pegou o lock — rejeita com 409.
     const lock = db.prepare(`
       UPDATE ordens
-      SET nfe_status = 'emitindo'
+      SET nfe_status = 'emitindo',
+          nfe_deletedat = NULL,
+          nfe_deletedpor = NULL,
+          nfe_deletedreason = NULL
       WHERE id = ? AND (nfe_status IS NULL OR nfe_status NOT IN ('emitindo', 'autorizado'))
     `).run(osId);
 
@@ -714,7 +801,10 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
         nfe_xml        = ?,
         nfe_cancelado_em = NULL,
         nfe_cancel_protocolo = NULL,
-        nfe_cancel_motivo = NULL
+        nfe_cancel_motivo = NULL,
+        nfe_deletedat = NULL,
+        nfe_deletedpor = NULL,
+        nfe_deletedreason = NULL
       WHERE id = ?
     `).run(numero, serie, chave, protocolo, agora, xmlAutorizacao, osId);
 
