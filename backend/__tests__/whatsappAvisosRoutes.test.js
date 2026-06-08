@@ -61,11 +61,18 @@ const ordem = {
 
 describe('whatsapp avisos routes', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    db.getAll.mockReset();
+    db.getOne.mockReset();
+    db.run.mockReset();
+    db.runInsert.mockReset();
+    db.transaction.mockReset();
+    whatsappMock.sendWhatsApp.mockClear();
+    whatsappMock.sendWhatsAppConfirmacao.mockClear();
     db.getOne.mockReturnValue(null);
     db.getAll.mockReturnValue([]);
     db.run.mockReturnValue({ changes: 1 });
     db.runInsert.mockReturnValue(123);
+    db.transaction.mockImplementation((fn) => fn());
   });
 
   it('opens a ready notice using backend order data and ignores malicious body values', async () => {
@@ -118,6 +125,60 @@ describe('whatsapp avisos routes', () => {
 
     expect(res.status).toHaveBeenCalledWith(403);
     expect(res.json).toHaveBeenCalledWith({ error: 'Aviso nao permitido para este usuario.' });
+  });
+
+  it('stores manual channel fields when opening a notice by hand', async () => {
+    db.getOne
+      .mockReturnValueOnce(ordem)
+      .mockReturnValueOnce(null)
+      .mockReturnValueOnce({ id: 456, ordemid: 77, tipo: 'pedido_pronto', status: 'aberto', auto_status: 'pendente' });
+
+    const handler = businessHandler('post', '/:id/whatsapp-avisos/:tipo/abrir');
+    const res = makeRes();
+    const next = vi.fn();
+
+    await handler({
+      params: { id: '77', tipo: 'pedido_pronto' },
+      user: { id: 9, role: 'caixa' },
+      body: {},
+    }, res, next);
+
+    if (next.mock.calls.length) throw next.mock.calls[0][0];
+    expect(res.status).not.toHaveBeenCalled();
+    expect(db.run).toHaveBeenCalledWith(expect.stringContaining('canal'), expect.arrayContaining([
+      77,
+      'pedido_pronto',
+      '5531999990000',
+    ]));
+    expect(db.run).toHaveBeenCalledWith(expect.stringContaining("canal='manual'"), expect.any(Array));
+  });
+
+  it('enqueues pedido pronto instead of calling the direct unstable sender', async () => {
+    db.getOne
+      .mockReturnValueOnce({ id: 77 })
+      .mockReturnValueOnce({ status: 'Em Produção' })
+      .mockReturnValueOnce({ ...ordem, status: 'Pronto' });
+
+    const handler = businessHandler('patch', '/:id/status');
+    const res = makeRes();
+    const next = vi.fn();
+
+    await handler({
+      params: { id: '77' },
+      body: { status: 'Pronto' },
+      user: { id: 9, role: 'caixa' },
+    }, res, next);
+
+    if (next.mock.calls.length) throw next.mock.calls[0][0];
+    expect(res.status).not.toHaveBeenCalled();
+    expect(whatsappMock.sendWhatsApp).not.toHaveBeenCalled();
+    expect(db.run).toHaveBeenCalledWith(expect.stringContaining('whatsapp_avisos'), expect.arrayContaining([
+      77,
+      'pedido_pronto',
+      '5531999990000',
+      expect.stringContaining('Cliente Real'),
+      'web_local',
+    ]));
   });
 
   it('does not expose financial fields or forbidden confirmation notices in oficina list responses', async () => {
