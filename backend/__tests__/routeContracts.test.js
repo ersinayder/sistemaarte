@@ -304,6 +304,17 @@ describe('security configuration contracts', () => {
     expect(source).toMatch(/printHtml\(\{\s*html,\s*jobName:\s*["']teste-impressao-a5["']/);
   });
 
+  it('keeps whatsapp web status admin-only and starts the queue worker behind an env gate', async () => {
+    const configuracoesRouter = await loadRouter('../routes/configuracoes.js');
+    const configuracoesSource = fs.readFileSync(new URL('../routes/configuracoes.js', import.meta.url), 'utf8');
+    const serverSource = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+
+    expect(routeRoles(configuracoesRouter, 'get', '/whatsapp/web-status')).toEqual(['admin']);
+    expect(configuracoesSource).toMatch(/createWhatsappWebProvider/);
+    expect(serverSource).toMatch(/WHATSAPP_WEB_ENABLED/);
+    expect(serverSource).toMatch(/createWhatsappWorker/);
+  });
+
   it('uses the internal API for CEP lookup so production CSP does not block address autofill', () => {
     const cepSource = fs.readFileSync(new URL('../../frontend/src/utils/cep.js', import.meta.url), 'utf8');
     const configuracoesSource = fs.readFileSync(new URL('../../frontend/src/pages/Configuracoes.jsx', import.meta.url), 'utf8');

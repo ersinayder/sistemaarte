@@ -35,4 +35,12 @@ describe('whatsapp avisos schema', () => {
     expect(source).toMatch(/provider_message_id\s+TEXT/);
     expect(source).toMatch(/idx_whatsapp_avisos_auto_status/);
   });
+
+  it('includes local whatsapp web provider fields in whatsapp_config', () => {
+    const source = fs.readFileSync(new URL('../database.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/web_base_url\s+TEXT/);
+    expect(source).toMatch(/web_instance\s+TEXT/);
+    expect(source).toMatch(/web_api_key\s+TEXT/);
+  });
 });

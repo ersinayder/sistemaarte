@@ -230,6 +230,9 @@ CREATE TABLE IF NOT EXISTS whatsapp_config (
   token                 TEXT,
   template_pronto       TEXT DEFAULT 'os_pronta',
   template_confirmacao  TEXT DEFAULT 'confirmacao_pedido',
+  web_base_url          TEXT,
+  web_instance          TEXT,
+  web_api_key           TEXT,
   configurado           INTEGER DEFAULT 0,
   updatedat             TEXT DEFAULT (datetime('now','localtime'))
 );
@@ -400,6 +403,9 @@ function initDB() {
       token                 TEXT,
       template_pronto       TEXT DEFAULT 'os_pronta',
       template_confirmacao  TEXT DEFAULT 'confirmacao_pedido',
+      web_base_url          TEXT,
+      web_instance          TEXT,
+      web_api_key           TEXT,
       configurado           INTEGER DEFAULT 0,
       updatedat             TEXT DEFAULT (datetime('now','localtime'))
     )`,
@@ -523,6 +529,10 @@ function initDB() {
     "ALTER TABLE whatsapp_avisos ADD COLUMN last_error TEXT",
     "ALTER TABLE whatsapp_avisos ADD COLUMN provider_message_id TEXT",
     "CREATE INDEX IF NOT EXISTS idx_whatsapp_avisos_auto_status ON whatsapp_avisos(auto_status, next_attempt_at)",
+    // v17 - configuracao do provedor local WhatsApp Web/Evolution API
+    "ALTER TABLE whatsapp_config ADD COLUMN web_base_url TEXT",
+    "ALTER TABLE whatsapp_config ADD COLUMN web_instance TEXT",
+    "ALTER TABLE whatsapp_config ADD COLUMN web_api_key TEXT",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {}
@@ -593,6 +603,9 @@ function initDB() {
       token                 TEXT,
       template_pronto       TEXT DEFAULT 'os_pronta',
       template_confirmacao  TEXT DEFAULT 'confirmacao_pedido',
+      web_base_url          TEXT,
+      web_instance          TEXT,
+      web_api_key           TEXT,
       configurado           INTEGER DEFAULT 0,
       updatedat             TEXT DEFAULT (datetime('now','localtime'))
     );
