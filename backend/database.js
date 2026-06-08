@@ -252,6 +252,12 @@ CREATE TABLE IF NOT EXISTS whatsapp_avisos (
   status            TEXT NOT NULL DEFAULT 'pendente',
   telefone_snapshot TEXT,
   mensagem_snapshot TEXT,
+  canal             TEXT DEFAULT 'manual',
+  auto_status       TEXT DEFAULT 'pendente',
+  tentativas        INTEGER DEFAULT 0,
+  next_attempt_at   TEXT,
+  last_error        TEXT,
+  provider_message_id TEXT,
   aberto_por        INTEGER,
   enviado_por       INTEGER,
   ignorado_por      INTEGER,
@@ -264,6 +270,7 @@ CREATE TABLE IF NOT EXISTS whatsapp_avisos (
 );
 CREATE INDEX IF NOT EXISTS idx_whatsapp_avisos_ordemid ON whatsapp_avisos(ordemid);
 CREATE INDEX IF NOT EXISTS idx_whatsapp_avisos_status ON whatsapp_avisos(status);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_avisos_auto_status ON whatsapp_avisos(auto_status, next_attempt_at);
 CREATE INDEX IF NOT EXISTS idx_ordens_status       ON ordens(status);
 CREATE INDEX IF NOT EXISTS idx_ordens_prazo        ON ordens(prazoentrega);
 CREATE INDEX IF NOT EXISTS idx_ordens_clienteid    ON ordens(clienteid);
@@ -475,6 +482,12 @@ function initDB() {
       status            TEXT NOT NULL DEFAULT 'pendente',
       telefone_snapshot TEXT,
       mensagem_snapshot TEXT,
+      canal             TEXT DEFAULT 'manual',
+      auto_status       TEXT DEFAULT 'pendente',
+      tentativas        INTEGER DEFAULT 0,
+      next_attempt_at   TEXT,
+      last_error        TEXT,
+      provider_message_id TEXT,
       aberto_por        INTEGER,
       enviado_por       INTEGER,
       ignorado_por      INTEGER,
@@ -502,6 +515,14 @@ function initDB() {
     )`,
     "INSERT OR IGNORE INTO impressao_config (id, printer_name, paper_size, color) VALUES (1, '\\\\ARTESERVER\\Impressoraloja', 'A5', 1)",
     "ALTER TABLE impressao_config ADD COLUMN direct_print_enabled INTEGER DEFAULT 0",
+    // v16 - fila automatica de avisos WhatsApp via provedor local
+    "ALTER TABLE whatsapp_avisos ADD COLUMN canal TEXT DEFAULT 'manual'",
+    "ALTER TABLE whatsapp_avisos ADD COLUMN auto_status TEXT DEFAULT 'pendente'",
+    "ALTER TABLE whatsapp_avisos ADD COLUMN tentativas INTEGER DEFAULT 0",
+    "ALTER TABLE whatsapp_avisos ADD COLUMN next_attempt_at TEXT",
+    "ALTER TABLE whatsapp_avisos ADD COLUMN last_error TEXT",
+    "ALTER TABLE whatsapp_avisos ADD COLUMN provider_message_id TEXT",
+    "CREATE INDEX IF NOT EXISTS idx_whatsapp_avisos_auto_status ON whatsapp_avisos(auto_status, next_attempt_at)",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {}

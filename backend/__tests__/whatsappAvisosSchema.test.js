@@ -23,4 +23,16 @@ describe('whatsapp avisos schema', () => {
     expect(source).toMatch(/idx_whatsapp_avisos_ordemid/);
     expect(source).toMatch(/idx_whatsapp_avisos_status/);
   });
+
+  it('includes automatic queue fields for whatsapp avisos', () => {
+    const source = fs.readFileSync(new URL('../database.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/canal\s+TEXT/);
+    expect(source).toMatch(/auto_status\s+TEXT/);
+    expect(source).toMatch(/tentativas\s+INTEGER/);
+    expect(source).toMatch(/next_attempt_at\s+TEXT/);
+    expect(source).toMatch(/last_error\s+TEXT/);
+    expect(source).toMatch(/provider_message_id\s+TEXT/);
+    expect(source).toMatch(/idx_whatsapp_avisos_auto_status/);
+  });
 });
