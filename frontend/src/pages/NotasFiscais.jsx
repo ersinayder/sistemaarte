@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import toast from 'react-hot-toast'
+import { Plus, RotateCcw, Trash2 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import { buscarEnderecoPorCep, maskCep } from '../utils/cep'
 
@@ -959,7 +961,8 @@ function ModalCCE({ nfe, onClose, onSuccess }) {
   )
 }
 
-export default function NotasFiscais() {
+export default function NotasFiscais({ lixeira = false }) {
+  const navigate = useNavigate()
   const [notas, setNotas]             = useState([])
   const [nfeMeta, setNfeMeta]         = useState({ ambiente: null, autorizadas_homologacao: 0, alvo_homologacao: HOMOLOGACAO_ALVO })
   const [loading, setLoading]         = useState(true)
@@ -973,19 +976,44 @@ export default function NotasFiscais() {
   const carregar = useCallback(async () => {
     setLoading(true)
     try {
-      const r = await api.get('/nfe')
+      const r = await api.get(lixeira ? '/nfe/lixeira' : '/nfe')
       setNotas(r.data?.notas || [])
       setNfeMeta(r.data?.meta || { ambiente: null, autorizadas_homologacao: 0, alvo_homologacao: HOMOLOGACAO_ALVO })
     } catch {
-      toast.error('Erro ao carregar notas fiscais')
+      toast.error(lixeira ? 'Erro ao carregar lixeira de NF-e' : 'Erro ao carregar notas fiscais')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [lixeira])
 
   useEffect(() => { carregar() }, [carregar])
 
   const emitirNota = (nota) => setModalEmitir({ ordemInicial: nota })
+
+  const moverParaLixeira = async (nota) => {
+    if (nota.nfe_status !== 'rejeitado') {
+      toast.error('Somente NF-e rejeitada pode ir para a lixeira')
+      return
+    }
+    if (!window.confirm(`Mover a NF-e rejeitada da ${nota.numero} para a lixeira?`)) return
+    try {
+      await api.delete(`/nfe/${nota.id}`, { data: { motivo: 'Ocultada pela tela fiscal' } })
+      toast.success('NF-e movida para a lixeira')
+      carregar()
+    } catch (e) {
+      toast.error(e.response?.data?.erro || 'Nao foi possivel mover para a lixeira')
+    }
+  }
+
+  const restaurarNota = async (nota) => {
+    try {
+      await api.post(`/nfe/${nota.id}/restore`)
+      toast.success('NF-e restaurada')
+      carregar()
+    } catch (e) {
+      toast.error(e.response?.data?.erro || 'Nao foi possivel restaurar a NF-e')
+    }
+  }
 
   const baixarXmlAutorizacao = async (nota) => {
     try {
@@ -1014,6 +1042,7 @@ export default function NotasFiscais() {
   const alvoHomologacao = nfeMeta.alvo_homologacao || HOMOLOGACAO_ALVO
   const autorizadasHomologacao = nfeMeta.autorizadas_homologacao ?? totais.autorizado
   const progressoHomologacao = Math.min(100, Math.round((autorizadasHomologacao / alvoHomologacao) * 100))
+  const mostraHomologacao = Number(nfeMeta.ambiente) === 2
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 'var(--space-4)', padding: 'var(--space-4) var(--space-5)' }}>
@@ -1021,24 +1050,36 @@ export default function NotasFiscais() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 'var(--text-xl)', fontWeight: 800 }}>Notas Fiscais</h1>
-          <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
-            {totais.total} nota{totais.total !== 1 ? 's' : ''} · {totais.autorizado} autorizada{totais.autorizado !== 1 ? 's' : ''}
+          <h1 style={{ margin: 0, fontSize: 'var(--text-xl)', fontWeight: 800 }}>{lixeira ? 'Lixeira de NF-e' : 'Notas Fiscais'}</h1>
+          <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', display: lixeira ? 'none' : undefined }}>
+            {totais.total} nota{totais.total !== 1 ? 's' : ''} - {totais.autorizado} autorizada{totais.autorizado !== 1 ? 's' : ''}
           </p>
+          {lixeira && (
+            <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
+              {totais.total} registro{totais.total !== 1 ? 's' : ''} oculto{totais.total !== 1 ? 's' : ''}
+            </p>
+          )}
         </div>
-        <button className="btn btn-primary" onClick={() => setModalEmitir({})} style={{ gap: 'var(--space-2)' }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
-            <line x1="12" y1="18" x2="12" y2="12"/>
-            <line x1="9" y1="15" x2="15" y2="15"/>
-          </svg>
-          Emitir NF-e
-        </button>
+        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {lixeira ? (
+            <button className="btn btn-ghost" onClick={() => navigate('/nfe')} style={{ gap: 'var(--space-2)' }}>
+              <RotateCcw size={16} /> Voltar para NF-e
+            </button>
+          ) : (
+            <>
+              <button className="btn btn-ghost" onClick={() => navigate('/nfe/lixeira')} style={{ gap: 'var(--space-2)' }}>
+                <Trash2 size={16} /> Lixeira
+              </button>
+              <button className="btn btn-primary" onClick={() => setModalEmitir({})} style={{ gap: 'var(--space-2)' }}>
+                <Plus size={16} /> Emitir NF-e
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 'var(--space-3)' }}>
+      {!lixeira && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 'var(--space-3)' }}>
         {[
           { label: 'Total emitidas', value: totais.total,      color: 'var(--color-text)' },
           { label: 'Autorizadas',    value: totais.autorizado, color: 'var(--color-success)' },
@@ -1051,22 +1092,22 @@ export default function NotasFiscais() {
             <div style={{ fontSize: 'var(--text-xl)', fontWeight: 800, color: k.color, lineHeight: 1 }}>{k.value}</div>
           </div>
         ))}
-      </div>
+      </div>}
 
-      <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4)', display: 'grid', gap: 'var(--space-2)' }}>
+      {mostraHomologacao && !lixeira && <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4)', display: 'grid', gap: 'var(--space-2)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
           <div>
             <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Homologacao NF-e</div>
             <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800 }}>{autorizadasHomologacao}/{alvoHomologacao} notas autorizadas em homologacao</div>
           </div>
           <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
-            {nfeMeta.ambiente === 1 ? 'Ambiente atual: producao' : 'Ambiente atual: homologacao'}
+            Ambiente atual: homologacao
           </div>
         </div>
         <div style={{ height: 8, borderRadius: 'var(--radius-full)', background: 'var(--color-surface-offset)', overflow: 'hidden' }}>
           <div style={{ height: '100%', width: `${progressoHomologacao}%`, background: progressoHomologacao >= 100 ? 'var(--color-success)' : 'var(--color-primary)', transition: 'width var(--transition-interactive)' }} />
         </div>
-      </div>
+      </div>}
 
       {/* Filtros */}
       <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -1109,7 +1150,7 @@ export default function NotasFiscais() {
             </svg>
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontWeight: 700, marginBottom: 4 }}>{notas.length === 0 ? 'Nenhuma NF-e emitida ainda' : 'Nenhum resultado'}</div>
-              <div style={{ fontSize: 'var(--text-xs)' }}>{notas.length === 0 ? 'Clique em "Emitir NF-e" para emitir a primeira nota.' : 'Tente ajustar os filtros.'}</div>
+              <div style={{ fontSize: 'var(--text-xs)' }}>{notas.length === 0 ? (lixeira ? 'Registros movidos para a lixeira aparecem aqui.' : 'Clique em "Emitir NF-e" para emitir a primeira nota.') : 'Tente ajustar os filtros.'}</div>
             </div>
           </div>
         ) : (
@@ -1144,7 +1185,11 @@ export default function NotasFiscais() {
                   </td>
                   <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
                     <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end', alignItems: 'center', whiteSpace: 'nowrap' }}>
-                      {n.nfe_status === 'autorizado' && (
+                      {lixeira ? (
+                        <button className="btn btn-ghost btn-sm" onClick={() => restaurarNota(n)} title="Restaurar NF-e">
+                          <RotateCcw size={14} /> Restaurar
+                        </button>
+                      ) : n.nfe_status === 'autorizado' && (
                         <>
                           <button className="btn btn-ghost btn-sm" onClick={() => setCceNota(n)} title="Emitir CC-e">CC-e</button>
                           <button className="btn btn-ghost btn-sm" onClick={() => baixarXmlAutorizacao(n)} title="Baixar XML autorizado">XML</button>
@@ -1152,16 +1197,21 @@ export default function NotasFiscais() {
                           <button className="btn btn-ghost btn-sm" onClick={() => setCancelarNota(n)} title="Cancelar NF-e">Cancelar</button>
                         </>
                       )}
-                      {n.nfe_status === 'cancelado' && n.nfe_chave && (
+                      {!lixeira && n.nfe_status === 'cancelado' && n.nfe_chave && (
                         <>
                           <button className="btn btn-ghost btn-sm" onClick={() => baixarXmlAutorizacao(n)} title="Baixar XML autorizado">XML</button>
                           <button className="btn btn-ghost btn-sm" onClick={() => abrirDanfe(n.nfe_chave)} title="Abrir DANFE para impressao">DANFE</button>
                         </>
                       )}
-                      {['rejeitado', 'cancelado'].includes(n.nfe_status) && STATUS_NFE_EMISSAO.includes(n.status) && (
+                      {!lixeira && ['rejeitado', 'cancelado'].includes(n.nfe_status) && STATUS_NFE_EMISSAO.includes(n.status) && (
                         <button className="btn btn-ghost btn-sm" onClick={() => emitirNota(n)} title="Emitir novamente">Reemitir</button>
                       )}
-                      {n.nfe_status === 'emitindo' && (
+                      {!lixeira && n.nfe_status === 'rejeitado' && (
+                        <button className="btn btn-ghost btn-sm" onClick={() => moverParaLixeira(n)} title="Mover rejeicao para a lixeira">
+                          <Trash2 size={14} /> Excluir
+                        </button>
+                      )}
+                      {!lixeira && n.nfe_status === 'emitindo' && (
                         <button className="btn btn-ghost btn-sm" onClick={carregar} title="Atualizar andamento">Atualizar</button>
                       )}
                       <button className="btn btn-ghost btn-sm" onClick={() => setDetalhe(n)} title="Ver detalhes">

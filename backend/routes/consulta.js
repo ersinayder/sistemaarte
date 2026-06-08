@@ -42,7 +42,29 @@ router.get("/cnpj/:cnpj", auth(["admin","caixa"]), async (req, res) => {
   }
 });
 
-// GET /api/consulta/cpf/:cpf  — requer certificado digital (não implementado)
+router.get("/cep/:cep", auth(["admin","caixa"]), async (req, res) => {
+  const digits = String(req.params.cep || "").replace(/\D/g, "");
+  if (digits.length !== 8) return res.status(400).json({ error: "CEP invalido" });
+
+  try {
+    const d = await fetchJson(`https://viacep.com.br/ws/${digits}/json/`, 7000);
+    if (d?.erro) return res.status(404).json({ error: "CEP nao encontrado" });
+
+    return res.json({
+      cep: digits.replace(/(\d{5})(\d{3})/, "$1-$2"),
+      logradouro: d.logradouro || "",
+      bairro: d.bairro || "",
+      cidade: d.localidade || "",
+      municipio: d.localidade || "",
+      uf: d.uf || "",
+      codigomunicipio: d.ibge || "",
+    });
+  } catch {
+    return res.status(504).json({ error: "Nao foi possivel consultar o CEP. Tente novamente." });
+  }
+});
+
+// GET /api/consulta/cpf/:cpf - requer certificado digital (nao implementado)
 router.get("/cpf/:cpf", auth(["admin","caixa"]), (_req, res) =>
   res.status(501).json({ error: "Consulta CPF requer certificado digital." })
 );

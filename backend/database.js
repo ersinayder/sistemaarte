@@ -59,6 +59,9 @@ CREATE TABLE IF NOT EXISTS ordens (
   deletedat         TEXT DEFAULT NULL,
   deletedpor        INTEGER DEFAULT NULL,
   deletedreason     TEXT DEFAULT NULL,
+  nfe_deletedat     TEXT DEFAULT NULL,
+  nfe_deletedpor    INTEGER DEFAULT NULL,
+  nfe_deletedreason TEXT DEFAULT NULL,
   createdat         TEXT DEFAULT (datetime('now','localtime')),
   updatedat         TEXT DEFAULT (datetime('now','localtime'))
 );
@@ -343,6 +346,9 @@ function initDB() {
     "ALTER TABLE ordens ADD COLUMN nfe_status TEXT",
     "ALTER TABLE ordens ADD COLUMN nfe_xml TEXT",
     "ALTER TABLE ordens ADD COLUMN nfe_emitida_em TEXT",
+    "ALTER TABLE ordens ADD COLUMN nfe_deletedat TEXT DEFAULT NULL",
+    "ALTER TABLE ordens ADD COLUMN nfe_deletedpor INTEGER DEFAULT NULL",
+    "ALTER TABLE ordens ADD COLUMN nfe_deletedreason TEXT DEFAULT NULL",
     // v5 — endereço estruturado em clientes
     "ALTER TABLE clientes ADD COLUMN logradouro TEXT",
     "ALTER TABLE clientes ADD COLUMN numero TEXT",

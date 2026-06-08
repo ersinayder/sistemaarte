@@ -63,6 +63,7 @@ function AppRoutes() {
           <Route path="/usuarios" element={<PrivateRoute roles={['admin']}><Usuarios /></PrivateRoute>}/>
           <Route path="/configuracoes" element={<PrivateRoute roles={['admin']}><Configuracoes /></PrivateRoute>}/>
           <Route path="/nfe" element={<PrivateRoute roles={['admin','caixa']}><NotasFiscais /></PrivateRoute>}/>
+          <Route path="/nfe/lixeira" element={<PrivateRoute roles={['admin']}><NotasFiscais lixeira /></PrivateRoute>}/>
           <Route path="*" element={<Navigate to={defaultRoute} replace />} />
         </Route>
       </Routes>

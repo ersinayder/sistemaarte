@@ -1,3 +1,5 @@
+import api from '../services/api'
+
 export const onlyCepDigits = value => String(value || '').replace(/\D/g, '').slice(0, 8)
 
 export function maskCep(value) {
@@ -9,17 +11,15 @@ export async function buscarEnderecoPorCep(value) {
   const cep = onlyCepDigits(value)
   if (cep.length !== 8) return null
 
-  const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`)
-  if (!response.ok) return null
-
-  const data = await response.json()
-  if (data?.erro) return null
+  const { data } = await api.get(`/consulta/cep/${cep}`)
 
   return {
-    cep: maskCep(cep),
+    cep: data.cep || maskCep(cep),
     logradouro: data.logradouro || '',
     bairro: data.bairro || '',
-    cidade: data.localidade || '',
+    cidade: data.cidade || data.municipio || '',
+    municipio: data.municipio || data.cidade || '',
     uf: data.uf || '',
+    codigomunicipio: data.codigomunicipio || '',
   }
 }

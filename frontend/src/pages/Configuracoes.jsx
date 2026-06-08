@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import api from '../services/api'
+import { buscarEnderecoPorCep, maskCep } from '../utils/cep'
 
 const EMPTY_EMPRESA = {
   razaosocial: '',
@@ -181,6 +182,7 @@ export default function Configuracoes() {
   const [errors, setErrors] = useState({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [cepLoadingEmpresa, setCepLoadingEmpresa] = useState(false)
   const [fiscalForm, setFiscalForm] = useState(EMPTY_FISCAL)
   const [fiscalInfo, setFiscalInfo] = useState(null)
   const [fiscalErrors, setFiscalErrors] = useState({})
@@ -390,6 +392,29 @@ export default function Configuracoes() {
       delete next[field]
       return next
     })
+  }
+
+  const buscarCepEmpresa = async (value) => {
+    if (digits(value).length !== 8) return
+    setCepLoadingEmpresa(true)
+    try {
+      const endereco = await buscarEnderecoPorCep(value)
+      if (endereco) {
+        setEmpresaForm((form) => ({
+          ...form,
+          cep: endereco.cep,
+          logradouro: endereco.logradouro || form.logradouro,
+          bairro: endereco.bairro || form.bairro,
+          municipio: endereco.municipio || endereco.cidade || form.municipio,
+          codigomunicipio: endereco.codigomunicipio || form.codigomunicipio,
+          uf: endereco.uf || form.uf,
+        }))
+      }
+    } catch {
+      toast.error('Nao foi possivel buscar o CEP')
+    } finally {
+      setCepLoadingEmpresa(false)
+    }
   }
 
   const resetEmpresa = () => {
@@ -1235,7 +1260,21 @@ export default function Configuracoes() {
                     </Field>
                     <Field label="Telefone" name="telefone" form={empresaForm} errors={errors} onChange={setField} inputMode="tel" />
                     <Field label="E-mail" name="email" form={empresaForm} errors={errors} onChange={setField} type="email" />
-                    <Field label="CEP" name="cep" form={empresaForm} errors={errors} onChange={setField} inputMode="numeric" />
+                    <Field label={cepLoadingEmpresa ? 'CEP buscando...' : 'CEP'} name="cep" form={empresaForm} errors={errors} onChange={setField}>
+                      <input
+                        id="cep"
+                        className="form-input"
+                        value={empresaForm.cep || ''}
+                        onChange={(e) => {
+                          const cep = maskCep(e.target.value)
+                          setField('cep', cep)
+                          buscarCepEmpresa(cep)
+                        }}
+                        onBlur={(e) => buscarCepEmpresa(e.target.value)}
+                        inputMode="numeric"
+                        placeholder="00000-000"
+                      />
+                    </Field>
                     <Field label="Logradouro" name="logradouro" form={empresaForm} errors={errors} onChange={setField} />
                     <Field label="Numero" name="numero" form={empresaForm} errors={errors} onChange={setField} />
                     <Field label="Bairro" name="bairro" form={empresaForm} errors={errors} onChange={setField} />
