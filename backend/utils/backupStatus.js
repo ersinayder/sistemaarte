@@ -39,6 +39,16 @@ const ALERTAS_BACKUP = {
     codigo: "destino-offsite",
     mensagem: "Backup offsite ainda nao configurado.",
   },
+  "backup-offsite-recente": {
+    nivel: "critico",
+    codigo: "backup-offsite-recente",
+    mensagem: "Ultimo backup offsite esta atrasado.",
+  },
+  "backup-offsite-falhou": {
+    nivel: "critico",
+    codigo: "backup-offsite-falhou",
+    mensagem: "Ultimo backup offsite falhou.",
+  },
 };
 
 function buildAlertas(codigos = []) {
@@ -47,7 +57,76 @@ function buildAlertas(codigos = []) {
     .filter(Boolean);
 }
 
-function buildBackupStatus(backupsDir, { now = new Date() } = {}) {
+function sanitizeMessage(message = "") {
+  return String(message)
+    .replace(/\bAuthorization\s*:\s*(?:Bearer|Basic)\s+[^\s"',;)]+/gi, "[segredo ocultado]")
+    .replace(/(https?:\/\/)[^\/\s:@]+:[^\/\s@]+@/gi, "$1[credenciais ocultadas]@")
+    .replace(/[?&][^=&\s]*(?:token|secret|password|senha|key)[^=&\s]*=[^&#\s"',;)]+/gi, "?[segredo ocultado]")
+    .replace(/["']?[A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|SENHA|KEY)[A-Z0-9_]*["']?\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s;,)]+)/gi, "[segredo ocultado]")
+    .replace(/\\\\[^\s"'<>|\\]+\\[^\s"'<>|\\]+(?:\\[^\s"'<>|\\]+)*/g, "[caminho ocultado]")
+    .replace(/[A-Za-z]:\\(?:[^\s"'<>|]+\\)*[^\s"'<>|]*/g, "[caminho ocultado]")
+    .replace(/(^|[\s"'(])\/(?:[^\s"'<>|/]+\/)+[^\s"'<>|]*/g, "$1[caminho ocultado]");
+}
+
+function cleanFileName(name) {
+  return name ? path.basename(String(name)) : name;
+}
+
+function buildOffsiteStatus(offsite = {}, { now = new Date() } = {}) {
+  if (!offsite.enabled) {
+    return {
+      status: "Pendente",
+      missing: ["destino-offsite"],
+    };
+  }
+
+  const latest = offsite.latest || null;
+  const ultimo = latest ? {
+    nome: cleanFileName(latest.nome),
+    bytes: latest.bytes,
+    sha256: latest.sha256,
+    uploadedat: latest.uploadedat,
+  } : null;
+
+  const uploadedAtMs = ultimo?.uploadedat ? new Date(ultimo.uploadedat).getTime() : NaN;
+  const horasDesdeUltimo = Number.isFinite(uploadedAtMs)
+    ? Math.round(((now.getTime() - uploadedAtMs) / 36e5) * 10) / 10
+    : null;
+
+  const base = {
+    status: "OK",
+    missing: [],
+    provider: offsite.provider || null,
+    bucket: offsite.bucket || null,
+    retencaoDias: offsite.retentionDays ?? null,
+    ultimo,
+    horasDesdeUltimo,
+  };
+
+  if (offsite.ultimoErro) {
+    return {
+      ...base,
+      status: "Falhou",
+      missing: ["backup-offsite-falhou"],
+      ultimoErro: {
+        mensagem: sanitizeMessage(offsite.ultimoErro.mensagem),
+        createdat: offsite.ultimoErro.createdat,
+      },
+    };
+  }
+
+  if (!ultimo || horasDesdeUltimo === null || horasDesdeUltimo > 30) {
+    return {
+      ...base,
+      status: "Atrasado",
+      missing: ["backup-offsite-recente"],
+    };
+  }
+
+  return base;
+}
+
+function buildBackupStatus(backupsDir, { now = new Date(), offsite } = {}) {
   fs.mkdirSync(backupsDir, { recursive: true });
 
   const arquivos = fs.readdirSync(backupsDir)
@@ -65,7 +144,8 @@ function buildBackupStatus(backupsDir, { now = new Date() } = {}) {
   if (horasDesdeUltimo !== null && horasDesdeUltimo > 30) missing.push("backup-recente");
   if (arquivos.length > 7) missing.push("retencao-local");
 
-  const offsiteMissing = ["destino-offsite"];
+  const offsiteStatus = buildOffsiteStatus(offsite, { now });
+  const offsiteMissing = offsiteStatus.missing;
   const statusMissing = [...missing, ...offsiteMissing];
 
   return {
@@ -87,8 +167,7 @@ function buildBackupStatus(backupsDir, { now = new Date() } = {}) {
       proximaRotina: "Diariamente as 02:00 BRT",
     },
     offsite: {
-      status: "Pendente",
-      missing: offsiteMissing,
+      ...offsiteStatus,
     },
   };
 }
@@ -100,14 +179,27 @@ function writeBackupStatus(backupsDir, status) {
   return file;
 }
 
+function sanitizeStatusSnapshot(value) {
+  if (Array.isArray(value)) return value.map((item) => sanitizeStatusSnapshot(item));
+  if (value && typeof value === "object") {
+    const sanitized = {};
+    for (const [key, item] of Object.entries(value)) {
+      if (key === "diretorio") continue;
+      sanitized[key] = sanitizeStatusSnapshot(item);
+    }
+    return sanitized;
+  }
+  if (typeof value === "string") return sanitizeMessage(value);
+  return value;
+}
+
 function readBackupStatus(backupsDir, options = {}) {
   const file = backupStatusPath(backupsDir);
   if (!fs.existsSync(file)) return buildBackupStatus(backupsDir, options);
 
   try {
     const status = JSON.parse(fs.readFileSync(file, "utf8"));
-    if (status?.local) delete status.local.diretorio;
-    return status;
+    return sanitizeStatusSnapshot(status);
   } catch {
     return buildBackupStatus(backupsDir, options);
   }
@@ -116,8 +208,10 @@ function readBackupStatus(backupsDir, options = {}) {
 module.exports = {
   BACKUP_STATUS_FILE,
   buildAlertas,
+  buildOffsiteStatus,
   backupStatusPath,
   buildBackupStatus,
   readBackupStatus,
+  sanitizeMessage,
   writeBackupStatus,
 };
