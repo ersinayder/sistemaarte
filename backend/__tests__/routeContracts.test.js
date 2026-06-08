@@ -308,11 +308,15 @@ describe('security configuration contracts', () => {
     const configuracoesRouter = await loadRouter('../routes/configuracoes.js');
     const configuracoesSource = fs.readFileSync(new URL('../routes/configuracoes.js', import.meta.url), 'utf8');
     const serverSource = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+    const ecosystemSource = fs.readFileSync(new URL('../ecosystem.config.js', import.meta.url), 'utf8');
 
     expect(routeRoles(configuracoesRouter, 'get', '/whatsapp/web-status')).toEqual(['admin']);
     expect(configuracoesSource).toMatch(/createWhatsappWebProvider/);
     expect(serverSource).toMatch(/WHATSAPP_WEB_ENABLED/);
     expect(serverSource).toMatch(/createWhatsappWorker/);
+    expect(ecosystemSource).toMatch(/WHATSAPP_WEB_ENABLED/);
+    expect(ecosystemSource).toMatch(/WHATSAPP_WEB_BASE_URL/);
+    expect(ecosystemSource).toMatch(/WHATSAPP_WEB_INSTANCE/);
   });
 
   it('exposes whatsapp web local settings in the configuration UI', () => {

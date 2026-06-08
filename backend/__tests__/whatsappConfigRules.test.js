@@ -199,5 +199,20 @@ describe('whatsappConfigRules', () => {
     expect(fromEnv.webBaseUrl).toBe('http://127.0.0.1:8080');
     expect(fromEnv.webInstance).toBe('loja-env');
     expect(fromEnv.webApiKey).toBe('env-key');
+
+    const fromLegacyEvolutionEnv = resolverWhatsappRuntime({
+      row: { enabled: 0, provider: 'meta', configurado: 0 },
+      env: {
+        WHATSAPP_ENABLED: 'true',
+        WHATSAPP_PROVIDER: 'web_local',
+        EVOLUTION_API_URL: 'http://127.0.0.1:8080',
+        EVOLUTION_INSTANCE: 'loja-legacy',
+        EVOLUTION_API_KEY: 'legacy-key',
+      },
+    });
+
+    expect(fromLegacyEvolutionEnv.webBaseUrl).toBe('http://127.0.0.1:8080');
+    expect(fromLegacyEvolutionEnv.webInstance).toBe('loja-legacy');
+    expect(fromLegacyEvolutionEnv.webApiKey).toBe('legacy-key');
   });
 });
