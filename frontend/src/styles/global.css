@@ -2013,7 +2013,9 @@ textarea.form-input { resize: vertical; min-height: 80px; }
 }
 
 .whatsapp-preview-bubble span {
+  display: block;
   overflow-wrap: anywhere;
+  white-space: pre-line;
 }
 
 .whatsapp-variable-row {
