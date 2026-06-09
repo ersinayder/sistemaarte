@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ override: true });
 
 const { loadConfig } = require('./config');
 const { createBaileysClient } = require('./baileysClient');
