@@ -21,6 +21,8 @@ describe('whatsappConfigRules', () => {
       token: '  secret-token  ',
       templatePronto: ' OS_PRONTA ',
       templateConfirmacao: ' CONFIRMACAO_PEDIDO ',
+      mensagemPronto: ' Pedido {numero_os} pronto ',
+      mensagemConfirmacao: ' Ola {cliente} ',
     });
 
     expect(out.enabled).toBe(1);
@@ -29,6 +31,8 @@ describe('whatsappConfigRules', () => {
     expect(out.token).toBe('secret-token');
     expect(out.templatePronto).toBe('os_pronta');
     expect(out.templateConfirmacao).toBe('confirmacao_pedido');
+    expect(out.mensagemPronto).toBe('Pedido {numero_os} pronto');
+    expect(out.mensagemConfirmacao).toBe('Ola {cliente}');
   });
 
   it('requires phone id and token when enabled', () => {
@@ -88,6 +92,8 @@ describe('whatsappConfigRules', () => {
       token: 'secret-token',
       template_pronto: 'os_pronta',
       template_confirmacao: 'confirmacao_pedido',
+      mensagem_pronto: 'Pedido {numero_os} pronto',
+      mensagem_confirmacao: 'Ola {cliente}',
       configurado: 1,
       updatedat: '2026-05-18 10:00:00',
     });
@@ -95,6 +101,8 @@ describe('whatsappConfigRules', () => {
     expect(sanitized.token).toBeUndefined();
     expect(sanitized.tokenConfigurado).toBe(true);
     expect(sanitized.phoneId).toBe('123456');
+    expect(sanitized.mensagemPronto).toBe('Pedido {numero_os} pronto');
+    expect(sanitized.mensagemConfirmacao).toBe('Ola {cliente}');
     expect(sanitized.updatedat).toBe('2026-05-18 10:00:00');
   });
 

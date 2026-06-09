@@ -43,4 +43,13 @@ describe('whatsapp avisos schema', () => {
     expect(source).toMatch(/web_instance\s+TEXT/);
     expect(source).toMatch(/web_api_key\s+TEXT/);
   });
+
+  it('includes editable message templates in whatsapp_config', () => {
+    const source = fs.readFileSync(new URL('../database.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/mensagem_pronto\s+TEXT/);
+    expect(source).toMatch(/mensagem_confirmacao\s+TEXT/);
+    expect(source).toMatch(/ALTER TABLE whatsapp_config ADD COLUMN mensagem_pronto TEXT/);
+    expect(source).toMatch(/ALTER TABLE whatsapp_config ADD COLUMN mensagem_confirmacao TEXT/);
+  });
 });

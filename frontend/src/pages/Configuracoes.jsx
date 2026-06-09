@@ -45,6 +45,31 @@ const EMPTY_WHATSAPP = {
   webApiKey: '',
   templatePronto: 'os_pronta',
   templateConfirmacao: 'confirmacao_pedido',
+  mensagemConfirmacao: [
+    'Arte e Molduras - Confirmacao de Pedido',
+    '',
+    'Ola, {cliente}! Seu pedido foi registrado com sucesso.',
+    'Servico: {servico}',
+    'OS: {numero_os}',
+    'Valor Total: {valor_total}',
+    'Entrada paga: {entrada_paga}',
+    'Saldo restante na retirada: {saldo}',
+    '',
+    'Entraremos em contato quando seu pedido estiver pronto.',
+    'Arte e Molduras',
+  ].join('\n'),
+  mensagemPronto: [
+    'Arte e Molduras - Pedido Pronto!',
+    '',
+    'Ola, {cliente}! Seu pedido esta pronto para retirada.',
+    '',
+    'Servico: {servico}',
+    'OS: {numero_os}',
+    'Saldo na retirada: {saldo}',
+    '',
+    'Estamos aguardando voce!',
+    'Arte e Molduras',
+  ].join('\n'),
 }
 
 const WHATSAPP_PROVIDER_OPTIONS = [
@@ -64,41 +89,18 @@ const WHATSAPP_PROVIDER_OPTIONS = [
 
 const WHATSAPP_TEMPLATE_CARDS = [
   {
-    field: 'templateConfirmacao',
+    field: 'mensagemConfirmacao',
     title: 'Confirmacao de pedido',
     trigger: 'Disparo quando a OS entra na fila de confirmacao.',
-    preview: [
-      'Arte e Molduras - Confirmacao de Pedido',
-      '',
-      'Ola, Eduardo Rodrigues Sinayder! Seu pedido foi registrado com sucesso.',
-      'Servico: Quadro',
-      'OS: OS-0232',
-      'Valor Total: R$ 90,00',
-      'Entrada paga: R$ 20,00',
-      'Saldo restante na retirada: R$ 70,00',
-      '',
-      'Entraremos em contato quando seu pedido estiver pronto.',
-      'Arte e Molduras',
-    ].join('\n'),
   },
   {
-    field: 'templatePronto',
+    field: 'mensagemPronto',
     title: 'Pedido pronto',
     trigger: 'Disparo quando a OS muda para Pronto.',
-    preview: [
-      'Arte e Molduras - Pedido Pronto!',
-      '',
-      'Ola, Eduardo Rodrigues Sinayder! Seu pedido esta pronto para retirada.',
-      '',
-      'Servico: Quadro',
-      'OS: OS-0232',
-      'Saldo na retirada: R$ 70,00',
-      '',
-      'Estamos aguardando voce!',
-      'Arte e Molduras',
-    ].join('\n'),
   },
 ]
+
+const WHATSAPP_VARIABLES = ['{cliente}', '{servico}', '{numero_os}', '{valor_total}', '{entrada_paga}', '{saldo}']
 
 const EMPTY_IMPRESSAO = {
   printerName: '',
@@ -158,6 +160,8 @@ function normalizeLoadedWhatsapp(whatsapp = {}) {
     webApiKey: '',
     templatePronto: whatsapp.templatePronto || EMPTY_WHATSAPP.templatePronto,
     templateConfirmacao: whatsapp.templateConfirmacao || EMPTY_WHATSAPP.templateConfirmacao,
+    mensagemPronto: whatsapp.mensagemPronto || EMPTY_WHATSAPP.mensagemPronto,
+    mensagemConfirmacao: whatsapp.mensagemConfirmacao || EMPTY_WHATSAPP.mensagemConfirmacao,
   }
 }
 
@@ -813,6 +817,8 @@ export default function Configuracoes() {
         webApiKey: whatsappForm.webApiKey.trim(),
         templatePronto: whatsappForm.templatePronto.trim(),
         templateConfirmacao: whatsappForm.templateConfirmacao.trim(),
+        mensagemPronto: whatsappForm.mensagemPronto.trim(),
+        mensagemConfirmacao: whatsappForm.mensagemConfirmacao.trim(),
       }
       const res = await api.put('/configuracoes/whatsapp', payload)
       applyWhatsappResponse(res.data)
@@ -1058,7 +1064,7 @@ export default function Configuracoes() {
             </div>
           ) : (
             <>
-              <div className={`whatsapp-status-panel ${connection.className}`}>
+              <div className={`whatsapp-status-panel whatsapp-status-panel-compact ${connection.className}`}>
                 <div className="whatsapp-status-main">
                   <span className="whatsapp-status-icon"><ConnectionIcon size={22} /></span>
                   <div>
@@ -1066,14 +1072,14 @@ export default function Configuracoes() {
                     <span>{connection.desc}</span>
                   </div>
                 </div>
+                <button type="button" className="btn btn-secondary" onClick={loadWhatsappWebStatus} disabled={!isLocalProvider || loadingWhatsappWebStatus}>
+                  {loadingWhatsappWebStatus ? <><div className="spinner" style={{ width: 14, height: 14 }} /> Consultando...</> : <><RefreshCw size={16} /> Atualizar status</>}
+                </button>
                 <div className="whatsapp-status-meta">
                   <span><strong>Instancia</strong>{whatsappForm.webInstance || '-'}</span>
                   <span><strong>URL local</strong>{whatsappForm.webBaseUrl || '-'}</span>
                   <span><strong>Origem</strong>{whatsappInfo?.origem === 'banco' ? 'Tela de configuracao' : whatsappInfo?.origem || 'env'}</span>
                 </div>
-                <button type="button" className="btn btn-secondary" onClick={loadWhatsappWebStatus} disabled={!isLocalProvider || loadingWhatsappWebStatus}>
-                  {loadingWhatsappWebStatus ? <><div className="spinner" style={{ width: 14, height: 14 }} /> Consultando...</> : <><RefreshCw size={16} /> Atualizar status</>}
-                </button>
               </div>
 
               {isLocalProvider && whatsappWebStatus?.qr && (
@@ -1138,7 +1144,7 @@ export default function Configuracoes() {
                 <section className="whatsapp-config-panel">
                   <div className="settings-subhead">
                     <span className="settings-eyebrow">Mensagens automaticas</span>
-                    <h3>Previa do texto enviado</h3>
+                    <h3>Texto enviado ao cliente</h3>
                   </div>
                   <div className="whatsapp-template-list">
                     {WHATSAPP_TEMPLATE_CARDS.map((item) => (
@@ -1147,14 +1153,24 @@ export default function Configuracoes() {
                           <strong>{item.title}</strong>
                           <span>{item.trigger}</span>
                         </div>
-                        <Field label="Identificador interno" name={item.field} form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField} />
-                        <div className="whatsapp-preview-bubble">
-                          <span>{item.preview}</span>
-                        </div>
+                        <textarea
+                          className="form-input whatsapp-message-textarea"
+                          value={whatsappForm[item.field] || ''}
+                          onChange={(e) => setWhatsappField(item.field, e.target.value)}
+                          rows={10}
+                          aria-label={`Texto da mensagem ${item.title}`}
+                        />
+                        {whatsappErrors[item.field] && <span className="form-error">{whatsappErrors[item.field]}</span>}
                         <div className="whatsapp-variable-row">
-                          <span>{'{cliente}'}</span>
-                          <span>{'{numero_os}'}</span>
-                          <span>{'{valor}'}</span>
+                          {WHATSAPP_VARIABLES.map((variable) => (
+                            <button
+                              key={`${item.field}-${variable}`}
+                              type="button"
+                              onClick={() => setWhatsappField(item.field, `${whatsappForm[item.field] || ''}${(whatsappForm[item.field] || '').endsWith('\n') ? '' : ' '}${variable}`.trimStart())}
+                            >
+                              {variable}
+                            </button>
+                          ))}
                         </div>
                       </div>
                     ))}
@@ -1162,7 +1178,7 @@ export default function Configuracoes() {
                 </section>
               </div>
 
-              <div className="settings-actions">
+              <div className="settings-actions whatsapp-actions">
                 <button type="button" className="btn btn-ghost" onClick={loadWhatsapp} disabled={savingWhatsapp}>Cancelar</button>
                 <button type="submit" className="btn btn-primary" disabled={savingWhatsapp}>
                   <SavingLabel saving={savingWhatsapp} idle="Salvar WhatsApp" />

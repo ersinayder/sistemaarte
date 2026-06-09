@@ -144,7 +144,8 @@ function backupAtual() {
 function whatsappRowAtual() {
   return getOne(`
     SELECT id, enabled, provider, phone_id, token, template_pronto,
-           template_confirmacao, web_base_url, web_instance, web_api_key,
+           template_confirmacao, mensagem_pronto, mensagem_confirmacao,
+           web_base_url, web_instance, web_api_key,
            configurado, updatedat
     FROM whatsapp_config
     WHERE id = 1
@@ -444,8 +445,9 @@ router.put("/whatsapp", auth(["admin"]), (req, res, next) => {
     run(
       `INSERT INTO whatsapp_config
         (id, enabled, provider, phone_id, token, template_pronto, template_confirmacao,
-         web_base_url, web_instance, web_api_key, configurado, updatedat)
-       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now','localtime'))
+         mensagem_pronto, mensagem_confirmacao, web_base_url, web_instance, web_api_key,
+         configurado, updatedat)
+       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now','localtime'))
        ON CONFLICT(id) DO UPDATE SET
          enabled=excluded.enabled,
          provider=excluded.provider,
@@ -453,6 +455,8 @@ router.put("/whatsapp", auth(["admin"]), (req, res, next) => {
          token=excluded.token,
          template_pronto=excluded.template_pronto,
          template_confirmacao=excluded.template_confirmacao,
+         mensagem_pronto=excluded.mensagem_pronto,
+         mensagem_confirmacao=excluded.mensagem_confirmacao,
          web_base_url=excluded.web_base_url,
          web_instance=excluded.web_instance,
          web_api_key=excluded.web_api_key,
@@ -465,6 +469,8 @@ router.put("/whatsapp", auth(["admin"]), (req, res, next) => {
         token,
         config.templatePronto,
         config.templateConfirmacao,
+        config.mensagemPronto,
+        config.mensagemConfirmacao,
         config.webBaseUrl,
         config.webInstance,
         webApiKey,

@@ -16,6 +16,8 @@ function resolverWhatsappRuntime({ row = null, env = process.env } = {}) {
       token: row.token || "",
       templatePronto: row.template_pronto || "os_pronta",
       templateConfirmacao: row.template_confirmacao || "confirmacao_pedido",
+      mensagemPronto: row.mensagem_pronto || "",
+      mensagemConfirmacao: row.mensagem_confirmacao || "",
       webBaseUrl: row.web_base_url || "",
       webInstance: row.web_instance || "",
       webApiKey: row.web_api_key || "",
@@ -32,6 +34,8 @@ function resolverWhatsappRuntime({ row = null, env = process.env } = {}) {
     token: env.WHATSAPP_TOKEN || "",
     templatePronto: env.WHATSAPP_TEMPLATE_PRONTO || "os_pronta",
     templateConfirmacao: env.WHATSAPP_TEMPLATE_CONFIRMACAO || "confirmacao_pedido",
+    mensagemPronto: env.WHATSAPP_MENSAGEM_PRONTO || "",
+    mensagemConfirmacao: env.WHATSAPP_MENSAGEM_CONFIRMACAO || "",
     webBaseUrl: env.WHATSAPP_WEB_BASE_URL || env.EVOLUTION_API_URL || "",
     webInstance: env.WHATSAPP_WEB_INSTANCE || env.EVOLUTION_INSTANCE || "loja",
     webApiKey: env.WHATSAPP_WEB_API_KEY || env.EVOLUTION_API_KEY || "",
@@ -45,7 +49,8 @@ function buscarWhatsappRow() {
   try {
     return getOne(`
       SELECT id, enabled, provider, phone_id, token, template_pronto,
-             template_confirmacao, web_base_url, web_instance, web_api_key,
+             template_confirmacao, mensagem_pronto, mensagem_confirmacao,
+             web_base_url, web_instance, web_api_key,
              configurado, updatedat
       FROM whatsapp_config
       WHERE id = 1
@@ -68,6 +73,8 @@ function getWhatsappPublicConfig() {
     token: runtime.token,
     template_pronto: runtime.templatePronto,
     template_confirmacao: runtime.templateConfirmacao,
+    mensagem_pronto: runtime.mensagemPronto,
+    mensagem_confirmacao: runtime.mensagemConfirmacao,
     web_base_url: runtime.webBaseUrl,
     web_instance: runtime.webInstance,
     web_api_key: runtime.webApiKey,
