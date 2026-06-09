@@ -67,13 +67,36 @@ const WHATSAPP_TEMPLATE_CARDS = [
     field: 'templateConfirmacao',
     title: 'Confirmacao de pedido',
     trigger: 'Disparo quando a OS entra na fila de confirmacao.',
-    preview: 'Ola, {cliente}. Recebemos seu pedido {numero_os} e ja vamos iniciar a producao.',
+    preview: [
+      'Arte e Molduras - Confirmacao de Pedido',
+      '',
+      'Ola, Eduardo Rodrigues Sinayder! Seu pedido foi registrado com sucesso.',
+      'Servico: Quadro',
+      'OS: OS-0232',
+      'Valor Total: R$ 90,00',
+      'Entrada paga: R$ 20,00',
+      'Saldo restante na retirada: R$ 70,00',
+      '',
+      'Entraremos em contato quando seu pedido estiver pronto.',
+      'Arte e Molduras',
+    ].join('\n'),
   },
   {
     field: 'templatePronto',
     title: 'Pedido pronto',
     trigger: 'Disparo quando a OS muda para Pronto.',
-    preview: 'Ola, {cliente}. Seu pedido {numero_os} esta pronto para retirada.',
+    preview: [
+      'Arte e Molduras - Pedido Pronto!',
+      '',
+      'Ola, Eduardo Rodrigues Sinayder! Seu pedido esta pronto para retirada.',
+      '',
+      'Servico: Quadro',
+      'OS: OS-0232',
+      'Saldo na retirada: R$ 70,00',
+      '',
+      'Estamos aguardando voce!',
+      'Arte e Molduras',
+    ].join('\n'),
   },
 ]
 
@@ -1114,8 +1137,8 @@ export default function Configuracoes() {
 
                 <section className="whatsapp-config-panel">
                   <div className="settings-subhead">
-                    <span className="settings-eyebrow">Templates</span>
-                    <h3>Previa das mensagens</h3>
+                    <span className="settings-eyebrow">Mensagens automaticas</span>
+                    <h3>Previa do texto enviado</h3>
                   </div>
                   <div className="whatsapp-template-list">
                     {WHATSAPP_TEMPLATE_CARDS.map((item) => (
@@ -1124,7 +1147,7 @@ export default function Configuracoes() {
                           <strong>{item.title}</strong>
                           <span>{item.trigger}</span>
                         </div>
-                        <Field label="Nome interno" name={item.field} form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField} />
+                        <Field label="Identificador interno" name={item.field} form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField} />
                         <div className="whatsapp-preview-bubble">
                           <span>{item.preview}</span>
                         </div>
