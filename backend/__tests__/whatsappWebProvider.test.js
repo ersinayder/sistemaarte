@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createWhatsappWebProvider } from '../utils/whatsappWebProvider.js';
+import { createWhatsappWebProvider, providerStatusFromError } from '../utils/whatsappWebProvider.js';
 
 describe('whatsappWebProvider', () => {
   afterEach(() => {
@@ -45,5 +45,16 @@ describe('whatsappWebProvider', () => {
 
     const provider = createWhatsappWebProvider({ baseUrl: 'http://127.0.0.1:8080', instance: 'loja' });
     await expect(provider.sendText({ phone: '5531999990000', text: 'Oi' })).rejects.toThrow('WhatsApp provider HTTP 503: offline');
+  });
+
+  it('converts local provider failures into an offline status for configuration checks', () => {
+    const status = providerStatusFromError(new Error('WhatsApp provider HTTP 503: offline'));
+
+    expect(status).toEqual({
+      connected: false,
+      state: 'offline',
+      qr: null,
+      error: 'WhatsApp provider HTTP 503: offline',
+    });
   });
 });
