@@ -1,4 +1,8 @@
 const PROVIDERS_VALIDOS = ["meta", "web_local", "manual"];
+const {
+  DEFAULT_TEMPLATE_CONFIRMACAO,
+  DEFAULT_TEMPLATE_PRONTO,
+} = require("./whatsappAvisosRules");
 
 function cleanText(value, max = 255) {
   return String(value ?? "").trim().slice(0, max);
@@ -12,6 +16,8 @@ function normalizarWhatsappConfig(input = {}) {
     token: cleanText(input.token, 500),
     templatePronto: cleanText(input.templatePronto ?? input.template_pronto ?? "os_pronta", 80).toLowerCase() || "os_pronta",
     templateConfirmacao: cleanText(input.templateConfirmacao ?? input.template_confirmacao ?? "confirmacao_pedido", 80).toLowerCase() || "confirmacao_pedido",
+    mensagemPronto: cleanText(input.mensagemPronto ?? input.mensagem_pronto ?? DEFAULT_TEMPLATE_PRONTO, 4000) || DEFAULT_TEMPLATE_PRONTO,
+    mensagemConfirmacao: cleanText(input.mensagemConfirmacao ?? input.mensagem_confirmacao ?? DEFAULT_TEMPLATE_CONFIRMACAO, 4000) || DEFAULT_TEMPLATE_CONFIRMACAO,
     webBaseUrl: cleanText(input.webBaseUrl ?? input.web_base_url, 255),
     webInstance: cleanText(input.webInstance ?? input.web_instance, 80),
     webApiKey: cleanText(input.webApiKey ?? input.web_api_key, 255),
@@ -31,6 +37,14 @@ function validarWhatsappConfig(config, { tokenConfigurado = false } = {}) {
 
   if (!config.templateConfirmacao) {
     errors.templateConfirmacao = "Template de confirmacao e obrigatorio";
+  }
+
+  if (!config.mensagemPronto) {
+    errors.mensagemPronto = "Mensagem de pedido pronto e obrigatoria";
+  }
+
+  if (!config.mensagemConfirmacao) {
+    errors.mensagemConfirmacao = "Mensagem de confirmacao e obrigatoria";
   }
 
   if (config.enabled && config.provider === "meta") {
@@ -77,6 +91,8 @@ function sanitizarWhatsappConfig(row = {}) {
     tokenConfigurado,
     templatePronto: normalized.templatePronto,
     templateConfirmacao: normalized.templateConfirmacao,
+    mensagemPronto: normalized.mensagemPronto,
+    mensagemConfirmacao: normalized.mensagemConfirmacao,
     webBaseUrl: normalized.webBaseUrl,
     webInstance: normalized.webInstance,
     webApiKeyConfigurada: Boolean(cleanText(row.webApiKey ?? row.web_api_key)),

@@ -72,6 +72,32 @@ describe('whatsappAvisosRules', () => {
     expect(msg.text).not.toContain('Entrada paga');
   });
 
+  it('renders configured message templates with order variables', () => {
+    const msg = rules.montarMensagemAviso(ordemBase, 'confirmacao_pedido', {
+      role: 'caixa',
+      templates: {
+        confirmacaoPedido: [
+          'Cliente: {cliente}',
+          'Servico: {servico}',
+          'OS: {numero_os}',
+          'Total: {valor_total}',
+          'Entrada: {entrada_paga}',
+          'Saldo: {saldo}',
+        ].join('\n'),
+      },
+    });
+
+    expect(msg.ok).toBe(true);
+    expect(msg.text).toBe([
+      'Cliente: Maria Silva',
+      'Servico: Quadro',
+      'OS: OS-0007',
+      'Total: R$ 1.234,50',
+      'Entrada: R$ 200,00',
+      'Saldo: R$ 1.034,50',
+    ].join('\n'));
+  });
+
   it('validates notice availability by OS status', () => {
     expect(rules.avisoDisponivelParaOrdem(ordemBase, 'confirmacao_pedido', 'caixa')).toEqual({ ok: true });
     expect(rules.avisoDisponivelParaOrdem({ ...ordemBase, status: 'Cancelado' }, 'confirmacao_pedido', 'caixa').ok).toBe(false);

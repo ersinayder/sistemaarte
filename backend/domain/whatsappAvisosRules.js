@@ -11,6 +11,33 @@ const TRANSICOES_AVISO = {
 
 const STATUS_CONFIRMACAO = ['Aguardando', 'Em Produ\u00e7\u00e3o', 'Pronto'];
 
+const DEFAULT_TEMPLATE_CONFIRMACAO = [
+  'Arte e Molduras - Confirmacao de Pedido',
+  '',
+  'Ola, {cliente}! Seu pedido foi registrado com sucesso.',
+  'Servico: {servico}',
+  'OS: {numero_os}',
+  'Valor Total: {valor_total}',
+  'Entrada paga: {entrada_paga}',
+  'Saldo restante na retirada: {saldo}',
+  '',
+  'Entraremos em contato quando seu pedido estiver pronto.',
+  'Arte e Molduras',
+].join('\n');
+
+const DEFAULT_TEMPLATE_PRONTO = [
+  'Arte e Molduras - Pedido Pronto!',
+  '',
+  'Ola, {cliente}! Seu pedido esta pronto para retirada.',
+  '',
+  'Servico: {servico}',
+  'OS: {numero_os}',
+  'Saldo na retirada: {saldo}',
+  '',
+  'Estamos aguardando voce!',
+  'Arte e Molduras',
+].join('\n');
+
 function clean(value, max = 500) {
   return String(value ?? '').trim().slice(0, max);
 }
@@ -73,52 +100,55 @@ function getSaldo(ordem = {}) {
   return Math.max(0, saldo);
 }
 
-function montarMensagemAviso(ordem = {}, tipo, { role = null } = {}) {
-  const normalized = normalizarTipoAviso(tipo);
-  const disponibilidade = avisoDisponivelParaOrdem(ordem, normalized, role);
-  if (!disponibilidade.ok) return disponibilidade;
-
+function montarVariaveisOrdem(ordem = {}) {
   const nome = clean(ordem.clientenome, 120) || 'cliente';
   const numero = clean(ordem.numero, 40) || 'OS';
   const servico = clean(ordem.servico || ordem.tipo, 160) || 'servico';
   const total = Number(ordem.valortotal ?? ordem.valor ?? 0);
   const entrada = Number(ordem.valorentrada ?? ordem.entrada ?? 0);
   const saldo = getSaldo(ordem);
+  return {
+    cliente: nome,
+    servico,
+    numero_os: numero,
+    numero,
+    os: numero,
+    valor_total: fmtVal(total),
+    valor: fmtVal(total),
+    entrada_paga: fmtVal(entrada),
+    entrada: fmtVal(entrada),
+    saldo: fmtVal(saldo),
+  };
+}
 
-  if (normalized === 'confirmacao_pedido') {
-    return {
-      ok: true,
-      text: [
-        '*Arte e Molduras - Confirmacao de Pedido*',
-        '',
-        `Ola, *${nome}*! Seu pedido foi registrado com sucesso.`,
-        '',
-        `*Servico:* ${servico}`,
-        `*OS:* ${numero}`,
-        `*Valor Total:* ${fmtVal(total)}`,
-        entrada > 0.009 ? `*Entrada paga:* ${fmtVal(entrada)}` : null,
-        saldo > 0.009 ? `*Saldo restante na retirada:* ${fmtVal(saldo)}` : '*Pagamento:* Quitado',
-        '',
-        'Entraremos em contato quando seu pedido estiver pronto.',
-        '_Arte e Molduras_',
-      ].filter(Boolean).join('\n'),
-    };
+function renderTemplateMensagem(template, variaveis) {
+  return clean(template, 4000).replace(/\{([a-zA-Z0-9_]+)\}/g, (match, key) => {
+    if (Object.prototype.hasOwnProperty.call(variaveis, key)) return variaveis[key];
+    return match;
+  });
+}
+
+function escolherTemplate(tipo, templates = {}) {
+  if (tipo === 'confirmacao_pedido') {
+    return clean(
+      templates.confirmacaoPedido ?? templates.mensagemConfirmacao ?? templates.confirmacao,
+      4000
+    ) || DEFAULT_TEMPLATE_CONFIRMACAO;
   }
+  return clean(
+    templates.pedidoPronto ?? templates.mensagemPronto ?? templates.pronto,
+    4000
+  ) || DEFAULT_TEMPLATE_PRONTO;
+}
 
-  const linhasPronto = [
-    '*Arte e Molduras - Pedido Pronto!*',
-    '',
-    `Ola, *${nome}*! Seu pedido esta pronto para retirada.`,
-    '',
-    `*Servico:* ${servico}`,
-    `*OS:* ${numero}`,
-  ];
-  linhasPronto.push(saldo > 0.009 ? `*Saldo na retirada:* ${fmtVal(saldo)}` : '*Pagamento:* Quitado');
-  linhasPronto.push('', 'Estamos aguardando voce!', '_Arte e Molduras_');
+function montarMensagemAviso(ordem = {}, tipo, { role = null, templates = {} } = {}) {
+  const normalized = normalizarTipoAviso(tipo);
+  const disponibilidade = avisoDisponivelParaOrdem(ordem, normalized, role);
+  if (!disponibilidade.ok) return disponibilidade;
 
   return {
     ok: true,
-    text: linhasPronto.join('\n'),
+    text: renderTemplateMensagem(escolherTemplate(normalized, templates), montarVariaveisOrdem(ordem)),
   };
 }
 
@@ -144,6 +174,10 @@ module.exports = {
   podeUsarAviso,
   avisoDisponivelParaOrdem,
   montarMensagemAviso,
+  montarVariaveisOrdem,
+  renderTemplateMensagem,
+  DEFAULT_TEMPLATE_CONFIRMACAO,
+  DEFAULT_TEMPLATE_PRONTO,
   validarTransicaoAviso,
   avisoFinalizado,
 };

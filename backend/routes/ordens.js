@@ -9,6 +9,7 @@ const {
 } = require("../domain/ordensRules");
 const { sendWhatsAppConfirmacao } = require("../utils/whatsapp");
 const { marcarAvisoParaEnvio } = require("../utils/whatsappQueue");
+const { getWhatsappRuntimeConfig } = require("../utils/whatsappConfig");
 const { getResumoFinanceiroOS } = require('../domain/financeiroRules');
 const { calcularDescontoOS } = require('../domain/descontoRules');
 const { normalizarPaginacao, montarMetaPaginacao } = require("../domain/paginationRules");
@@ -104,9 +105,17 @@ function garantirAvisoPronto(ordemId, statusAnterior, statusNovo) {
   garantirAvisoPendente(ordemId, 'pedido_pronto');
 }
 
+function getWhatsappMessageTemplates() {
+  const runtime = getWhatsappRuntimeConfig();
+  return {
+    confirmacaoPedido: runtime.mensagemConfirmacao,
+    pedidoPronto: runtime.mensagemPronto,
+  };
+}
+
 function enfileirarAvisoWhatsapp(ordem, tipo) {
   const phone = normalizarTelefoneWhatsapp(ordem.clientetelefone || ordem.clientecontato);
-  const message = montarMensagemAviso(ordem, tipo, { role: 'caixa' });
+  const message = montarMensagemAviso(ordem, tipo, { role: 'caixa', templates: getWhatsappMessageTemplates() });
   if (!message.ok) return;
   marcarAvisoParaEnvio({
     ordemId: ordem.id,
@@ -597,7 +606,7 @@ router.post("/:id/whatsapp-avisos/:tipo/abrir", auth(["admin","caixa","oficina"]
     }
 
     const phone = normalizarTelefoneWhatsapp(os.clientetelefone || os.clientecontato);
-    const message = montarMensagemAviso(os, tipo, { role: req.user.role });
+    const message = montarMensagemAviso(os, tipo, { role: req.user.role, templates: getWhatsappMessageTemplates() });
     if (!message.ok) return res.status(403).json({ error: "Aviso nao permitido para este usuario." });
 
     const aviso = salvarAvisoAberto(os.id, tipo, phone, message.text, req.user.id);

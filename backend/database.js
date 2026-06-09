@@ -230,6 +230,8 @@ CREATE TABLE IF NOT EXISTS whatsapp_config (
   token                 TEXT,
   template_pronto       TEXT DEFAULT 'os_pronta',
   template_confirmacao  TEXT DEFAULT 'confirmacao_pedido',
+  mensagem_pronto       TEXT,
+  mensagem_confirmacao  TEXT,
   web_base_url          TEXT,
   web_instance          TEXT,
   web_api_key           TEXT,
@@ -402,6 +404,8 @@ function initDB() {
       token                 TEXT,
       template_pronto       TEXT DEFAULT 'os_pronta',
       template_confirmacao  TEXT DEFAULT 'confirmacao_pedido',
+      mensagem_pronto       TEXT,
+      mensagem_confirmacao  TEXT,
       web_base_url          TEXT,
       web_instance          TEXT,
       web_api_key           TEXT,
@@ -532,6 +536,8 @@ function initDB() {
     "ALTER TABLE whatsapp_config ADD COLUMN web_base_url TEXT",
     "ALTER TABLE whatsapp_config ADD COLUMN web_instance TEXT",
     "ALTER TABLE whatsapp_config ADD COLUMN web_api_key TEXT",
+    "ALTER TABLE whatsapp_config ADD COLUMN mensagem_pronto TEXT",
+    "ALTER TABLE whatsapp_config ADD COLUMN mensagem_confirmacao TEXT",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {}
@@ -602,6 +608,8 @@ function initDB() {
       token                 TEXT,
       template_pronto       TEXT DEFAULT 'os_pronta',
       template_confirmacao  TEXT DEFAULT 'confirmacao_pedido',
+      mensagem_pronto       TEXT,
+      mensagem_confirmacao  TEXT,
       web_base_url          TEXT,
       web_instance          TEXT,
       web_api_key           TEXT,
