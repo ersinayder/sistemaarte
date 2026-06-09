@@ -1,4 +1,4 @@
-const { buildSocketOptions, getDisconnectStatusCode } = require('../src/baileysClient');
+const { buildSocketOptions, getDisconnectStatusCode, resolveRecipientJid } = require('../src/baileysClient');
 
 describe('getDisconnectStatusCode', () => {
   it('reads Baileys Boom status code when available', () => {
@@ -33,5 +33,24 @@ describe('buildSocketOptions', () => {
     });
     expect(options.defaultQueryTimeoutMs).toBeUndefined();
     expect(options.shouldSyncHistoryMessage()).toBe(false);
+  });
+});
+
+describe('resolveRecipientJid', () => {
+  it('uses the jid returned by WhatsApp lookup before sending', async () => {
+    const sock = {
+      onWhatsApp: vi.fn(() => Promise.resolve([{ exists: true, jid: '553191213101@s.whatsapp.net' }])),
+    };
+
+    await expect(resolveRecipientJid(sock, '5531991213101')).resolves.toBe('553191213101@s.whatsapp.net');
+    expect(sock.onWhatsApp).toHaveBeenCalledWith('5531991213101');
+  });
+
+  it('rejects numbers that WhatsApp does not recognize', async () => {
+    const sock = {
+      onWhatsApp: vi.fn(() => Promise.resolve([{ exists: false, jid: '5531991213101@s.whatsapp.net' }])),
+    };
+
+    await expect(resolveRecipientJid(sock, '5531991213101')).rejects.toThrow('Numero nao encontrado no WhatsApp');
   });
 });

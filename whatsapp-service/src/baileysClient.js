@@ -23,6 +23,15 @@ function buildSocketOptions({ version, auth, logger }) {
   };
 }
 
+async function resolveRecipientJid(sock, number) {
+  const matches = await sock.onWhatsApp(number);
+  const found = Array.isArray(matches) ? matches.find((item) => item?.exists && item?.jid) : null;
+  if (!found) {
+    throw new Error(`Numero nao encontrado no WhatsApp: ${number}`);
+  }
+  return found.jid;
+}
+
 function createBaileysClient({ instance, sessionDir, logLevel = 'info', reconnectMs = 5000 }) {
   let sock = null;
   let starting = null;
@@ -115,7 +124,7 @@ function createBaileysClient({ instance, sessionDir, logLevel = 'info', reconnec
     if (!sock || !state.connected) {
       throw new Error(`Sessao WhatsApp desconectada: ${state.state}`);
     }
-    const jid = `${number}@s.whatsapp.net`;
+    const jid = await resolveRecipientJid(sock, number);
     return sock.sendMessage(jid, { text });
   }
 
@@ -127,4 +136,4 @@ function createBaileysClient({ instance, sessionDir, logLevel = 'info', reconnec
   };
 }
 
-module.exports = { buildSocketOptions, createBaileysClient, getDisconnectStatusCode };
+module.exports = { buildSocketOptions, createBaileysClient, getDisconnectStatusCode, resolveRecipientJid };
