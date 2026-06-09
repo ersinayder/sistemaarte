@@ -21,12 +21,14 @@ Cloudflare → Windows Server (PM2)
                 ├── Express (porta 3001)
                 │     ├── Serve SPA (frontend/dist)
                 │     └── API /api/*
+                ├── WhatsApp local (porta 8080, 127.0.0.1)
                 └── SQLite (backend/data/oficina.db)
 ```
 
 - Backend Express serve também o frontend buildado (SPA fallback)
 - Autenticação via **cookie HttpOnly** (`token`, 12h). O axios usa `withCredentials: true`
 - `GET /api/auth/me` é o handshake de sessão — retorna 401 quando não logado (comportamento esperado, não é bug)
+- O serviço local de WhatsApp roda separado em PM2 (`sistema-arte-whatsapp`) e é consultado pelo backend via `http://127.0.0.1:8080`
 
 ---
 
@@ -42,7 +44,7 @@ Cloudflare → Windows Server (PM2)
 | Auth | JWT (`jsonwebtoken`) + cookie HttpOnly |
 | Testes | Vitest 4.1 |
 | Deploy | PM2 (fork, 1 instância) + GitHub Actions self-hosted |
-| Notificações | Evolution API (WhatsApp) — toggle `WHATSAPP_ENABLED` |
+| Notificações | WhatsApp local via `whatsapp-service`/Baileys + modo manual assistido; legado Meta Cloud API ainda existe como provider |
 
 ---
 
@@ -152,6 +154,15 @@ backend/
 ├── ecosystem.config.js      # PM2 — carrega .env, injeta todas as vars
 └── server.js                # Entry point — CORS, rotas, SPA fallback, errorHandler
 
+whatsapp-service/
+├── src/
+│   ├── index.js             # Inicializa Express local + Baileys
+│   ├── server.js            # /health, /instance/connectionState/:instance, /message/sendText/:instance
+│   ├── baileysClient.js     # Sessao WhatsApp, QR, envio e reconexao
+│   └── config.js            # Host/porta/instancia/sessionDir/apiKey
+├── sessions/                # Sessao Baileys por instancia; nao commitar
+└── ecosystem.config.js      # PM2 app `sistema-arte-whatsapp`
+
 frontend/src/
 ├── services/api.js          # Axios: baseURL=/api, withCredentials:true, interceptors 401/403/5xx
 ├── context/                 # AuthContext — handshake via GET /api/auth/me
@@ -190,7 +201,7 @@ frontend/src/
 
 ---
 
-## Estado atual consolidado em 2026-06-05
+## Estado atual consolidado
 
 Esta secao resume o que ja foi implementado e validado no sistema ate agora. Use como mapa rapido antes de mexer no codigo.
 
@@ -209,7 +220,7 @@ Esta secao resume o que ja foi implementado e validado no sistema ate agora. Use
 | NF-e | Implementado em homologacao | Emissao, cancelamento, CC-e, DANFE HTML real, XML legal em banco e disco, eventos fiscais, preview/edit fiscal antes de emitir, catalogo de rejeicoes SEFAZ. |
 | Configuracoes | Implementado | Empresa, fiscal, certificado `.pfx`, senha criptografavel, autorizados XML, WhatsApp, backup, seguranca e saude do sistema. Admin only. |
 | Backups | Implementado localmente | Backup local diario 2h BRT, rotacao, `backup-status.json`, endpoint/status na Configuracoes. Offsite ainda pendente. |
-| WhatsApp | Parcial/operacional | Meta Cloud API em backend, configuracao em `/configuracoes`, avisos manuais/assistidos para confirmacao e pedido pronto, proposta abre `wa.me` com mensagem pronta. |
+| WhatsApp | Operacional com atencao a sessao local | Configuracao em `/configuracoes`, envio local por `whatsapp-service`, QR Code na tela quando o servico retorna estado `qr`, modo manual assistido como fallback e proposta abrindo `wa.me` com mensagem pronta. |
 | Relatorios/prints | Implementado | OS A5, fechamento de caixa, resumo financeiro, contas a pagar/receber, DRE, relatorio de producao, proposta e DANFE em HTML imprimivel. |
 
 ### Frontend atual
@@ -236,6 +247,8 @@ Esta secao resume o que ja foi implementado e validado no sistema ate agora. Use
   - `/usuarios`
   - `/configuracoes`
   - `/nfe`
+- A tela `/configuracoes` concentra Empresa, Fiscal, WhatsApp, Impressao, Backups, Seguranca e Sistema.
+- Em Configuracoes > WhatsApp, o status local vem de `/api/configuracoes/whatsapp/web-status`; falha do provider deve aparecer como `offline` sem gerar loop de requisicoes.
 - Layout operacional foi redesenhado com paleta neutralizada, componentes mais densos e foco de SaaS interno.
 - Evitar landing page, hero decorativo ou UI de marketing: o sistema e ferramenta de operacao diaria.
 
@@ -272,6 +285,7 @@ Middlewares globais:
 - rate limit global `/api`: `60 req/min`
 - `errorHandler` no final
 - SPA fallback para `frontend/dist` fora de desenvolvimento
+- `/api/configuracoes/whatsapp/web-status` nunca deve derrubar a tela com 500 quando o servico local falhar; deve retornar estado desconectado/offline para a UI.
 
 ### Banco atual
 
@@ -315,7 +329,7 @@ Regras de migration:
 
 ### Testes atuais
 
-Validacao fresca em 2026-06-05:
+Baseline de validacao completa do backend:
 
 ```powershell
 cd backend
@@ -327,6 +341,17 @@ Resultado:
 ```txt
 46 arquivos de teste
 290 testes passando
+```
+
+Validacoes focadas recentes para o fluxo de WhatsApp/configuracoes:
+
+```powershell
+cd backend
+npm.cmd test -- whatsappWebProvider.test.js
+npm.cmd test -- routeContracts.test.js
+
+cd ..\frontend
+npm.cmd run build
 ```
 
 Observacao Windows:
@@ -365,6 +390,106 @@ Observacao Windows:
   - paleta operacional neutralizada
   - modal de NF-e mais largo para revisao fiscal
   - politicas de impressao operacional refinadas
+- WhatsApp:
+  - provider local separado em `whatsapp-service`
+  - templates de mensagem editaveis em Configuracoes > WhatsApp
+  - QR Code deve aparecer na tela quando o servico local estiver em estado `qr`
+  - erro de consulta do servico local deve ser tratado como `offline`, sem loop de requisicoes nem cascata de toasts/rate limit
+
+---
+
+## WhatsApp local — operacao e diagnostico
+
+O envio local usa um processo PM2 separado:
+
+```txt
+sistema-arte-whatsapp
+```
+
+Configuracao esperada:
+
+```txt
+Servico local: C:\sistemaarte\whatsapp-service
+URL local: http://127.0.0.1:8080
+Instancia atual: ArteeMolduras
+Sessao: C:\sistemaarte\whatsapp-service\sessions\ArteeMolduras
+Endpoint de status: GET /instance/connectionState/:instance
+```
+
+Na tela `/configuracoes`, o campo **Instancia** deve bater exatamente com a instancia do servico e com a pasta em `sessions`. A instancia atual e `ArteeMolduras`. Qualquer diferenca de letra, acento, espaco ou caixa faz o Baileys tratar como outra instancia; se o nome nao bater, o servico responde `404 Instancia nao encontrada`.
+
+### API key local
+
+O `whatsapp-service` pode exigir API key. O backend envia essa chave como header `apikey`, usando o campo **Chave local** salvo em Configuracoes > WhatsApp (`webApiKey`) ou variaveis de ambiente.
+
+Se o teste direto retornar:
+
+```txt
+{"error":"API key invalida"}
+```
+
+entao o QR pode existir no console do PM2, mas a tela nao conseguira busca-lo. Conferir a chave real no servidor:
+
+```powershell
+cd C:\sistemaarte\whatsapp-service
+pm2 env 2 | findstr WHATSAPP
+Select-String -Path .env -Pattern "WHATSAPP_SERVICE_API_KEY|WHATSAPP_WEB_API_KEY|WHATSAPP_SERVICE_INSTANCE|WHATSAPP_WEB_INSTANCE"
+```
+
+Variaveis relevantes:
+
+```txt
+WHATSAPP_SERVICE_API_KEY
+WHATSAPP_WEB_API_KEY
+WHATSAPP_SERVICE_INSTANCE
+WHATSAPP_WEB_INSTANCE
+WHATSAPP_SERVICE_SESSION_DIR
+```
+
+Teste direto com chave:
+
+```powershell
+$headers = @{ apikey = "COLE_A_CHAVE_AQUI" }
+Invoke-RestMethod "http://127.0.0.1:8080/instance/connectionState/ArteeMolduras" -Headers $headers
+```
+
+Quando o retorno tiver `state = qr` e `qr`/`qrcode` preenchido, a tela de Configuracoes deve renderizar o QR Code apos salvar a mesma chave em **Chave local** e clicar em **Atualizar status**.
+
+### Sessao Baileys corrompida
+
+Erros como estes indicam sessao local corrompida/desincronizada:
+
+```txt
+Bad MAC
+Key used already or never filled
+failed to decrypt message
+Stream Errored (restart required)
+WhatsApp desconectado
+```
+
+Procedimento seguro para recriar a sessao:
+
+```powershell
+cd C:\sistemaarte\whatsapp-service
+pm2 stop sistema-arte-whatsapp
+Get-ChildItem .\sessions -Force
+Rename-Item ".\sessions\ArteeMolduras" ("ArteeMolduras-badmac-" + (Get-Date -Format "yyyyMMdd-HHmmss"))
+pm2 restart sistema-arte-whatsapp --update-env
+pm2 logs sistema-arte-whatsapp --lines 80
+```
+
+Se o nome da pasta em `sessions` for diferente do nome configurado na tela, alinhar a configuracao antes de concluir o diagnostico. Nao apagar a pasta antiga imediatamente; renomear preserva historico para rollback.
+
+### Comandos PM2 uteis
+
+```powershell
+pm2 list
+pm2 restart sistema-arte-whatsapp --update-env
+pm2 logs sistema-arte-whatsapp --lines 80
+pm2 restart sistemaarte-backend --update-env
+```
+
+`pm2 restart whatsapp-service` esta errado neste servidor; o processo real chama `sistema-arte-whatsapp`.
 
 ---
 
