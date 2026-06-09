@@ -1044,9 +1044,9 @@ export default function Configuracoes() {
                   </div>
                 </div>
                 <div className="whatsapp-status-meta">
-                  <InfoRow label="Instancia" value={whatsappForm.webInstance || '-'} />
-                  <InfoRow label="URL local" value={whatsappForm.webBaseUrl || '-'} />
-                  <InfoRow label="Origem" value={whatsappInfo?.origem === 'banco' ? 'Tela de configuracao' : whatsappInfo?.origem || 'env'} />
+                  <span><strong>Instancia</strong>{whatsappForm.webInstance || '-'}</span>
+                  <span><strong>URL local</strong>{whatsappForm.webBaseUrl || '-'}</span>
+                  <span><strong>Origem</strong>{whatsappInfo?.origem === 'banco' ? 'Tela de configuracao' : whatsappInfo?.origem || 'env'}</span>
                 </div>
                 <button type="button" className="btn btn-secondary" onClick={loadWhatsappWebStatus} disabled={!isLocalProvider || loadingWhatsappWebStatus}>
                   {loadingWhatsappWebStatus ? <><div className="spinner" style={{ width: 14, height: 14 }} /> Consultando...</> : <><RefreshCw size={16} /> Atualizar status</>}
@@ -1074,7 +1074,7 @@ export default function Configuracoes() {
                 <section className="whatsapp-config-panel">
                   <div className="settings-subhead">
                     <span className="settings-eyebrow">Modo de envio</span>
-                    <h3>Escolha como a loja vai avisar o cliente</h3>
+                    <h3>Como a loja avisa o cliente</h3>
                   </div>
 
                   <div className="whatsapp-provider-grid">
@@ -1115,7 +1115,7 @@ export default function Configuracoes() {
                 <section className="whatsapp-config-panel">
                   <div className="settings-subhead">
                     <span className="settings-eyebrow">Templates</span>
-                    <h3>Mensagens usadas na rotina</h3>
+                    <h3>Previa das mensagens</h3>
                   </div>
                   <div className="whatsapp-template-list">
                     {WHATSAPP_TEMPLATE_CARDS.map((item) => (
