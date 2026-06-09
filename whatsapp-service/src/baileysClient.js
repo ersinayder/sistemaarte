@@ -7,6 +7,22 @@ function getDisconnectStatusCode(lastDisconnect) {
   return lastDisconnect?.error?.output?.statusCode || lastDisconnect?.error?.statusCode || null;
 }
 
+function buildSocketOptions({ version, auth, logger }) {
+  return {
+    version,
+    auth,
+    logger,
+    printQRInTerminal: false,
+    browser: ['Sistema Arte', 'Chrome', '1.0.0'],
+    connectTimeoutMs: 60000,
+    defaultQueryTimeoutMs: undefined,
+    syncFullHistory: false,
+    shouldSyncHistoryMessage: () => false,
+    fireInitQueries: false,
+    markOnlineOnConnect: false,
+  };
+}
+
 function createBaileysClient({ instance, sessionDir, logLevel = 'info', reconnectMs = 5000 }) {
   let sock = null;
   let starting = null;
@@ -48,13 +64,11 @@ function createBaileysClient({ instance, sessionDir, logLevel = 'info', reconnec
       const { version } = await fetchLatestBaileysVersion();
 
       setState({ state: 'connecting', connected: false, lastError: null });
-      sock = makeWASocket({
+      sock = makeWASocket(buildSocketOptions({
         version,
         auth: authState,
-        printQRInTerminal: false,
         logger,
-        browser: ['Sistema Arte', 'Chrome', '1.0.0'],
-      });
+      }));
 
       sock.ev.on('creds.update', saveCreds);
       sock.ev.on('connection.update', (update) => {
@@ -113,4 +127,4 @@ function createBaileysClient({ instance, sessionDir, logLevel = 'info', reconnec
   };
 }
 
-module.exports = { createBaileysClient, getDisconnectStatusCode };
+module.exports = { buildSocketOptions, createBaileysClient, getDisconnectStatusCode };

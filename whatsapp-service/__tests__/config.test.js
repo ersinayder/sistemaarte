@@ -9,6 +9,7 @@ describe('loadConfig', () => {
     expect(config.instance).toBe('loja');
     expect(config.sessionDir).toContain('sessions');
     expect(config.apiKey).toBe('');
+    expect(config.logLevel).toBe('warn');
   });
 
   it('accepts explicit env settings and normalizes port', () => {

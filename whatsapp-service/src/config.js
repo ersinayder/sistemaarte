@@ -12,7 +12,7 @@ function loadConfig(env = process.env) {
     instance: env.WHATSAPP_SERVICE_INSTANCE || env.WHATSAPP_WEB_INSTANCE || 'loja',
     sessionDir: env.WHATSAPP_SERVICE_SESSION_DIR || path.join(__dirname, '..', 'sessions'),
     apiKey: env.WHATSAPP_SERVICE_API_KEY || env.WHATSAPP_WEB_API_KEY || '',
-    logLevel: env.WHATSAPP_SERVICE_LOG_LEVEL || 'info',
+    logLevel: env.WHATSAPP_SERVICE_LOG_LEVEL || 'warn',
   };
 }
 

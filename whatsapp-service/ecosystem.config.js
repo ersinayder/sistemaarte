@@ -16,7 +16,7 @@ module.exports = {
         WHATSAPP_SERVICE_INSTANCE: process.env.WHATSAPP_SERVICE_INSTANCE || process.env.WHATSAPP_WEB_INSTANCE || 'loja',
         WHATSAPP_SERVICE_SESSION_DIR: process.env.WHATSAPP_SERVICE_SESSION_DIR || './sessions',
         WHATSAPP_SERVICE_API_KEY: process.env.WHATSAPP_SERVICE_API_KEY || process.env.WHATSAPP_WEB_API_KEY,
-        WHATSAPP_SERVICE_LOG_LEVEL: process.env.WHATSAPP_SERVICE_LOG_LEVEL || 'info',
+        WHATSAPP_SERVICE_LOG_LEVEL: process.env.WHATSAPP_SERVICE_LOG_LEVEL || 'warn',
       },
     },
   ],
