@@ -335,13 +335,17 @@ router.get("/whatsapp/web-status", auth(["admin"]), async (_req, res, next) => {
     if (runtime.provider !== "web_local" || !runtime.webBaseUrl || !runtime.webInstance) {
       return res.json({ connected: false, state: "not_configured", qr: null });
     }
-    const { createWhatsappWebProvider } = require("../utils/whatsappWebProvider");
+    const { createWhatsappWebProvider, providerStatusFromError } = require("../utils/whatsappWebProvider");
     const provider = createWhatsappWebProvider({
       baseUrl: runtime.webBaseUrl,
       instance: runtime.webInstance,
       apiKey: runtime.webApiKey,
     });
-    res.json(await provider.getStatus());
+    try {
+      res.json(await provider.getStatus());
+    } catch (providerError) {
+      res.json(providerStatusFromError(providerError));
+    }
   } catch (e) { next(e); }
 });
 

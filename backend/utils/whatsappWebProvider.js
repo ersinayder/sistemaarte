@@ -11,6 +11,15 @@ function normalizeState(payload = {}) {
   };
 }
 
+function providerStatusFromError(err) {
+  return {
+    connected: false,
+    state: 'offline',
+    qr: null,
+    error: String(err?.message || 'Servico local do WhatsApp indisponivel'),
+  };
+}
+
 function createWhatsappWebProvider({ baseUrl, instance, apiKey = '', timeoutMs = 10000 }) {
   const root = trimSlash(baseUrl);
   const instanceName = String(instance || '').trim();
@@ -57,4 +66,4 @@ function createWhatsappWebProvider({ baseUrl, instance, apiKey = '', timeoutMs =
   };
 }
 
-module.exports = { createWhatsappWebProvider, normalizeState };
+module.exports = { createWhatsappWebProvider, normalizeState, providerStatusFromError };

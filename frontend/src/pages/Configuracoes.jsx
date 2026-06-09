@@ -402,9 +402,15 @@ export default function Configuracoes() {
   const loadWhatsappWebStatus = useCallback(async () => {
     setLoadingWhatsappWebStatus(true)
     try {
-      const res = await api.get('/configuracoes/whatsapp/web-status')
+      const res = await api.get('/configuracoes/whatsapp/web-status', { skipGlobalErrorToast: true })
       setWhatsappWebStatus(res.data || null)
     } catch (e) {
+      setWhatsappWebStatus({
+        connected: false,
+        state: 'offline',
+        qr: null,
+        error: e.response?.data?.error || 'Servico local do WhatsApp indisponivel',
+      })
       toast.error(e.response?.data?.error || 'Erro ao consultar sessao WhatsApp')
     } finally {
       setLoadingWhatsappWebStatus(false)
