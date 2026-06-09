@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
+import QRCode from 'qrcode'
+import { CheckCircle2, MessageSquareText, QrCode as QrCodeIcon, RefreshCw, Smartphone, WifiOff } from 'lucide-react'
 import api from '../services/api'
 import { buscarEnderecoPorCep, maskCep } from '../utils/cep'
 
@@ -35,7 +37,7 @@ const EMPTY_AUTXML = {
 
 const EMPTY_WHATSAPP = {
   enabled: false,
-  provider: 'meta',
+  provider: 'web_local',
   phoneId: '',
   token: '',
   webBaseUrl: '',
@@ -44,6 +46,36 @@ const EMPTY_WHATSAPP = {
   templatePronto: 'os_pronta',
   templateConfirmacao: 'confirmacao_pedido',
 }
+
+const WHATSAPP_PROVIDER_OPTIONS = [
+  {
+    id: 'web_local',
+    title: 'WhatsApp Web local',
+    desc: 'Envia pelo numero pareado neste servidor.',
+    icon: Smartphone,
+  },
+  {
+    id: 'manual',
+    title: 'Manual assistido',
+    desc: 'Mantem mensagens prontas para o operador enviar.',
+    icon: MessageSquareText,
+  },
+]
+
+const WHATSAPP_TEMPLATE_CARDS = [
+  {
+    field: 'templateConfirmacao',
+    title: 'Confirmacao de pedido',
+    trigger: 'Disparo quando a OS entra na fila de confirmacao.',
+    preview: 'Ola, {cliente}. Recebemos seu pedido {numero_os} e ja vamos iniciar a producao.',
+  },
+  {
+    field: 'templatePronto',
+    title: 'Pedido pronto',
+    trigger: 'Disparo quando a OS muda para Pronto.',
+    preview: 'Ola, {cliente}. Seu pedido {numero_os} esta pronto para retirada.',
+  },
+]
 
 const EMPTY_IMPRESSAO = {
   printerName: '',
@@ -91,10 +123,11 @@ function normalizeAutXml(item = {}) {
 }
 
 function normalizeLoadedWhatsapp(whatsapp = {}) {
+  const provider = whatsapp.provider === 'manual' ? 'manual' : 'web_local'
   return {
     ...EMPTY_WHATSAPP,
     enabled: Boolean(whatsapp.enabled),
-    provider: whatsapp.provider || 'meta',
+    provider,
     phoneId: whatsapp.phoneId || '',
     token: '',
     webBaseUrl: whatsapp.webBaseUrl || '',
@@ -175,6 +208,47 @@ function InfoRow({ label, value }) {
   )
 }
 
+function whatsappConnectionInfo(status) {
+  if (!status) {
+    return {
+      label: 'Nao consultado',
+      desc: 'Atualize para verificar a sessao local.',
+      className: 'is-pending',
+      icon: RefreshCw,
+    }
+  }
+  if (status.connected) {
+    return {
+      label: 'Conectado',
+      desc: 'Sessao ativa e pronta para envio automatico.',
+      className: 'is-connected',
+      icon: CheckCircle2,
+    }
+  }
+  if (status.state === 'qr') {
+    return {
+      label: 'Aguardando QR',
+      desc: 'Escaneie o QR Code com o WhatsApp da loja.',
+      className: 'is-qr',
+      icon: QrCodeIcon,
+    }
+  }
+  if (status.state === 'not_configured') {
+    return {
+      label: 'Nao configurado',
+      desc: 'Informe URL, instancia e chave local para consultar a sessao.',
+      className: 'is-offline',
+      icon: WifiOff,
+    }
+  }
+  return {
+    label: status.state || 'Desconectado',
+    desc: status.lastError || 'Sessao local indisponivel no momento.',
+    className: 'is-offline',
+    icon: WifiOff,
+  }
+}
+
 function formatBytes(bytes) {
   const n = Number(bytes || 0)
   if (!n) return '0 KB'
@@ -211,6 +285,7 @@ export default function Configuracoes() {
   const [loadingWhatsapp, setLoadingWhatsapp] = useState(false)
   const [savingWhatsapp, setSavingWhatsapp] = useState(false)
   const [whatsappWebStatus, setWhatsappWebStatus] = useState(null)
+  const [whatsappQrDataUrl, setWhatsappQrDataUrl] = useState('')
   const [loadingWhatsappWebStatus, setLoadingWhatsappWebStatus] = useState(false)
   const [impressaoInfo, setImpressaoInfo] = useState(null)
   const [impressaoForm, setImpressaoForm] = useState(EMPTY_IMPRESSAO)
@@ -367,6 +442,31 @@ export default function Configuracoes() {
   }, [loadConfiguracoes])
 
   useEffect(() => {
+    let mounted = true
+    if (!whatsappWebStatus?.qr) {
+      setWhatsappQrDataUrl('')
+      return undefined
+    }
+    QRCode.toDataURL(whatsappWebStatus.qr, {
+      width: 224,
+      margin: 1,
+      color: {
+        dark: '#111827',
+        light: '#ffffff',
+      },
+    })
+      .then((url) => {
+        if (mounted) setWhatsappQrDataUrl(url)
+      })
+      .catch(() => {
+        if (mounted) setWhatsappQrDataUrl('')
+      })
+    return () => {
+      mounted = false
+    }
+  }, [whatsappWebStatus?.qr])
+
+  useEffect(() => {
     if (activeSection === 'fiscal' && !fiscalInfo && !loadingFiscal) {
       loadFiscal()
     }
@@ -405,6 +505,25 @@ export default function Configuracoes() {
     sistemaInfo,
     loadingSistema,
     loadSistema,
+  ])
+
+  useEffect(() => {
+    if (
+      activeSection === 'whatsapp' &&
+      whatsappInfo &&
+      whatsappForm.provider === 'web_local' &&
+      !whatsappWebStatus &&
+      !loadingWhatsappWebStatus
+    ) {
+      loadWhatsappWebStatus()
+    }
+  }, [
+    activeSection,
+    whatsappInfo,
+    whatsappForm.provider,
+    whatsappWebStatus,
+    loadingWhatsappWebStatus,
+    loadWhatsappWebStatus,
   ])
 
   const setField = (field, value) => {
@@ -886,101 +1005,152 @@ export default function Configuracoes() {
     </div>
   )
 
-  const renderWhatsapp = () => (
-    <div className="settings-stack">
-      <form className="card card-pad" onSubmit={saveWhatsapp}>
-        <div className="settings-section-head">
-          <div>
-            <h2>{active.label}</h2>
-            <p className="text-muted">{active.desc}</p>
-          </div>
-          <StatusPill value={statusMap.whatsapp} />
-        </div>
+  const renderWhatsapp = () => {
+    const isLocalProvider = whatsappForm.provider === 'web_local'
+    const connection = isLocalProvider
+      ? whatsappConnectionInfo(whatsappWebStatus)
+      : {
+          label: 'Manual assistido',
+          desc: 'O sistema prepara a mensagem e o operador confirma o envio.',
+          className: 'is-pending',
+          icon: MessageSquareText,
+        }
+    const ConnectionIcon = connection.icon
 
-        {loadingWhatsapp ? (
-          <div className="loading-center">
-            <div className="spinner" />
-            <span>Carregando WhatsApp...</span>
-          </div>
-        ) : (
-          <>
-            <div className="settings-info-grid">
-              <InfoRow label="Origem" value={whatsappInfo?.origem === 'banco' ? 'Tela de configuracao' : whatsappInfo?.origem || 'env'} />
-              <InfoRow label="Token Meta" value={whatsappInfo?.tokenConfigurado ? 'Configurado' : 'Nao configurado'} />
-              <InfoRow label="Chave local" value={whatsappInfo?.webApiKeyConfigurada ? 'Configurada' : 'Nao configurada'} />
-              <InfoRow label="Atualizado em" value={whatsappInfo?.updatedat} />
+    return (
+      <div className="settings-stack">
+        <form className="card card-pad" onSubmit={saveWhatsapp}>
+          <div className="settings-section-head">
+            <div>
+              <h2>{active.label}</h2>
+              <p className="text-muted">Envio local pelo WhatsApp Web ou fluxo manual assistido.</p>
             </div>
+            <StatusPill value={statusMap.whatsapp} />
+          </div>
 
-            <div className="form-grid-2">
-              <Field label="Provedor" name="provider" form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField}>
-                <select id="provider" className="form-input" value={whatsappForm.provider} onChange={(e) => setWhatsappField('provider', e.target.value)}>
-                  <option value="manual">Manual assistido</option>
-                  <option value="meta">Meta Cloud API</option>
-                  <option value="web_local">WhatsApp Web local</option>
-                </select>
-              </Field>
-              <label className="settings-check">
-                <input type="checkbox" checked={whatsappForm.enabled} onChange={(e) => setWhatsappField('enabled', e.target.checked)} />
-                Envio automatico ativo
-              </label>
-              {whatsappForm.provider === 'meta' && (
-                <>
-                  <Field label="Phone Number ID" name="phoneId" form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField} />
-                  <Field label="Novo token" name="token" form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField}>
-                    <input id="token" className="form-input" type="password" value={whatsappForm.token} onChange={(e) => setWhatsappField('token', e.target.value)} placeholder={whatsappInfo?.tokenConfigurado ? 'Deixe em branco para manter o atual' : 'Token permanente'} />
-                  </Field>
-                </>
-              )}
-              {whatsappForm.provider === 'web_local' && (
-                <>
-                  <Field label="URL local" name="webBaseUrl" form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField} placeholder="http://127.0.0.1:8080" />
-                  <Field label="Instancia" name="webInstance" form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField} />
-                  <Field label="Chave local" name="webApiKey" form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField}>
-                    <input id="webApiKey" className="form-input" type="password" value={whatsappForm.webApiKey} onChange={(e) => setWhatsappField('webApiKey', e.target.value)} aria-label="Chave local do WhatsApp Web" />
-                  </Field>
-                </>
-              )}
-              <Field label="Template OS pronta" name="templatePronto" form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField} />
-              <Field label="Template confirmacao" name="templateConfirmacao" form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField} />
+          {loadingWhatsapp ? (
+            <div className="loading-center">
+              <div className="spinner" />
+              <span>Carregando WhatsApp...</span>
             </div>
-
-            {whatsappForm.provider === 'web_local' && (
-              <div className="settings-info-grid">
-                <InfoRow label="Sessao" value={whatsappWebStatus?.connected ? 'Conectado' : whatsappWebStatus?.state || 'Nao consultado'} />
-                <InfoRow label="Instancia" value={whatsappForm.webInstance || '-'} />
-                <InfoRow label="QR" value={whatsappWebStatus?.qr ? 'Disponivel no provedor' : '-'} />
-                <button type="button" className="btn btn-secondary" onClick={loadWhatsappWebStatus} disabled={loadingWhatsappWebStatus}>
-                  {loadingWhatsappWebStatus ? <><div className="spinner" style={{ width: 14, height: 14 }} /> Consultando...</> : 'Atualizar status'}
+          ) : (
+            <>
+              <div className={`whatsapp-status-panel ${connection.className}`}>
+                <div className="whatsapp-status-main">
+                  <span className="whatsapp-status-icon"><ConnectionIcon size={22} /></span>
+                  <div>
+                    <strong>{connection.label}</strong>
+                    <span>{connection.desc}</span>
+                  </div>
+                </div>
+                <div className="whatsapp-status-meta">
+                  <InfoRow label="Instancia" value={whatsappForm.webInstance || '-'} />
+                  <InfoRow label="URL local" value={whatsappForm.webBaseUrl || '-'} />
+                  <InfoRow label="Origem" value={whatsappInfo?.origem === 'banco' ? 'Tela de configuracao' : whatsappInfo?.origem || 'env'} />
+                </div>
+                <button type="button" className="btn btn-secondary" onClick={loadWhatsappWebStatus} disabled={!isLocalProvider || loadingWhatsappWebStatus}>
+                  {loadingWhatsappWebStatus ? <><div className="spinner" style={{ width: 14, height: 14 }} /> Consultando...</> : <><RefreshCw size={16} /> Atualizar status</>}
                 </button>
               </div>
-            )}
 
-            <div className="settings-actions">
-              <button type="button" className="btn btn-ghost" onClick={loadWhatsapp} disabled={savingWhatsapp}>Cancelar</button>
-              <button type="submit" className="btn btn-primary" disabled={savingWhatsapp}>
-                <SavingLabel saving={savingWhatsapp} idle="Salvar WhatsApp" />
-              </button>
-            </div>
-          </>
-        )}
-      </form>
+              {isLocalProvider && whatsappWebStatus?.qr && (
+                <div className="whatsapp-qr-panel">
+                  <div>
+                    <span className="settings-eyebrow">Pareamento</span>
+                    <h3>Escaneie o QR Code pelo WhatsApp da loja</h3>
+                    <p>Abra WhatsApp, entre em Aparelhos conectados e leia o codigo abaixo. Depois de conectado, o PM2 pode reiniciar sem perder a sessao.</p>
+                  </div>
+                  <div className="whatsapp-qr-box">
+                    {whatsappQrDataUrl ? (
+                      <img src={whatsappQrDataUrl} alt="QR Code para conectar WhatsApp" />
+                    ) : (
+                      <div className="loading-center"><div className="spinner" /><span>Gerando QR...</span></div>
+                    )}
+                  </div>
+                </div>
+              )}
 
-      <div className="settings-planned-grid">
-        <div className="settings-planned-item">
-          <strong>OS pronta</strong>
-          <span>Usa o template configurado quando a OS muda para Pronto.</span>
-        </div>
-        <div className="settings-planned-item">
-          <strong>Confirmacao</strong>
-          <span>Usa o template configurado no envio manual de confirmacao do pedido.</span>
-        </div>
-        <div className="settings-planned-item">
-          <strong>Segredo protegido</strong>
-          <span>O token pode ser trocado, mas nao aparece de volta na tela.</span>
-        </div>
+              <div className="whatsapp-config-grid">
+                <section className="whatsapp-config-panel">
+                  <div className="settings-subhead">
+                    <span className="settings-eyebrow">Modo de envio</span>
+                    <h3>Escolha como a loja vai avisar o cliente</h3>
+                  </div>
+
+                  <div className="whatsapp-provider-grid">
+                    {WHATSAPP_PROVIDER_OPTIONS.map((option) => {
+                      const Icon = option.icon
+                      const activeProvider = whatsappForm.provider === option.id
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          className={`whatsapp-provider-option ${activeProvider ? 'active' : ''}`}
+                          onClick={() => setWhatsappField('provider', option.id)}
+                        >
+                          <Icon size={20} />
+                          <strong>{option.title}</strong>
+                          <span>{option.desc}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  <label className="settings-check whatsapp-auto-toggle">
+                    <input type="checkbox" checked={whatsappForm.enabled} onChange={(e) => setWhatsappField('enabled', e.target.checked)} />
+                    Envio automatico ativo para avisos da fila
+                  </label>
+
+                  {isLocalProvider && (
+                    <div className="form-grid-2">
+                      <Field label="URL local" name="webBaseUrl" form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField} placeholder="http://127.0.0.1:8080" />
+                      <Field label="Instancia" name="webInstance" form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField} />
+                      <Field label="Chave local" name="webApiKey" form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField}>
+                        <input id="webApiKey" className="form-input" type="password" value={whatsappForm.webApiKey} onChange={(e) => setWhatsappField('webApiKey', e.target.value)} placeholder={whatsappInfo?.webApiKeyConfigurada ? 'Deixe em branco para manter a atual' : 'Chave local'} aria-label="Chave local do WhatsApp Web" />
+                      </Field>
+                    </div>
+                  )}
+                </section>
+
+                <section className="whatsapp-config-panel">
+                  <div className="settings-subhead">
+                    <span className="settings-eyebrow">Templates</span>
+                    <h3>Mensagens usadas na rotina</h3>
+                  </div>
+                  <div className="whatsapp-template-list">
+                    {WHATSAPP_TEMPLATE_CARDS.map((item) => (
+                      <div className="whatsapp-template-card" key={item.field}>
+                        <div className="whatsapp-template-head">
+                          <strong>{item.title}</strong>
+                          <span>{item.trigger}</span>
+                        </div>
+                        <Field label="Nome interno" name={item.field} form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField} />
+                        <div className="whatsapp-preview-bubble">
+                          <span>{item.preview}</span>
+                        </div>
+                        <div className="whatsapp-variable-row">
+                          <span>{'{cliente}'}</span>
+                          <span>{'{numero_os}'}</span>
+                          <span>{'{valor}'}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              </div>
+
+              <div className="settings-actions">
+                <button type="button" className="btn btn-ghost" onClick={loadWhatsapp} disabled={savingWhatsapp}>Cancelar</button>
+                <button type="submit" className="btn btn-primary" disabled={savingWhatsapp}>
+                  <SavingLabel saving={savingWhatsapp} idle="Salvar WhatsApp" />
+                </button>
+              </div>
+            </>
+          )}
+        </form>
       </div>
-    </div>
-  )
+    )
+  }
 
   const renderImpressao = () => (
     <div className="settings-stack">
