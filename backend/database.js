@@ -273,7 +273,6 @@ CREATE TABLE IF NOT EXISTS whatsapp_avisos (
 );
 CREATE INDEX IF NOT EXISTS idx_whatsapp_avisos_ordemid ON whatsapp_avisos(ordemid);
 CREATE INDEX IF NOT EXISTS idx_whatsapp_avisos_status ON whatsapp_avisos(status);
-CREATE INDEX IF NOT EXISTS idx_whatsapp_avisos_auto_status ON whatsapp_avisos(auto_status, next_attempt_at);
 CREATE INDEX IF NOT EXISTS idx_ordens_status       ON ordens(status);
 CREATE INDEX IF NOT EXISTS idx_ordens_prazo        ON ordens(prazoentrega);
 CREATE INDEX IF NOT EXISTS idx_ordens_clienteid    ON ordens(clienteid);
