@@ -20,6 +20,11 @@ backend/data/nfe_xmls/
 # Backups de banco
 backend/data/backups/
 
+# WhatsApp Web local service
+whatsapp-service/.env
+whatsapp-service/sessions/
+whatsapp-service/*.log
+
 # SQLite
 backend/*.db
 backend/*.db-shm

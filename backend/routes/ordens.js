@@ -8,6 +8,7 @@ const {
   descricaoEntradaOS, descricaoRestanteOS
 } = require("../domain/ordensRules");
 const { sendWhatsAppConfirmacao } = require("../utils/whatsapp");
+const { marcarAvisoParaEnvio } = require("../utils/whatsappQueue");
 const { getResumoFinanceiroOS } = require('../domain/financeiroRules');
 const { calcularDescontoOS } = require('../domain/descontoRules');
 const { normalizarPaginacao, montarMetaPaginacao } = require("../domain/paginationRules");
@@ -92,8 +93,8 @@ function resolveClienteData(clienteid, clientenome, telefoneFornecido, cpfFornec
 
 function garantirAvisoPendente(ordemId, tipo) {
   run(
-    `INSERT OR IGNORE INTO whatsapp_avisos (ordemid, tipo, status, updatedat)
-     VALUES (?, ?, 'pendente', datetime('now','localtime'))`,
+    `INSERT OR IGNORE INTO whatsapp_avisos (ordemid, tipo, status, auto_status, updatedat)
+     VALUES (?, ?, 'pendente', 'pendente', datetime('now','localtime'))`,
     [ordemId, tipo]
   );
 }
@@ -103,8 +104,25 @@ function garantirAvisoPronto(ordemId, statusAnterior, statusNovo) {
   garantirAvisoPendente(ordemId, 'pedido_pronto');
 }
 
+function enfileirarAvisoWhatsapp(ordem, tipo) {
+  const phone = normalizarTelefoneWhatsapp(ordem.clientetelefone || ordem.clientecontato);
+  const message = montarMensagemAviso(ordem, tipo, { role: 'caixa' });
+  if (!message.ok) return;
+  marcarAvisoParaEnvio({
+    ordemId: ordem.id,
+    tipo,
+    phone,
+    text: message.text,
+    canal: 'web_local',
+  });
+}
+
 function maybeNotifyPronto(ordemId, statusAnterior, statusNovo) {
   garantirAvisoPronto(ordemId, statusAnterior, statusNovo);
+  if (statusAnterior === statusNovo || statusNovo !== 'Pronto') return;
+  const os = buscarOrdemAviso(ordemId);
+  if (!os) return;
+  enfileirarAvisoWhatsapp(os, 'pedido_pronto');
 }
 
 function isValidDate(d) {
@@ -237,8 +255,8 @@ function anexarAvisosWhatsApp(rows, role) {
 function salvarAvisoAberto(ordemId, tipo, phone, text, userId) {
   run(
     `INSERT INTO whatsapp_avisos
-       (ordemid, tipo, status, telefone_snapshot, mensagem_snapshot, aberto_por, aberto_em, updatedat)
-     VALUES (?, ?, 'aberto', ?, ?, ?, datetime('now','localtime'), datetime('now','localtime'))
+       (ordemid, tipo, status, telefone_snapshot, mensagem_snapshot, canal, auto_status, aberto_por, aberto_em, updatedat)
+     VALUES (?, ?, 'aberto', ?, ?, 'manual', 'pendente', ?, datetime('now','localtime'), datetime('now','localtime'))
      ON CONFLICT(ordemid, tipo) DO UPDATE SET
        status=CASE
          WHEN whatsapp_avisos.status IN ('enviado','ignorado') THEN whatsapp_avisos.status
@@ -246,6 +264,8 @@ function salvarAvisoAberto(ordemId, tipo, phone, text, userId) {
        END,
        telefone_snapshot=excluded.telefone_snapshot,
        mensagem_snapshot=excluded.mensagem_snapshot,
+       canal='manual',
+       auto_status='pendente',
        aberto_por=excluded.aberto_por,
        aberto_em=COALESCE(whatsapp_avisos.aberto_em, excluded.aberto_em),
        updatedat=datetime('now','localtime')`,
@@ -371,6 +391,16 @@ router.post("/", auth(["admin","caixa"]), (req, res, next) => {
         [id, null, "Aguardando", req.user.id, "Ordem criada"]
       );
       garantirAvisoPendente(id, 'confirmacao_pedido');
+      enfileirarAvisoWhatsapp({
+        id,
+        numero,
+        clientenome,
+        clientetelefone: telFinal,
+        servico,
+        status: 'Aguardando',
+        valortotal: total,
+        valorentrada: entrada,
+      }, 'confirmacao_pedido');
       saveItens(id, produtos);
       if (entrada > 0) {
         const desc = descricaoEntradaOS(numero, clientenome, servico, total, entrada);

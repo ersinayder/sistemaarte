@@ -26,6 +26,11 @@ module.exports = {
         EVOLUTION_API_KEY:  process.env.EVOLUTION_API_KEY,
         EVOLUTION_INSTANCE: process.env.EVOLUTION_INSTANCE,
         WHATSAPP_ENABLED:   process.env.WHATSAPP_ENABLED,
+        WHATSAPP_PROVIDER:  process.env.WHATSAPP_PROVIDER,
+        WHATSAPP_WEB_ENABLED:  process.env.WHATSAPP_WEB_ENABLED,
+        WHATSAPP_WEB_BASE_URL: process.env.WHATSAPP_WEB_BASE_URL || process.env.EVOLUTION_API_URL,
+        WHATSAPP_WEB_INSTANCE: process.env.WHATSAPP_WEB_INSTANCE || process.env.EVOLUTION_INSTANCE,
+        WHATSAPP_WEB_API_KEY:  process.env.WHATSAPP_WEB_API_KEY || process.env.EVOLUTION_API_KEY,
         // ── NF-e ──────────────────────────────────────────────
         NFE_CERT_PATH:      process.env.NFE_CERT_PATH,
         NFE_CERT_PASSWORD:  process.env.NFE_CERT_PASSWORD,
@@ -71,6 +76,11 @@ module.exports = {
         EVOLUTION_API_KEY:  process.env.EVOLUTION_API_KEY,
         EVOLUTION_INSTANCE: process.env.EVOLUTION_INSTANCE,
         WHATSAPP_ENABLED:   'false',
+        WHATSAPP_PROVIDER:  process.env.WHATSAPP_PROVIDER,
+        WHATSAPP_WEB_ENABLED:  process.env.WHATSAPP_WEB_ENABLED || 'false',
+        WHATSAPP_WEB_BASE_URL: process.env.WHATSAPP_WEB_BASE_URL || process.env.EVOLUTION_API_URL,
+        WHATSAPP_WEB_INSTANCE: process.env.WHATSAPP_WEB_INSTANCE || process.env.EVOLUTION_INSTANCE,
+        WHATSAPP_WEB_API_KEY:  process.env.WHATSAPP_WEB_API_KEY || process.env.EVOLUTION_API_KEY,
         // ── NF-e HOMOLOGACAO ──────────────────────────────────
         NFE_CERT_PATH:      process.env.NFE_CERT_PATH,
         NFE_CERT_PASSWORD:  process.env.NFE_CERT_PASSWORD,

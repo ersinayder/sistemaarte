@@ -55,6 +55,31 @@ describe('whatsappConfigRules', () => {
     expect(result.ok).toBe(true);
   });
 
+  it('accepts web_local provider with local service fields', () => {
+    const config = normalizarWhatsappConfig({
+      enabled: 1,
+      provider: 'web_local',
+      webBaseUrl: ' http://127.0.0.1:8080 ',
+      webInstance: ' loja ',
+      webApiKey: ' secret ',
+    });
+
+    expect(config.provider).toBe('web_local');
+    expect(config.webBaseUrl).toBe('http://127.0.0.1:8080');
+    expect(config.webInstance).toBe('loja');
+    expect(config.webApiKey).toBe('secret');
+    expect(validarWhatsappConfig(config, {})).toEqual({ ok: true, errors: {} });
+  });
+
+  it('requires local url and instance when web_local is enabled', () => {
+    const config = normalizarWhatsappConfig({ enabled: 1, provider: 'web_local' });
+
+    expect(validarWhatsappConfig(config, {}).errors).toEqual({
+      webBaseUrl: 'URL local do WhatsApp Web e obrigatoria',
+      webInstance: 'Instancia do WhatsApp Web e obrigatoria',
+    });
+  });
+
   it('sanitizes config without leaking token', () => {
     const sanitized = sanitizarWhatsappConfig({
       enabled: 1,
@@ -71,6 +96,23 @@ describe('whatsappConfigRules', () => {
     expect(sanitized.tokenConfigurado).toBe(true);
     expect(sanitized.phoneId).toBe('123456');
     expect(sanitized.updatedat).toBe('2026-05-18 10:00:00');
+  });
+
+  it('sanitizes web_local config without leaking local api key', () => {
+    const sanitized = sanitizarWhatsappConfig({
+      enabled: 1,
+      provider: 'web_local',
+      web_base_url: 'http://127.0.0.1:8080',
+      web_instance: 'loja',
+      web_api_key: 'secret',
+      configurado: 1,
+    });
+
+    expect(sanitized.webBaseUrl).toBe('http://127.0.0.1:8080');
+    expect(sanitized.webInstance).toBe('loja');
+    expect(sanitized.webApiKey).toBeUndefined();
+    expect(sanitized.webApiKeyConfigurada).toBe(true);
+    expect(sanitized.status.status).toBe('OK');
   });
 
   it('reports status for enabled, disabled, and incomplete configs', () => {
@@ -122,5 +164,55 @@ describe('whatsappConfigRules', () => {
     expect(runtime.templatePronto).toBe('os_pronta_db');
     expect(runtime.templateConfirmacao).toBe('confirmacao_db');
     expect(runtime.origem).toBe('banco');
+  });
+
+  it('resolves web_local runtime settings from DB and env fallback', () => {
+    const fromDb = resolverWhatsappRuntime({
+      row: {
+        enabled: 1,
+        provider: 'web_local',
+        web_base_url: 'http://127.0.0.1:8080',
+        web_instance: 'loja',
+        web_api_key: 'db-key',
+        configurado: 1,
+      },
+      env: {},
+    });
+
+    expect(fromDb.provider).toBe('web_local');
+    expect(fromDb.webBaseUrl).toBe('http://127.0.0.1:8080');
+    expect(fromDb.webInstance).toBe('loja');
+    expect(fromDb.webApiKey).toBe('db-key');
+
+    const fromEnv = resolverWhatsappRuntime({
+      row: { enabled: 0, provider: 'meta', configurado: 0 },
+      env: {
+        WHATSAPP_ENABLED: 'true',
+        WHATSAPP_PROVIDER: 'web_local',
+        WHATSAPP_WEB_BASE_URL: 'http://127.0.0.1:8080',
+        WHATSAPP_WEB_INSTANCE: 'loja-env',
+        WHATSAPP_WEB_API_KEY: 'env-key',
+      },
+    });
+
+    expect(fromEnv.provider).toBe('web_local');
+    expect(fromEnv.webBaseUrl).toBe('http://127.0.0.1:8080');
+    expect(fromEnv.webInstance).toBe('loja-env');
+    expect(fromEnv.webApiKey).toBe('env-key');
+
+    const fromLegacyEvolutionEnv = resolverWhatsappRuntime({
+      row: { enabled: 0, provider: 'meta', configurado: 0 },
+      env: {
+        WHATSAPP_ENABLED: 'true',
+        WHATSAPP_PROVIDER: 'web_local',
+        EVOLUTION_API_URL: 'http://127.0.0.1:8080',
+        EVOLUTION_INSTANCE: 'loja-legacy',
+        EVOLUTION_API_KEY: 'legacy-key',
+      },
+    });
+
+    expect(fromLegacyEvolutionEnv.webBaseUrl).toBe('http://127.0.0.1:8080');
+    expect(fromLegacyEvolutionEnv.webInstance).toBe('loja-legacy');
+    expect(fromLegacyEvolutionEnv.webApiKey).toBe('legacy-key');
   });
 });

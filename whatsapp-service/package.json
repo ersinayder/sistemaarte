@@ -1,0 +1,23 @@
+{
+  "name": "sistema-arte-whatsapp-service",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mini servico local de WhatsApp Web compativel com o contrato basico da Evolution API.",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node src/index.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.18",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "pino": "^9.6.0",
+    "qrcode-terminal": "^0.12.0"
+  },
+  "devDependencies": {
+    "supertest": "^7.0.0",
+    "vitest": "^4.1.6"
+  }
+}

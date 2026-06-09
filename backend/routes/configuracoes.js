@@ -26,7 +26,7 @@ const {
   normalizarWhatsappConfig,
   validarWhatsappConfig,
 } = require("../domain/whatsappConfigRules");
-const { getWhatsappPublicConfig } = require("../utils/whatsappConfig");
+const { getWhatsappPublicConfig, getWhatsappRuntimeConfig } = require("../utils/whatsappConfig");
 const {
   normalizarImpressaoConfig,
   validarImpressaoConfig,
@@ -144,7 +144,8 @@ function backupAtual() {
 function whatsappRowAtual() {
   return getOne(`
     SELECT id, enabled, provider, phone_id, token, template_pronto,
-           template_confirmacao, configurado, updatedat
+           template_confirmacao, web_base_url, web_instance, web_api_key,
+           configurado, updatedat
     FROM whatsapp_config
     WHERE id = 1
   `);
@@ -327,6 +328,22 @@ router.get("/whatsapp", auth(["admin"]), (_req, res, next) => {
   } catch (e) { next(e); }
 });
 
+router.get("/whatsapp/web-status", auth(["admin"]), async (_req, res, next) => {
+  try {
+    const runtime = getWhatsappRuntimeConfig();
+    if (runtime.provider !== "web_local" || !runtime.webBaseUrl || !runtime.webInstance) {
+      return res.json({ connected: false, state: "not_configured", qr: null });
+    }
+    const { createWhatsappWebProvider } = require("../utils/whatsappWebProvider");
+    const provider = createWhatsappWebProvider({
+      baseUrl: runtime.webBaseUrl,
+      instance: runtime.webInstance,
+      apiKey: runtime.webApiKey,
+    });
+    res.json(await provider.getStatus());
+  } catch (e) { next(e); }
+});
+
 router.get("/impressao", auth(["admin"]), (_req, res, next) => {
   try {
     res.json({ impressao: getImpressaoConfig() });
@@ -423,10 +440,12 @@ router.put("/whatsapp", auth(["admin"]), (req, res, next) => {
     }
 
     const token = config.token || atual.token || null;
+    const webApiKey = config.webApiKey || atual.web_api_key || null;
     run(
       `INSERT INTO whatsapp_config
-        (id, enabled, provider, phone_id, token, template_pronto, template_confirmacao, configurado, updatedat)
-       VALUES (1, ?, ?, ?, ?, ?, ?, 1, datetime('now','localtime'))
+        (id, enabled, provider, phone_id, token, template_pronto, template_confirmacao,
+         web_base_url, web_instance, web_api_key, configurado, updatedat)
+       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now','localtime'))
        ON CONFLICT(id) DO UPDATE SET
          enabled=excluded.enabled,
          provider=excluded.provider,
@@ -434,6 +453,9 @@ router.put("/whatsapp", auth(["admin"]), (req, res, next) => {
          token=excluded.token,
          template_pronto=excluded.template_pronto,
          template_confirmacao=excluded.template_confirmacao,
+         web_base_url=excluded.web_base_url,
+         web_instance=excluded.web_instance,
+         web_api_key=excluded.web_api_key,
          configurado=1,
          updatedat=datetime('now','localtime')`,
       [
@@ -443,6 +465,9 @@ router.put("/whatsapp", auth(["admin"]), (req, res, next) => {
         token,
         config.templatePronto,
         config.templateConfirmacao,
+        config.webBaseUrl,
+        config.webInstance,
+        webApiKey,
       ]
     );
 

@@ -100,6 +100,23 @@ if (fs.existsSync(DIST)) {
 app.use(errorHandler);
 
 initDB();
+
+if (process.env.WHATSAPP_WEB_ENABLED === "true") {
+  const { getWhatsappRuntimeConfig } = require("./utils/whatsappConfig");
+  const { createWhatsappWebProvider } = require("./utils/whatsappWebProvider");
+  const { createWhatsappWorker } = require("./utils/whatsappWorker");
+  const runtime = getWhatsappRuntimeConfig();
+  if (runtime.provider === "web_local" && runtime.enabled && runtime.webBaseUrl && runtime.webInstance) {
+    const provider = createWhatsappWebProvider({
+      baseUrl: runtime.webBaseUrl,
+      instance: runtime.webInstance,
+      apiKey: runtime.webApiKey,
+    });
+    createWhatsappWorker({ provider }).start();
+    console.log("[WhatsAppWorker] Fila automatica ativa.");
+  }
+}
+
 app.listen(PORT, "0.0.0.0", () => {
   console.log("\n╔══════════════════════════════════════╗");
   console.log(`║  Sistema Oficina — Servidor OK       ║`);

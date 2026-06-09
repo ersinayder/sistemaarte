@@ -38,6 +38,9 @@ const EMPTY_WHATSAPP = {
   provider: 'meta',
   phoneId: '',
   token: '',
+  webBaseUrl: '',
+  webInstance: 'loja',
+  webApiKey: '',
   templatePronto: 'os_pronta',
   templateConfirmacao: 'confirmacao_pedido',
 }
@@ -94,6 +97,9 @@ function normalizeLoadedWhatsapp(whatsapp = {}) {
     provider: whatsapp.provider || 'meta',
     phoneId: whatsapp.phoneId || '',
     token: '',
+    webBaseUrl: whatsapp.webBaseUrl || '',
+    webInstance: whatsapp.webInstance || EMPTY_WHATSAPP.webInstance,
+    webApiKey: '',
     templatePronto: whatsapp.templatePronto || EMPTY_WHATSAPP.templatePronto,
     templateConfirmacao: whatsapp.templateConfirmacao || EMPTY_WHATSAPP.templateConfirmacao,
   }
@@ -204,6 +210,8 @@ export default function Configuracoes() {
   const [whatsappErrors, setWhatsappErrors] = useState({})
   const [loadingWhatsapp, setLoadingWhatsapp] = useState(false)
   const [savingWhatsapp, setSavingWhatsapp] = useState(false)
+  const [whatsappWebStatus, setWhatsappWebStatus] = useState(null)
+  const [loadingWhatsappWebStatus, setLoadingWhatsappWebStatus] = useState(false)
   const [impressaoInfo, setImpressaoInfo] = useState(null)
   const [impressaoForm, setImpressaoForm] = useState(EMPTY_IMPRESSAO)
   const [impressaoErrors, setImpressaoErrors] = useState({})
@@ -251,6 +259,7 @@ export default function Configuracoes() {
     const whatsapp = data.whatsapp || {}
     setWhatsappInfo(whatsapp)
     setWhatsappForm(normalizeLoadedWhatsapp(whatsapp))
+    setWhatsappWebStatus(null)
     setStatusMap((current) => ({ ...current, whatsapp: whatsapp.status || current.whatsapp }))
   }, [])
 
@@ -287,6 +296,18 @@ export default function Configuracoes() {
       setLoadingWhatsapp(false)
     }
   }, [applyWhatsappResponse])
+
+  const loadWhatsappWebStatus = useCallback(async () => {
+    setLoadingWhatsappWebStatus(true)
+    try {
+      const res = await api.get('/configuracoes/whatsapp/web-status')
+      setWhatsappWebStatus(res.data || null)
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Erro ao consultar sessao WhatsApp')
+    } finally {
+      setLoadingWhatsappWebStatus(false)
+    }
+  }, [])
 
   const loadImpressao = useCallback(async () => {
     setLoadingImpressao(true)
@@ -645,6 +666,9 @@ export default function Configuracoes() {
         provider: whatsappForm.provider,
         phoneId: whatsappForm.phoneId.trim(),
         token: whatsappForm.token.trim(),
+        webBaseUrl: whatsappForm.webBaseUrl.trim(),
+        webInstance: whatsappForm.webInstance.trim(),
+        webApiKey: whatsappForm.webApiKey.trim(),
         templatePronto: whatsappForm.templatePronto.trim(),
         templateConfirmacao: whatsappForm.templateConfirmacao.trim(),
       }
@@ -882,27 +906,54 @@ export default function Configuracoes() {
           <>
             <div className="settings-info-grid">
               <InfoRow label="Origem" value={whatsappInfo?.origem === 'banco' ? 'Tela de configuracao' : whatsappInfo?.origem || 'env'} />
-              <InfoRow label="Token" value={whatsappInfo?.tokenConfigurado ? 'Configurado' : 'Nao configurado'} />
+              <InfoRow label="Token Meta" value={whatsappInfo?.tokenConfigurado ? 'Configurado' : 'Nao configurado'} />
+              <InfoRow label="Chave local" value={whatsappInfo?.webApiKeyConfigurada ? 'Configurada' : 'Nao configurada'} />
               <InfoRow label="Atualizado em" value={whatsappInfo?.updatedat} />
             </div>
 
             <div className="form-grid-2">
               <Field label="Provedor" name="provider" form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField}>
                 <select id="provider" className="form-input" value={whatsappForm.provider} onChange={(e) => setWhatsappField('provider', e.target.value)}>
+                  <option value="manual">Manual assistido</option>
                   <option value="meta">Meta Cloud API</option>
+                  <option value="web_local">WhatsApp Web local</option>
                 </select>
-              </Field>
-              <Field label="Phone Number ID" name="phoneId" form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField} />
-              <Field label="Novo token" name="token" form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField}>
-                <input id="token" className="form-input" type="password" value={whatsappForm.token} onChange={(e) => setWhatsappField('token', e.target.value)} placeholder={whatsappInfo?.tokenConfigurado ? 'Deixe em branco para manter o atual' : 'Token permanente'} />
               </Field>
               <label className="settings-check">
                 <input type="checkbox" checked={whatsappForm.enabled} onChange={(e) => setWhatsappField('enabled', e.target.checked)} />
                 Envio automatico ativo
               </label>
+              {whatsappForm.provider === 'meta' && (
+                <>
+                  <Field label="Phone Number ID" name="phoneId" form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField} />
+                  <Field label="Novo token" name="token" form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField}>
+                    <input id="token" className="form-input" type="password" value={whatsappForm.token} onChange={(e) => setWhatsappField('token', e.target.value)} placeholder={whatsappInfo?.tokenConfigurado ? 'Deixe em branco para manter o atual' : 'Token permanente'} />
+                  </Field>
+                </>
+              )}
+              {whatsappForm.provider === 'web_local' && (
+                <>
+                  <Field label="URL local" name="webBaseUrl" form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField} placeholder="http://127.0.0.1:8080" />
+                  <Field label="Instancia" name="webInstance" form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField} />
+                  <Field label="Chave local" name="webApiKey" form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField}>
+                    <input id="webApiKey" className="form-input" type="password" value={whatsappForm.webApiKey} onChange={(e) => setWhatsappField('webApiKey', e.target.value)} aria-label="Chave local do WhatsApp Web" />
+                  </Field>
+                </>
+              )}
               <Field label="Template OS pronta" name="templatePronto" form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField} />
               <Field label="Template confirmacao" name="templateConfirmacao" form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField} />
             </div>
+
+            {whatsappForm.provider === 'web_local' && (
+              <div className="settings-info-grid">
+                <InfoRow label="Sessao" value={whatsappWebStatus?.connected ? 'Conectado' : whatsappWebStatus?.state || 'Nao consultado'} />
+                <InfoRow label="Instancia" value={whatsappForm.webInstance || '-'} />
+                <InfoRow label="QR" value={whatsappWebStatus?.qr ? 'Disponivel no provedor' : '-'} />
+                <button type="button" className="btn btn-secondary" onClick={loadWhatsappWebStatus} disabled={loadingWhatsappWebStatus}>
+                  {loadingWhatsappWebStatus ? <><div className="spinner" style={{ width: 14, height: 14 }} /> Consultando...</> : 'Atualizar status'}
+                </button>
+              </div>
+            )}
 
             <div className="settings-actions">
               <button type="button" className="btn btn-ghost" onClick={loadWhatsapp} disabled={savingWhatsapp}>Cancelar</button>
