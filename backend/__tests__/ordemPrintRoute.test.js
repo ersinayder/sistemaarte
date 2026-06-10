@@ -118,6 +118,7 @@ describe('ordem service order server printing route', () => {
       jobName: 'ordem-OS-0042',
       copies: 2,
       printerConfig: { directPrintEnabled: true, printerName: 'Impressoraloja', printerIp: '192.168.0.45' },
+      settleMs: 4000,
     });
     expect(res.json).toHaveBeenCalledWith({
       ok: true,

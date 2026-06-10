@@ -6,6 +6,7 @@ const { montarDestinoImpressora } = require('../../domain/impressaoConfigRules')
 
 const DEFAULT_ORDEM_PRINTER = '\\\\ARTESERVER\\Impressoraloja';
 const PRINT_TIMEOUT_MS = 45000;
+const DEFAULT_PRINT_SETTLE_MS = 1500;
 const TEMP_DIR = path.join(os.tmpdir(), 'sistema-arte-print');
 
 function normalizePrintCopies(value = 1) {
@@ -36,8 +37,15 @@ function psString(value) {
   return `'${String(value).replace(/'/g, "''")}'`;
 }
 
-function buildPrintScript({ htmlPath, printerName, copies }) {
+function normalizePrintSettleMs(value = DEFAULT_PRINT_SETTLE_MS) {
+  const ms = Number(value ?? DEFAULT_PRINT_SETTLE_MS);
+  if (!Number.isFinite(ms) || ms < DEFAULT_PRINT_SETTLE_MS) return DEFAULT_PRINT_SETTLE_MS;
+  return Math.min(Math.round(ms), 15000);
+}
+
+function buildPrintScript({ htmlPath, printerName, copies, settleMs = DEFAULT_PRINT_SETTLE_MS }) {
   const printerLine = printerName ? `$printerName = ${psString(printerName)}` : '$printerName = $null';
+  const normalizedSettleMs = normalizePrintSettleMs(settleMs);
 
   return `
 $ErrorActionPreference = 'Stop'
@@ -117,7 +125,7 @@ $args = @(
   $fileUri
 )
 $process = Start-Process -FilePath $browser -ArgumentList $args -PassThru
-Start-Sleep -Milliseconds 1500
+Start-Sleep -Milliseconds ${normalizedSettleMs}
 if ($process -and -not $process.HasExited) {
   $process.CloseMainWindow() | Out-Null
   Start-Sleep -Milliseconds 500
@@ -171,6 +179,7 @@ async function printHtml({
   html,
   jobName,
   copies = 1,
+  settleMs = DEFAULT_PRINT_SETTLE_MS,
   printerConfig = null,
   env = process.env,
   platform = process.platform,
@@ -186,7 +195,7 @@ async function printHtml({
   const normalizedCopies = normalizePrintCopies(copies);
   const printerName = resolvePrinterName(env, printerConfig);
   const htmlPath = writeTemp(html, jobName);
-  const script = buildPrintScript({ htmlPath, printerName, copies: normalizedCopies });
+  const script = buildPrintScript({ htmlPath, printerName, copies: normalizedCopies, settleMs });
 
   await run(script);
   cleanup(htmlPath);
@@ -196,8 +205,10 @@ async function printHtml({
 
 module.exports = {
   DEFAULT_ORDEM_PRINTER,
+  DEFAULT_PRINT_SETTLE_MS,
   buildPrintScript,
   normalizePrintCopies,
+  normalizePrintSettleMs,
   printHtml,
   resolvePrinterName,
   safeJobName,
