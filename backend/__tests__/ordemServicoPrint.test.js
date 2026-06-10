@@ -130,7 +130,7 @@ describe('ordemServico print', () => {
     expect(html).not.toContain('&mdash;');
   });
 
-  it('renders service orders as a boxed A5 form with only total, entrada and restante', () => {
+  it('renders service orders as a boxed A5 form with only total, payment and remaining balance', () => {
     const html = renderOrdemServicoHtml({
       ordem: {
         numero: 'OS-0123',
@@ -154,7 +154,7 @@ describe('ordemServico print', () => {
     expect(html).toContain('class="os-items-box"');
     expect(html).toContain('class="finance-grid finance-grid-3"');
     expect(html).toContain('Total');
-    expect(html).toContain('Entrada');
+    expect(html).toContain('Pagamento');
     expect(html).toContain('Restante');
     expect(html).toContain('R$&nbsp;300,00');
     expect(html).toContain('R$&nbsp;150,00');
@@ -164,6 +164,28 @@ describe('ordemServico print', () => {
     expect(html).toContain('.ordem-servico-print .os-title-band');
     expect(html).toContain('.ordem-servico-print .os-number-badge { flex: 0 0 auto; display: inline-block; min-width: 26mm; border: 1.5px solid #111827;');
     expect(html).toContain('.ordem-servico-print .os-number-badge { border: 1.5px solid #111827; background: #fff !important; color: #111827 !important;');
+  });
+
+  it('prints later OS payments as payment instead of the original entry value', () => {
+    const html = renderOrdemServicoHtml({
+      ordem: {
+        numero: 'OS-0235',
+        createdat: '2026-06-09',
+        prazoentrega: '2026-06-15',
+        clientenome: 'Vinicius Alvarenga',
+        pagamento: 'Pix',
+        valorentrada: 0,
+      },
+      itens: [
+        { nome: 'Quadro camisa', quantidade: 1, preco_unitario: 790, subtotal: 790 },
+      ],
+      resumo: { total: 790, recebido: 200, saldo: 590 },
+    });
+
+    expect(html).toContain('Pagamento');
+    expect(html).not.toContain('<span>Entrada</span>');
+    expect(html).toContain('R$&nbsp;200,00');
+    expect(html).toContain('R$&nbsp;590,00');
   });
 
   it('omits status and service fields from the printed service order', () => {

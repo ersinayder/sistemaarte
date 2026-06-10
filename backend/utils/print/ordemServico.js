@@ -149,7 +149,7 @@ function renderOrdemServicoHtml({ ordem = {}, itens = [], resumo = {}, autoPrint
   const total = Number(resumo.total ?? ordem.valortotal ?? 0);
   const recebido = Number(resumo.recebido ?? ordem.valorrecebido ?? 0);
   const saldo = Number(resumo.saldo ?? ordem.saldoaberto ?? Math.max(0, total - recebido));
-  const entrada = Number(ordem.valorentrada ?? resumo.entrada ?? ordem.valorrecebido ?? resumo.recebido ?? 0);
+  const pagamentoRecebido = Number(resumo.recebido ?? ordem.valorrecebido ?? resumo.entrada ?? ordem.valorentrada ?? 0);
   const logo = logoDataUri();
 
   const body = `
@@ -185,7 +185,7 @@ function renderOrdemServicoHtml({ ordem = {}, itens = [], resumo = {}, autoPrint
 
       <div class="finance-grid finance-grid-3">
         ${renderMoneyCard('Total', total)}
-        ${renderMoneyCard('Entrada', entrada, entrada > 0 ? 'good' : '')}
+        ${renderMoneyCard('Pagamento', pagamentoRecebido, pagamentoRecebido > 0 ? 'good' : '')}
         ${renderMoneyCard('Restante', saldo, saldo > 0 ? 'bad' : 'good')}
       </div>
 
