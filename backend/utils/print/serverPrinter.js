@@ -83,8 +83,56 @@ if ($printerName) {
 
 $fileUri = ([System.Uri]$htmlPath).AbsoluteUri
 $destinationId = if ($printer) { $printer.Name } elseif ($printerName) { $printerName } else { '' }
+$a5MediaSize = @{
+  custom_display_name = 'A5'
+  height_microns = 210000
+  imageable_area_bottom_microns = 0
+  imageable_area_left_microns = 0
+  imageable_area_right_microns = 148000
+  imageable_area_top_microns = 210000
+  name = 'ISO_A5'
+  vendor_id = '11'
+  width_microns = 148000
+}
+$printerCapabilities = @{
+  printer = @{
+    collate = @{}
+    color = @{
+      option = @(
+        @{ is_default = $true; type = 'STANDARD_COLOR'; vendor_id = '2' },
+        @{ type = 'STANDARD_MONOCHROME'; vendor_id = '1' }
+      )
+    }
+    copies = @{ default = 1; max = 999 }
+    dpi = @{
+      option = @(
+        @{ horizontal_dpi = 600; is_default = $true; vertical_dpi = 600 }
+      )
+    }
+    media_size = @{ option = @($a5MediaSize) }
+    page_orientation = @{
+      option = @(
+        @{ is_default = $true; type = 'PORTRAIT' },
+        @{ type = 'LANDSCAPE' },
+        @{ type = 'AUTO' }
+      )
+    }
+    supported_content_type = @(
+      @{ content_type = 'application/pdf' }
+    )
+  }
+  version = '1.0'
+}
 $printPreviewSettings = @{
-  recentDestinations = @(@{ id = $destinationId; origin = 'local'; account = '' })
+  recentDestinations = @(@{
+    id = $destinationId
+    origin = 'local'
+    capabilities = $printerCapabilities
+    displayName = $destinationId
+    extensionId = ''
+    extensionName = ''
+    icon = 'print-preview:print'
+  })
   selectedDestinationId = $destinationId
   version = 2
   isHeaderFooterEnabled = $false
@@ -94,16 +142,16 @@ $printPreviewSettings = @{
   scaling = 92
   color = 2
   copies = $copies
-  mediaSize = @{
-    name = 'ISO_A5'
-    width_microns = 148000
-    height_microns = 210000
-    custom_display_name = 'A5'
-  }
+  mediaSize = $a5MediaSize
 }
-$appState = $printPreviewSettings | ConvertTo-Json -Compress -Depth 8
+$appState = $printPreviewSettings | ConvertTo-Json -Compress -Depth 12
 $env:PRINT_PREVIEW_STICKY_SETTINGS = $appState
-$userDataDir = Join-Path $env:TEMP "sistema-arte-print-browser-profile"
+$tempRoot = [System.IO.Path]::GetFullPath($env:TEMP).TrimEnd('\\') + '\\'
+$userDataDir = Join-Path $tempRoot ("sistema-arte-print-browser-" + [System.Guid]::NewGuid().ToString("N"))
+$resolvedUserDataDir = [System.IO.Path]::GetFullPath($userDataDir)
+if (-not $resolvedUserDataDir.StartsWith($tempRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+  throw "Perfil temporario de impressao fora da pasta TEMP: $resolvedUserDataDir"
+}
 New-Item -ItemType Directory -Force -Path $userDataDir | Out-Null
 $defaultProfileDir = Join-Path $userDataDir "Default"
 New-Item -ItemType Directory -Force -Path $defaultProfileDir | Out-Null
@@ -113,7 +161,7 @@ $preferences = @{
       appState = $appState
     }
   }
-} | ConvertTo-Json -Compress -Depth 8
+} | ConvertTo-Json -Compress -Depth 14
 Set-Content -LiteralPath (Join-Path $defaultProfileDir "Preferences") -Value $preferences -Encoding UTF8
 $args = @(
   "--kiosk-printing",
@@ -130,6 +178,9 @@ if ($process -and -not $process.HasExited) {
   $process.CloseMainWindow() | Out-Null
   Start-Sleep -Milliseconds 500
   if (-not $process.HasExited) { $process.Kill() }
+}
+if (Test-Path -LiteralPath $resolvedUserDataDir) {
+  Remove-Item -LiteralPath $resolvedUserDataDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 if ($printerName -and $oldDefault) {
