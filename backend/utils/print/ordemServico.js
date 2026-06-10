@@ -61,7 +61,7 @@ function renderItemsBox(itens = []) {
 const ORDEM_SERVICO_A5_STYLES = `
   .ordem-servico-print { font-size: 13px; line-height: 1.34; }
   .ordem-servico-print .actions { width: 148mm; margin: 8px auto; }
-  .ordem-servico-print .sheet { width: 148mm; min-height: 210mm; padding: 6mm; }
+  .ordem-servico-print .sheet { width: 148mm; min-height: 210mm; padding: 8mm; }
   .ordem-servico-print .sheet > .doc-header,
   .ordem-servico-print .sheet > .doc-footer { display: none; }
   .ordem-servico-print h1 { font-size: 17px; letter-spacing: .06em; }
