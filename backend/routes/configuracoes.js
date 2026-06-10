@@ -160,10 +160,10 @@ function renderTesteImpressaoHtml(config = {}) {
   <meta charset="utf-8">
   <title>Teste de impressao A5</title>
   <style>
-    @page { size: A5; margin: 6mm; }
+    @page { size: A5; margin: 7mm; }
     * { box-sizing: border-box; }
     body { margin: 0; font-family: Arial, sans-serif; color: #111827; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .sheet { width: 148mm; min-height: 210mm; padding: 8mm; border: 2px solid #111827; }
+    .sheet { width: 100%; min-height: 196mm; padding: 8mm; border: 2px solid #111827; }
     .band { padding: 6mm; background: #009246; color: #fff; border-radius: 6px; }
     h1 { margin: 0; font-size: 22px; letter-spacing: .03em; }
     p { font-size: 12px; line-height: 1.45; }
