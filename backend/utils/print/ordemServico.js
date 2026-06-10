@@ -137,10 +137,10 @@ const ORDEM_SERVICO_A5_STYLES = `
   .ordem-servico-print .os-signature { margin: auto auto 4.5mm; padding-top: 8mm; text-align: center; }
   .ordem-servico-print .os-signature-line { width: 58mm; margin: 0 auto; border-top: 1.5px solid #111827; padding-top: 1.4mm; font-size: 10px; font-weight: 800; }
   .ordem-servico-print .os-legal-footer { margin: 0 -7mm -4.5mm; padding: 2.5mm 5mm; border-top: 1px solid #d7dee8; background: #f8fafc; text-align: center; font-size: 7px; line-height: 1.35; color: #334155; }
-  @page { size: A5 portrait; margin: 4mm; }
+  @page { size: A5 portrait; margin: 7mm; }
   @media print {
-    .ordem-servico-print .sheet { width: 100%; min-height: 202mm; padding: 0; }
-    .ordem-servico-print .os-form-frame { min-height: 194mm; padding: 5mm 5.5mm 3.5mm; }
+    .ordem-servico-print .sheet { width: 100%; min-height: 196mm; padding: 0; }
+    .ordem-servico-print .os-form-frame { min-height: 188mm; padding: 4mm 4.5mm 3mm; }
     .ordem-servico-print .os-number-badge { border: 1.5px solid #111827; background: #fff !important; color: #111827 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   }
 `;
