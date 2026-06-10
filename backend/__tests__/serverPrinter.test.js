@@ -41,9 +41,12 @@ describe('server printer helper', () => {
     expect(script).toContain('print_preview_sticky_settings');
     expect(script).toContain('appState');
     expect(script).toContain('ISO_A5');
+    expect(script).toContain('width_microns = 148000');
+    expect(script).toContain('height_microns = 210000');
+    expect(script).not.toContain('ISO_A4');
     expect(script).toContain('copies = $copies');
-    expect(script).toContain('marginsType = 2');
-    expect(script).toContain('scaling = 88');
+    expect(script).toContain('marginsType = 1');
+    expect(script).toContain('scaling = 92');
     expect(script).toContain('sistema-arte-print-browser-profile');
     expect(script).toContain('Start-Sleep -Milliseconds 1500');
     expect(script).not.toContain('WScript.Shell');
