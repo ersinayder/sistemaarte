@@ -47,7 +47,7 @@ describe('server printer helper', () => {
     expect(script).toContain('copies = $copies');
     expect(script).toContain('marginsType = 1');
     expect(script).toContain('scaling = 92');
-    expect(script).toContain('sistema-arte-print-browser-profile');
+    expect(script).toContain('sistema-arte-print-browser-');
     expect(script).toContain('Start-Sleep -Milliseconds 1500');
     expect(script).not.toContain('WScript.Shell');
     expect(script).not.toContain("SendKeys('{ENTER}')");
@@ -67,6 +67,23 @@ describe('server printer helper', () => {
     });
 
     expect(script).toContain('Start-Sleep -Milliseconds 8000');
+  });
+
+  it('uses complete Canon A5 capabilities in a fresh Chrome profile', () => {
+    const script = printer.buildPrintScript({
+      htmlPath: 'C:\\Temp\\ordem.html',
+      printerName: 'Canon G3010 series',
+      copies: 1,
+    });
+
+    expect(script).toContain("vendor_id = '11'");
+    expect(script).toContain('imageable_area_right_microns = 148000');
+    expect(script).toContain('imageable_area_top_microns = 210000');
+    expect(script).toContain('capabilities = $printerCapabilities');
+    expect(script).toContain('media_size = @{ option = @($a5MediaSize) }');
+    expect(script).toContain('displayName = $destinationId');
+    expect(script).toContain('[System.Guid]::NewGuid()');
+    expect(script).not.toContain('Join-Path $env:TEMP "sistema-arte-print-browser-profile"');
   });
 
   it('prints by writing a temporary HTML file and invoking PowerShell', async () => {
