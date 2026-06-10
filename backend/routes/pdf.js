@@ -96,7 +96,7 @@ router.post("/:id/print", auth(["admin", "caixa"]), async (req, res) => {
       jobName: `ordem-${os.numero || os.id}`,
       copies,
       printerConfig,
-      settleMs: 8000,
+      settleMs: 4000,
     });
 
     res.json({
