@@ -102,11 +102,11 @@ describe('ordemServico print', () => {
     });
 
     expect(html).toContain('body class="ordem-servico-print"');
-    expect(html).toContain('@page { size: A5 portrait; margin: 7mm; }');
+    expect(html).toContain('@page { size: A5 portrait; margin: 4mm; }');
     expect(html).toContain('.ordem-servico-print { font-size: 13px; line-height: 1.34; }');
-    expect(html).toContain('.ordem-servico-print .sheet { width: 148mm; min-height: 210mm; padding: 8mm; }');
-    expect(html).toContain('.ordem-servico-print .sheet { width: 100%; min-height: 196mm; padding: 0; }');
-    expect(html).toContain('.ordem-servico-print .os-form-frame { min-height: 188mm; padding: 4mm 4.5mm 3mm; }');
+    expect(html).toContain('.ordem-servico-print .sheet { width: 148mm; min-height: 210mm; padding: 6mm; }');
+    expect(html).toContain('.ordem-servico-print .sheet { width: 100%; min-height: 202mm; padding: 0; }');
+    expect(html).toContain('.ordem-servico-print .os-form-frame { min-height: 194mm; padding: 5mm 5.5mm 3.5mm; }');
     expect(html).toContain('.ordem-servico-print .os-row { display: grid; grid-template-columns: repeat(2, 1fr);');
     expect(html).toContain('.ordem-servico-print .os-box-value { min-height: 6.2mm;');
     expect(html).toContain('.ordem-servico-print .os-items-box { border: 1px solid #d7dee8; border-radius: 7px; min-height: 50mm;');
