@@ -54,6 +54,17 @@ describe('server printer helper', () => {
     expect(script).not.toContain('-Verb PrintTo');
   });
 
+  it('can keep the browser open longer for heavy service order documents', () => {
+    const script = printer.buildPrintScript({
+      htmlPath: 'C:\\Temp\\ordem-grande.html',
+      printerName: '\\\\ARTESERVER\\Impressoraloja',
+      copies: 1,
+      settleMs: 8000,
+    });
+
+    expect(script).toContain('Start-Sleep -Milliseconds 8000');
+  });
+
   it('prints by writing a temporary HTML file and invoking PowerShell', async () => {
     const writeTempHtml = vi.fn(() => 'C:\\Temp\\ordem.html');
     const runPowerShell = vi.fn(() => Promise.resolve({ stdout: '', stderr: '' }));
