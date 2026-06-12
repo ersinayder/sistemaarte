@@ -7,7 +7,39 @@ function getDisconnectStatusCode(lastDisconnect) {
   return lastDisconnect?.error?.output?.statusCode || lastDisconnect?.error?.statusCode || null;
 }
 
-function buildSocketOptions({ version, auth, logger }) {
+function createRecentMessageStore({ ttlMs = 60 * 60 * 1000, maxSize = 256, now = () => Date.now() } = {}) {
+  const messages = new Map();
+  const limit = Math.max(1, Number(maxSize) || 256);
+
+  function prune() {
+    const expiresBefore = now() - ttlMs;
+    for (const [id, entry] of messages) {
+      if (entry.createdAt < expiresBefore) messages.delete(id);
+    }
+    while (messages.size > limit) {
+      const oldest = messages.keys().next().value;
+      messages.delete(oldest);
+    }
+  }
+
+  function save(webMessageInfo) {
+    const id = webMessageInfo?.key?.id;
+    const message = webMessageInfo?.message;
+    if (!id || !message) return;
+    messages.delete(id);
+    messages.set(id, { message, createdAt: now() });
+    prune();
+  }
+
+  async function getMessage(key) {
+    prune();
+    return messages.get(key?.id)?.message;
+  }
+
+  return { save, getMessage };
+}
+
+function buildSocketOptions({ version, auth, logger, getMessage }) {
   return {
     version,
     auth,
@@ -17,9 +49,9 @@ function buildSocketOptions({ version, auth, logger }) {
     connectTimeoutMs: 60000,
     defaultQueryTimeoutMs: undefined,
     syncFullHistory: false,
-    shouldSyncHistoryMessage: () => false,
-    fireInitQueries: false,
+    fireInitQueries: true,
     markOnlineOnConnect: false,
+    ...(getMessage ? { getMessage } : {}),
   };
 }
 
@@ -45,6 +77,7 @@ function createBaileysClient({ instance, sessionDir, logLevel = 'info', reconnec
   };
 
   const logger = pino({ level: logLevel });
+  const messageStore = createRecentMessageStore();
 
   function setState(patch) {
     state = { ...state, ...patch };
@@ -77,9 +110,15 @@ function createBaileysClient({ instance, sessionDir, logLevel = 'info', reconnec
         version,
         auth: authState,
         logger,
+        getMessage: messageStore.getMessage,
       }));
 
       sock.ev.on('creds.update', saveCreds);
+      sock.ev.on('messages.upsert', ({ messages = [] }) => {
+        for (const message of messages) {
+          if (message?.key?.fromMe) messageStore.save(message);
+        }
+      });
       sock.ev.on('connection.update', (update) => {
         if (update.qr) {
           setState({ state: 'qr', connected: false, qr: update.qr });
@@ -125,7 +164,9 @@ function createBaileysClient({ instance, sessionDir, logLevel = 'info', reconnec
       throw new Error(`Sessao WhatsApp desconectada: ${state.state}`);
     }
     const jid = await resolveRecipientJid(sock, number);
-    return sock.sendMessage(jid, { text });
+    const result = await sock.sendMessage(jid, { text });
+    messageStore.save(result);
+    return result;
   }
 
   return {
@@ -136,4 +177,10 @@ function createBaileysClient({ instance, sessionDir, logLevel = 'info', reconnec
   };
 }
 
-module.exports = { buildSocketOptions, createBaileysClient, getDisconnectStatusCode, resolveRecipientJid };
+module.exports = {
+  buildSocketOptions,
+  createBaileysClient,
+  createRecentMessageStore,
+  getDisconnectStatusCode,
+  resolveRecipientJid,
+};
