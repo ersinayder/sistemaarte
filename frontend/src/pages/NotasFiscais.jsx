@@ -29,7 +29,13 @@ const EVENTO_LABEL = {
 }
 
 const HOMOLOGACAO_ALVO = 10
-const STATUS_NFE_EMISSAO = ['Aguardando', 'Pronto', 'Entregue']
+const STATUS_NFE_EMISSAO = ['Aguardando', 'Em Produção', 'Pronto', 'Entregue']
+const STATUS_NFE_EMISSAO_LABEL = 'Aguardando, Em Produção, Pronto ou Entregue'
+const NCM_SUGESTOES_NFE = [
+  { label: 'MDF', value: '44151000' },
+  { label: 'Acrilico', value: '39269090' },
+  { label: 'Molduras', value: '44151000' },
+]
 const CSOSN_VALIDOS_NFE = new Set(['101', '102', '103', '300', '400', '500', '900'])
 
 async function baixarArquivo(url, nomeArquivo) {
@@ -77,14 +83,23 @@ function StatusBadge({ status }) {
 }
 
 function CampoFiscal({ item, index, field, width, onChange }) {
+  const ncmListId = field === 'ncm' ? `ncm-sugestoes-${index}` : undefined
   return (
     <td style={{ padding: 'var(--space-2) var(--space-2)' }}>
       <input
         className="form-input"
+        list={ncmListId}
         value={item[field] || ''}
         onChange={e => onChange(index, field, e.target.value)}
         style={{ width, height: 34, padding: '6px 8px', fontSize: 'var(--text-xs)', fontVariantNumeric: 'tabular-nums' }}
       />
+      {field === 'ncm' && (
+        <datalist id={ncmListId}>
+          {NCM_SUGESTOES_NFE.map(opcao => (
+            <option key={`${opcao.label}-${opcao.value}`} value={opcao.value} label={`${opcao.label} - ${opcao.value}`} />
+          ))}
+        </datalist>
+      )}
     </td>
   )
 }
@@ -328,7 +343,7 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
           <div>
             <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, margin: 0 }}>Emitir NF-e</h2>
             <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
-              {etapa === 'selecionar' ? 'Selecione uma OS com status Aguardando, Pronto ou Entregue' : 'Confira cliente, emitente e itens antes de enviar para a SEFAZ'}
+              {etapa === 'selecionar' ? `Selecione uma OS com status ${STATUS_NFE_EMISSAO_LABEL}` : 'Confira cliente, emitente e itens antes de enviar para a SEFAZ'}
             </p>
           </div>
           <button className="btn btn-icon btn-ghost" onClick={onClose} aria-label="Fechar">
@@ -386,8 +401,8 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, minWidth: 86 }}>
                         <span style={{
                           fontSize: 'var(--text-xs)', fontWeight: 700, padding: '2px 8px', borderRadius: 'var(--radius-full)',
-                          background: o.status === 'Aguardando' ? 'var(--color-warning-highlight, var(--color-surface-offset))' : o.status === 'Pronto' ? 'var(--color-primary-highlight)' : 'var(--color-success-highlight)',
-                          color: o.status === 'Aguardando' ? 'var(--color-warning)' : o.status === 'Pronto' ? 'var(--color-primary)' : 'var(--color-success)'
+                          background: o.status === 'Aguardando' ? 'var(--color-warning-highlight, var(--color-surface-offset))' : o.status === 'Em Produção' ? 'var(--status-producao-hl)' : o.status === 'Pronto' ? 'var(--color-primary-highlight)' : 'var(--color-success-highlight)',
+                          color: o.status === 'Aguardando' ? 'var(--color-warning)' : o.status === 'Em Produção' ? 'var(--status-producao)' : o.status === 'Pronto' ? 'var(--color-primary)' : 'var(--color-success)'
                         }}>{o.status}</span>
                         {sel && <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" strokeWidth="2.5"><path d="M20 6L9 17l-5-5"/></svg>}
                       </div>
@@ -602,7 +617,7 @@ function ModalEmitirLegacy({ onClose, onSuccess }) {
         <div style={{ padding: 'var(--space-5) var(--space-6)', borderBottom: '1px solid var(--color-divider)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, margin: 0 }}>Emitir NF-e</h2>
-            <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>Selecione uma OS com status Aguardando, Pronto ou Entregue</p>
+            <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>Selecione uma OS com status {STATUS_NFE_EMISSAO_LABEL}</p>
           </div>
           <button className="btn btn-icon btn-ghost" onClick={onClose} aria-label="Fechar">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
@@ -657,8 +672,8 @@ function ModalEmitirLegacy({ onClose, onSuccess }) {
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, minWidth: 86 }}>
                     <span style={{
                       fontSize: 'var(--text-xs)', fontWeight: 700, padding: '2px 8px', borderRadius: 'var(--radius-full)',
-                      background: o.status === 'Aguardando' ? 'var(--color-warning-highlight, var(--color-surface-offset))' : o.status === 'Pronto' ? 'var(--color-primary-highlight)' : 'var(--color-success-highlight)',
-                      color: o.status === 'Aguardando' ? 'var(--color-warning)' : o.status === 'Pronto' ? 'var(--color-primary)' : 'var(--color-success)'
+                      background: o.status === 'Aguardando' ? 'var(--color-warning-highlight, var(--color-surface-offset))' : o.status === 'Em Produção' ? 'var(--status-producao-hl)' : o.status === 'Pronto' ? 'var(--color-primary-highlight)' : 'var(--color-success-highlight)',
+                      color: o.status === 'Aguardando' ? 'var(--color-warning)' : o.status === 'Em Produção' ? 'var(--status-producao)' : o.status === 'Pronto' ? 'var(--color-primary)' : 'var(--color-success)'
                     }}>{o.status}</span>
                     {sel && <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" strokeWidth="2.5"><path d="M20 6L9 17l-5-5"/></svg>}
                   </div>

@@ -51,7 +51,7 @@ describe('nfeEmissionRules', () => {
     expect(resultado.erro).toContain('NCM');
   });
 
-  it('serializes NF-e preview items with fiscal defaults and commercial totals', () => {
+  it('serializes NF-e preview items with store fiscal defaults and commercial totals', () => {
     const item = serializarItemPreviaNFe({
       id: 7,
       produto_id: 2,
@@ -67,9 +67,9 @@ describe('nfeEmissionRules', () => {
       quantidade: 3,
       preco_unitario: 20,
       subtotal: 60,
-      ncm: '49119900',
-      cfop: '5102',
-      csosn: '400',
+      ncm: '44151000',
+      cfop: '5101',
+      csosn: '102',
       origem_fiscal: '0',
       unidade: 'UN',
     });
