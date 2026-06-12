@@ -102,9 +102,9 @@ function serializarItemPreviaNFe(item) {
     quantidade,
     preco_unitario: precoUnitario,
     subtotal: moeda(quantidade * precoUnitario),
-    ncm: onlyDigits(valorFiscal(item, 'ncm', '49119900')).padStart(8, '0').slice(-8),
-    cfop: onlyDigits(valorFiscal(item, 'cfop', '5102')).slice(0, 4) || '5102',
-    csosn: onlyDigits(valorFiscal(item, 'csosn', '400')).padStart(3, '0').slice(-3),
+    ncm: onlyDigits(valorFiscal(item, 'ncm', '44151000')).padStart(8, '0').slice(-8),
+    cfop: onlyDigits(valorFiscal(item, 'cfop', '5101')).slice(0, 4) || '5101',
+    csosn: onlyDigits(valorFiscal(item, 'csosn', '102')).padStart(3, '0').slice(-3),
     origem_fiscal: onlyDigits(valorFiscal(item, 'origem_fiscal', '0')).slice(0, 1) || '0',
     unidade: valorFiscal(item, 'unidade', 'UN').trim().toUpperCase().slice(0, 6) || 'UN',
   };

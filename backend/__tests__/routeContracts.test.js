@@ -379,6 +379,30 @@ describe('security configuration contracts', () => {
     expect(source).toMatch(/return res\.status\(400\)\.json\(\{\s*erro:\s*itensComOverrides\.erro\s*\}\)/);
   });
 
+  it('allows NF-e workflow for orders in production status', () => {
+    const backendSource = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+    const notasSource = fs.readFileSync(new URL('../../frontend/src/pages/NotasFiscais.jsx', import.meta.url), 'utf8');
+    const detalheSource = fs.readFileSync(new URL('../../frontend/src/pages/OrdemDetalhe.jsx', import.meta.url), 'utf8');
+
+    const eligibleStatuses = /STATUS_NFE_EMISSAO\s*=\s*\['Aguardando',\s*'Em Produção',\s*'Pronto',\s*'Entregue'\]/;
+    expect(backendSource).toMatch(eligibleStatuses);
+    expect(notasSource).toMatch(eligibleStatuses);
+    expect(detalheSource).toMatch(eligibleStatuses);
+    expect(notasSource).toMatch(/Aguardando, Em Produção, Pronto ou Entregue/);
+  });
+
+  it('offers common store NCM suggestions while keeping manual entry in NF-e review', () => {
+    const source = fs.readFileSync(new URL('../../frontend/src/pages/NotasFiscais.jsx', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/NCM_SUGESTOES_NFE/);
+    expect(source).toMatch(/MDF[\s\S]+44151000/);
+    expect(source).toMatch(/Acrilico[\s\S]+39269090/);
+    expect(source).toMatch(/Molduras[\s\S]+44151000/);
+    expect(source).toMatch(/<datalist/);
+    expect(source).toMatch(/const ncmListId = field === 'ncm' \? `ncm-sugestoes-\$\{index\}` : undefined/);
+    expect(source).toMatch(/list=\{ncmListId\}/);
+  });
+
   it('uses editable customer data in NF-e emission and persists it only after authorization', () => {
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
 
