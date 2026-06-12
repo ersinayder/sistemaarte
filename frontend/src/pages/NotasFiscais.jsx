@@ -83,23 +83,47 @@ function StatusBadge({ status }) {
 }
 
 function CampoFiscal({ item, index, field, width, onChange }) {
-  const ncmListId = field === 'ncm' ? `ncm-sugestoes-${index}` : undefined
   return (
     <td style={{ padding: 'var(--space-2) var(--space-2)' }}>
       <input
         className="form-input"
-        list={ncmListId}
         value={item[field] || ''}
         onChange={e => onChange(index, field, e.target.value)}
         style={{ width, height: 34, padding: '6px 8px', fontSize: 'var(--text-xs)', fontVariantNumeric: 'tabular-nums' }}
       />
-      {field === 'ncm' && (
-        <datalist id={ncmListId}>
+    </td>
+  )
+}
+
+function CampoNCM({ item, index, onChange }) {
+  return (
+    <td style={{ padding: 'var(--space-2) var(--space-2)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <input
+          className="form-input"
+          value={item.ncm || ''}
+          onChange={e => onChange(index, 'ncm', e.target.value)}
+          placeholder="NCM"
+          style={{ width: 88, height: 34, padding: '6px 8px', fontSize: 'var(--text-xs)', fontVariantNumeric: 'tabular-nums' }}
+        />
+        <select
+          className="form-input"
+          value=""
+          aria-label="Selecionar NCM comum"
+          title="Selecionar NCM comum"
+          onChange={e => {
+            if (e.target.value) onChange(index, 'ncm', e.target.value)
+          }}
+          style={{ width: 34, height: 34, padding: '4px 2px', fontSize: 'var(--text-xs)', cursor: 'pointer' }}
+        >
+          <option value=""></option>
           {NCM_SUGESTOES_NFE.map(opcao => (
-            <option key={`${opcao.label}-${opcao.value}`} value={opcao.value} label={`${opcao.label} - ${opcao.value}`} />
+            <option key={`${opcao.label}-${opcao.value}`} value={opcao.value}>
+              {opcao.label} - {opcao.value}
+            </option>
           ))}
-        </datalist>
-      )}
+        </select>
+      </div>
     </td>
   )
 }
@@ -516,7 +540,7 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
                             <td style={{ padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap' }}>{item.quantidade}</td>
                             <td style={{ padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap' }}>{fmt(item.preco_unitario)}</td>
                             <td style={{ padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-sm)', fontWeight: 700, whiteSpace: 'nowrap' }}>{fmt(item.subtotal)}</td>
-                            <CampoFiscal item={item} index={index} field="ncm" width={92} onChange={atualizarItemFiscal} />
+                            <CampoNCM item={item} index={index} onChange={atualizarItemFiscal} />
                             <CampoFiscal item={item} index={index} field="cfop" width={70} onChange={atualizarItemFiscal} />
                             <CampoFiscal item={item} index={index} field="csosn" width={70} onChange={atualizarItemFiscal} />
                             <CampoFiscal item={item} index={index} field="origem_fiscal" width={58} onChange={atualizarItemFiscal} />

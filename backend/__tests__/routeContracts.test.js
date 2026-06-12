@@ -398,9 +398,11 @@ describe('security configuration contracts', () => {
     expect(source).toMatch(/MDF[\s\S]+44151000/);
     expect(source).toMatch(/Acrilico[\s\S]+39269090/);
     expect(source).toMatch(/Molduras[\s\S]+44151000/);
-    expect(source).toMatch(/<datalist/);
-    expect(source).toMatch(/const ncmListId = field === 'ncm' \? `ncm-sugestoes-\$\{index\}` : undefined/);
-    expect(source).toMatch(/list=\{ncmListId\}/);
+    expect(source).toMatch(/function CampoNCM/);
+    expect(source).toMatch(/value=""[\s\S]+Selecionar NCM comum/);
+    expect(source).toMatch(/onChange=\{e => \{[\s\S]+if \(e\.target\.value\) onChange\(index, 'ncm', e\.target\.value\)/);
+    expect(source).toMatch(/<CampoNCM item=\{item\} index=\{index\} onChange=\{atualizarItemFiscal\} \/>/);
+    expect(source).not.toMatch(/<datalist/);
   });
 
   it('uses editable customer data in NF-e emission and persists it only after authorization', () => {
