@@ -1,4 +1,9 @@
-const { buildSocketOptions, getDisconnectStatusCode, resolveRecipientJid } = require('../src/baileysClient');
+const {
+  buildSocketOptions,
+  createRecentMessageStore,
+  getDisconnectStatusCode,
+  resolveRecipientJid,
+} = require('../src/baileysClient');
 
 describe('getDisconnectStatusCode', () => {
   it('reads Baileys Boom status code when available', () => {
@@ -12,13 +17,15 @@ describe('getDisconnectStatusCode', () => {
 });
 
 describe('buildSocketOptions', () => {
-  it('disables expensive startup sync for a send-only local service', () => {
+  it('keeps Baileys init queries enabled and exposes getMessage for retry handling', () => {
     const logger = { level: 'warn' };
     const auth = { creds: {}, keys: {} };
+    const getMessage = vi.fn();
     const options = buildSocketOptions({
       version: [2, 3000, 0],
       auth,
       logger,
+      getMessage,
     });
 
     expect(options).toMatchObject({
@@ -27,12 +34,36 @@ describe('buildSocketOptions', () => {
       logger,
       printQRInTerminal: false,
       syncFullHistory: false,
-      fireInitQueries: false,
+      fireInitQueries: true,
       markOnlineOnConnect: false,
       connectTimeoutMs: 60000,
+      getMessage,
     });
     expect(options.defaultQueryTimeoutMs).toBeUndefined();
-    expect(options.shouldSyncHistoryMessage()).toBe(false);
+    expect(options.shouldSyncHistoryMessage).toBeUndefined();
+  });
+});
+
+describe('createRecentMessageStore', () => {
+  it('keeps sent message content available for Baileys retry requests', async () => {
+    const store = createRecentMessageStore({ ttlMs: 60000, maxSize: 2 });
+    const message = { conversation: 'Oi' };
+
+    store.save({ key: { id: 'MSG1', remoteJid: '5531999990000@s.whatsapp.net' }, message });
+
+    await expect(store.getMessage({ id: 'MSG1' })).resolves.toBe(message);
+  });
+
+  it('drops old sent messages beyond the configured cache size', async () => {
+    const store = createRecentMessageStore({ ttlMs: 60000, maxSize: 2 });
+
+    store.save({ key: { id: 'MSG1' }, message: { conversation: 'um' } });
+    store.save({ key: { id: 'MSG2' }, message: { conversation: 'dois' } });
+    store.save({ key: { id: 'MSG3' }, message: { conversation: 'tres' } });
+
+    await expect(store.getMessage({ id: 'MSG1' })).resolves.toBeUndefined();
+    await expect(store.getMessage({ id: 'MSG2' })).resolves.toEqual({ conversation: 'dois' });
+    await expect(store.getMessage({ id: 'MSG3' })).resolves.toEqual({ conversation: 'tres' });
   });
 });
 
