@@ -428,7 +428,7 @@ describe('security configuration contracts', () => {
     expect(source).toMatch(/function devolverNumeroNFeRejeitada/);
     expect(source).toMatch(/function rejeicaoPermiteDevolverNumeroNFe/);
     expect(source).toMatch(/devolverNumeroNFeRejeitada\(db,\s*serie,\s*numero\)/);
-    expect(source).toMatch(/rejeicaoPermiteDevolverNumeroNFe\(sefazInfo\.cstat\)/);
+    expect(source).toMatch(/deveDevolverNumeroNFeAposFalhaAutorizacao\(sefazInfo\)\s*&&\s*rejeicaoPermiteDevolverNumeroNFe\(sefazInfo\.cstat\)/);
     expect(source).toMatch(/rejeicaoPermiteDevolverNumeroNFe\(cStat\)/);
     expect(source).toMatch(/Nao reutilizar numeros que a SEFAZ declarou como duplicados, denegados ou inutilizados/);
     expect(source).toMatch(/return res\.status\(sefazInfo\.tipo === 'rejeicao' \|\| sefazInfo\.tipo === 'validacao_xml' \? 422 : 504\)/);

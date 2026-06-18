@@ -475,6 +475,14 @@ function getSefazErrorInfo(err) {
   };
 }
 
+function deveDevolverNumeroNFeAposFalhaAutorizacao(info = {}) {
+  const tipo = String(info.tipo || '').trim();
+  const cstat = String(info.cstat || info.cStat || '').trim();
+  const falhaCorrigivelSemAutorizacao = tipo === 'rejeicao' || tipo === 'validacao_xml';
+  const numeroDeclaradoUsadoPelaSefaz = ['204', '205', '206', '302', '303'].includes(cstat);
+  return falhaCorrigivelSemAutorizacao && !numeroDeclaradoUsadoPelaSefaz;
+}
+
 function extrairItemRejeicaoSefaz(motivo) {
   const texto = String(motivo || '');
   const match = texto.match(/\[?\s*nItem\s*:?\s*(\d+)\s*\]?/i)
@@ -612,6 +620,7 @@ module.exports = {
   isSefazCommunicationError,
   getSefazCommunicationMessage,
   getSefazErrorInfo,
+  deveDevolverNumeroNFeAposFalhaAutorizacao,
   formatarRejeicaoSefaz,
   getNfeSoapActionForUrl,
   normalizeSefazRequestHeaders,
