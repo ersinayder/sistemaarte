@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import toast from 'react-hot-toast'
-import { Plus, RotateCcw, Trash2 } from 'lucide-react'
+import { FileWarning, Plus, RotateCcw, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import { buscarEnderecoPorCep, maskCep } from '../utils/cep'
+import { useAuth } from '../context/AuthContext'
+import InutilizacaoModal from '../components/nfe/InutilizacaoModal'
 
 const fmt = (v) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v ?? 0)
@@ -1002,6 +1004,7 @@ function ModalCCE({ nfe, onClose, onSuccess }) {
 
 export default function NotasFiscais({ lixeira = false }) {
   const navigate = useNavigate()
+  const { isAdmin } = useAuth() || {}
   const [notas, setNotas]             = useState([])
   const [nfeMeta, setNfeMeta]         = useState({ ambiente: null, autorizadas_homologacao: 0, alvo_homologacao: HOMOLOGACAO_ALVO })
   const [loading, setLoading]         = useState(true)
@@ -1009,6 +1012,7 @@ export default function NotasFiscais({ lixeira = false }) {
   const [detalhe, setDetalhe]         = useState(null)
   const [cancelarNota, setCancelarNota] = useState(null)
   const [cceNota, setCceNota]         = useState(null)
+  const [modalInutilizacao, setModalInutilizacao] = useState(false)
   const [q, setQ]                     = useState('')
   const [filtroStatus, setFiltroStatus] = useState('todos')
 
@@ -1106,9 +1110,16 @@ export default function NotasFiscais({ lixeira = false }) {
             </button>
           ) : (
             <>
-              <button className="btn btn-ghost" onClick={() => navigate('/nfe/lixeira')} style={{ gap: 'var(--space-2)' }}>
-                <Trash2 size={16} /> Lixeira
-              </button>
+              {isAdmin && (
+                <button className="btn btn-ghost" onClick={() => navigate('/nfe/lixeira')} style={{ gap: 'var(--space-2)' }}>
+                  <Trash2 size={16} /> Lixeira
+                </button>
+              )}
+              {isAdmin && (
+                <button className="btn btn-ghost" onClick={() => setModalInutilizacao(true)} style={{ gap: 'var(--space-2)' }}>
+                  <FileWarning size={16} /> Inutilizar numeração
+                </button>
+              )}
               <button className="btn btn-primary" onClick={() => setModalEmitir({})} style={{ gap: 'var(--space-2)' }}>
                 <Plus size={16} /> Emitir NF-e
               </button>
@@ -1271,6 +1282,7 @@ export default function NotasFiscais({ lixeira = false }) {
       {detalhe && <ModalDetalhe nfe={detalhe} onClose={() => setDetalhe(null)} />}
       {cancelarNota && <ModalCancelamento nfe={cancelarNota} onClose={() => setCancelarNota(null)} onSuccess={carregar} />}
       {cceNota && <ModalCCE nfe={cceNota} onClose={() => setCceNota(null)} onSuccess={carregar} />}
+      <InutilizacaoModal open={modalInutilizacao} onClose={() => setModalInutilizacao(false)} onSuccess={carregar} />
     </div>
   )
 }

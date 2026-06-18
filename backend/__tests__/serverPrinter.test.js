@@ -108,6 +108,60 @@ describe('server printer helper', () => {
     expect(result).toEqual({ ok: true, printerName: '\\\\192.168.0.45\\Impressoraloja', copies: 2 });
   });
 
+  it('builds a clear diagnostic package for A5 server printing', async () => {
+    const writeTempHtml = vi.fn(() => 'C:\\Temp\\teste-impressao-a5.html');
+    const runPowerShell = vi.fn(() => Promise.resolve({ stdout: 'sent', stderr: '' }));
+
+    const result = await printer.diagnosePrintHtml({
+      html: '<html><body>A5</body></html>',
+      jobName: 'diagnostico-impressao-a5',
+      copies: 1,
+      env: { ORDEM_PRINTER_NAME: 'Canon Loja' },
+      printerConfig: { printerName: 'Impressoraloja', printerIp: '192.168.0.45' },
+      platform: 'win32',
+      writeTempHtml,
+      runPowerShell,
+      scheduleCleanup: vi.fn(),
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.printerName).toBe('\\\\192.168.0.45\\Impressoraloja');
+    expect(result.diagnostics.html.path).toBe('C:\\Temp\\teste-impressao-a5.html');
+    expect(result.diagnostics.html.bytes).toBe(Buffer.byteLength('<html><body>A5</body></html>', 'utf8'));
+    expect(result.diagnostics.destination.resolved).toBe('\\\\192.168.0.45\\Impressoraloja');
+    expect(result.diagnostics.a5.mediaSize.name).toBe('ISO_A5');
+    expect(result.diagnostics.a5.mediaSize.widthMicrons).toBe(148000);
+    expect(result.diagnostics.a5.mediaSize.heightMicrons).toBe(210000);
+    expect(result.diagnostics.a5.scaling).toBe(92);
+    expect(result.diagnostics.chrome.temporaryProfilePrefix).toBe('sistema-arte-print-browser-');
+    expect(result.diagnostics.chrome.kioskPrinting).toBe(true);
+    expect(result.diagnostics.powerShell.stdout).toBe('sent');
+    expect(result.diagnostics.powerShell.error).toBeNull();
+  });
+
+  it('keeps PowerShell failure details in the diagnostic package', async () => {
+    const error = new Error('Impressora nao encontrada no servidor: Loja A5');
+    error.stdout = 'before failure';
+    error.stderr = 'missing printer';
+
+    const result = await printer.diagnosePrintHtml({
+      html: '<html>OS</html>',
+      jobName: 'diagnostico-impressao-a5',
+      copies: 1,
+      printerConfig: { printerName: 'Loja A5' },
+      platform: 'win32',
+      writeTempHtml: vi.fn(() => 'C:\\Temp\\erro.html'),
+      runPowerShell: vi.fn(() => Promise.reject(error)),
+      scheduleCleanup: vi.fn(),
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('Impressora nao encontrada no servidor: Loja A5');
+    expect(result.diagnostics.powerShell.stdout).toBe('before failure');
+    expect(result.diagnostics.powerShell.stderr).toBe('missing printer');
+    expect(result.diagnostics.powerShell.error).toBe('Impressora nao encontrada no servidor: Loja A5');
+  });
+
   it('refuses direct server printing outside Windows', async () => {
     await expect(printer.printHtml({
       html: '<html>OS</html>',

@@ -219,14 +219,14 @@ const PADROES_REJEICAO_SEFAZ = [
     mensagem: 'Erro no CSOSN/CST do item. Revise a tributacao do produto antes de reemitir.',
   },
   {
-    campo: 'CPF/CNPJ do cliente',
-    regex: /\bcpf\b|\bcnpj\b|\bdestinatario\b/i,
-    mensagem: 'Erro nos dados do cliente. Corrija CPF/CNPJ, IE e cadastro do destinatario antes de reemitir.',
-  },
-  {
     campo: 'IE do cliente',
     regex: /inscricao estadual|\bie\b/i,
     mensagem: 'Erro na Inscricao Estadual. Corrija a IE do cliente ou do emitente conforme indicado pela SEFAZ.',
+  },
+  {
+    campo: 'CPF/CNPJ do cliente',
+    regex: /\bcpf\b|\bcnpj\b|\bdestinatario\b/i,
+    mensagem: 'Erro nos dados do cliente. Corrija CPF/CNPJ, IE e cadastro do destinatario antes de reemitir.',
   },
   {
     campo: 'Endereco do cliente',
@@ -250,9 +250,7 @@ const PADROES_REJEICAO_SEFAZ = [
   },
 ];
 
-async function getNFEWizard() {
-  if (_wizard) return _wizard;
-
+async function createNFEWizard() {
   const certConfig = getCertificadoConfig();
   const certPath = certConfig.pathCertificado;
   const certPass = certConfig.senhaCertificado;
@@ -311,9 +309,14 @@ async function getNFEWizard() {
 
   configureSefazHttpClient(wizard);
 
-  _wizard = wizard;
-  console.log('[NF-e] NFEWizard singleton criado e ambiente carregado. tpAmb=',
+  console.log('[NF-e] NFEWizard criado e ambiente carregado. tpAmb=',
     tpAmb === 1 ? '1(PROD)' : '2(HOMOL)');
+  return wizard;
+}
+
+async function getNFEWizard() {
+  if (_wizard) return _wizard;
+  _wizard = await createNFEWizard();
   return _wizard;
 }
 
@@ -440,6 +443,20 @@ function getSefazErrorInfo(err) {
       mensagem: httpStatus === 404
         ? 'SEFAZ retornou HTTP 404 no webservice de autorizacao. Isso normalmente indica problema de endpoint, roteamento ou headers SOAP; confira o status do servico e tente novamente.'
         : SEFAZ_ENDPOINT_MESSAGE,
+    };
+  }
+
+  const rejeicaoMatch = rawMessage.match(/rejei[cç][aã]o\s*:?\s*(.+)$/i);
+  if (rejeicaoMatch) {
+    const motivo = rejeicaoMatch[1] || rawMessage;
+    const rejeicao = formatarRejeicaoSefaz({ cStat: 'rejeicao', xMotivo: motivo, contexto: 'autorizacao' });
+    return {
+      tipo: 'rejeicao',
+      cstat: 'rejeicao',
+      mensagem: rejeicao.mensagem,
+      campo: rejeicao.campo,
+      item: rejeicao.item,
+      motivoOriginal: rejeicao.motivoOriginal,
     };
   }
 
@@ -588,6 +605,7 @@ function resetNFEWizard() {
 }
 
 module.exports = {
+  createNFEWizard,
   getNFEWizard,
   resetNFEWizard,
   callSEFAZ,

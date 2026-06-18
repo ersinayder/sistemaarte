@@ -33,7 +33,7 @@ const {
   statusImpressaoConfig,
 } = require("../domain/impressaoConfigRules");
 const { getImpressaoConfig } = require("../utils/impressaoConfig");
-const { printHtml } = require("../utils/print/serverPrinter");
+const { diagnosePrintHtml, printHtml } = require("../utils/print/serverPrinter");
 const { readBackupStatus } = require("../utils/backupStatus");
 const pkg = require("../package.json");
 
@@ -427,6 +427,50 @@ router.post("/impressao/teste", auth(["admin"]), async (_req, res, next) => {
       detail: e.message,
     });
   }
+});
+
+router.post("/impressao/diagnostico", auth(["admin"]), async (_req, res, next) => {
+  try {
+    const impressao = getImpressaoConfig();
+    if (!impressao.directPrintEnabled) {
+      return res.status(400).json({
+        error: "Ative a impressao direta no servidor para diagnosticar a impressora do servidor.",
+      });
+    }
+    const validacao = validarImpressaoConfig(impressao);
+    if (!validacao.ok) {
+      return res.status(400).json({
+        error: "Verifique a configuracao de impressao",
+        errors: validacao.errors,
+      });
+    }
+    if (impressao.status?.status !== "OK") {
+      return res.status(400).json({
+        error: "Configure a impressora antes de executar o diagnostico",
+        errors: { printerName: "Nome da impressora e obrigatorio" },
+      });
+    }
+
+    const html = renderTesteImpressaoHtml(impressao);
+    const result = await diagnosePrintHtml({
+      html,
+      jobName: "diagnostico-impressao-a5",
+      copies: 1,
+      printerConfig: impressao,
+    });
+
+    res.json({
+      ok: result.ok,
+      message: result.ok
+        ? "Diagnostico A5 enviado e pacote gerado."
+        : "Diagnostico A5 gerado com erro no envio.",
+      printerName: result.printerName,
+      copies: result.copies,
+      html,
+      diagnostics: result.diagnostics,
+      error: result.error || null,
+    });
+  } catch (e) { next(e); }
 });
 
 router.put("/whatsapp", auth(["admin"]), (req, res, next) => {

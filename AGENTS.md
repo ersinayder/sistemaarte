@@ -308,6 +308,7 @@ Tabelas principais criadas/geridas em `backend/database.js`:
 - `nfe_sequencias`
 - `nfe_autxml`
 - `nfe_eventos`
+- `nfe_inutilizacoes`
 - `whatsapp_config`
 - `whatsapp_avisos`
 
@@ -317,6 +318,31 @@ Regras de migration:
 - Usar `ALTER TABLE ADD COLUMN` no array `migrations[]`.
 - Para tabelas novas, usar `CREATE TABLE IF NOT EXISTS`.
 - Banco real (`backend/data/oficina.db`) e XMLs fiscais nunca entram no git.
+
+### NF-e - inutilizacao manual segura
+
+Implementada para uso administrativo quando houver quebra de numeracao de NF-e sem nota autorizada naquele numero.
+
+- Tela: `/nfe`, botao `Inutilizar numeracao`, visivel somente para `admin`.
+- Endpoints admin-only:
+  - `GET /api/nfe/inutilizacoes/contexto`
+  - `GET /api/nfe/inutilizacoes`
+  - `POST /api/nfe/inutilizacoes`
+  - `GET /api/nfe/inutilizacoes/:id/xml/:tipo`
+- Tabela: `nfe_inutilizacoes`.
+- Status locais:
+  - `processando`: reserva local antes da chamada SEFAZ.
+  - `autorizado`: SEFAZ retornou `cStat=102`.
+  - `rejeitado`: resposta fiscal definitiva sem autorizacao.
+  - `incerto`: timeout, rede ou resposta incompleta; nao reenviar cegamente.
+  - `falha_local`: falha comprovadamente anterior a transmissao.
+- A operacao exige confirmacao textual recalculada no backend (`INUTILIZAR 280` ou `INUTILIZAR 280-285`) e chave idempotente.
+- Nao confundir:
+  - Inutilizacao: numero nunca usado e nao sera usado.
+  - Cancelamento: desfaz NF-e autorizada dentro do prazo legal.
+  - Rejeicao: tentativa nao autorizada; pode ou nao ter consumido sequencia local conforme o fluxo.
+- XML de envio e retorno fica em banco e disco (`backend/data/nfe_xmls/inut-...xml`).
+- Nunca transmitir em producao por script automatizado. Validar primeiro em homologacao e fazer a producao pela UI com confirmacao explicita.
 
 ### Impressao e documentos
 
