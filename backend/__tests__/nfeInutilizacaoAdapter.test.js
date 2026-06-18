@@ -76,4 +76,46 @@ describe('nfe inutilizacao adapter', () => {
       xmlRetorno: '<soap><retInutNFe /></soap>',
     });
   });
+
+  it('transmite mesmo quando a instancia da lib nao expoe interceptors do axios', async () => {
+    const originalAssinar = vi.fn((xml) => `<assinado>${xml}</assinado>`);
+    const wizard = {
+      nfeWizardService: {
+        xmlBuilder: { assinarXML: originalAssinar },
+        axios: {},
+      },
+      NFE_Inutilizacao: vi.fn(async () => {
+        wizard.nfeWizardService.xmlBuilder.assinarXML('<inutNFe />', 'infInut');
+        return {
+          cStat: '102',
+          xMotivo: 'Inutilizacao homologada',
+          nProt: '131260000000002',
+          xml: '<retInutNFe />',
+        };
+      }),
+    };
+
+    const result = await transmitirInutilizacaoNFe(
+      { cUF: 31, CNPJ: '07500718000196', ano: '26', mod: '55', serie: '1', nNFIni: '280', nNFFin: '280', xJust: 'Justificativa fiscal valida' },
+      { criarWizard: async () => wizard }
+    );
+
+    expect(wizard.NFE_Inutilizacao).toHaveBeenCalledOnce();
+    expect(result).toMatchObject({
+      cStat: '102',
+      nProt: '131260000000002',
+      xmlEnvio: '<assinado><inutNFe /></assinado>',
+      xmlRetorno: '<retInutNFe />',
+    });
+    expect(wizard.nfeWizardService.xmlBuilder.assinarXML).toBe(originalAssinar);
+  });
+
+  it('classifica ausencia do metodo fiscal como falha local antes da transmissao', async () => {
+    await expect(transmitirInutilizacaoNFe(
+      { cUF: 31, CNPJ: '07500718000196', ano: '26', mod: '55', serie: '1', nNFIni: '280', nNFFin: '280', xJust: 'Justificativa fiscal valida' },
+      { criarWizard: async () => ({ nfeWizardService: {} }) }
+    )).rejects.toMatchObject({
+      code: 'falha_local_pre_transmissao',
+    });
+  });
 });
