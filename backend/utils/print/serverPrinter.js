@@ -8,6 +8,32 @@ const DEFAULT_ORDEM_PRINTER = '\\\\ARTESERVER\\Impressoraloja';
 const PRINT_TIMEOUT_MS = 45000;
 const DEFAULT_PRINT_SETTLE_MS = 1500;
 const TEMP_DIR = path.join(os.tmpdir(), 'sistema-arte-print');
+const PRINT_BROWSER_PROFILE_PREFIX = 'sistema-arte-print-browser-';
+const BROWSER_CANDIDATES = [
+  '$env:ProgramFiles\\Google\\Chrome\\Application\\chrome.exe',
+  '${env:ProgramFiles(x86)}\\Google\\Chrome\\Application\\chrome.exe',
+  '$env:ProgramFiles\\Microsoft\\Edge\\Application\\msedge.exe',
+  '${env:ProgramFiles(x86)}\\Microsoft\\Edge\\Application\\msedge.exe',
+];
+const A5_MEDIA_SIZE = {
+  customDisplayName: 'A5',
+  widthMicrons: 148000,
+  heightMicrons: 210000,
+  imageableAreaLeftMicrons: 0,
+  imageableAreaRightMicrons: 148000,
+  imageableAreaTopMicrons: 210000,
+  imageableAreaBottomMicrons: 0,
+  name: 'ISO_A5',
+  vendorId: '11',
+};
+const PRINT_PREVIEW_A5 = {
+  marginsType: 1,
+  scalingType: 3,
+  scaling: 92,
+  color: 2,
+  isHeaderFooterEnabled: false,
+  isLandscapeEnabled: false,
+};
 
 function normalizePrintCopies(value = 1) {
   const copies = Number(value ?? 1);
@@ -41,6 +67,42 @@ function normalizePrintSettleMs(value = DEFAULT_PRINT_SETTLE_MS) {
   const ms = Number(value ?? DEFAULT_PRINT_SETTLE_MS);
   if (!Number.isFinite(ms) || ms < DEFAULT_PRINT_SETTLE_MS) return DEFAULT_PRINT_SETTLE_MS;
   return Math.min(Math.round(ms), 15000);
+}
+
+function buildPrintDiagnostics({ html, htmlPath, printerName, copies, settleMs, stdout = '', stderr = '', error = null }) {
+  return {
+    generatedAt: new Date().toISOString(),
+    html: {
+      path: htmlPath || null,
+      bytes: Buffer.byteLength(String(html || ''), 'utf8'),
+    },
+    destination: {
+      resolved: printerName || '',
+    },
+    a5: {
+      paperSize: 'A5',
+      mediaSize: { ...A5_MEDIA_SIZE },
+      marginsType: PRINT_PREVIEW_A5.marginsType,
+      scalingType: PRINT_PREVIEW_A5.scalingType,
+      scaling: PRINT_PREVIEW_A5.scaling,
+      color: PRINT_PREVIEW_A5.color,
+      copies: normalizePrintCopies(copies),
+    },
+    chrome: {
+      browserCandidates: [...BROWSER_CANDIDATES],
+      kioskPrinting: true,
+      temporaryProfile: true,
+      temporaryProfilePrefix: PRINT_BROWSER_PROFILE_PREFIX,
+      stickySettingsEnvironment: 'PRINT_PREVIEW_STICKY_SETTINGS',
+      preferencesPath: 'Default\\Preferences',
+      settleMs: normalizePrintSettleMs(settleMs),
+    },
+    powerShell: {
+      stdout: stdout || '',
+      stderr: stderr || '',
+      error: error ? String(error.message || error) : null,
+    },
+  };
 }
 
 function buildPrintScript({ htmlPath, printerName, copies, settleMs = DEFAULT_PRINT_SETTLE_MS }) {
@@ -147,7 +209,7 @@ $printPreviewSettings = @{
 $appState = $printPreviewSettings | ConvertTo-Json -Compress -Depth 12
 $env:PRINT_PREVIEW_STICKY_SETTINGS = $appState
 $tempRoot = [System.IO.Path]::GetFullPath($env:TEMP).TrimEnd('\\') + '\\'
-$userDataDir = Join-Path $tempRoot ("sistema-arte-print-browser-" + [System.Guid]::NewGuid().ToString("N"))
+$userDataDir = Join-Path $tempRoot ("${PRINT_BROWSER_PROFILE_PREFIX}" + [System.Guid]::NewGuid().ToString("N"))
 $resolvedUserDataDir = [System.IO.Path]::GetFullPath($userDataDir)
 if (-not $resolvedUserDataDir.StartsWith($tempRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
   throw "Perfil temporario de impressao fora da pasta TEMP: $resolvedUserDataDir"
@@ -254,10 +316,75 @@ async function printHtml({
   return { ok: true, printerName, copies: normalizedCopies };
 }
 
+async function diagnosePrintHtml({
+  html,
+  jobName,
+  copies = 1,
+  settleMs = DEFAULT_PRINT_SETTLE_MS,
+  printerConfig = null,
+  env = process.env,
+  platform = process.platform,
+  writeTempHtml: writeTemp = writeTempHtml,
+  runPowerShell: run = runPowerShell,
+  scheduleCleanup: cleanup = scheduleCleanup,
+} = {}) {
+  const normalizedCopies = normalizePrintCopies(copies);
+  const printerName = resolvePrinterName(env, printerConfig);
+  let htmlPath = null;
+
+  try {
+    if (platform !== 'win32') {
+      throw new Error('Impressao direta disponivel apenas no Windows Server.');
+    }
+    if (!html) throw new Error('Documento de impressao vazio.');
+
+    htmlPath = writeTemp(html, jobName);
+    const script = buildPrintScript({ htmlPath, printerName, copies: normalizedCopies, settleMs });
+    const result = await run(script);
+    cleanup(htmlPath);
+
+    return {
+      ok: true,
+      printerName,
+      copies: normalizedCopies,
+      diagnostics: buildPrintDiagnostics({
+        html,
+        htmlPath,
+        printerName,
+        copies: normalizedCopies,
+        settleMs,
+        stdout: result?.stdout,
+        stderr: result?.stderr,
+      }),
+    };
+  } catch (error) {
+    if (htmlPath) cleanup(htmlPath);
+    return {
+      ok: false,
+      error: String(error.message || error),
+      printerName,
+      copies: normalizedCopies,
+      diagnostics: buildPrintDiagnostics({
+        html,
+        htmlPath,
+        printerName,
+        copies: normalizedCopies,
+        settleMs,
+        stdout: error.stdout,
+        stderr: error.stderr,
+        error,
+      }),
+    };
+  }
+}
+
 module.exports = {
+  A5_MEDIA_SIZE,
   DEFAULT_ORDEM_PRINTER,
   DEFAULT_PRINT_SETTLE_MS,
+  buildPrintDiagnostics,
   buildPrintScript,
+  diagnosePrintHtml,
   normalizePrintCopies,
   normalizePrintSettleMs,
   printHtml,

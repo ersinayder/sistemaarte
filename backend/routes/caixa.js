@@ -186,12 +186,28 @@ router.delete("/:id", auth(["admin"]), (req, res, next) => {
   try {
     const old = getOne("SELECT * FROM lancamentos WHERE id=? AND deletedat IS NULL", [req.params.id]);
     if (!old) return res.status(404).json({ error: "Lancamento nao encontrado." });
-    if (old.origem === "entradaos")
-      return res.status(400).json({ error: "A entrada automatica da OS nao pode ser excluida pelo caixa." });
-    run(
-      "UPDATE lancamentos SET deletedat=datetime('now','localtime'), deletedpor=? WHERE id=?",
-      [req.user.id, req.params.id]
-    );
+    if (old.ordemid && old.pago) {
+      const ordemStatus = getOne("SELECT status FROM ordens WHERE id=? AND deletedat IS NULL", [old.ordemid]);
+      const resumo = getResumoFinanceiroOS(old.ordemid);
+      const saldoProjetado = Math.max(0, Math.round((toNumber(resumo?.saldo) + toNumber(old.valor)) * 100) / 100);
+      if (ordemStatus?.status === "Entregue" && saldoProjetado > 0.01) {
+        return res.status(400).json({
+          error: `Nao e possivel excluir pagamento de OS entregue. Reabra a OS ou ajuste o status antes de remover o pagamento.`,
+        });
+      }
+    }
+    transaction(() => {
+      run(
+        "UPDATE lancamentos SET deletedat=datetime('now','localtime'), deletedpor=? WHERE id=?",
+        [req.user.id, req.params.id]
+      );
+      if (old.origem === "entradaos" && old.ordemid) {
+        run(
+          "UPDATE ordens SET valorentrada=0, updatedat=datetime('now','localtime') WHERE id=? AND deletedat IS NULL",
+          [old.ordemid]
+        );
+      }
+    });
     res.json({ ok: true });
   } catch(e) { next(e); }
 });

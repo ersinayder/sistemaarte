@@ -85,6 +85,10 @@ describe('route authorization contracts', () => {
     expect(routeRoles(nfeRouter, 'post', '/emitir/:id')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'post', '/:chave/cce')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'post', '/:chave/cancelar')).toEqual(['admin', 'caixa']);
+    expect(routeRoles(nfeRouter, 'get', '/inutilizacoes/contexto')).toEqual(['admin']);
+    expect(routeRoles(nfeRouter, 'get', '/inutilizacoes')).toEqual(['admin']);
+    expect(routeRoles(nfeRouter, 'post', '/inutilizacoes')).toEqual(['admin']);
+    expect(routeRoles(nfeRouter, 'get', '/inutilizacoes/:id/xml/:tipo')).toEqual(['admin']);
     expect(routeRoles(nfeRouter, 'get', '/lixeira')).toEqual(['admin']);
     expect(routeRoles(nfeRouter, 'delete', '/:id')).toEqual(['admin']);
     expect(routeRoles(nfeRouter, 'post', '/:id/restore')).toEqual(['admin']);
@@ -164,6 +168,32 @@ describe('route persistence contracts', () => {
     expect(caixaSource).toMatch(/origem === "vendaavulsa" \|\| origem === "saldoos"\s*\?\s*"Entrada"/);
     expect(caixaSource).toMatch(/novoOrdemId\s*\?\s*"Entrada"\s*:\s*\(tipo\|\|"Diversos"\)/);
     expect(databaseSource).toMatch(/origem='saldoos' AND tipo != 'Entrada' AND deletedat IS NULL/);
+  });
+
+  it('lets admin remove an accidental OS entry payment from caixa and resets the OS entry value', async () => {
+    const source = fs.readFileSync(new URL('../routes/caixa.js', import.meta.url), 'utf8');
+
+    expect(source).not.toMatch(/A entrada automatica da OS nao pode ser excluida pelo caixa/);
+    expect(source).toMatch(/router\.delete\(["']\/:id["'],\s*auth\(\["admin"\]\)/);
+    expect(source).toMatch(/getResumoFinanceiroOS\(old\.ordemid\)/);
+    expect(source).toMatch(/ordemStatus\?\.status === "Entregue"/);
+    expect(source).toMatch(/Nao e possivel excluir pagamento de OS entregue/);
+    expect(source).toMatch(/transaction\(\(\) => \{/);
+    expect(source).toMatch(/UPDATE lancamentos SET deletedat=datetime\('now','localtime'\), deletedpor=\? WHERE id=\?/);
+    expect(source).toMatch(/old\.origem === "entradaos" && old\.ordemid/);
+    expect(source).toMatch(/UPDATE ordens SET valorentrada=0, updatedat=datetime\('now','localtime'\) WHERE id=\? AND deletedat IS NULL/);
+  });
+
+  it('blocks admin and caixa from delivering an OS with open balance through the generic update route', () => {
+    const source = fs.readFileSync(new URL('../routes/ordens.js', import.meta.url), 'utf8');
+    const adminBranchStart = source.indexOf('const desconto = descontoinput');
+    const transactionStart = source.indexOf('transaction(() => {', adminBranchStart);
+    const adminBranchBeforeSave = source.slice(adminBranchStart, transactionStart);
+
+    expect(adminBranchBeforeSave).toMatch(/ns === 'Entregue'/);
+    expect(adminBranchBeforeSave).toMatch(/getResumoFinanceiroOS\(req\.params\.id\)/);
+    expect(adminBranchBeforeSave).toMatch(/saldoProjetado/);
+    expect(adminBranchBeforeSave).toMatch(/Quite antes de entregar/);
   });
 
   it('keeps atendimento in a wide workspace without the lateral action rail', () => {
@@ -298,10 +328,23 @@ describe('security configuration contracts', () => {
     expect(routeRoles(configuracoesRouter, 'get', '/impressao')).toEqual(['admin']);
     expect(routeRoles(configuracoesRouter, 'put', '/impressao')).toEqual(['admin']);
     expect(routeRoles(configuracoesRouter, 'post', '/impressao/teste')).toEqual(['admin']);
+    expect(routeRoles(configuracoesRouter, 'post', '/impressao/diagnostico')).toEqual(['admin']);
     expect(source).toMatch(/normalizarImpressaoConfig/);
     expect(source).toMatch(/validarImpressaoConfig/);
     expect(source).toMatch(/renderTesteImpressaoHtml/);
     expect(source).toMatch(/printHtml\(\{\s*html,\s*jobName:\s*["']teste-impressao-a5["']/);
+    expect(source).toMatch(/diagnosePrintHtml\(\{\s*html,\s*jobName:\s*["']diagnostico-impressao-a5["']/);
+  });
+
+  it('shows the A5 print diagnostic package in the configuration UI', () => {
+    const configuracoesSource = fs.readFileSync(new URL('../../frontend/src/pages/Configuracoes.jsx', import.meta.url), 'utf8');
+
+    expect(configuracoesSource).toMatch(/\/configuracoes\/impressao\/diagnostico/);
+    expect(configuracoesSource).toMatch(/diagnosticoImpressao/);
+    expect(configuracoesSource).toMatch(/HTML renderizado/);
+    expect(configuracoesSource).toMatch(/Destino resolvido/);
+    expect(configuracoesSource).toMatch(/Capacidades A5/);
+    expect(configuracoesSource).toMatch(/Erro do envio/);
   });
 
   it('keeps whatsapp web status admin-only and starts the queue worker behind an env gate', async () => {
@@ -377,6 +420,32 @@ describe('security configuration contracts', () => {
     expect(source).toMatch(/serializarPreviaEmissaoNFe/);
     expect(source).toMatch(/aplicarOverridesItensNFe\(itensBase,\s*overrides\)/);
     expect(source).toMatch(/return res\.status\(400\)\.json\(\{\s*erro:\s*itensComOverrides\.erro\s*\}\)/);
+  });
+
+  it('returns unused NF-e sequence numbers after clear SEFAZ rejections', () => {
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/function devolverNumeroNFeRejeitada/);
+    expect(source).toMatch(/function rejeicaoPermiteDevolverNumeroNFe/);
+    expect(source).toMatch(/devolverNumeroNFeRejeitada\(db,\s*serie,\s*numero\)/);
+    expect(source).toMatch(/rejeicaoPermiteDevolverNumeroNFe\(sefazInfo\.cstat\)/);
+    expect(source).toMatch(/rejeicaoPermiteDevolverNumeroNFe\(cStat\)/);
+    expect(source).toMatch(/Nao reutilizar numeros que a SEFAZ declarou como duplicados, denegados ou inutilizados/);
+    expect(source).toMatch(/return res\.status\(sefazInfo\.tipo === 'rejeicao' \|\| sefazInfo\.tipo === 'validacao_xml' \? 422 : 504\)/);
+  });
+
+  it('keeps manual NF-e invalidation routes before dynamic key routes', () => {
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+    const serviceSource = fs.readFileSync(new URL('../services/nfeInutilizacaoService.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/createNfeInutilizacaoService/);
+    expect(source).toMatch(/transmitirInutilizacaoNFe/);
+    expect(source).toMatch(/router\.get\(['"]\/inutilizacoes\/contexto['"],\s*auth\(\['admin'\]\)/);
+    expect(source).toMatch(/router\.post\(['"]\/inutilizacoes['"],\s*auth\(\['admin'\]\)/);
+    expect(source.indexOf("'/inutilizacoes/contexto'")).toBeLessThan(source.indexOf("'/:chave/eventos'"));
+    expect(source).toMatch(/res\.setHeader\(['"]Content-Type['"],\s*['"]application\/xml; charset=utf-8['"]\)/);
+    expect(serviceSource).toMatch(/const sharedBusyState/);
+    expect(serviceSource).toMatch(/busyState\.busy/);
   });
 
   it('allows NF-e workflow for orders in production status', () => {

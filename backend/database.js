@@ -316,6 +316,33 @@ CREATE TABLE IF NOT EXISTS nfe_eventos (
 );
 CREATE INDEX IF NOT EXISTS idx_nfe_eventos_chave_tipo ON nfe_eventos(chave, tipo);
 CREATE INDEX IF NOT EXISTS idx_nfe_eventos_ordemid ON nfe_eventos(ordemid);
+CREATE TABLE IF NOT EXISTS nfe_inutilizacoes (
+  id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+  ambiente           INTEGER NOT NULL,
+  ano                INTEGER NOT NULL,
+  modelo             TEXT NOT NULL DEFAULT '55',
+  serie              TEXT NOT NULL,
+  numero_inicial     INTEGER NOT NULL,
+  numero_final       INTEGER NOT NULL,
+  justificativa      TEXT NOT NULL,
+  status             TEXT NOT NULL,
+  protocolo          TEXT,
+  cstat              TEXT,
+  motivo             TEXT,
+  xml_envio          TEXT,
+  xml_retorno        TEXT,
+  idempotency_key    TEXT NOT NULL UNIQUE,
+  solicitado_por     INTEGER,
+  solicitado_em      TEXT NOT NULL,
+  concluido_em       TEXT,
+  createdat          TEXT DEFAULT (datetime('now','localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_nfe_inutilizacoes_contexto
+  ON nfe_inutilizacoes(ambiente, ano, modelo, serie);
+CREATE INDEX IF NOT EXISTS idx_nfe_inutilizacoes_status
+  ON nfe_inutilizacoes(status);
+CREATE INDEX IF NOT EXISTS idx_nfe_inutilizacoes_faixa
+  ON nfe_inutilizacoes(numero_inicial, numero_final);
 `;
 
 let db;
@@ -538,6 +565,33 @@ function initDB() {
     "ALTER TABLE whatsapp_config ADD COLUMN web_api_key TEXT",
     "ALTER TABLE whatsapp_config ADD COLUMN mensagem_pronto TEXT",
     "ALTER TABLE whatsapp_config ADD COLUMN mensagem_confirmacao TEXT",
+    // v18 - inutilizacao manual e auditavel de numeracao NF-e
+    `CREATE TABLE IF NOT EXISTS nfe_inutilizacoes (
+      id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+      ambiente           INTEGER NOT NULL,
+      ano                INTEGER NOT NULL,
+      modelo             TEXT NOT NULL DEFAULT '55',
+      serie              TEXT NOT NULL,
+      numero_inicial     INTEGER NOT NULL,
+      numero_final       INTEGER NOT NULL,
+      justificativa      TEXT NOT NULL,
+      status             TEXT NOT NULL,
+      protocolo          TEXT,
+      cstat              TEXT,
+      motivo             TEXT,
+      xml_envio          TEXT,
+      xml_retorno        TEXT,
+      idempotency_key    TEXT NOT NULL UNIQUE,
+      solicitado_por     INTEGER,
+      solicitado_em      TEXT NOT NULL,
+      concluido_em       TEXT,
+      createdat          TEXT DEFAULT (datetime('now','localtime'))
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_nfe_inutilizacoes_contexto
+      ON nfe_inutilizacoes(ambiente, ano, modelo, serie)`,
+    "CREATE INDEX IF NOT EXISTS idx_nfe_inutilizacoes_status ON nfe_inutilizacoes(status)",
+    `CREATE INDEX IF NOT EXISTS idx_nfe_inutilizacoes_faixa
+      ON nfe_inutilizacoes(numero_inicial, numero_final)`,
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {}

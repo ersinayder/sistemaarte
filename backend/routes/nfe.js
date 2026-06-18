@@ -12,6 +12,8 @@ const {
   formatarRejeicaoSefaz,
 } = require('../utils/nfe');
 const { montarNFe } = require('../domain/nfeRules');
+const { createNfeInutilizacaoService } = require('../services/nfeInutilizacaoService');
+const { transmitirInutilizacaoNFe } = require('../utils/nfeInutilizacao');
 const { renderDanfeHtml } = require('../utils/danfe');
 const { sendPrintHtml } = require('../utils/print/base');
 const {
@@ -38,8 +40,55 @@ const CCE_COND_USO =
 const STATUS_NFE_EMISSAO = ['Aguardando', 'Em Produção', 'Pronto', 'Entregue'];
 const STATUS_NFE_LIXEIRA = ['rejeitado'];
 const NFE_ROUTE_TIMEOUT_MS = 75_000;
+const CODIGO_UF = {
+  AC: 12, AL: 27, AP: 16, AM: 13, BA: 29, CE: 23, DF: 53, ES: 32, GO: 52,
+  MA: 21, MT: 51, MS: 50, MG: 31, PA: 15, PB: 25, PR: 41, PE: 26, PI: 22,
+  RJ: 33, RN: 24, RS: 43, RO: 11, RR: 14, SC: 42, SP: 35, SE: 28, TO: 17,
+};
 
 function pad(n, len) { return String(n).padStart(len, '0'); }
+
+function maskCnpj(cnpj) {
+  const digits = String(cnpj || '').replace(/\D/g, '');
+  if (digits.length !== 14) return '';
+  return `${digits.slice(0, 2)}.***.***/${digits.slice(8, 12)}-${digits.slice(12)}`;
+}
+
+function obterContextoInutilizacao(db = getDB()) {
+  const emitente = getEmitenteConfig();
+  const cnpj = getCnpjEmitente();
+  const serie = getSerieNFe();
+  const ambiente = tpAmbAtual();
+  const uf = String(emitente?.enderEmit?.UF || '').toUpperCase();
+  const row = db.prepare('SELECT ultimo_numero FROM nfe_sequencias WHERE serie = ?').get(serie);
+  const ultimoNumero = Number(row?.ultimo_numero || 0);
+  const anoSugerido = new Date().getFullYear();
+  const cert = getCertificadoConfig();
+
+  return {
+    ambiente,
+    ambienteLabel: ambiente === 1 ? 'Producao' : 'Homologacao',
+    cUF: CODIGO_UF[uf],
+    uf,
+    cnpj,
+    cnpjMascarado: maskCnpj(cnpj),
+    modelo: '55',
+    serie,
+    anoSugerido,
+    ultimoNumero,
+    certificadoConfigurado: Boolean(cert.pathCertificado && cert.senhaCertificado),
+    avisoPrazo: 'A inutilizacao deve ser solicitada ate o decimo dia do mes seguinte a quebra da sequencia.',
+  };
+}
+
+function getInutilizacaoService(db = getDB()) {
+  return createNfeInutilizacaoService({
+    db,
+    obterContexto: () => obterContextoInutilizacao(db),
+    transmitir: transmitirInutilizacaoNFe,
+    classificarErro: getSefazErrorInfo,
+  });
+}
 
 function dhEventoBRT() {
   const now = new Date();
@@ -117,6 +166,31 @@ function proximoNumero(db, serie = '1') {
   const proximo = row.ultimo_numero + 1;
   db.prepare('UPDATE nfe_sequencias SET ultimo_numero = ? WHERE serie = ?').run(proximo, serie);
   return pad(proximo, 9);
+}
+
+function devolverNumeroNFeRejeitada(db, serie, numero) {
+  const numeroInt = Number.parseInt(numero, 10);
+  if (!Number.isInteger(numeroInt) || numeroInt <= 0) return false;
+
+  const result = db.prepare(`
+    UPDATE nfe_sequencias
+    SET ultimo_numero = ?
+    WHERE serie = ? AND ultimo_numero = ?
+  `).run(numeroInt - 1, serie, numeroInt);
+
+  if (result.changes > 0) {
+    console.warn(`[NF-e] Numero ${numero}/${serie} devolvido a sequencia apos rejeicao fiscal.`);
+    return true;
+  }
+
+  console.warn(`[NF-e] Numero ${numero}/${serie} nao devolvido: sequencia ja avancou.`);
+  return false;
+}
+
+function rejeicaoPermiteDevolverNumeroNFe(cStat) {
+  // Nao reutilizar numeros que a SEFAZ declarou como duplicados, denegados ou inutilizados.
+  const codigo = String(cStat || '').trim();
+  return !['204', '205', '206', '302', '303'].includes(codigo);
 }
 
 function buscarOrdemParaNFe(db, osId) {
@@ -357,6 +431,67 @@ router.get('/status-servico', auth(['admin', 'caixa']), async (req, res) => {
       detalhe: err.message,
       contingencia: false,
     });
+  }
+});
+
+// GET /api/nfe/inutilizacoes/contexto
+router.get('/inutilizacoes/contexto', auth(['admin']), (req, res) => {
+  try {
+    const contexto = obterContextoInutilizacao(getDB());
+    const { cnpj, ...publico } = contexto;
+    res.json({ ...publico, cnpj: contexto.cnpjMascarado });
+  } catch (e) {
+    console.error('[NF-e] GET /inutilizacoes/contexto:', e.message);
+    res.status(500).json({ erro: 'Erro ao carregar contexto de inutilizacao NF-e' });
+  }
+});
+
+// GET /api/nfe/inutilizacoes
+router.get('/inutilizacoes', auth(['admin']), (req, res) => {
+  try {
+    const inutilizacoes = getInutilizacaoService(getDB()).listar();
+    res.json({ inutilizacoes, meta: { ambiente: tpAmbAtual() } });
+  } catch (e) {
+    console.error('[NF-e] GET /inutilizacoes:', e.message);
+    res.status(500).json({ erro: 'Erro ao listar inutilizacoes NF-e' });
+  }
+});
+
+// POST /api/nfe/inutilizacoes
+router.post('/inutilizacoes', auth(['admin']), async (req, res) => {
+  try {
+    const result = await getInutilizacaoService(getDB()).solicitar(req.body || {}, req.user?.id || null);
+    res.status(result.httpStatus).json({
+      inutilizacao: result.registro,
+      alertas: result.alertas || [],
+      replayed: Boolean(result.replayed),
+    });
+  } catch (e) {
+    const status = e.status || 500;
+    console.error('[NF-e] POST /inutilizacoes:', e.message);
+    res.status(status).json({
+      erro: e.message || 'Erro ao inutilizar numeracao NF-e',
+      code: e.code || 'erro_inutilizacao',
+    });
+  }
+});
+
+// GET /api/nfe/inutilizacoes/:id/xml/:tipo
+router.get('/inutilizacoes/:id/xml/:tipo', auth(['admin']), (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ erro: 'Inutilizacao invalida.' });
+  }
+
+  try {
+    const result = getInutilizacaoService(getDB()).buscarXml(id, req.params.tipo);
+    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+    res.send(result.xml);
+  } catch (e) {
+    const status = e.status || 500;
+    console.error('[NF-e] GET /inutilizacoes/:id/xml/:tipo:', e.message);
+    res.status(status).json({ erro: e.message || 'Erro ao baixar XML de inutilizacao' });
   }
 });
 
@@ -715,6 +850,9 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
       console.error('[NF-e] Erro na chamada SEFAZ:', sefazErr.message);
       db.prepare(`UPDATE ordens SET nfe_status='rejeitado' WHERE id=? AND nfe_status='emitindo'`).run(osId);
       const sefazInfo = getSefazErrorInfo(sefazErr);
+      if (sefazInfo.tipo === 'rejeicao' && rejeicaoPermiteDevolverNumeroNFe(sefazInfo.cstat)) {
+        devolverNumeroNFeRejeitada(db, serie, numero);
+      }
       registrarEventoFiscal(db, {
         ordemid: os.id,
         chave: os.nfe_chave || `OS-${os.id}`,
@@ -725,7 +863,7 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
       });
       if (!respondido) {
         clearTimeout(guardTimeout); respondido = true;
-        return res.status(sefazInfo.tipo === 'validacao_xml' ? 422 : 504).json({
+        return res.status(sefazInfo.tipo === 'rejeicao' || sefazInfo.tipo === 'validacao_xml' ? 422 : 504).json({
           erro: sefazInfo.mensagem,
           tipo: sefazInfo.tipo,
           detalhe: sefazErr.message,
@@ -761,6 +899,9 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
         || resultado?.retEnviNFe?.protNFe?.infProt?.xMotivo
         || `cStat ${cStat || 'desconhecido'}`;
       const rejeicao = formatarRejeicaoSefaz({ cStat, xMotivo: motivo, contexto: 'autorizacao' });
+      if (rejeicaoPermiteDevolverNumeroNFe(cStat)) {
+        devolverNumeroNFeRejeitada(db, serie, numero);
+      }
       db.prepare(`UPDATE ordens SET nfe_status='rejeitado' WHERE id=?`).run(osId);
       const xmlRejeicao = serializarXmlFiscal(resultado);
       registrarEventoFiscal(db, {

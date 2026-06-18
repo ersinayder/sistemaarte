@@ -498,6 +498,17 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
       if (erroStatus) return res.status(400).json({ error: erroStatus });
     }
 
+    if (ns === 'Entregue') {
+      const resumo = getResumoFinanceiroOS(req.params.id);
+      const entradaOS = getEntradaOS(req.params.id);
+      const entradaAtual = entradaOS ? toNumber(entradaOS.valor) : 0;
+      const recebidoSemEntrada = Math.max(0, toNumber(resumo?.recebido) - entradaAtual);
+      const recebidoProjetado = recebidoSemEntrada + (entrada > 0 ? entrada : 0);
+      const saldoProjetado = Math.max(0, Math.round((total - recebidoProjetado) * 100) / 100);
+      if (saldoProjetado > 0.01)
+        return res.status(400).json({ error: `Saldo aberto: R$ ${saldoProjetado.toFixed(2)}. Quite antes de entregar.` });
+    }
+
     let novoCid = clienteid !== undefined ? (clienteid || null) : old.clienteid;
     const nomeBusca = normalizarNomeClienteBusca(novoCliente);
     if (!novoCid && nomeBusca) {

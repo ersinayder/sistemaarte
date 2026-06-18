@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "vite --port 5173",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run"
   },
   "dependencies": {
     "axios": "^1.6.7",
@@ -21,7 +22,12 @@
     "react-router-dom": "^6.22.3"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@vitejs/plugin-react": "^6.0.2",
-    "vite": "^8.0.13"
+    "jsdom": "^29.1.1",
+    "vite": "^8.0.13",
+    "vitest": "^4.1.9"
   }
 }

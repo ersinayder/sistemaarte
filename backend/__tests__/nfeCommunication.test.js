@@ -27,6 +27,17 @@ describe('nfe communication errors', () => {
     });
   });
 
+  it('trata rejeicao fiscal da autorizacao como erro corrigivel sem parecer timeout', () => {
+    const err = new Error('NFE_Autorizacao: Rejeicao: IE do destinatario nao informada');
+
+    expect(nfeUtils.getSefazErrorInfo(err)).toMatchObject({
+      tipo: 'rejeicao',
+      cstat: 'rejeicao',
+      campo: 'IE do cliente',
+    });
+    expect(nfeUtils.getSefazErrorInfo(err).mensagem).toContain('Inscricao Estadual');
+  });
+
   it('adiciona SOAPAction e action no content-type para autorizacao MG', () => {
     const headers = nfeUtils.normalizeSefazRequestHeaders(
       { 'Content-Type': 'application/soap+xml' },

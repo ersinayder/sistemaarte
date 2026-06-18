@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import QRCode from 'qrcode'
-import { CheckCircle2, MessageSquareText, QrCode as QrCodeIcon, RefreshCw, Smartphone, WifiOff } from 'lucide-react'
+import { CheckCircle2, FileSearch, MessageSquareText, QrCode as QrCodeIcon, RefreshCw, Smartphone, WifiOff } from 'lucide-react'
 import api from '../services/api'
 import { buscarEnderecoPorCep, maskCep } from '../utils/cep'
 
@@ -283,6 +283,10 @@ function formatBytes(bytes) {
   return `${(n / 1024 / 1024).toFixed(1)} MB`
 }
 
+function formatJson(value) {
+  return JSON.stringify(value || {}, null, 2)
+}
+
 export default function Configuracoes() {
   const [activeSection, setActiveSection] = useState('empresa')
   const [empresaForm, setEmpresaForm] = useState(EMPTY_EMPRESA)
@@ -320,6 +324,8 @@ export default function Configuracoes() {
   const [loadingImpressao, setLoadingImpressao] = useState(false)
   const [savingImpressao, setSavingImpressao] = useState(false)
   const [testingImpressao, setTestingImpressao] = useState(false)
+  const [diagnosingImpressao, setDiagnosingImpressao] = useState(false)
+  const [diagnosticoImpressao, setDiagnosticoImpressao] = useState(null)
   const [backupsInfo, setBackupsInfo] = useState(null)
   const [loadingBackups, setLoadingBackups] = useState(false)
   const [runningBackup, setRunningBackup] = useState(false)
@@ -853,6 +859,7 @@ export default function Configuracoes() {
       }
       const res = await api.put('/configuracoes/impressao', payload)
       applyImpressaoResponse(res.data)
+      setDiagnosticoImpressao(null)
       toast.success('Configuracao de impressao salva')
     } catch (e) {
       const fieldErrors = e.response?.data?.errors
@@ -878,6 +885,27 @@ export default function Configuracoes() {
       toast.error(message)
     } finally {
       setTestingImpressao(false)
+    }
+  }
+
+  const diagnosticarImpressao = async () => {
+    setDiagnosingImpressao(true)
+    try {
+      const res = await api.post('/configuracoes/impressao/diagnostico', {}, { skipGlobalErrorToast: true, timeout: 60000 })
+      setDiagnosticoImpressao(res.data || null)
+      if (res.data?.ok) {
+        toast.success(res.data?.message || 'Diagnostico de impressao gerado')
+      } else {
+        toast.error(res.data?.error || res.data?.message || 'Diagnostico gerado com erro no envio')
+      }
+      await loadImpressao()
+    } catch (e) {
+      const fieldErrors = e.response?.data?.errors
+      if (fieldErrors) setImpressaoErrors(fieldErrors)
+      setDiagnosticoImpressao(e.response?.data || null)
+      toast.error(e.response?.data?.error || 'Erro ao gerar diagnostico de impressao')
+    } finally {
+      setDiagnosingImpressao(false)
     }
   }
 
@@ -1265,17 +1293,62 @@ export default function Configuracoes() {
             </div>
 
             <div className="settings-actions">
-              <button type="button" className="btn btn-ghost" onClick={loadImpressao} disabled={savingImpressao || testingImpressao}>Cancelar</button>
-              <button type="button" className="btn btn-secondary" onClick={testarImpressao} disabled={savingImpressao || testingImpressao || !impressaoForm.directPrintEnabled}>
+              <button type="button" className="btn btn-ghost" onClick={loadImpressao} disabled={savingImpressao || testingImpressao || diagnosingImpressao}>Cancelar</button>
+              <button type="button" className="btn btn-secondary" onClick={testarImpressao} disabled={savingImpressao || testingImpressao || diagnosingImpressao || !impressaoForm.directPrintEnabled}>
                 {testingImpressao ? <><div className="spinner" style={{ width: 14, height: 14 }} /> Enviando...</> : 'Testar A5 colorido'}
               </button>
-              <button type="submit" className="btn btn-primary" disabled={savingImpressao || testingImpressao}>
+              <button type="button" className="btn btn-secondary" onClick={diagnosticarImpressao} disabled={savingImpressao || testingImpressao || diagnosingImpressao || !impressaoForm.directPrintEnabled}>
+                {diagnosingImpressao ? <><div className="spinner" style={{ width: 14, height: 14 }} /> Gerando...</> : <><FileSearch size={16} /> Diagnosticar A5</>}
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={savingImpressao || testingImpressao || diagnosingImpressao}>
                 <SavingLabel saving={savingImpressao} idle="Salvar impressao" />
               </button>
             </div>
           </>
         )}
       </form>
+
+      {diagnosticoImpressao && (
+        <div className="card card-pad settings-diagnostic-card">
+          <div className="settings-section-head">
+            <div>
+              <h2>Pacote de diagnostico A5</h2>
+              <p className="text-muted">Resultado da ultima tentativa de impressao direta no servidor.</p>
+            </div>
+            <span className={`badge ${diagnosticoImpressao.ok ? 'badge-success' : 'badge-error'}`}>
+              {diagnosticoImpressao.ok ? 'Enviado' : 'Com erro'}
+            </span>
+          </div>
+
+          <div className="settings-info-grid">
+            <InfoRow label="Destino resolvido" value={diagnosticoImpressao.printerName || diagnosticoImpressao.diagnostics?.destination?.resolved} />
+            <InfoRow label="Copias" value={diagnosticoImpressao.copies} />
+            <InfoRow label="Papel aplicado" value={diagnosticoImpressao.diagnostics?.a5?.mediaSize?.name || 'A5'} />
+            <InfoRow label="Escala Chrome" value={diagnosticoImpressao.diagnostics?.a5?.scaling ? `${diagnosticoImpressao.diagnostics.a5.scaling}%` : '-'} />
+            <InfoRow label="Perfil temporario" value={diagnosticoImpressao.diagnostics?.chrome?.temporaryProfilePrefix} />
+            <InfoRow label="Erro do envio" value={diagnosticoImpressao.error || diagnosticoImpressao.diagnostics?.powerShell?.error || 'Nenhum'} />
+          </div>
+
+          <div className="settings-diagnostic-grid">
+            <section className="settings-diagnostic-block">
+              <h3>HTML renderizado</h3>
+              <pre>{diagnosticoImpressao.html || '-'}</pre>
+            </section>
+            <section className="settings-diagnostic-block">
+              <h3>Capacidades A5</h3>
+              <pre>{formatJson(diagnosticoImpressao.diagnostics?.a5)}</pre>
+            </section>
+            <section className="settings-diagnostic-block">
+              <h3>Chrome e perfil temporario</h3>
+              <pre>{formatJson(diagnosticoImpressao.diagnostics?.chrome)}</pre>
+            </section>
+            <section className="settings-diagnostic-block">
+              <h3>PowerShell</h3>
+              <pre>{formatJson(diagnosticoImpressao.diagnostics?.powerShell)}</pre>
+            </section>
+          </div>
+        </div>
+      )}
 
       <div className="settings-planned-grid">
         <div className="settings-planned-item">

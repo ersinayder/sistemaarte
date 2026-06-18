@@ -25,7 +25,8 @@
   },
   "overrides": {
     "@nfewizard/shared": "1.1.0",
-    "@nfewizard/types": "1.0.4"
+    "@nfewizard/types": "1.0.4",
+    "nodemailer": "9.0.1"
   },
   "devDependencies": {
     "vitest": "^4.1.6"
