@@ -194,6 +194,36 @@ describe('nfe inutilizacao service', () => {
     expect(transmitir).toHaveBeenCalledTimes(1);
   });
 
+  it('persiste erro local pre-transmissao como falha_local sem bloquear nova tentativa', async () => {
+    const erro = new Error('NFE_Inutilizacao: metodo fiscal indisponivel na biblioteca.');
+    erro.code = 'falha_local_pre_transmissao';
+    transmitir.mockRejectedValueOnce(erro);
+
+    const first = await service.solicitar(pedidoBase, 7);
+
+    expect(first.httpStatus).toBe(500);
+    expect(first.registro).toMatchObject({
+      status: 'falha_local',
+      cstat: 'falha_local_pre_transmissao',
+    });
+
+    transmitir.mockResolvedValueOnce({
+      cStat: '102',
+      xMotivo: 'Inutilizacao homologada',
+      nProt: '131260000000003',
+      xmlEnvio: '<inutNFe />',
+      xmlRetorno: '<retInutNFe />',
+    });
+
+    await expect(service.solicitar({
+      ...pedidoBase,
+      idempotencyKey: 'retry-after-local-failure',
+    }, 7)).resolves.toMatchObject({
+      httpStatus: 201,
+      registro: { status: 'autorizado', protocolo: '131260000000003' },
+    });
+  });
+
   it('mantem autorizacao quando a copia em disco falha', async () => {
     salvarXml.mockImplementation(() => {
       throw new Error('Disco indisponivel');

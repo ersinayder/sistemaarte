@@ -13,38 +13,47 @@ async function transmitirInutilizacaoNFe(payload, deps = {}) {
   const xmlBuilder = service?.xmlBuilder;
   const responseInterceptors = service?.axios?.interceptors?.response;
 
-  if (!xmlBuilder?.assinarXML || !responseInterceptors?.use || !responseInterceptors?.eject) {
-    throw new Error('NFE_Inutilizacao: estrutura interna da biblioteca fiscal incompativel.');
+  if (typeof wizard?.NFE_Inutilizacao !== 'function') {
+    const error = new Error('NFE_Inutilizacao: metodo fiscal indisponivel na biblioteca.');
+    error.code = 'falha_local_pre_transmissao';
+    throw error;
   }
 
   let xmlEnvio = '';
   let xmlRetorno = '';
-  const assinarOriginal = xmlBuilder.assinarXML;
-  const assinarBound = assinarOriginal.bind(xmlBuilder);
+  let assinarOriginal = null;
+  let interceptorId = null;
 
-  xmlBuilder.assinarXML = (xml, tag) => {
-    const assinado = assinarBound(xml, tag);
-    if (tag === 'infInut') xmlEnvio = assinado;
-    return assinado;
-  };
+  if (typeof xmlBuilder?.assinarXML === 'function') {
+    assinarOriginal = xmlBuilder.assinarXML;
+    const assinarBound = assinarOriginal.bind(xmlBuilder);
 
-  const interceptorId = responseInterceptors.use(
-    (response) => {
-      if (isInutilizacaoRequest(response?.config)) {
-        xmlRetorno = typeof response.data === 'string'
-          ? response.data
-          : JSON.stringify(response.data || '');
+    xmlBuilder.assinarXML = (xml, tag) => {
+      const assinado = assinarBound(xml, tag);
+      if (tag === 'infInut') xmlEnvio = assinado;
+      return assinado;
+    };
+  }
+
+  if (responseInterceptors?.use && responseInterceptors?.eject) {
+    interceptorId = responseInterceptors.use(
+      (response) => {
+        if (isInutilizacaoRequest(response?.config)) {
+          xmlRetorno = typeof response.data === 'string'
+            ? response.data
+            : JSON.stringify(response.data || '');
+        }
+        return response;
+      },
+      (error) => {
+        if (isInutilizacaoRequest(error?.config)) {
+          const raw = error?.response?.data;
+          xmlRetorno = typeof raw === 'string' ? raw : JSON.stringify(raw || '');
+        }
+        return Promise.reject(error);
       }
-      return response;
-    },
-    (error) => {
-      if (isInutilizacaoRequest(error?.config)) {
-        const raw = error?.response?.data;
-        xmlRetorno = typeof raw === 'string' ? raw : JSON.stringify(raw || '');
-      }
-      return Promise.reject(error);
-    }
-  );
+    );
+  }
 
   try {
     const retorno = await wizard.NFE_Inutilizacao(payload);
@@ -61,8 +70,8 @@ async function transmitirInutilizacaoNFe(payload, deps = {}) {
     error.xmlRetorno = xmlRetorno || error?.xml || '';
     throw error;
   } finally {
-    xmlBuilder.assinarXML = assinarOriginal;
-    responseInterceptors.eject(interceptorId);
+    if (assinarOriginal) xmlBuilder.assinarXML = assinarOriginal;
+    if (interceptorId !== null) responseInterceptors.eject(interceptorId);
   }
 }
 

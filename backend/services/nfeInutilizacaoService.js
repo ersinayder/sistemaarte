@@ -149,6 +149,10 @@ function isDefinitiveFiscalError(error, classificarErro) {
   return { definitive: false, info };
 }
 
+function isPreTransmissionLocalError(error) {
+  return error?.code === 'falha_local_pre_transmissao';
+}
+
 function createNfeInutilizacaoService(deps) {
   const db = deps.db;
   const obterContexto = deps.obterContexto;
@@ -264,6 +268,24 @@ function createNfeInutilizacaoService(deps) {
       return { httpStatus: autorizado ? 201 : 422, registro, alertas };
     } catch (error) {
       if (error.status) throw error;
+      if (isPreTransmissionLocalError(error)) {
+        if (registroId) {
+          db.prepare(`
+            UPDATE nfe_inutilizacoes
+            SET status = 'falha_local', cstat = ?, motivo = ?, xml_envio = ?, xml_retorno = ?, concluido_em = ?
+            WHERE id = ?
+          `).run(
+            error.code,
+            error.message,
+            error.xmlEnvio || null,
+            error.xmlRetorno || null,
+            agora(),
+            registroId
+          );
+          return { httpStatus: 500, registro: rowToApi(getRegistro(db, registroId)), alertas: [] };
+        }
+        throw serviceError(500, 'falha_local', error.message);
+      }
       const fiscal = isDefinitiveFiscalError(error, classificarErro);
       const status = fiscal.definitive ? 'rejeitado' : 'incerto';
       const httpStatus = fiscal.definitive ? 422 : 504;
