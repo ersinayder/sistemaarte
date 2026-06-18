@@ -96,6 +96,7 @@ describe('montarNFe', () => {
 
     expect(infNFe.det[0].prod.vDesc).toBe('10.00');
     expect(infNFe.det[1].prod.vDesc).toBe('5.00');
+    expect(Object.keys(infNFe.det[0].prod).indexOf('vDesc')).toBeLessThan(Object.keys(infNFe.det[0].prod).indexOf('indTot'));
     expect(infNFe.total.ICMSTot.vProd).toBe('150.00');
     expect(infNFe.total.ICMSTot.vDesc).toBe('15.00');
     expect(infNFe.total.ICMSTot.vNF).toBe('135.00');

@@ -139,10 +139,9 @@ function montarItem(item, desconto = 0) {
     uTrib:    (item.unidade || 'UN').toUpperCase(),
     qTrib:    qtd.toFixed(4),
     vUnTrib:  vUnit.toFixed(10),
+    ...(vDesc > 0 ? { vDesc: vDesc.toFixed(2) } : {}),
     indTot:   '1',
   };
-
-  if (vDesc > 0) prod.vDesc = vDesc.toFixed(2);
 
   return {
     prod,
