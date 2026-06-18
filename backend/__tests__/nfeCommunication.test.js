@@ -109,4 +109,33 @@ describe('nfe communication errors', () => {
       mensagem: 'Endereco fiscal do cliente ou do emitente esta incompleto. Preencha logradouro, numero, bairro, cidade, UF e CEP antes de emitir a NF-e.',
     });
   });
+
+  it('decide quando uma falha de autorizacao permite devolver a numeracao local', () => {
+    expect(nfeUtils.deveDevolverNumeroNFeAposFalhaAutorizacao({
+      tipo: 'validacao_xml',
+      cstat: 'xml_schema',
+    })).toBe(true);
+
+    expect(nfeUtils.deveDevolverNumeroNFeAposFalhaAutorizacao({
+      tipo: 'rejeicao',
+      cstat: '386',
+    })).toBe(true);
+
+    expect(nfeUtils.deveDevolverNumeroNFeAposFalhaAutorizacao({
+      tipo: 'comunicacao',
+      cstat: 'comunicacao',
+    })).toBe(false);
+
+    expect(nfeUtils.deveDevolverNumeroNFeAposFalhaAutorizacao({
+      tipo: 'endpoint',
+      cstat: 'http_404',
+    })).toBe(false);
+
+    for (const cstat of ['204', '205', '206', '302', '303']) {
+      expect(nfeUtils.deveDevolverNumeroNFeAposFalhaAutorizacao({
+        tipo: 'rejeicao',
+        cstat,
+      })).toBe(false);
+    }
+  });
 });

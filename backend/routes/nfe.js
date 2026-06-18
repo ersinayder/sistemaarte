@@ -9,6 +9,7 @@ const {
   getNFEWizard,
   callSEFAZ,
   getSefazErrorInfo,
+  deveDevolverNumeroNFeAposFalhaAutorizacao,
   formatarRejeicaoSefaz,
 } = require('../utils/nfe');
 const { montarNFe } = require('../domain/nfeRules');
@@ -850,7 +851,7 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
       console.error('[NF-e] Erro na chamada SEFAZ:', sefazErr.message);
       db.prepare(`UPDATE ordens SET nfe_status='rejeitado' WHERE id=? AND nfe_status='emitindo'`).run(osId);
       const sefazInfo = getSefazErrorInfo(sefazErr);
-      if (sefazInfo.tipo === 'rejeicao' && rejeicaoPermiteDevolverNumeroNFe(sefazInfo.cstat)) {
+      if (deveDevolverNumeroNFeAposFalhaAutorizacao(sefazInfo) && rejeicaoPermiteDevolverNumeroNFe(sefazInfo.cstat)) {
         devolverNumeroNFeRejeitada(db, serie, numero);
       }
       registrarEventoFiscal(db, {
