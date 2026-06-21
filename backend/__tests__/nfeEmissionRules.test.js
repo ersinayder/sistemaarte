@@ -49,6 +49,7 @@ describe('nfeEmissionRules', () => {
 
   describe('XML de autorizacao', () => {
     const chave = '31260507500718000196550010000000291000000291';
+    const outraChave = '31260507500718000196550010000000291000000292';
 
     it.each([
       ['JSON', JSON.stringify({ nfeProc: { protNFe: {} } })],
@@ -56,24 +57,28 @@ describe('nfeEmissionRules', () => {
       ['retEnviNFe isolado', '<retEnviNFe><cStat>100</cStat></retEnviNFe>'],
       ['XML sem nfeProc', '<NFe><infNFe Id="NFe31260507500718000196550010000000291000000291"/></NFe>'],
       ['chave divergente', '<nfeProc><NFe><infNFe Id="NFe31260507500718000196550010000000291000000292"/></NFe></nfeProc>'],
+      ['XML malformado', `<nfeProc><NFe><infNFe Id="NFe${chave}"></NFe><protNFe><infProt><chNFe>${chave}</chNFe></infProt></protNFe></nfeProc>`],
+      ['chave em comentario', `<nfeProc><!-- <chNFe>${chave}</chNFe> --></nfeProc>`],
+      ['Id em elemento arbitrario', `<nfeProc><qualquer Id="NFe${chave}" /></nfeProc>`],
+      ['chaves inconsistentes', `<nfeProc><NFe><infNFe Id="NFe${chave}"/></NFe><protNFe><infProt><chNFe>${outraChave}</chNFe></infProt></protNFe></nfeProc>`],
     ])('recusa %s', (_cenario, xml) => {
       expect(validarXmlAutorizacao(xml, chave)).toBe(false);
     });
 
-    it('aceita nfeProc com a chave esperada em Id=NFe...', () => {
-      const xml = `<?xml version="1.0"?><nfeProc><NFe><infNFe Id="NFe${chave}"/></NFe></nfeProc>`;
-
-      expect(validarXmlAutorizacao(xml, chave)).toBe(true);
-    });
-
-    it('aceita nfeProc com a chave esperada em chNFe', () => {
-      const xml = `<nfeProc><protNFe><infProt><chNFe>${chave}</chNFe></infProt></protNFe></nfeProc>`;
+    it('aceita somente nfeProc real com infNFe e protocolo usando a mesma chave esperada', () => {
+      const xml = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<nfeProc xmlns="http://www.portalfiscal.inf.br/nfe">',
+        `<NFe><infNFe Id="NFe${chave}"/></NFe>`,
+        `<protNFe><infProt><chNFe>${chave}</chNFe></infProt></protNFe>`,
+        '</nfeProc>',
+      ].join('');
 
       expect(validarXmlAutorizacao(xml, chave)).toBe(true);
     });
 
     it('recusa chave esperada formatada em vez de 44 digitos exatos', () => {
-      const xml = `<nfeProc><NFe><infNFe Id="NFe${chave}"/></NFe></nfeProc>`;
+      const xml = `<nfeProc><NFe><infNFe Id="NFe${chave}"/></NFe><protNFe><infProt><chNFe>${chave}</chNFe></infProt></protNFe></nfeProc>`;
 
       expect(validarXmlAutorizacao(xml, `NFe ${chave}`)).toBe(false);
     });

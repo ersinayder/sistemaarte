@@ -1,5 +1,7 @@
 'use strict';
 
+const libxml = require('libxmljs2');
+
 function onlyDigits(value) {
   return String(value ?? '').replace(/\D/g, '');
 }
@@ -346,15 +348,29 @@ function validarXmlAutorizacao(value, chaveEsperada) {
   const xml = value.trim();
   const chave = String(chaveEsperada ?? '').trim();
   if (!xml.startsWith('<') || !/^\d{44}$/.test(chave)) return false;
-  if (!/<(?:[A-Za-z_][\w.-]*:)?nfeProc\b[^>]*>/i.test(xml)) return false;
-  if (!/<\/(?:[A-Za-z_][\w.-]*:)?nfeProc\s*>/i.test(xml)) return false;
 
-  const chavesEncontradas = [
-    ...xml.matchAll(/<(?:[A-Za-z_][\w.-]*:)?chNFe\b[^>]*>\s*(\d{44})\s*<\/(?:[A-Za-z_][\w.-]*:)?chNFe\s*>/gi),
-    ...xml.matchAll(/\bId\s*=\s*["']NFe(\d{44})["']/gi),
-  ].map(match => match[1]);
+  try {
+    const doc = libxml.parseXml(xml, {
+      nonet: true,
+      recover: false,
+    });
+    const root = doc.root();
+    if (!root || root.name() !== 'nfeProc') return false;
 
-  return chavesEncontradas.includes(chave);
+    const infNFeNodes = root.find('./*[local-name()="NFe"]/*[local-name()="infNFe"]');
+    const chNFeNodes = root.find('./*[local-name()="protNFe"]/*[local-name()="infProt"]/*[local-name()="chNFe"]');
+    if (infNFeNodes.length !== 1 || chNFeNodes.length !== 1) return false;
+
+    const id = infNFeNodes[0].attr('Id')?.value() || '';
+    const chaveInfNFe = id.startsWith('NFe') ? id.slice(3) : '';
+    const chaveProtocolo = chNFeNodes[0].text().trim();
+
+    return chaveInfNFe === chave
+      && chaveProtocolo === chave
+      && chaveInfNFe === chaveProtocolo;
+  } catch (_) {
+    return false;
+  }
 }
 
 module.exports = {
