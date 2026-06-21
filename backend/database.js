@@ -343,6 +343,43 @@ CREATE INDEX IF NOT EXISTS idx_nfe_inutilizacoes_status
   ON nfe_inutilizacoes(status);
 CREATE INDEX IF NOT EXISTS idx_nfe_inutilizacoes_faixa
   ON nfe_inutilizacoes(numero_inicial, numero_final);
+CREATE TABLE IF NOT EXISTS nfe_emissao_tentativas (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  ordemid         INTEGER NOT NULL,
+  operacao        TEXT NOT NULL DEFAULT 'emissao',
+  idempotency_key TEXT NOT NULL UNIQUE,
+  numero          INTEGER NOT NULL,
+  serie           TEXT NOT NULL,
+  lote            TEXT NOT NULL,
+  status          TEXT NOT NULL CHECK (status IN ('processando','incerto','autorizado','rejeitado','falha_local')),
+  cstat           TEXT,
+  motivo          TEXT,
+  chave           TEXT,
+  protocolo       TEXT,
+  xml_envio       TEXT,
+  xml_retorno     TEXT,
+  erro_local      TEXT,
+  solicitado_por INTEGER,
+  createdat       TEXT DEFAULT (datetime('now','localtime')),
+  updatedat       TEXT DEFAULT (datetime('now','localtime')),
+  concluido_em    TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_nfe_emissao_tentativas_ativa
+  ON nfe_emissao_tentativas(ordemid, operacao)
+  WHERE status IN ('processando','incerto');
+CREATE INDEX IF NOT EXISTS idx_nfe_emissao_tentativas_ordem_createdat
+  ON nfe_emissao_tentativas(ordemid, createdat);
+CREATE TABLE IF NOT EXISTS nfe_emissao_transicoes (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  tentativaid INTEGER NOT NULL,
+  ordemid     INTEGER NOT NULL,
+  status      TEXT NOT NULL,
+  cstat       TEXT,
+  motivo      TEXT,
+  createdat   TEXT DEFAULT (datetime('now','localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_nfe_emissao_transicoes_tentativa
+  ON nfe_emissao_transicoes(tentativaid, id);
 `;
 
 let db;
@@ -592,6 +629,44 @@ function initDB() {
     "CREATE INDEX IF NOT EXISTS idx_nfe_inutilizacoes_status ON nfe_inutilizacoes(status)",
     `CREATE INDEX IF NOT EXISTS idx_nfe_inutilizacoes_faixa
       ON nfe_inutilizacoes(numero_inicial, numero_final)`,
+    // v19 - reserva atomica e historico monotonicamente auditavel da emissao NF-e
+    `CREATE TABLE IF NOT EXISTS nfe_emissao_tentativas (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      ordemid         INTEGER NOT NULL,
+      operacao        TEXT NOT NULL DEFAULT 'emissao',
+      idempotency_key TEXT NOT NULL UNIQUE,
+      numero          INTEGER NOT NULL,
+      serie           TEXT NOT NULL,
+      lote            TEXT NOT NULL,
+      status          TEXT NOT NULL CHECK (status IN ('processando','incerto','autorizado','rejeitado','falha_local')),
+      cstat           TEXT,
+      motivo          TEXT,
+      chave           TEXT,
+      protocolo       TEXT,
+      xml_envio       TEXT,
+      xml_retorno     TEXT,
+      erro_local      TEXT,
+      solicitado_por INTEGER,
+      createdat       TEXT DEFAULT (datetime('now','localtime')),
+      updatedat       TEXT DEFAULT (datetime('now','localtime')),
+      concluido_em    TEXT
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_nfe_emissao_tentativas_ativa
+      ON nfe_emissao_tentativas(ordemid, operacao)
+      WHERE status IN ('processando','incerto')`,
+    `CREATE INDEX IF NOT EXISTS idx_nfe_emissao_tentativas_ordem_createdat
+      ON nfe_emissao_tentativas(ordemid, createdat)`,
+    `CREATE TABLE IF NOT EXISTS nfe_emissao_transicoes (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      tentativaid INTEGER NOT NULL,
+      ordemid     INTEGER NOT NULL,
+      status      TEXT NOT NULL,
+      cstat       TEXT,
+      motivo      TEXT,
+      createdat   TEXT DEFAULT (datetime('now','localtime'))
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_nfe_emissao_transicoes_tentativa
+      ON nfe_emissao_transicoes(tentativaid, id)`,
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {}
