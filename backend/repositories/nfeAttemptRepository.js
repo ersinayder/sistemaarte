@@ -6,13 +6,13 @@ const TRANSICOES_PERMITIDAS = {
 };
 const STATUS_FINAIS = new Set(['autorizado', 'rejeitado', 'falha_local']);
 const CAMPOS_TRANSICAO = [
-  'cstat',
-  'motivo',
-  'chave',
-  'protocolo',
-  'xml_envio',
-  'xml_retorno',
-  'erro_local',
+  ['cstat', 'cStat'],
+  ['motivo', 'motivo'],
+  ['chave', 'chave'],
+  ['protocolo', 'protocolo'],
+  ['xml_envio', 'xmlEnvio'],
+  ['xml_retorno', 'xmlRetorno'],
+  ['erro_local', 'erroLocal'],
 ];
 
 function repositoryError(status, code, message) {
@@ -57,7 +57,14 @@ function createNfeAttemptRepository(db, deps = {}) {
 
     const numero = sequencia.ultimo_numero;
     const lote = String(numero).padStart(9, '0');
-    const idempotencyKey = `emissao:${ordemId}:${serieNormalizada}:${numero}`;
+    const idempotencyBase = `emissao:${ordemId}:${serieNormalizada}:${numero}`;
+    const historico = db.prepare(`
+      SELECT COUNT(*) AS total
+      FROM nfe_emissao_tentativas
+      WHERE substr(idempotency_key, 1, length(?)) = ?
+        AND substr(idempotency_key, length(?) + 1, 2) = ':a'
+    `).get(idempotencyBase, idempotencyBase, idempotencyBase);
+    const idempotencyKey = `${idempotencyBase}:a${Number(historico.total) + 1}`;
     const timestamp = agora();
 
     let insert;
@@ -78,7 +85,7 @@ function createNfeAttemptRepository(db, deps = {}) {
         timestamp
       );
     } catch (error) {
-      if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+      if (error.code === 'SQLITE_CONSTRAINT_UNIQUE' && buscarAtivaPorOrdem(ordemId)) {
         throw repositoryError(409, 'nfe_tentativa_ativa', 'Ja existe uma tentativa ativa para esta OS.');
       }
       throw error;
@@ -113,9 +120,11 @@ function createNfeAttemptRepository(db, deps = {}) {
     }
 
     const timestamp = agora();
-    const valores = CAMPOS_TRANSICAO.map((campo) => (
-      Object.prototype.hasOwnProperty.call(dados, campo) ? dados[campo] : atual[campo]
-    ));
+    const valores = CAMPOS_TRANSICAO.map(([campoBanco, campoPublico]) => {
+      if (Object.prototype.hasOwnProperty.call(dados, campoPublico)) return dados[campoPublico];
+      if (Object.prototype.hasOwnProperty.call(dados, campoBanco)) return dados[campoBanco];
+      return atual[campoBanco];
+    });
     const concluidoEm = STATUS_FINAIS.has(status)
       ? (dados.concluido_em ?? timestamp)
       : atual.concluido_em;
@@ -137,7 +146,14 @@ function createNfeAttemptRepository(db, deps = {}) {
       INSERT INTO nfe_emissao_transicoes
         (tentativaid, ordemid, status, cstat, motivo, createdat)
       VALUES (?, ?, ?, ?, ?, ?)
-    `).run(id, atual.ordemid, status, dados.cstat ?? null, dados.motivo ?? null, timestamp);
+    `).run(
+      id,
+      atual.ordemid,
+      status,
+      dados.cStat ?? dados.cstat ?? null,
+      dados.motivo ?? null,
+      timestamp
+    );
 
     return buscarPorId(id);
   }

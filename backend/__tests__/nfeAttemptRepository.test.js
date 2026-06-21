@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
-import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import { createNfeAttemptRepository } from '../repositories/nfeAttemptRepository.js';
+
+const require = createRequire(import.meta.url);
 
 function createDb() {
   const db = new Database(':memory:');
@@ -70,7 +72,7 @@ describe('nfeAttemptRepository', () => {
       serie: '1',
       lote: '000000001',
       status: 'processando',
-      idempotency_key: 'emissao:17:1:1',
+      idempotency_key: 'emissao:17:1:1:a1',
       solicitado_por: 9,
     });
     expect(db.prepare('SELECT ultimo_numero FROM nfe_sequencias WHERE serie = ?').get('1'))
@@ -259,6 +261,75 @@ describe('nfeAttemptRepository', () => {
     }
   );
 
+  it('reutiliza numero devolvido com nova tentativa versionada sem alterar a anterior', () => {
+    const primeira = repository.reservar({ ordemId: 17, serie: '1', usuarioId: 9 });
+    repository.transicionar(primeira.id, 'rejeitado', {
+      cStat: '386',
+      motivo: 'CFOP incompativel',
+    });
+    expect(repository.devolverNumero(primeira.id)).toBe(true);
+
+    const segunda = repository.reservar({ ordemId: 17, serie: '1', usuarioId: 9 });
+
+    expect(primeira.idempotency_key).toBe('emissao:17:1:1:a1');
+    expect(segunda).toMatchObject({
+      numero: 1,
+      idempotency_key: 'emissao:17:1:1:a2',
+      status: 'processando',
+    });
+    expect(repository.buscarPorId(primeira.id)).toMatchObject({
+      status: 'rejeitado',
+      cstat: '386',
+      motivo: 'CFOP incompativel',
+    });
+    expect(db.prepare(`
+      SELECT idempotency_key, status
+      FROM nfe_emissao_tentativas
+      ORDER BY id
+    `).all()).toEqual([
+      { idempotency_key: 'emissao:17:1:1:a1', status: 'rejeitado' },
+      { idempotency_key: 'emissao:17:1:1:a2', status: 'processando' },
+    ]);
+  });
+
+  it('persiste todos os campos do contrato publico camelCase', () => {
+    const tentativa = repository.reservar({ ordemId: 17, serie: '1', usuarioId: 9 });
+
+    const atualizada = repository.transicionar(tentativa.id, 'autorizado', {
+      cStat: '100',
+      xmlEnvio: '<enviNFe />',
+      xmlRetorno: '<nfeProc />',
+      erroLocal: 'alerta recuperavel',
+      chave: '31260607500718000196550010000000011000000019',
+      protocolo: '131260000000001',
+      motivo: 'Autorizado o uso da NF-e',
+    });
+
+    expect(atualizada).toMatchObject({
+      cstat: '100',
+      xml_envio: '<enviNFe />',
+      xml_retorno: '<nfeProc />',
+      erro_local: 'alerta recuperavel',
+      chave: '31260607500718000196550010000000011000000019',
+      protocolo: '131260000000001',
+      motivo: 'Autorizado o uso da NF-e',
+    });
+  });
+
+  it('nao converte conflito UNIQUE generico em tentativa ativa', () => {
+    db.exec('CREATE UNIQUE INDEX teste_lote_unico ON nfe_emissao_tentativas(lote)');
+    db.prepare(`
+      INSERT INTO nfe_emissao_tentativas
+        (ordemid, idempotency_key, numero, serie, lote, status, createdat, updatedat)
+      VALUES (99, 'historico:outro', 99, '1', '000000001', 'rejeitado', 'agora', 'agora')
+    `).run();
+
+    expect(() => repository.reservar({ ordemId: 17, serie: '1', usuarioId: 9 }))
+      .toThrow(expect.not.objectContaining({
+        code: 'nfe_tentativa_ativa',
+      }));
+  });
+
   it.each([
     ['insert da tentativa', 'nfe_emissao_tentativas'],
     ['insert da transicao', 'nfe_emissao_transicoes'],
@@ -280,18 +351,69 @@ describe('nfeAttemptRepository', () => {
       .toEqual({ total: 0 });
   });
 
-  it('declara tabelas e indices de tentativas no SCHEMA e nas migrations', () => {
-    const source = fs.readFileSync(new URL('../database.js', import.meta.url), 'utf8');
+  it('aplica DDL exportado com constraints e indices operacionais reais', () => {
+    const { getNfeEmissaoSchemaStatements } = require('../database.js');
+    expect(getNfeEmissaoSchemaStatements).toBeTypeOf('function');
 
-    for (const fragment of [
-      'CREATE TABLE IF NOT EXISTS nfe_emissao_tentativas',
-      'CREATE UNIQUE INDEX IF NOT EXISTS idx_nfe_emissao_tentativas_ativa',
-      'CREATE INDEX IF NOT EXISTS idx_nfe_emissao_tentativas_ordem_createdat',
-      'CREATE TABLE IF NOT EXISTS nfe_emissao_transicoes',
-      'CREATE INDEX IF NOT EXISTS idx_nfe_emissao_transicoes_tentativa',
-    ]) {
-      expect(source.split(fragment)).toHaveLength(3);
+    const schemaDb = new Database(':memory:');
+    try {
+      schemaDb.exec(getNfeEmissaoSchemaStatements().join(';\n'));
+
+      const columns = schemaDb.prepare('PRAGMA table_info(nfe_emissao_tentativas)').all();
+      const byName = Object.fromEntries(columns.map((column) => [column.name, column]));
+      expect(byName.lote.notnull).toBe(0);
+      expect(byName.createdat.notnull).toBe(1);
+      expect(byName.updatedat.notnull).toBe(1);
+      expect(byName.concluido_em.notnull).toBe(0);
+
+      const indexes = schemaDb.prepare('PRAGMA index_list(nfe_emissao_tentativas)').all();
+      expect(indexes).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          name: 'idx_nfe_emissao_tentativa_ativa',
+          unique: 1,
+          partial: 1,
+        }),
+        expect.objectContaining({
+          name: 'idx_nfe_emissao_tentativas_ordem',
+          unique: 0,
+          partial: 0,
+        }),
+      ]));
+      expect(schemaDb.prepare('PRAGMA index_info(idx_nfe_emissao_tentativa_ativa)').all()
+        .map((column) => column.name)).toEqual(['ordemid', 'operacao']);
+      expect(schemaDb.prepare('PRAGMA index_list(nfe_emissao_transicoes)').all())
+        .toEqual(expect.arrayContaining([
+          expect.objectContaining({
+            name: 'idx_nfe_emissao_transicoes_tentativa',
+            unique: 0,
+            partial: 0,
+          }),
+        ]));
+      expect(schemaDb.prepare('PRAGMA index_info(idx_nfe_emissao_transicoes_tentativa)').all()
+        .map((column) => column.name)).toEqual(['tentativaid', 'id']);
+      const partialSql = schemaDb.prepare(`
+        SELECT sql FROM sqlite_master
+        WHERE type = 'index' AND name = 'idx_nfe_emissao_tentativa_ativa'
+      `).get().sql;
+      expect(partialSql).toContain("WHERE status IN ('processando','incerto')");
+
+      const insert = schemaDb.prepare(`
+        INSERT INTO nfe_emissao_tentativas
+          (ordemid, idempotency_key, numero, serie, status)
+        VALUES (?, ?, ?, '1', ?)
+      `);
+      insert.run(17, 'ativa-1', 1, 'processando');
+      expect(() => insert.run(17, 'ativa-2', 2, 'incerto')).toThrow();
+      insert.run(18, 'final-1', 3, 'rejeitado');
+      insert.run(18, 'ativa-3', 4, 'processando');
+      expect(() => insert.run(19, 'status-invalido', 5, 'emitindo')).toThrow();
+      expect(() => schemaDb.prepare(`
+        INSERT INTO nfe_emissao_tentativas
+          (ordemid, idempotency_key, numero, serie, status, createdat, updatedat)
+        VALUES (20, 'datas-nulas', 6, '1', 'processando', NULL, NULL)
+      `).run()).toThrow();
+    } finally {
+      schemaDb.close();
     }
-    expect(source).toContain("WHERE status IN ('processando','incerto')");
   });
 });
