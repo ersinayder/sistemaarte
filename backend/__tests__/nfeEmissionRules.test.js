@@ -7,9 +7,78 @@ import {
   validarClienteFiscalNFe,
   validarEmitenteFiscalNFe,
   validarItensFiscaisNFe,
+  classificarResultadoEmissao,
+  estadoEmissaoBloqueiaReenvio,
+  rejeicaoPermiteDevolverNumero,
+  validarXmlAutorizacao,
 } from '../domain/nfeEmissionRules.js';
 
 describe('nfeEmissionRules', () => {
+  describe('resultado da emissao', () => {
+    it.each([
+      ['resultado ausente', null, 'incerto'],
+      ['timeout', { timeout: true }, 'incerto'],
+      ['cStat vazio', { cStat: '' }, 'incerto'],
+      ['codigo desconhecido', { cStat: '999' }, 'incerto'],
+      ['autorizacao', { cStat: 100 }, 'autorizado'],
+      ['duplicidade', { cStat: '204' }, 'rejeitado'],
+      ['CFOP incompativel', { cStat: '386' }, 'rejeitado'],
+      ['NCM inexistente', { cStat: '778' }, 'rejeitado'],
+    ])('classifica %s', (_cenario, resultado, estadoEsperado) => {
+      expect(classificarResultadoEmissao(resultado)).toBe(estadoEsperado);
+    });
+
+    it('usa allowlist estrita para devolver a numeracao', () => {
+      expect(rejeicaoPermiteDevolverNumero('386')).toBe(true);
+
+      for (const cStat of [null, '', '999', '204', '205', '206', '302', '303']) {
+        expect(rejeicaoPermiteDevolverNumero(cStat)).toBe(false);
+      }
+    });
+
+    it.each([
+      ['processando', true],
+      ['incerto', true],
+      ['autorizado', false],
+      ['rejeitado', false],
+      ['', false],
+    ])('informa se o estado %s bloqueia reenvio', (status, esperado) => {
+      expect(estadoEmissaoBloqueiaReenvio(status)).toBe(esperado);
+    });
+  });
+
+  describe('XML de autorizacao', () => {
+    const chave = '31260507500718000196550010000000291000000291';
+
+    it.each([
+      ['JSON', JSON.stringify({ nfeProc: { protNFe: {} } })],
+      ['vazio', '   '],
+      ['retEnviNFe isolado', '<retEnviNFe><cStat>100</cStat></retEnviNFe>'],
+      ['XML sem nfeProc', '<NFe><infNFe Id="NFe31260507500718000196550010000000291000000291"/></NFe>'],
+      ['chave divergente', '<nfeProc><NFe><infNFe Id="NFe31260507500718000196550010000000291000000292"/></NFe></nfeProc>'],
+    ])('recusa %s', (_cenario, xml) => {
+      expect(validarXmlAutorizacao(xml, chave)).toBe(false);
+    });
+
+    it('aceita nfeProc com a chave esperada em Id=NFe...', () => {
+      const xml = `<?xml version="1.0"?><nfeProc><NFe><infNFe Id="NFe${chave}"/></NFe></nfeProc>`;
+
+      expect(validarXmlAutorizacao(xml, chave)).toBe(true);
+    });
+
+    it('aceita nfeProc com a chave esperada em chNFe', () => {
+      const xml = `<nfeProc><protNFe><infProt><chNFe>${chave}</chNFe></infProt></protNFe></nfeProc>`;
+
+      expect(validarXmlAutorizacao(xml, chave)).toBe(true);
+    });
+
+    it('recusa chave esperada formatada em vez de 44 digitos exatos', () => {
+      const xml = `<nfeProc><NFe><infNFe Id="NFe${chave}"/></NFe></nfeProc>`;
+
+      expect(validarXmlAutorizacao(xml, `NFe ${chave}`)).toBe(false);
+    });
+  });
+
   it('applies per-emission fiscal overrides without mutating the original item', () => {
     const itens = [{
       id: 10,

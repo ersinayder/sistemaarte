@@ -115,6 +115,55 @@ function normalizarTexto(value, max = 120) {
 }
 
 const CSOSN_VALIDOS_NFE = new Set(['101', '102', '103', '300', '400', '500', '900']);
+const CSTAT_AUTORIZADO = '100';
+const CSTATS_REJEICAO_CONHECIDA = new Set([
+  '204',
+  '205',
+  '206',
+  '207',
+  '208',
+  '209',
+  '210',
+  '215',
+  '217',
+  '218',
+  '220',
+  '225',
+  '226',
+  '232',
+  '233',
+  '234',
+  '237',
+  '245',
+  '302',
+  '303',
+  '327',
+  '328',
+  '386',
+  '387',
+  '388',
+  '471',
+  '531',
+  '532',
+  '533',
+  '539',
+  '564',
+  '573',
+  '591',
+  '602',
+  '603',
+  '610',
+  '703',
+  '704',
+  '725',
+  '777',
+  '778',
+  '806',
+]);
+const CSTATS_REJEICAO_DEVOLVE_NUMERO = new Set([
+  '386',
+]);
+const ESTADOS_EMISSAO_BLOQUEANTES = new Set(['processando', 'incerto']);
 
 function hasOwn(obj, field) {
   return Object.prototype.hasOwnProperty.call(obj, field);
@@ -270,13 +319,55 @@ function validarEmitenteFiscalNFe(emitente = {}) {
   return { ok: true };
 }
 
+function normalizarCStat(value) {
+  return String(value ?? '').trim();
+}
+
+function classificarResultadoEmissao(resultado) {
+  if (!resultado || resultado.timeout === true) return 'incerto';
+
+  const cStat = normalizarCStat(resultado.cStat ?? resultado.cstat);
+  if (cStat === CSTAT_AUTORIZADO) return 'autorizado';
+  if (CSTATS_REJEICAO_CONHECIDA.has(cStat)) return 'rejeitado';
+  return 'incerto';
+}
+
+function estadoEmissaoBloqueiaReenvio(status) {
+  return ESTADOS_EMISSAO_BLOQUEANTES.has(String(status ?? '').trim().toLowerCase());
+}
+
+function rejeicaoPermiteDevolverNumero(cStat) {
+  return CSTATS_REJEICAO_DEVOLVE_NUMERO.has(normalizarCStat(cStat));
+}
+
+function validarXmlAutorizacao(value, chaveEsperada) {
+  if (typeof value !== 'string') return false;
+
+  const xml = value.trim();
+  const chave = String(chaveEsperada ?? '').trim();
+  if (!xml.startsWith('<') || !/^\d{44}$/.test(chave)) return false;
+  if (!/<(?:[A-Za-z_][\w.-]*:)?nfeProc\b[^>]*>/i.test(xml)) return false;
+  if (!/<\/(?:[A-Za-z_][\w.-]*:)?nfeProc\s*>/i.test(xml)) return false;
+
+  const chavesEncontradas = [
+    ...xml.matchAll(/<(?:[A-Za-z_][\w.-]*:)?chNFe\b[^>]*>\s*(\d{44})\s*<\/(?:[A-Za-z_][\w.-]*:)?chNFe\s*>/gi),
+    ...xml.matchAll(/\bId\s*=\s*["']NFe(\d{44})["']/gi),
+  ].map(match => match[1]);
+
+  return chavesEncontradas.includes(chave);
+}
+
 module.exports = {
   aplicarOverridesItensNFe,
   aplicarOverrideClienteNFe,
+  classificarResultadoEmissao,
+  estadoEmissaoBloqueiaReenvio,
   normalizarItemFiscalOverride,
   normalizarClienteOverride,
+  rejeicaoPermiteDevolverNumero,
   validarClienteFiscalNFe,
   validarEmitenteFiscalNFe,
   validarItensFiscaisNFe,
+  validarXmlAutorizacao,
   serializarItemPreviaNFe,
 };
