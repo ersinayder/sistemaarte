@@ -292,6 +292,38 @@ describe('nfeAttemptRepository', () => {
     ]);
   });
 
+  it('impede tentativa antiga de devolver numero reutilizado por tentativa posterior', () => {
+    const primeira = repository.reservar({ ordemId: 17, serie: '1', usuarioId: 9 });
+    repository.transicionar(primeira.id, 'rejeitado', { cStat: '386' });
+    expect(repository.devolverNumero(primeira.id)).toBe(true);
+
+    const segunda = repository.reservar({ ordemId: 17, serie: '1', usuarioId: 9 });
+    expect(segunda).toMatchObject({ numero: 1, idempotency_key: 'emissao:17:1:1:a2' });
+
+    expect(repository.devolverNumero(primeira.id)).toBe(false);
+
+    const outraOrdem = repository.reservar({ ordemId: 18, serie: '1', usuarioId: 9 });
+    expect(outraOrdem.numero).toBe(2);
+    expect(db.prepare('SELECT ultimo_numero FROM nfe_sequencias WHERE serie = ?').get('1'))
+      .toEqual({ ultimo_numero: 2 });
+  });
+
+  it.each(['rejeitado', 'falha_local'])(
+    'permite que a tentativa mais recente em %s devolva o numero reutilizado',
+    (estado) => {
+      const primeira = repository.reservar({ ordemId: 17, serie: '1', usuarioId: 9 });
+      repository.transicionar(primeira.id, 'rejeitado', { cStat: '386' });
+      expect(repository.devolverNumero(primeira.id)).toBe(true);
+
+      const segunda = repository.reservar({ ordemId: 17, serie: '1', usuarioId: 9 });
+      repository.transicionar(segunda.id, estado);
+
+      expect(repository.devolverNumero(segunda.id)).toBe(true);
+      expect(db.prepare('SELECT ultimo_numero FROM nfe_sequencias WHERE serie = ?').get('1'))
+        .toEqual({ ultimo_numero: 0 });
+    }
+  );
+
   it('persiste todos os campos do contrato publico camelCase', () => {
     const tentativa = repository.reservar({ ordemId: 17, serie: '1', usuarioId: 9 });
 
@@ -381,6 +413,11 @@ describe('nfeAttemptRepository', () => {
       ]));
       expect(schemaDb.prepare('PRAGMA index_info(idx_nfe_emissao_tentativa_ativa)').all()
         .map((column) => column.name)).toEqual(['ordemid', 'operacao']);
+      const ordemIndexSql = schemaDb.prepare(`
+        SELECT sql FROM sqlite_master
+        WHERE type = 'index' AND name = 'idx_nfe_emissao_tentativas_ordem'
+      `).get().sql;
+      expect(ordemIndexSql).toContain('ON nfe_emissao_tentativas(ordemid, createdat DESC)');
       expect(schemaDb.prepare('PRAGMA index_list(nfe_emissao_transicoes)').all())
         .toEqual(expect.arrayContaining([
           expect.objectContaining({

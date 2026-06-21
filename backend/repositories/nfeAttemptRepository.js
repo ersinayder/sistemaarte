@@ -170,6 +170,15 @@ function createNfeAttemptRepository(db, deps = {}) {
       throw repositoryError(404, 'nfe_tentativa_nao_encontrada', 'Tentativa de emissao nao encontrada.');
     }
     if (!['rejeitado', 'falha_local'].includes(tentativa.status)) return false;
+    const posterior = db.prepare(`
+      SELECT id
+      FROM nfe_emissao_tentativas
+      WHERE serie = ?
+        AND numero = ?
+        AND id > ?
+      LIMIT 1
+    `).get(tentativa.serie, tentativa.numero, tentativa.id);
+    if (posterior) return false;
 
     const result = db.prepare(`
       UPDATE nfe_sequencias

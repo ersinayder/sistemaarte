@@ -42,7 +42,7 @@ const NFE_EMISSAO_SCHEMA_STATEMENTS = [
     ON nfe_emissao_tentativas(ordemid, operacao)
     WHERE status IN ('processando','incerto')`,
   `CREATE INDEX IF NOT EXISTS idx_nfe_emissao_tentativas_ordem
-    ON nfe_emissao_tentativas(ordemid, createdat)`,
+    ON nfe_emissao_tentativas(ordemid, createdat DESC)`,
   `CREATE TABLE IF NOT EXISTS nfe_emissao_transicoes (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     tentativaid INTEGER NOT NULL,
