@@ -48,6 +48,15 @@ function createNfeAttemptRepository(db, deps = {}) {
       VALUES (?, 0)
     `).run(serieNormalizada);
 
+    const sequenciaAtual = db.prepare(`
+      SELECT ultimo_numero
+      FROM nfe_sequencias
+      WHERE serie = ?
+    `).get(serieNormalizada);
+    if (Number(sequenciaAtual.ultimo_numero) >= 999999999) {
+      throw repositoryError(409, 'nfe_sequencia_esgotada', 'A sequencia NF-e atingiu o limite de nove digitos.');
+    }
+
     const sequencia = db.prepare(`
       UPDATE nfe_sequencias
       SET ultimo_numero = ultimo_numero + 1
@@ -59,12 +68,12 @@ function createNfeAttemptRepository(db, deps = {}) {
     const lote = String(numero).padStart(9, '0');
     const idempotencyBase = `emissao:${ordemId}:${serieNormalizada}:${numero}`;
     const historico = db.prepare(`
-      SELECT COUNT(*) AS total
+      SELECT MAX(CAST(substr(idempotency_key, length(?) + 3) AS INTEGER)) AS maior_ordinal
       FROM nfe_emissao_tentativas
       WHERE substr(idempotency_key, 1, length(?)) = ?
         AND substr(idempotency_key, length(?) + 1, 2) = ':a'
-    `).get(idempotencyBase, idempotencyBase, idempotencyBase);
-    const idempotencyKey = `${idempotencyBase}:a${Number(historico.total) + 1}`;
+    `).get(idempotencyBase, idempotencyBase, idempotencyBase, idempotencyBase);
+    const idempotencyKey = `${idempotencyBase}:a${Number(historico.maior_ordinal || 0) + 1}`;
     const timestamp = agora();
 
     let insert;
@@ -93,8 +102,8 @@ function createNfeAttemptRepository(db, deps = {}) {
 
     db.prepare(`
       INSERT INTO nfe_emissao_transicoes
-        (tentativaid, ordemid, status, createdat)
-      VALUES (?, ?, 'processando', ?)
+        (tentativaid, ordemid, status, estado_anterior, estado_novo, createdat)
+      VALUES (?, ?, 'processando', NULL, 'processando', ?)
     `).run(insert.lastInsertRowid, ordemId, timestamp);
 
     return db.prepare('SELECT * FROM nfe_emissao_tentativas WHERE id = ?')
@@ -102,7 +111,7 @@ function createNfeAttemptRepository(db, deps = {}) {
   });
 
   function reservar(input) {
-    return reservarTransaction(input);
+    return reservarTransaction.immediate(input);
   }
 
   function buscarPorId(id) {
@@ -110,6 +119,13 @@ function createNfeAttemptRepository(db, deps = {}) {
   }
 
   function transicionarNaTransacao(id, status, dados = {}) {
+    if (!db.inTransaction) {
+      throw repositoryError(
+        500,
+        'nfe_transacao_obrigatoria',
+        'transicionarNaTransacao exige uma transacao externa ativa.'
+      );
+    }
     const atual = buscarPorId(id);
     if (!atual) {
       throw repositoryError(404, 'nfe_tentativa_nao_encontrada', 'Tentativa de emissao nao encontrada.');
@@ -144,11 +160,13 @@ function createNfeAttemptRepository(db, deps = {}) {
     `).run(status, ...valores, timestamp, concluidoEm, id);
     db.prepare(`
       INSERT INTO nfe_emissao_transicoes
-        (tentativaid, ordemid, status, cstat, motivo, createdat)
-      VALUES (?, ?, ?, ?, ?, ?)
+        (tentativaid, ordemid, status, estado_anterior, estado_novo, cstat, motivo, createdat)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       atual.ordemid,
+      status,
+      atual.status,
       status,
       dados.cStat ?? dados.cstat ?? null,
       dados.motivo ?? null,
@@ -190,7 +208,7 @@ function createNfeAttemptRepository(db, deps = {}) {
   });
 
   function devolverNumero(id) {
-    return devolverNumeroTransaction(id);
+    return devolverNumeroTransaction.immediate(id);
   }
 
   return {

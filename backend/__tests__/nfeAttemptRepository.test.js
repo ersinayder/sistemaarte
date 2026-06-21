@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
+import fs from 'node:fs';
 import { createRequire } from 'node:module';
+import os from 'node:os';
+import path from 'node:path';
 import { createNfeAttemptRepository } from '../repositories/nfeAttemptRepository.js';
 
 const require = createRequire(import.meta.url);
@@ -17,9 +20,9 @@ function createDb() {
       ordemid INTEGER NOT NULL,
       operacao TEXT NOT NULL DEFAULT 'emissao',
       idempotency_key TEXT NOT NULL UNIQUE,
-      numero INTEGER NOT NULL,
+      numero INTEGER NOT NULL CHECK (numero BETWEEN 1 AND 999999999),
       serie TEXT NOT NULL,
-      lote TEXT NOT NULL,
+      lote TEXT,
       status TEXT NOT NULL CHECK (status IN ('processando','incerto','autorizado','rejeitado','falha_local')),
       cstat TEXT,
       motivo TEXT,
@@ -43,6 +46,8 @@ function createDb() {
       status TEXT NOT NULL,
       cstat TEXT,
       motivo TEXT,
+      estado_anterior TEXT,
+      estado_novo TEXT,
       createdat TEXT DEFAULT (datetime('now','localtime'))
     );
   `);
@@ -79,6 +84,14 @@ describe('nfeAttemptRepository', () => {
       .toEqual({ ultimo_numero: 1 });
     expect(db.prepare('SELECT tentativaid, ordemid, status FROM nfe_emissao_transicoes').all())
       .toEqual([{ tentativaid: tentativa.id, ordemid: 17, status: 'processando' }]);
+    expect(db.prepare(`
+      SELECT estado_anterior, estado_novo
+      FROM nfe_emissao_transicoes
+      WHERE tentativaid = ?
+    `).get(tentativa.id)).toEqual({
+      estado_anterior: null,
+      estado_novo: 'processando',
+    });
   });
 
   it('rejeita segunda tentativa ativa sem consumir numero', () => {
@@ -141,14 +154,32 @@ describe('nfeAttemptRepository', () => {
       concluido_em: '2026-06-20T12:00:00.000Z',
     });
     expect(db.prepare(`
-      SELECT status, cstat, motivo
+      SELECT status, estado_anterior, estado_novo, cstat, motivo
       FROM nfe_emissao_transicoes
       WHERE tentativaid = ?
       ORDER BY id
     `).all(tentativa.id)).toEqual([
-      { status: 'processando', cstat: null, motivo: null },
-      { status: 'incerto', cstat: 'timeout', motivo: 'Resposta nao confirmada' },
-      { status: 'autorizado', cstat: '100', motivo: 'Autorizado o uso da NF-e' },
+      {
+        status: 'processando',
+        estado_anterior: null,
+        estado_novo: 'processando',
+        cstat: null,
+        motivo: null,
+      },
+      {
+        status: 'incerto',
+        estado_anterior: 'processando',
+        estado_novo: 'incerto',
+        cstat: 'timeout',
+        motivo: 'Resposta nao confirmada',
+      },
+      {
+        status: 'autorizado',
+        estado_anterior: 'incerto',
+        estado_novo: 'autorizado',
+        cstat: '100',
+        motivo: 'Autorizado o uso da NF-e',
+      },
     ]);
   });
 
@@ -214,6 +245,51 @@ describe('nfeAttemptRepository', () => {
       FROM nfe_emissao_transicoes
       WHERE tentativaid = ?
     `).get(tentativa.id)).toEqual({ total: 1 });
+  });
+
+  it('exige transacao externa ativa em transicionarNaTransacao', () => {
+    const tentativa = repository.reservar({ ordemId: 17, serie: '1', usuarioId: 9 });
+
+    expect(() => repository.transicionarNaTransacao(tentativa.id, 'autorizado'))
+      .toThrow(expect.objectContaining({
+        code: 'nfe_transacao_obrigatoria',
+      }));
+    expect(repository.buscarPorId(tentativa.id).status).toBe('processando');
+  });
+
+  it('faz rollback completo se o historico falhar em transacao externa', () => {
+    const tentativa = repository.reservar({ ordemId: 17, serie: '1', usuarioId: 9 });
+    db.exec(`
+      CREATE TRIGGER falha_historico_transicao
+      BEFORE INSERT ON nfe_emissao_transicoes
+      WHEN NEW.status = 'autorizado'
+      BEGIN
+        SELECT RAISE(ABORT, 'falha no historico');
+      END;
+    `);
+    const transacaoExterna = db.transaction(() => {
+      repository.transicionarNaTransacao(tentativa.id, 'autorizado', {
+        cStat: '100',
+        motivo: 'Autorizado',
+      });
+    });
+
+    expect(() => transacaoExterna()).toThrow('falha no historico');
+    expect(repository.buscarPorId(tentativa.id)).toMatchObject({
+      status: 'processando',
+      cstat: null,
+      motivo: null,
+      concluido_em: null,
+    });
+    expect(db.prepare(`
+      SELECT status, estado_anterior, estado_novo
+      FROM nfe_emissao_transicoes
+      WHERE tentativaid = ?
+    `).all(tentativa.id)).toEqual([{
+      status: 'processando',
+      estado_anterior: null,
+      estado_novo: 'processando',
+    }]);
   });
 
   it.each(['rejeitado', 'falha_local'])(
@@ -362,6 +438,79 @@ describe('nfeAttemptRepository', () => {
       }));
   });
 
+  it('usa o maior ordinal historico em vez da contagem', () => {
+    db.prepare(`
+      INSERT INTO nfe_emissao_tentativas
+        (ordemid, idempotency_key, numero, serie, status, createdat, updatedat)
+      VALUES
+        (17, 'emissao:17:1:1:a1', 1, '1', 'rejeitado', 'agora', 'agora'),
+        (17, 'emissao:17:1:1:a3', 1, '1', 'rejeitado', 'agora', 'agora')
+    `).run();
+
+    const tentativa = repository.reservar({ ordemId: 17, serie: '1', usuarioId: 9 });
+
+    expect(tentativa.idempotency_key).toBe('emissao:17:1:1:a4');
+  });
+
+  it('recusa reserva quando a sequencia de nove digitos esta esgotada', () => {
+    db.prepare(`
+      INSERT INTO nfe_sequencias (serie, ultimo_numero)
+      VALUES ('1', 999999999)
+    `).run();
+
+    expect(() => repository.reservar({ ordemId: 17, serie: '1', usuarioId: 9 }))
+      .toThrow(expect.objectContaining({
+        status: 409,
+        code: 'nfe_sequencia_esgotada',
+      }));
+    expect(db.prepare('SELECT ultimo_numero FROM nfe_sequencias WHERE serie = ?').get('1'))
+      .toEqual({ ultimo_numero: 999999999 });
+    expect(db.prepare('SELECT COUNT(*) AS total FROM nfe_emissao_tentativas').get())
+      .toEqual({ total: 0 });
+  });
+
+  it('serializa reserva entre duas conexoes WAL com BEGIN IMMEDIATE', () => {
+    const { getNfeEmissaoSchemaStatements } = require('../database.js');
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nfe-attempt-wal-'));
+    const dbPath = path.join(tempDir, 'attempts.db');
+    const sqlLog = [];
+    const db1 = new Database(dbPath, { verbose: (sql) => sqlLog.push(sql) });
+    const db2 = new Database(dbPath);
+    try {
+      for (const connection of [db1, db2]) {
+        connection.pragma('journal_mode = WAL');
+        connection.pragma('busy_timeout = 2000');
+      }
+      db1.exec(`
+        CREATE TABLE nfe_sequencias (
+          serie TEXT PRIMARY KEY,
+          ultimo_numero INTEGER DEFAULT 0
+        );
+        ${getNfeEmissaoSchemaStatements().join(';\n')};
+      `);
+      const repository1 = createNfeAttemptRepository(db1);
+      const repository2 = createNfeAttemptRepository(db2);
+
+      repository1.reservar({ ordemId: 17, serie: '1', usuarioId: 9 });
+      expect(() => repository2.reservar({ ordemId: 17, serie: '1', usuarioId: 10 }))
+        .toThrow(expect.objectContaining({
+          status: 409,
+          code: 'nfe_tentativa_ativa',
+        }));
+
+      expect(sqlLog).toContain('BEGIN IMMEDIATE');
+      expect(db2.prepare(`
+        SELECT COUNT(*) AS total
+        FROM nfe_emissao_tentativas
+        WHERE ordemid = 17 AND status IN ('processando','incerto')
+      `).get()).toEqual({ total: 1 });
+    } finally {
+      db1.close();
+      db2.close();
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it.each([
     ['insert da tentativa', 'nfe_emissao_tentativas'],
     ['insert da transicao', 'nfe_emissao_transicoes'],
@@ -397,6 +546,21 @@ describe('nfeAttemptRepository', () => {
       expect(byName.createdat.notnull).toBe(1);
       expect(byName.updatedat.notnull).toBe(1);
       expect(byName.concluido_em.notnull).toBe(0);
+      expect(String(schemaDb.prepare(`
+        SELECT sql FROM sqlite_master
+        WHERE type = 'table' AND name = 'nfe_emissao_tentativas'
+      `).get().sql)).toContain('CHECK (numero BETWEEN 1 AND 999999999)');
+      expect(() => schemaDb.prepare(`
+        INSERT INTO nfe_emissao_tentativas
+          (ordemid, idempotency_key, numero, serie, status)
+        VALUES (99, 'numero-grande', 1000000000, '1', 'rejeitado')
+      `).run()).toThrow();
+
+      const transitionColumns = schemaDb.prepare('PRAGMA table_info(nfe_emissao_transicoes)').all();
+      expect(transitionColumns.map((column) => column.name)).toEqual(expect.arrayContaining([
+        'estado_anterior',
+        'estado_novo',
+      ]));
 
       const indexes = schemaDb.prepare('PRAGMA index_list(nfe_emissao_tentativas)').all();
       expect(indexes).toEqual(expect.arrayContaining([
@@ -451,6 +615,59 @@ describe('nfeAttemptRepository', () => {
       `).run()).toThrow();
     } finally {
       schemaDb.close();
+    }
+  });
+
+  it('migra tabela de transicoes existente e corrige indice legado para DESC', () => {
+    const { getNfeEmissaoMigrationStatements } = require('../database.js');
+    expect(getNfeEmissaoMigrationStatements).toBeTypeOf('function');
+
+    const migrationDb = new Database(':memory:');
+    try {
+      migrationDb.exec(`
+        CREATE TABLE nfe_emissao_tentativas (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          ordemid INTEGER NOT NULL,
+          operacao TEXT NOT NULL DEFAULT 'emissao',
+          idempotency_key TEXT NOT NULL UNIQUE,
+          numero INTEGER NOT NULL,
+          serie TEXT NOT NULL,
+          lote TEXT,
+          status TEXT NOT NULL,
+          createdat TEXT NOT NULL,
+          updatedat TEXT NOT NULL
+        );
+        CREATE INDEX idx_nfe_emissao_tentativas_ordem
+          ON nfe_emissao_tentativas(ordemid, createdat);
+        CREATE TABLE nfe_emissao_transicoes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          tentativaid INTEGER NOT NULL,
+          ordemid INTEGER NOT NULL,
+          status TEXT NOT NULL,
+          createdat TEXT NOT NULL
+        );
+      `);
+
+      for (const statement of getNfeEmissaoMigrationStatements()) {
+        try {
+          migrationDb.exec(statement);
+        } catch (_) {
+          // Mirrors the idempotent migration runner used by database.js.
+        }
+      }
+
+      const transitionColumns = migrationDb.prepare('PRAGMA table_info(nfe_emissao_transicoes)').all();
+      expect(transitionColumns.map((column) => column.name)).toEqual(expect.arrayContaining([
+        'estado_anterior',
+        'estado_novo',
+      ]));
+      const indexSql = migrationDb.prepare(`
+        SELECT sql FROM sqlite_master
+        WHERE type = 'index' AND name = 'idx_nfe_emissao_tentativas_ordem'
+      `).get().sql;
+      expect(indexSql).toContain('createdat DESC');
+    } finally {
+      migrationDb.close();
     }
   });
 });

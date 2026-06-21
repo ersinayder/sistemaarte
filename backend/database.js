@@ -16,13 +16,16 @@ const DATA_DIR = path.join(__dirname, "data");
 const DB_FILE  = path.join(DATA_DIR, "oficina.db");
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
+const NFE_EMISSAO_ORDEM_INDEX_DDL = `CREATE INDEX IF NOT EXISTS idx_nfe_emissao_tentativas_ordem
+  ON nfe_emissao_tentativas(ordemid, createdat DESC)`;
+
 const NFE_EMISSAO_SCHEMA_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS nfe_emissao_tentativas (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     ordemid         INTEGER NOT NULL,
     operacao        TEXT NOT NULL DEFAULT 'emissao',
     idempotency_key TEXT NOT NULL UNIQUE,
-    numero          INTEGER NOT NULL,
+    numero          INTEGER NOT NULL CHECK (numero BETWEEN 1 AND 999999999),
     serie           TEXT NOT NULL,
     lote            TEXT,
     status          TEXT NOT NULL CHECK (status IN ('processando','incerto','autorizado','rejeitado','falha_local')),
@@ -41,13 +44,14 @@ const NFE_EMISSAO_SCHEMA_STATEMENTS = [
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_nfe_emissao_tentativa_ativa
     ON nfe_emissao_tentativas(ordemid, operacao)
     WHERE status IN ('processando','incerto')`,
-  `CREATE INDEX IF NOT EXISTS idx_nfe_emissao_tentativas_ordem
-    ON nfe_emissao_tentativas(ordemid, createdat DESC)`,
+  NFE_EMISSAO_ORDEM_INDEX_DDL,
   `CREATE TABLE IF NOT EXISTS nfe_emissao_transicoes (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     tentativaid INTEGER NOT NULL,
     ordemid     INTEGER NOT NULL,
     status      TEXT NOT NULL,
+    estado_anterior TEXT,
+    estado_novo TEXT,
     cstat       TEXT,
     motivo      TEXT,
     createdat   TEXT NOT NULL DEFAULT (datetime('now','localtime'))
@@ -56,8 +60,20 @@ const NFE_EMISSAO_SCHEMA_STATEMENTS = [
     ON nfe_emissao_transicoes(tentativaid, id)`,
 ];
 
+const NFE_EMISSAO_MIGRATION_STATEMENTS = [
+  ...NFE_EMISSAO_SCHEMA_STATEMENTS,
+  "ALTER TABLE nfe_emissao_transicoes ADD COLUMN estado_anterior TEXT",
+  "ALTER TABLE nfe_emissao_transicoes ADD COLUMN estado_novo TEXT",
+  "DROP INDEX IF EXISTS idx_nfe_emissao_tentativas_ordem",
+  NFE_EMISSAO_ORDEM_INDEX_DDL,
+];
+
 function getNfeEmissaoSchemaStatements() {
   return [...NFE_EMISSAO_SCHEMA_STATEMENTS];
+}
+
+function getNfeEmissaoMigrationStatements() {
+  return [...NFE_EMISSAO_MIGRATION_STATEMENTS];
 }
 
 const SCHEMA = `
@@ -638,7 +654,7 @@ function initDB() {
     `CREATE INDEX IF NOT EXISTS idx_nfe_inutilizacoes_faixa
       ON nfe_inutilizacoes(numero_inicial, numero_final)`,
     // v19 - reserva atomica e historico monotonicamente auditavel da emissao NF-e
-    ...NFE_EMISSAO_SCHEMA_STATEMENTS,
+    ...NFE_EMISSAO_MIGRATION_STATEMENTS,
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {}
@@ -866,4 +882,5 @@ module.exports = {
   backup,
   getDB: () => db,
   getNfeEmissaoSchemaStatements,
+  getNfeEmissaoMigrationStatements,
 };
