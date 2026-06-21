@@ -21,13 +21,15 @@ const NFE_EMISSAO_ORDEM_INDEX_DDL = `CREATE INDEX IF NOT EXISTS idx_nfe_emissao_
 const NFE_EMISSAO_NUMERO_TRIGGER_STATEMENTS = [
   `CREATE TRIGGER IF NOT EXISTS trg_nfe_emissao_tentativas_numero_insert
     BEFORE INSERT ON nfe_emissao_tentativas
-    WHEN NEW.numero NOT BETWEEN 1 AND 999999999
+    WHEN typeof(NEW.numero) <> 'integer'
+      OR NEW.numero NOT BETWEEN 1 AND 999999999
     BEGIN
       SELECT RAISE(ABORT, 'nfe_numero_fora_limite');
     END`,
   `CREATE TRIGGER IF NOT EXISTS trg_nfe_emissao_tentativas_numero_update
     BEFORE UPDATE OF numero ON nfe_emissao_tentativas
-    WHEN NEW.numero NOT BETWEEN 1 AND 999999999
+    WHEN typeof(NEW.numero) <> 'integer'
+      OR NEW.numero NOT BETWEEN 1 AND 999999999
     BEGIN
       SELECT RAISE(ABORT, 'nfe_numero_fora_limite');
     END`,
@@ -39,7 +41,7 @@ const NFE_EMISSAO_SCHEMA_STATEMENTS = [
     ordemid         INTEGER NOT NULL,
     operacao        TEXT NOT NULL DEFAULT 'emissao',
     idempotency_key TEXT NOT NULL UNIQUE,
-    numero          INTEGER NOT NULL CHECK (numero BETWEEN 1 AND 999999999),
+    numero          INTEGER NOT NULL CHECK (typeof(numero)='integer' AND numero BETWEEN 1 AND 999999999),
     serie           TEXT NOT NULL,
     lote            TEXT,
     status          TEXT NOT NULL CHECK (status IN ('processando','incerto','autorizado','rejeitado','falha_local')),

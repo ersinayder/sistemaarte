@@ -608,11 +608,18 @@ describe('nfeAttemptRepository', () => {
       expect(String(schemaDb.prepare(`
         SELECT sql FROM sqlite_master
         WHERE type = 'table' AND name = 'nfe_emissao_tentativas'
-      `).get().sql)).toContain('CHECK (numero BETWEEN 1 AND 999999999)');
+      `).get().sql)).toContain(
+        "CHECK (typeof(numero)='integer' AND numero BETWEEN 1 AND 999999999)"
+      );
       expect(() => schemaDb.prepare(`
         INSERT INTO nfe_emissao_tentativas
           (ordemid, idempotency_key, numero, serie, status)
         VALUES (99, 'numero-grande', 1000000000, '1', 'rejeitado')
+      `).run()).toThrow();
+      expect(() => schemaDb.prepare(`
+        INSERT INTO nfe_emissao_tentativas
+          (ordemid, idempotency_key, numero, serie, status)
+        VALUES (97, 'numero-fracionario', 1.5, '1', 'rejeitado')
       `).run()).toThrow();
       const updateTarget = schemaDb.prepare(`
         INSERT INTO nfe_emissao_tentativas
@@ -622,6 +629,11 @@ describe('nfeAttemptRepository', () => {
       expect(() => schemaDb.prepare(`
         UPDATE nfe_emissao_tentativas
         SET numero = 1000000000
+        WHERE id = ?
+      `).run(updateTarget.lastInsertRowid)).toThrow();
+      expect(() => schemaDb.prepare(`
+        UPDATE nfe_emissao_tentativas
+        SET numero = 1.5
         WHERE id = ?
       `).run(updateTarget.lastInsertRowid)).toThrow();
       expect(schemaDb.prepare(`
@@ -773,8 +785,18 @@ describe('nfeAttemptRepository', () => {
         VALUES (18, 'numero-invalido-insert', 1000000000, '1', 'rejeitado', 'agora', 'agora')
       `).run()).toThrow();
       expect(() => migrationDb.prepare(`
+        INSERT INTO nfe_emissao_tentativas
+          (ordemid, idempotency_key, numero, serie, status, createdat, updatedat)
+        VALUES (19, 'numero-fracionario-insert', 1.5, '1', 'rejeitado', 'agora', 'agora')
+      `).run()).toThrow();
+      expect(() => migrationDb.prepare(`
         UPDATE nfe_emissao_tentativas
         SET numero = 1000000000
+        WHERE id = 1
+      `).run()).toThrow();
+      expect(() => migrationDb.prepare(`
+        UPDATE nfe_emissao_tentativas
+        SET numero = 1.5
         WHERE id = 1
       `).run()).toThrow();
     } finally {
