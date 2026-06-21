@@ -118,6 +118,7 @@ function createNfeAttemptRepository(db, deps = {}) {
     return db.prepare('SELECT * FROM nfe_emissao_tentativas WHERE id = ?').get(id) || null;
   }
 
+  // Caller must hold an external IMMEDIATE transaction for concurrent flows.
   function transicionarNaTransacao(id, status, dados = {}) {
     if (!db.inTransaction) {
       throw repositoryError(
@@ -179,7 +180,7 @@ function createNfeAttemptRepository(db, deps = {}) {
   const transicionarTransaction = db.transaction(transicionarNaTransacao);
 
   function transicionar(id, status, dados = {}) {
-    return transicionarTransaction(id, status, dados);
+    return transicionarTransaction.immediate(id, status, dados);
   }
 
   const devolverNumeroTransaction = db.transaction((id) => {

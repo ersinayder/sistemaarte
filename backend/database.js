@@ -18,6 +18,20 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const NFE_EMISSAO_ORDEM_INDEX_DDL = `CREATE INDEX IF NOT EXISTS idx_nfe_emissao_tentativas_ordem
   ON nfe_emissao_tentativas(ordemid, createdat DESC)`;
+const NFE_EMISSAO_NUMERO_TRIGGER_STATEMENTS = [
+  `CREATE TRIGGER IF NOT EXISTS trg_nfe_emissao_tentativas_numero_insert
+    BEFORE INSERT ON nfe_emissao_tentativas
+    WHEN NEW.numero NOT BETWEEN 1 AND 999999999
+    BEGIN
+      SELECT RAISE(ABORT, 'nfe_numero_fora_limite');
+    END`,
+  `CREATE TRIGGER IF NOT EXISTS trg_nfe_emissao_tentativas_numero_update
+    BEFORE UPDATE OF numero ON nfe_emissao_tentativas
+    WHEN NEW.numero NOT BETWEEN 1 AND 999999999
+    BEGIN
+      SELECT RAISE(ABORT, 'nfe_numero_fora_limite');
+    END`,
+];
 
 const NFE_EMISSAO_SCHEMA_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS nfe_emissao_tentativas (
@@ -58,12 +72,27 @@ const NFE_EMISSAO_SCHEMA_STATEMENTS = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_nfe_emissao_transicoes_tentativa
     ON nfe_emissao_transicoes(tentativaid, id)`,
+  ...NFE_EMISSAO_NUMERO_TRIGGER_STATEMENTS,
 ];
 
 const NFE_EMISSAO_MIGRATION_STATEMENTS = [
   ...NFE_EMISSAO_SCHEMA_STATEMENTS,
   "ALTER TABLE nfe_emissao_transicoes ADD COLUMN estado_anterior TEXT",
   "ALTER TABLE nfe_emissao_transicoes ADD COLUMN estado_novo TEXT",
+  `UPDATE nfe_emissao_transicoes
+    SET estado_novo = COALESCE(estado_novo, status)`,
+  `UPDATE nfe_emissao_transicoes AS atual
+    SET estado_anterior = COALESCE(
+      estado_anterior,
+      (
+        SELECT anterior.status
+        FROM nfe_emissao_transicoes AS anterior
+        WHERE anterior.tentativaid = atual.tentativaid
+          AND anterior.id < atual.id
+        ORDER BY anterior.id DESC
+        LIMIT 1
+      )
+    )`,
   "DROP INDEX IF EXISTS idx_nfe_emissao_tentativas_ordem",
   NFE_EMISSAO_ORDEM_INDEX_DDL,
 ];

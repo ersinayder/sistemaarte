@@ -292,6 +292,65 @@ describe('nfeAttemptRepository', () => {
     }]);
   });
 
+  it('executa transicionar publico com BEGIN IMMEDIATE', () => {
+    const sqlLog = [];
+    const loggedDb = new Database(':memory:', { verbose: (sql) => sqlLog.push(sql) });
+    try {
+      loggedDb.exec(`
+        CREATE TABLE nfe_sequencias (
+          serie TEXT PRIMARY KEY,
+          ultimo_numero INTEGER DEFAULT 0
+        );
+        CREATE TABLE nfe_emissao_tentativas (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          ordemid INTEGER NOT NULL,
+          operacao TEXT NOT NULL DEFAULT 'emissao',
+          idempotency_key TEXT NOT NULL UNIQUE,
+          numero INTEGER NOT NULL,
+          serie TEXT NOT NULL,
+          lote TEXT,
+          status TEXT NOT NULL,
+          cstat TEXT,
+          motivo TEXT,
+          chave TEXT,
+          protocolo TEXT,
+          xml_envio TEXT,
+          xml_retorno TEXT,
+          erro_local TEXT,
+          solicitado_por INTEGER,
+          createdat TEXT NOT NULL,
+          updatedat TEXT NOT NULL,
+          concluido_em TEXT
+        );
+        CREATE UNIQUE INDEX idx_nfe_emissao_tentativa_ativa
+          ON nfe_emissao_tentativas(ordemid, operacao)
+          WHERE status IN ('processando','incerto');
+        CREATE TABLE nfe_emissao_transicoes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          tentativaid INTEGER NOT NULL,
+          ordemid INTEGER NOT NULL,
+          status TEXT NOT NULL,
+          estado_anterior TEXT,
+          estado_novo TEXT,
+          cstat TEXT,
+          motivo TEXT,
+          createdat TEXT NOT NULL
+        );
+      `);
+      const loggedRepository = createNfeAttemptRepository(loggedDb, {
+        agora: () => '2026-06-20T12:00:00.000Z',
+      });
+      const tentativa = loggedRepository.reservar({ ordemId: 17, serie: '1', usuarioId: 9 });
+      sqlLog.length = 0;
+
+      loggedRepository.transicionar(tentativa.id, 'incerto');
+
+      expect(sqlLog).toContain('BEGIN IMMEDIATE');
+    } finally {
+      loggedDb.close();
+    }
+  });
+
   it.each(['rejeitado', 'falha_local'])(
     'devolve o ultimo numero em %s sem alterar status ou historico',
     (estado) => {
@@ -555,6 +614,26 @@ describe('nfeAttemptRepository', () => {
           (ordemid, idempotency_key, numero, serie, status)
         VALUES (99, 'numero-grande', 1000000000, '1', 'rejeitado')
       `).run()).toThrow();
+      const updateTarget = schemaDb.prepare(`
+        INSERT INTO nfe_emissao_tentativas
+          (ordemid, idempotency_key, numero, serie, status)
+        VALUES (98, 'numero-valido-update', 98, '1', 'rejeitado')
+      `).run();
+      expect(() => schemaDb.prepare(`
+        UPDATE nfe_emissao_tentativas
+        SET numero = 1000000000
+        WHERE id = ?
+      `).run(updateTarget.lastInsertRowid)).toThrow();
+      expect(schemaDb.prepare(`
+        SELECT name
+        FROM sqlite_master
+        WHERE type = 'trigger'
+          AND tbl_name = 'nfe_emissao_tentativas'
+        ORDER BY name
+      `).all()).toEqual([
+        { name: 'trg_nfe_emissao_tentativas_numero_insert' },
+        { name: 'trg_nfe_emissao_tentativas_numero_update' },
+      ]);
 
       const transitionColumns = schemaDb.prepare('PRAGMA table_info(nfe_emissao_transicoes)').all();
       expect(transitionColumns.map((column) => column.name)).toEqual(expect.arrayContaining([
@@ -646,13 +725,25 @@ describe('nfeAttemptRepository', () => {
           status TEXT NOT NULL,
           createdat TEXT NOT NULL
         );
+        INSERT INTO nfe_emissao_tentativas
+          (id, ordemid, idempotency_key, numero, serie, status, createdat, updatedat)
+        VALUES
+          (1, 17, 'emissao:17:1:1:a1', 1, '1', 'rejeitado', '2026-06-20 10:00:00', '2026-06-20 10:00:00');
+        INSERT INTO nfe_emissao_transicoes
+          (id, tentativaid, ordemid, status, createdat)
+        VALUES
+          (10, 1, 17, 'processando', '2026-06-20 10:00:00'),
+          (20, 1, 17, 'incerto', '2026-06-20 10:01:00'),
+          (30, 1, 17, 'rejeitado', '2026-06-20 10:02:00');
       `);
 
-      for (const statement of getNfeEmissaoMigrationStatements()) {
-        try {
-          migrationDb.exec(statement);
-        } catch (_) {
-          // Mirrors the idempotent migration runner used by database.js.
+      for (let pass = 0; pass < 2; pass += 1) {
+        for (const statement of getNfeEmissaoMigrationStatements()) {
+          try {
+            migrationDb.exec(statement);
+          } catch (_) {
+            // Mirrors the idempotent migration runner used by database.js.
+          }
         }
       }
 
@@ -661,11 +752,31 @@ describe('nfeAttemptRepository', () => {
         'estado_anterior',
         'estado_novo',
       ]));
+      expect(migrationDb.prepare(`
+        SELECT id, estado_anterior, estado_novo
+        FROM nfe_emissao_transicoes
+        WHERE tentativaid = 1
+        ORDER BY id
+      `).all()).toEqual([
+        { id: 10, estado_anterior: null, estado_novo: 'processando' },
+        { id: 20, estado_anterior: 'processando', estado_novo: 'incerto' },
+        { id: 30, estado_anterior: 'incerto', estado_novo: 'rejeitado' },
+      ]);
       const indexSql = migrationDb.prepare(`
         SELECT sql FROM sqlite_master
         WHERE type = 'index' AND name = 'idx_nfe_emissao_tentativas_ordem'
       `).get().sql;
       expect(indexSql).toContain('createdat DESC');
+      expect(() => migrationDb.prepare(`
+        INSERT INTO nfe_emissao_tentativas
+          (ordemid, idempotency_key, numero, serie, status, createdat, updatedat)
+        VALUES (18, 'numero-invalido-insert', 1000000000, '1', 'rejeitado', 'agora', 'agora')
+      `).run()).toThrow();
+      expect(() => migrationDb.prepare(`
+        UPDATE nfe_emissao_tentativas
+        SET numero = 1000000000
+        WHERE id = 1
+      `).run()).toThrow();
     } finally {
       migrationDb.close();
     }
