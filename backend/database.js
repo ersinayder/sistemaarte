@@ -79,6 +79,9 @@ const NFE_EMISSAO_SCHEMA_STATEMENTS = [
 
 const NFE_EMISSAO_MIGRATION_STATEMENTS = [
   ...NFE_EMISSAO_SCHEMA_STATEMENTS,
+  "DROP TRIGGER IF EXISTS trg_nfe_emissao_tentativas_numero_insert",
+  "DROP TRIGGER IF EXISTS trg_nfe_emissao_tentativas_numero_update",
+  ...NFE_EMISSAO_NUMERO_TRIGGER_STATEMENTS,
   "ALTER TABLE nfe_emissao_transicoes ADD COLUMN estado_anterior TEXT",
   "ALTER TABLE nfe_emissao_transicoes ADD COLUMN estado_novo TEXT",
   `UPDATE nfe_emissao_transicoes

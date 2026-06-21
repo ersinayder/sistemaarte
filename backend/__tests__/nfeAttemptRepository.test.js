@@ -730,6 +730,18 @@ describe('nfeAttemptRepository', () => {
         );
         CREATE INDEX idx_nfe_emissao_tentativas_ordem
           ON nfe_emissao_tentativas(ordemid, createdat);
+        CREATE TRIGGER trg_nfe_emissao_tentativas_numero_insert
+          BEFORE INSERT ON nfe_emissao_tentativas
+          WHEN NEW.numero NOT BETWEEN 1 AND 999999999
+          BEGIN
+            SELECT RAISE(ABORT, 'nfe_numero_fora_limite');
+          END;
+        CREATE TRIGGER trg_nfe_emissao_tentativas_numero_update
+          BEFORE UPDATE OF numero ON nfe_emissao_tentativas
+          WHEN NEW.numero NOT BETWEEN 1 AND 999999999
+          BEGIN
+            SELECT RAISE(ABORT, 'nfe_numero_fora_limite');
+          END;
         CREATE TABLE nfe_emissao_transicoes (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           tentativaid INTEGER NOT NULL,
@@ -779,6 +791,20 @@ describe('nfeAttemptRepository', () => {
         WHERE type = 'index' AND name = 'idx_nfe_emissao_tentativas_ordem'
       `).get().sql;
       expect(indexSql).toContain('createdat DESC');
+      const triggerSql = migrationDb.prepare(`
+        SELECT name, sql
+        FROM sqlite_master
+        WHERE type = 'trigger'
+          AND name IN (
+            'trg_nfe_emissao_tentativas_numero_insert',
+            'trg_nfe_emissao_tentativas_numero_update'
+          )
+        ORDER BY name
+      `).all();
+      expect(triggerSql).toHaveLength(2);
+      for (const trigger of triggerSql) {
+        expect(trigger.sql).toContain("typeof(NEW.numero) <> 'integer'");
+      }
       expect(() => migrationDb.prepare(`
         INSERT INTO nfe_emissao_tentativas
           (ordemid, idempotency_key, numero, serie, status, createdat, updatedat)
