@@ -359,15 +359,22 @@ function validarXmlAutorizacao(value, chaveEsperada) {
 
     const infNFeNodes = root.find('./*[local-name()="NFe"]/*[local-name()="infNFe"]');
     const chNFeNodes = root.find('./*[local-name()="protNFe"]/*[local-name()="infProt"]/*[local-name()="chNFe"]');
-    if (infNFeNodes.length !== 1 || chNFeNodes.length !== 1) return false;
+    const identificadores = [];
 
-    const id = infNFeNodes[0].attr('Id')?.value() || '';
-    const chaveInfNFe = id.startsWith('NFe') ? id.slice(3) : '';
-    const chaveProtocolo = chNFeNodes[0].text().trim();
+    for (const infNFe of infNFeNodes) {
+      const idAttr = infNFe.attr('Id');
+      if (idAttr) {
+        const id = idAttr.value();
+        identificadores.push(id.startsWith('NFe') ? id.slice(3) : id);
+      }
+    }
 
-    return chaveInfNFe === chave
-      && chaveProtocolo === chave
-      && chaveInfNFe === chaveProtocolo;
+    for (const chNFe of chNFeNodes) {
+      identificadores.push(chNFe.text().trim());
+    }
+
+    return identificadores.length > 0
+      && identificadores.every(identificador => identificador === chave);
   } catch (_) {
     return false;
   }

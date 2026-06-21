@@ -60,12 +60,25 @@ describe('nfeEmissionRules', () => {
       ['XML malformado', `<nfeProc><NFe><infNFe Id="NFe${chave}"></NFe><protNFe><infProt><chNFe>${chave}</chNFe></infProt></protNFe></nfeProc>`],
       ['chave em comentario', `<nfeProc><!-- <chNFe>${chave}</chNFe> --></nfeProc>`],
       ['Id em elemento arbitrario', `<nfeProc><qualquer Id="NFe${chave}" /></nfeProc>`],
-      ['chaves inconsistentes', `<nfeProc><NFe><infNFe Id="NFe${chave}"/></NFe><protNFe><infProt><chNFe>${outraChave}</chNFe></infProt></protNFe></nfeProc>`],
+      ['protocolo divergente', `<nfeProc><NFe><infNFe Id="NFe${chave}"/></NFe><protNFe><infProt><chNFe>${outraChave}</chNFe></infProt></protNFe></nfeProc>`],
+      ['Id divergente', `<nfeProc><NFe><infNFe Id="NFe${outraChave}"/></NFe><protNFe><infProt><chNFe>${chave}</chNFe></infProt></protNFe></nfeProc>`],
     ])('recusa %s', (_cenario, xml) => {
       expect(validarXmlAutorizacao(xml, chave)).toBe(false);
     });
 
-    it('aceita somente nfeProc real com infNFe e protocolo usando a mesma chave esperada', () => {
+    it('aceita nfeProc real quando somente infNFe@Id identifica a chave esperada', () => {
+      const xml = `<nfeProc><NFe><infNFe Id="NFe${chave}"/></NFe></nfeProc>`;
+
+      expect(validarXmlAutorizacao(xml, chave)).toBe(true);
+    });
+
+    it('aceita nfeProc real quando somente o protocolo identifica a chave esperada', () => {
+      const xml = `<nfeProc><protNFe><infProt><chNFe>${chave}</chNFe></infProt></protNFe></nfeProc>`;
+
+      expect(validarXmlAutorizacao(xml, chave)).toBe(true);
+    });
+
+    it('aceita nfeProc real quando infNFe e protocolo usam a mesma chave esperada', () => {
       const xml = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         '<nfeProc xmlns="http://www.portalfiscal.inf.br/nfe">',
