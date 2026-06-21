@@ -21,7 +21,8 @@ describe('nfeEmissionRules', () => {
       ['cStat vazio', { cStat: '' }, 'incerto'],
       ['codigo desconhecido', { cStat: '999' }, 'incerto'],
       ['autorizacao', { cStat: 100 }, 'autorizado'],
-      ['duplicidade', { cStat: '204' }, 'rejeitado'],
+      ['duplicidade potencialmente autorizada', { cStat: '204' }, 'incerto'],
+      ['duplicidade com diferenca na chave', { cStat: '539' }, 'incerto'],
       ['CFOP incompativel', { cStat: '386' }, 'rejeitado'],
       ['NCM inexistente', { cStat: '778' }, 'rejeitado'],
     ])('classifica %s', (_cenario, resultado, estadoEsperado) => {
@@ -31,7 +32,7 @@ describe('nfeEmissionRules', () => {
     it('usa allowlist estrita para devolver a numeracao', () => {
       expect(rejeicaoPermiteDevolverNumero('386')).toBe(true);
 
-      for (const cStat of [null, '', '999', '204', '205', '206', '302', '303']) {
+      for (const cStat of [null, '', '999', '204', '205', '206', '302', '303', '539']) {
         expect(rejeicaoPermiteDevolverNumero(cStat)).toBe(false);
       }
     });
@@ -60,30 +61,22 @@ describe('nfeEmissionRules', () => {
       ['XML malformado', `<nfeProc><NFe><infNFe Id="NFe${chave}"></NFe><protNFe><infProt><chNFe>${chave}</chNFe></infProt></protNFe></nfeProc>`],
       ['chave em comentario', `<nfeProc><!-- <chNFe>${chave}</chNFe> --></nfeProc>`],
       ['Id em elemento arbitrario', `<nfeProc><qualquer Id="NFe${chave}" /></nfeProc>`],
-      ['protocolo divergente', `<nfeProc><NFe><infNFe Id="NFe${chave}"/></NFe><protNFe><infProt><chNFe>${outraChave}</chNFe></infProt></protNFe></nfeProc>`],
-      ['Id divergente', `<nfeProc><NFe><infNFe Id="NFe${outraChave}"/></NFe><protNFe><infProt><chNFe>${chave}</chNFe></infProt></protNFe></nfeProc>`],
+      ['protocolo divergente', `<nfeProc><NFe><infNFe Id="NFe${chave}"/></NFe><protNFe><infProt><cStat>100</cStat><chNFe>${outraChave}</chNFe></infProt></protNFe></nfeProc>`],
+      ['Id divergente', `<nfeProc><NFe><infNFe Id="NFe${outraChave}"/></NFe><protNFe><infProt><cStat>100</cStat><chNFe>${chave}</chNFe></infProt></protNFe></nfeProc>`],
+      ['somente infNFe', `<nfeProc><NFe><infNFe Id="NFe${chave}"/></NFe></nfeProc>`],
+      ['somente protocolo', `<nfeProc><protNFe><infProt><cStat>100</cStat><chNFe>${chave}</chNFe></infProt></protNFe></nfeProc>`],
+      ['protocolo sem cStat', `<nfeProc><NFe><infNFe Id="NFe${chave}"/></NFe><protNFe><infProt><chNFe>${chave}</chNFe></infProt></protNFe></nfeProc>`],
+      ['protocolo rejeitado', `<nfeProc><NFe><infNFe Id="NFe${chave}"/></NFe><protNFe><infProt><cStat>386</cStat><chNFe>${chave}</chNFe></infProt></protNFe></nfeProc>`],
     ])('recusa %s', (_cenario, xml) => {
       expect(validarXmlAutorizacao(xml, chave)).toBe(false);
     });
 
-    it('aceita nfeProc real quando somente infNFe@Id identifica a chave esperada', () => {
-      const xml = `<nfeProc><NFe><infNFe Id="NFe${chave}"/></NFe></nfeProc>`;
-
-      expect(validarXmlAutorizacao(xml, chave)).toBe(true);
-    });
-
-    it('aceita nfeProc real quando somente o protocolo identifica a chave esperada', () => {
-      const xml = `<nfeProc><protNFe><infProt><chNFe>${chave}</chNFe></infProt></protNFe></nfeProc>`;
-
-      expect(validarXmlAutorizacao(xml, chave)).toBe(true);
-    });
-
-    it('aceita nfeProc real quando infNFe e protocolo usam a mesma chave esperada', () => {
+    it('aceita somente nfeProc completo autorizado com as duas chaves iguais', () => {
       const xml = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         '<nfeProc xmlns="http://www.portalfiscal.inf.br/nfe">',
         `<NFe><infNFe Id="NFe${chave}"/></NFe>`,
-        `<protNFe><infProt><chNFe>${chave}</chNFe></infProt></protNFe>`,
+        `<protNFe><infProt><cStat>100</cStat><chNFe>${chave}</chNFe></infProt></protNFe>`,
         '</nfeProc>',
       ].join('');
 
@@ -91,7 +84,7 @@ describe('nfeEmissionRules', () => {
     });
 
     it('recusa chave esperada formatada em vez de 44 digitos exatos', () => {
-      const xml = `<nfeProc><NFe><infNFe Id="NFe${chave}"/></NFe><protNFe><infProt><chNFe>${chave}</chNFe></infProt></protNFe></nfeProc>`;
+      const xml = `<nfeProc><NFe><infNFe Id="NFe${chave}"/></NFe><protNFe><infProt><cStat>100</cStat><chNFe>${chave}</chNFe></infProt></protNFe></nfeProc>`;
 
       expect(validarXmlAutorizacao(xml, `NFe ${chave}`)).toBe(false);
     });

@@ -119,7 +119,6 @@ function normalizarTexto(value, max = 120) {
 const CSOSN_VALIDOS_NFE = new Set(['101', '102', '103', '300', '400', '500', '900']);
 const CSTAT_AUTORIZADO = '100';
 const CSTATS_REJEICAO_CONHECIDA = new Set([
-  '204',
   '205',
   '206',
   '207',
@@ -148,7 +147,6 @@ const CSTATS_REJEICAO_CONHECIDA = new Set([
   '531',
   '532',
   '533',
-  '539',
   '564',
   '573',
   '591',
@@ -358,23 +356,22 @@ function validarXmlAutorizacao(value, chaveEsperada) {
     if (!root || root.name() !== 'nfeProc') return false;
 
     const infNFeNodes = root.find('./*[local-name()="NFe"]/*[local-name()="infNFe"]');
-    const chNFeNodes = root.find('./*[local-name()="protNFe"]/*[local-name()="infProt"]/*[local-name()="chNFe"]');
-    const identificadores = [];
+    const infProtNodes = root.find('./*[local-name()="protNFe"]/*[local-name()="infProt"]');
+    if (infNFeNodes.length !== 1 || infProtNodes.length !== 1) return false;
 
-    for (const infNFe of infNFeNodes) {
-      const idAttr = infNFe.attr('Id');
-      if (idAttr) {
-        const id = idAttr.value();
-        identificadores.push(id.startsWith('NFe') ? id.slice(3) : id);
-      }
-    }
+    const id = infNFeNodes[0].attr('Id')?.value() || '';
+    const chNFeNodes = infProtNodes[0].find('./*[local-name()="chNFe"]');
+    const cStatNodes = infProtNodes[0].find('./*[local-name()="cStat"]');
+    if (chNFeNodes.length !== 1 || cStatNodes.length !== 1) return false;
 
-    for (const chNFe of chNFeNodes) {
-      identificadores.push(chNFe.text().trim());
-    }
+    const chaveInfNFe = id.startsWith('NFe') ? id.slice(3) : '';
+    const chaveProtocolo = chNFeNodes[0].text().trim();
+    const cStat = cStatNodes[0].text().trim();
 
-    return identificadores.length > 0
-      && identificadores.every(identificador => identificador === chave);
+    return cStat === CSTAT_AUTORIZADO
+      && chaveInfNFe === chave
+      && chaveProtocolo === chave
+      && chaveInfNFe === chaveProtocolo;
   } catch (_) {
     return false;
   }
