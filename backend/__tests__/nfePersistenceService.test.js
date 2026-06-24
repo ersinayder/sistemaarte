@@ -5,7 +5,11 @@ import { createNfePersistenceService } from '../services/nfePersistenceService.j
 
 const AGORA = '2026-06-20T15:00:00.000Z';
 const CHAVE = '31260607500718000196550010000000011000000019';
-const XML = `<nfeProc><NFe><infNFe Id="NFe${CHAVE}" /></NFe><protNFe /></nfeProc>`;
+const OUTRA_CHAVE = '31260607500718000196550010000000021000000024';
+const PROTOCOLO = '131260000000001';
+const XML = `<nfeProc><NFe><infNFe Id="NFe${CHAVE}" /></NFe><protNFe><infProt><chNFe>${CHAVE}</chNFe><cStat>100</cStat></infProt></protNFe></nfeProc>`;
+const XML_OUTRA_CHAVE = `<nfeProc><NFe><infNFe Id="NFe${OUTRA_CHAVE}" /></NFe><protNFe><infProt><chNFe>${OUTRA_CHAVE}</chNFe><cStat>100</cStat></infProt></protNFe></nfeProc>`;
+const XML_REJEITADO = `<nfeProc><NFe><infNFe Id="NFe${CHAVE}" /></NFe><protNFe><infProt><chNFe>${CHAVE}</chNFe><cStat>204</cStat></infProt></protNFe></nfeProc>`;
 
 function createDb(options) {
   const db = new Database(':memory:', options);
@@ -134,7 +138,7 @@ function input(overrides = {}) {
     numero: 1,
     serie: '1',
     chave: CHAVE,
-    protocolo: '131260000000001',
+    protocolo: PROTOCOLO,
     cStat: '100',
     motivo: 'Autorizado o uso da NF-e',
     xml: XML,
@@ -195,7 +199,7 @@ describe('nfePersistenceService', () => {
       nfe_numero: '000000001',
       nfe_serie: '1',
       nfe_chave: CHAVE,
-      nfe_protocolo: '131260000000001',
+      nfe_protocolo: PROTOCOLO,
       nfe_emitida_em: AGORA,
       nfe_xml: XML,
       nfe_cancelado_em: null,
@@ -228,7 +232,7 @@ describe('nfePersistenceService', () => {
       chave: CHAVE,
       tipo: 'autorizacao',
       nseqevento: 1,
-      protocolo: '131260000000001',
+      protocolo: PROTOCOLO,
       cstat: '100',
       motivo: 'Autorizado o uso da NF-e',
       xml: XML,
@@ -237,7 +241,7 @@ describe('nfePersistenceService', () => {
     expect(repository.buscarPorId(33)).toMatchObject({
       status: 'autorizado',
       chave: CHAVE,
-      protocolo: '131260000000001',
+      protocolo: PROTOCOLO,
       cstat: '100',
       xml_retorno: XML,
     });
@@ -393,6 +397,109 @@ describe('nfePersistenceService', () => {
       code: 'nfe_xml_invalido',
     }));
     expect(snapshot(db)).toEqual(before);
+  });
+
+  it.each([
+    ['ausente', undefined],
+    ['vazio', ''],
+    ['204', '204'],
+    ['386', '386'],
+  ])('recusa autorizacao com cStat %s sem escritas', (_cenario, cStat) => {
+    const before = snapshot(db);
+
+    expect(() => service.autorizar(input({ cStat }))).toThrow(expect.objectContaining({
+      status: 400,
+      code: 'nfe_autorizacao_invalida',
+    }));
+    expect(snapshot(db)).toEqual(before);
+  });
+
+  it.each([
+    ['JSON', JSON.stringify({ nfeProc: true })],
+    ['sem nfeProc', `<retEnviNFe><cStat>204</cStat></retEnviNFe>`],
+    ['sem protNFe', `<nfeProc><NFe><infNFe Id="NFe${CHAVE}" /></NFe></nfeProc>`],
+    ['cStat nao 100 no XML', XML_REJEITADO],
+    ['XML de outra chave', XML_OUTRA_CHAVE],
+  ])('recusa XML de autorizacao invalido: %s', (_cenario, xml) => {
+    const before = snapshot(db);
+
+    expect(() => service.autorizar(input({ xml }))).toThrow(expect.objectContaining({
+      status: 400,
+      code: 'nfe_xml_invalido',
+    }));
+    expect(snapshot(db)).toEqual(before);
+  });
+
+  it.each([
+    ['chave curta', { chave: '123' }],
+    ['chave com letras', { chave: `${CHAVE.slice(0, 43)}X` }],
+    ['protocolo vazio', { protocolo: '' }],
+    ['protocolo em branco', { protocolo: '   ' }],
+  ])('recusa %s antes de persistir', (_cenario, overrides) => {
+    const before = snapshot(db);
+
+    expect(() => service.autorizar(input(overrides))).toThrow(expect.objectContaining({
+      status: 400,
+      code: 'nfe_autorizacao_invalida',
+    }));
+    expect(snapshot(db)).toEqual(before);
+  });
+
+  it('aceita factory com nfeAttemptRepository', () => {
+    const serviceComAlias = createNfePersistenceService({
+      db,
+      nfeAttemptRepository: repository,
+      agora: () => AGORA,
+    });
+
+    expect(serviceComAlias.autorizar(input())).toMatchObject({ id: 33, status: 'autorizado' });
+  });
+
+  it.each([
+    ['cpf', { cpf: '' }],
+    ['logradouro', { logradouro: '' }],
+    ['numero', { c_numero: '' }],
+    ['bairro', { bairro: '' }],
+    ['cidade', { cidade: '' }],
+    ['uf', { uf: '' }],
+    ['cep', { cep: '' }],
+  ])('recusa clienteid com %s essencial ausente sem nulificar cadastro', (_campo, overrideCliente) => {
+    const before = snapshot(db);
+
+    expect(() => service.autorizar(input({
+      cliente: { ...input().cliente, ...overrideCliente },
+    }))).toThrow(expect.objectContaining({
+      status: 400,
+      code: 'nfe_cliente_fiscal_invalido',
+    }));
+    expect(snapshot(db)).toEqual(before);
+  });
+
+  it.each([
+    ['ja autorizada com chave diferente', { nfe_status: 'autorizado', nfe_chave: OUTRA_CHAVE }],
+    ['cancelada', { nfe_status: 'cancelada', nfe_chave: CHAVE }],
+    ['cancelado', { nfe_status: 'cancelado', nfe_chave: CHAVE }],
+  ])('recusa OS %s sem sobrescrever dados fiscais', (_cenario, estado) => {
+    db.prepare('UPDATE ordens SET nfe_status = ?, nfe_chave = ? WHERE id = 17')
+      .run(estado.nfe_status, estado.nfe_chave);
+    const before = snapshot(db);
+
+    expect(() => service.autorizar(input())).toThrow(expect.objectContaining({
+      status: 409,
+      code: 'nfe_ordem_ja_finalizada',
+    }));
+    expect(snapshot(db)).toEqual(before);
+  });
+
+  it('mantem idempotencia quando OS ja esta autorizada com a mesma chave', () => {
+    db.prepare('UPDATE ordens SET nfe_status = ?, nfe_chave = ? WHERE id = 17')
+      .run('autorizado', CHAVE);
+
+    expect(service.autorizar(input())).toMatchObject({ id: 33, status: 'autorizado' });
+    expect(db.prepare('SELECT nfe_status, nfe_chave FROM ordens WHERE id = 17').get()).toEqual({
+      nfe_status: 'autorizado',
+      nfe_chave: CHAVE,
+    });
   });
 
   it('executa com BEGIN IMMEDIATE e transiciona dentro da transacao', () => {
