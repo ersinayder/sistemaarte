@@ -10,13 +10,6 @@ function onlyMessage(error) {
   return String(error?.message || error || 'Erro desconhecido').slice(0, 500);
 }
 
-function fiscalError(status, code, message) {
-  const error = new Error(message);
-  error.status = status;
-  error.code = code;
-  return error;
-}
-
 function extrairXmlFiscal(valor, depth = 0) {
   if (!valor || depth > 5) return null;
 
@@ -112,7 +105,17 @@ function responseBase(tentativa, overrides = {}) {
   };
 }
 
+function numeroFiscal(tentativa) {
+  return String(tentativa?.numero || '').padStart(9, '0');
+}
+
+function chaveEvento(tentativa, dados = {}) {
+  const chave = String(dados.chave || '').trim();
+  return chave || `OS-${tentativa.ordemid}`;
+}
+
 function createNfeEmissaoService({
+  db,
   attemptRepository,
   persistenceService,
   transmitir,
@@ -120,6 +123,7 @@ function createNfeEmissaoService({
   extrairResposta = extrairRespostaAutorizacao,
   salvarXmlDisco,
   formatarRejeicao,
+  classificarErro,
   timeoutMs = 75_000,
   setTimeoutFn = setTimeout,
   clearTimeoutFn = clearTimeout,
@@ -128,6 +132,75 @@ function createNfeEmissaoService({
 }) {
   if (!attemptRepository || !persistenceService || !transmitir || !montarPayload) {
     throw new TypeError('attemptRepository, persistenceService, transmitir e montarPayload sao obrigatorios.');
+  }
+
+  function runFiscalTransaction(fn) {
+    if (!db) return fn();
+    const tx = db.transaction(fn);
+    return typeof tx.immediate === 'function' ? tx.immediate() : tx();
+  }
+
+  function projetarStatusOrdem(tentativa, status, dados = {}) {
+    if (!db) return;
+    db.prepare(`
+      UPDATE ordens
+      SET nfe_status = ?,
+          nfe_numero = ?,
+          nfe_serie = ?,
+          nfe_chave = ?,
+          nfe_protocolo = ?,
+          nfe_deletedat = NULL,
+          nfe_deletedpor = NULL,
+          nfe_deletedreason = NULL
+      WHERE id = ? AND deletedat IS NULL
+    `).run(
+      status,
+      numeroFiscal(tentativa),
+      String(tentativa.serie),
+      dados.chave || null,
+      dados.protocolo || null,
+      tentativa.ordemid
+    );
+  }
+
+  function registrarEventoOperacional(tentativa, tipo, dados = {}) {
+    if (!db) return;
+    db.prepare(`
+      INSERT INTO nfe_eventos
+        (ordemid, chave, tipo, nseqevento, protocolo, cstat, motivo, texto, xml, createdat)
+      VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
+    `).run(
+      tentativa.ordemid,
+      chaveEvento(tentativa, dados),
+      tipo,
+      dados.protocolo || null,
+      dados.cStat ?? dados.cstat ?? null,
+      dados.motivo || null,
+      dados.texto || null,
+      dados.xmlRetorno || null,
+      agora()
+    );
+  }
+
+  function devolverNumeroNaTransacao(tentativa) {
+    if (!db) return attemptRepository.devolverNumero(tentativa.id);
+    const posterior = db.prepare(`
+      SELECT id
+      FROM nfe_emissao_tentativas
+      WHERE serie = ?
+        AND numero = ?
+        AND id > ?
+      LIMIT 1
+    `).get(tentativa.serie, tentativa.numero, tentativa.id);
+    if (posterior) return false;
+
+    const result = db.prepare(`
+      UPDATE nfe_sequencias
+      SET ultimo_numero = ultimo_numero - 1
+      WHERE serie = ?
+        AND ultimo_numero = ?
+    `).run(tentativa.serie, tentativa.numero);
+    return result.changes === 1;
   }
 
   function reservaAtivaResponse(input, error) {
@@ -151,7 +224,12 @@ function createNfeEmissaoService({
   }
 
   function marcarIncerto(tentativa, dados = {}) {
-    const atualizada = transicionar(tentativa, 'incerto', dados);
+    const atualizada = runFiscalTransaction(() => {
+      projetarStatusOrdem(tentativa, 'incerto', dados);
+      registrarEventoOperacional(tentativa, 'incerto', dados);
+      if (db) return attemptRepository.transicionarNaTransacao(tentativa.id, 'incerto', dados);
+      return transicionar(tentativa, 'incerto', dados);
+    });
     return responseBase(atualizada, {
       httpStatus: 409,
       ok: false,
@@ -172,16 +250,27 @@ function createNfeEmissaoService({
           item: undefined,
           motivoOriginal: resposta.motivo,
         };
-    const atualizada = transicionar(tentativa, 'rejeitado', {
+    const dadosTransicao = {
       cStat: resposta.cStat,
       motivo: rejeicao.mensagem,
       chave: resposta.chave || null,
       protocolo: resposta.protocolo || null,
       xmlRetorno: resposta.xml || null,
+    };
+    const atualizada = runFiscalTransaction(() => {
+      projetarStatusOrdem(tentativa, 'rejeitado', dadosTransicao);
+      registrarEventoOperacional(tentativa, 'rejeicao', {
+        ...dadosTransicao,
+        texto: `Rejeicao de autorizacao NF-e. Retorno original: ${rejeicao.motivoOriginal || rejeicao.mensagem}`,
+      });
+      const row = db
+        ? attemptRepository.transicionarNaTransacao(tentativa.id, 'rejeitado', dadosTransicao)
+        : transicionar(tentativa, 'rejeitado', dadosTransicao);
+      if (rejeicaoPermiteDevolverNumero(resposta.cStat)) {
+        devolverNumeroNaTransacao(tentativa);
+      }
+      return row;
     });
-    if (rejeicaoPermiteDevolverNumero(resposta.cStat)) {
-      attemptRepository.devolverNumero(tentativa.id);
-    }
     return responseBase(atualizada, {
       httpStatus: 422,
       ok: false,
@@ -191,6 +280,48 @@ function createNfeEmissaoService({
       campo: rejeicao.campo,
       item: rejeicao.item,
       motivoOriginal: rejeicao.motivoOriginal,
+    });
+  }
+
+  function finalizarFalhaLocal(tentativa, dados = {}) {
+    const atualizada = runFiscalTransaction(() => {
+      const row = db
+        ? attemptRepository.transicionarNaTransacao(tentativa.id, 'falha_local', dados)
+        : transicionar(tentativa, 'falha_local', dados);
+      devolverNumeroNaTransacao(tentativa);
+      return row;
+    });
+    return responseBase(atualizada, {
+      httpStatus: dados.httpStatus || 422,
+      ok: false,
+      status: 'falha_local',
+      cStat: dados.cStat ?? dados.cstat,
+      erro: dados.motivo || 'Falha local antes de transmitir NF-e.',
+    });
+  }
+
+  function processarErroTransmissao(error, tentativa) {
+    const info = typeof classificarErro === 'function' ? classificarErro(error) : null;
+    if (info?.tipo === 'validacao_xml') {
+      return finalizarFalhaLocal(tentativa, {
+        cStat: info.cStat ?? info.cstat ?? null,
+        motivo: info.mensagem || 'XML invalido antes da transmissao.',
+        erroLocal: onlyMessage(error),
+      });
+    }
+    if (info?.tipo === 'rejeicao') {
+      return finalizarRejeicao(tentativa, {
+        cStat: String(info.cStat ?? info.cstat ?? '').trim(),
+        motivo: info.mensagem || onlyMessage(error),
+        chave: info.chave || null,
+        protocolo: info.protocolo || null,
+        xml: info.xml || null,
+      });
+    }
+    return marcarIncerto(tentativa, {
+      cStat: info?.cStat ?? info?.cstat ?? 'comunicacao',
+      motivo: info?.mensagem || 'Falha de comunicacao com a SEFAZ apos reservar a numeracao.',
+      erroLocal: onlyMessage(error),
     });
   }
 
@@ -303,16 +434,10 @@ function createNfeEmissaoService({
         serie: tentativa.serie,
       });
     } catch (error) {
-      const atualizada = transicionar(tentativa, 'falha_local', {
-        erroLocal: onlyMessage(error),
-        motivo: 'Falha local antes da transmissao.',
-      });
-      attemptRepository.devolverNumero(tentativa.id);
-      return responseBase(atualizada, {
+      return finalizarFalhaLocal(tentativa, {
         httpStatus: 500,
-        ok: false,
-        status: 'falha_local',
-        erro: 'Falha local antes de transmitir NF-e.',
+        motivo: 'Falha local antes da transmissao.',
+        erroLocal: onlyMessage(error),
       });
     }
 
@@ -320,11 +445,7 @@ function createNfeEmissaoService({
     const transmissao = Promise.resolve()
       .then(() => transmitir(payload, tentativa))
       .then((raw) => processarResposta(raw, tentativa, input))
-      .catch((error) => marcarIncerto(tentativa, {
-        cStat: 'comunicacao',
-        motivo: 'Falha de comunicacao com a SEFAZ apos reservar a numeracao.',
-        erroLocal: onlyMessage(error),
-      }));
+      .catch((error) => processarErroTransmissao(error, tentativa));
 
     transmissao.catch((error) => {
       logger.error?.('[NF-e] Erro tardio na emissao:', onlyMessage(error));

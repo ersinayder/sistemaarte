@@ -188,11 +188,13 @@ function createHarness(overrides = {}) {
   }));
   const salvarXmlDisco = overrides.salvarXmlDisco || vi.fn(() => 'arquivo.xml');
   const service = createNfeEmissaoService({
+    db,
     attemptRepository,
     persistenceService,
     transmitir,
     montarPayload,
     salvarXmlDisco,
+    classificarErro: overrides.classificarErro,
     timeoutMs: overrides.timeoutMs ?? 1000,
     setTimeoutFn: overrides.setTimeoutFn,
     clearTimeoutFn: overrides.clearTimeoutFn,
@@ -240,6 +242,14 @@ describe('nfeEmissaoService', () => {
       code: 'nfe_tentativa_ativa',
     });
     expect(harness.transmitir).toHaveBeenCalledTimes(1);
+    expect(harness.db.prepare('SELECT nfe_status, nfe_numero, nfe_serie FROM ordens WHERE id = 17').get())
+      .toEqual({ nfe_status: 'incerto', nfe_numero: '000000001', nfe_serie: '1' });
+    expect(harness.db.prepare('SELECT tipo, cstat, motivo FROM nfe_eventos WHERE ordemid = 17').all())
+      .toEqual([{
+        tipo: 'incerto',
+        cstat: 'timeout',
+        motivo: 'Tempo esgotado aguardando resposta da SEFAZ.',
+      }]);
 
     deferred.resolve(authRaw());
     await flushPromises();
@@ -264,8 +274,14 @@ describe('nfeEmissaoService', () => {
       status: 'incerto',
       cStat: '100',
     });
-    expect(harness.db.prepare('SELECT nfe_status, nfe_xml FROM ordens WHERE id = 17').get())
-      .toEqual({ nfe_status: null, nfe_xml: null });
+    expect(harness.db.prepare('SELECT nfe_status, nfe_xml, nfe_numero, nfe_serie FROM ordens WHERE id = 17').get())
+      .toEqual({ nfe_status: 'incerto', nfe_xml: null, nfe_numero: '000000001', nfe_serie: '1' });
+    expect(harness.db.prepare('SELECT tipo, cstat, motivo FROM nfe_eventos WHERE ordemid = 17').get())
+      .toEqual({
+        tipo: 'incerto',
+        cstat: '100',
+        motivo: 'Autorizacao sem XML legal valido ou chave/protocolo divergente.',
+      });
     expect(harness.db.prepare('SELECT ultimo_numero FROM nfe_sequencias WHERE serie = ?').get('1'))
       .toEqual({ ultimo_numero: 1 });
   });
@@ -285,6 +301,24 @@ describe('nfeEmissaoService', () => {
       status: 'rejeitado',
       cstat: '386',
     });
+    expect(harness.db.prepare(`
+      SELECT nfe_status, nfe_numero, nfe_serie, nfe_chave, nfe_protocolo, nfe_deletedat
+      FROM ordens WHERE id = 17
+    `).get()).toEqual({
+      nfe_status: 'rejeitado',
+      nfe_numero: '000000001',
+      nfe_serie: '1',
+      nfe_chave: null,
+      nfe_protocolo: null,
+      nfe_deletedat: null,
+    });
+    expect(harness.db.prepare('SELECT tipo, cstat, motivo, xml FROM nfe_eventos WHERE ordemid = 17').get())
+      .toEqual({
+        tipo: 'rejeicao',
+        cstat: '386',
+        motivo: 'CFOP nao permitido',
+        xml: null,
+      });
     expect(harness.db.prepare('SELECT ultimo_numero FROM nfe_sequencias WHERE serie = ?').get('1'))
       .toEqual({ ultimo_numero: 0 });
   });
@@ -339,6 +373,55 @@ describe('nfeEmissaoService', () => {
     });
     expect(harness.db.prepare('SELECT ultimo_numero FROM nfe_sequencias WHERE serie = ?').get('1'))
       .toEqual({ ultimo_numero: 1 });
+  });
+
+  it('erro classificado como validacao_xml vira falha_local, devolve numero e nao bloqueia reenvio', async () => {
+    harness = createHarness({
+      transmitir: vi.fn().mockRejectedValue(new Error('cvc-pattern-valid')),
+      classificarErro: vi.fn(() => ({
+        tipo: 'validacao_xml',
+        cstat: 'xml_schema',
+        mensagem: 'XML invalido antes da transmissao.',
+      })),
+    });
+
+    await expect(harness.service.emitir(baseInput())).resolves.toMatchObject({
+      httpStatus: 422,
+      ok: false,
+      status: 'falha_local',
+      cStat: 'xml_schema',
+    });
+    expect(harness.attemptRepository.buscarPorId(1)).toMatchObject({
+      status: 'falha_local',
+      cstat: 'xml_schema',
+    });
+    expect(harness.attemptRepository.buscarAtivaPorOrdem(17)).toBeNull();
+    expect(harness.db.prepare('SELECT ultimo_numero FROM nfe_sequencias WHERE serie = ?').get('1'))
+      .toEqual({ ultimo_numero: 0 });
+  });
+
+  it('erro classificado como rejeicao conclusiva projeta rejeicao e devolve numero quando permitido', async () => {
+    harness = createHarness({
+      transmitir: vi.fn().mockRejectedValue(new Error('Rejeicao 386')),
+      classificarErro: vi.fn(() => ({
+        tipo: 'rejeicao',
+        cstat: '386',
+        mensagem: 'CFOP nao permitido',
+      })),
+    });
+
+    await expect(harness.service.emitir(baseInput())).resolves.toMatchObject({
+      httpStatus: 422,
+      ok: false,
+      status: 'rejeitado',
+      cStat: '386',
+    });
+    expect(harness.db.prepare('SELECT nfe_status FROM ordens WHERE id = 17').get())
+      .toEqual({ nfe_status: 'rejeitado' });
+    expect(harness.db.prepare('SELECT tipo, cstat, motivo FROM nfe_eventos WHERE ordemid = 17').get())
+      .toEqual({ tipo: 'rejeicao', cstat: '386', motivo: 'CFOP nao permitido' });
+    expect(harness.db.prepare('SELECT ultimo_numero FROM nfe_sequencias WHERE serie = ?').get('1'))
+      .toEqual({ ultimo_numero: 0 });
   });
 
   it('erro pre-transmissao no montarPayload vira falha_local e devolve numero', async () => {

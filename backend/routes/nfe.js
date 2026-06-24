@@ -724,11 +724,13 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
       nfeAttemptRepository: attemptRepository,
     });
     const service = createNfeEmissaoService({
+      db,
       attemptRepository,
       persistenceService,
       timeoutMs: NFE_ROUTE_TIMEOUT_MS,
       logger: console,
       formatarRejeicao: formatarRejeicaoSefaz,
+      classificarErro: getSefazErrorInfo,
       montarPayload: ({ numero }) => montarNFe({
         ordem: os,
         itens: itensComOverrides.itens,
