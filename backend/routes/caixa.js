@@ -1,5 +1,5 @@
 const router = require("express").Router();
-const { getAll, getOne, run, runInsert, transaction } = require("../database");
+const { getAll, getOne, run, runInsert, transaction, getDB } = require("../database");
 const { auth } = require("../middlewares/auth");
 const { toNumber } = require("../utils/numbers");
 const { hoje } = require("../utils/dates");
@@ -10,6 +10,7 @@ const {
 } = require("../domain/caixaRules");
 const { getResumoFinanceiroOS } = require("../domain/financeiroRules");
 const { descricaoRestanteOS } = require("../domain/ordensRules");
+const { createCaixaLancamentoService } = require("../services/caixaLancamentoService");
 const {
   montarFechamentoCaixa,
   renderFechamentoCaixaHtml,
@@ -130,55 +131,17 @@ router.post("/", auth(["admin","caixa"]), (req, res, next) => {
 // PUT /api/caixa/:id
 router.put("/:id", auth(["admin","caixa"]), (req, res, next) => {
   try {
-    const old = getOne("SELECT * FROM lancamentos WHERE id=? AND deletedat IS NULL", [req.params.id]);
-    if (!old) return res.status(404).json({ error: "Lancamento nao encontrado." });
-
-    if (old.origem === "entradaos" && req.user.role !== "admin")
-      return res.status(400).json({ error: "A entrada vinculada a OS deve ser alterada pela propria OS." });
-
-    const { data, tipo, categoria, descricao, pagamento, valor, pago, ordemid } = req.body ?? {};
-
-    // Admin editando apenas data/pagamento de entradaos
-    if (old.origem === "entradaos" && req.user.role === "admin") {
-      run(
-        "UPDATE lancamentos SET data=COALESCE(?,data), pagamento=COALESCE(?,pagamento) WHERE id=?",
-        [data || null, pagamento || null, req.params.id]
-      );
-      return res.json({ ok: true });
+    const service = createCaixaLancamentoService({ db: getDB() });
+    res.json(service.editar(req.params.id, req.body ?? {}, req.user));
+  } catch(e) {
+    if (e.status) {
+      return res.status(e.status).json({
+        error: e.message,
+        ...(e.code ? { code: e.code } : {}),
+      });
     }
-
-    const novoOrdemId = ordemid || null;
-    const nValor = toNumber(valor);
-    let origem = novoOrdemId ? "saldoos" : "manual";
-    let descFinal = descricao;
-    let categoriaFinal = categoria || null;
-    let pagoFinal = novoOrdemId ? 1 : (pago ? 1 : 0);
-
-    if (novoOrdemId) {
-      // Usa getResumoFinanceiroOS para consistencia com o POST e com o GET
-      // O resumo ja exclui o lancamento atual via calculo de saldo real,
-      // portanto precisamos somar de volta o valor do lancamento sendo editado
-      // para que nao seja contado duas vezes na validacao.
-      const resumo = getResumoFinanceiroOS(novoOrdemId, req.params.id);
-      if (!resumo) return res.status(404).json({ error: "OS vinculada nao encontrada." });
-
-      // saldo disponivel = saldo atual + valor que este lancamento ja ocupa (edicao)
-      const saldoDisponivel = resumo.saldo + (old.ordemid === novoOrdemId ? toNumber(old.valor) : 0);
-
-      if (!(nValor > 0)) return res.status(400).json({ error: "Recebimento de saldo deve ter valor maior que zero." });
-      if (nValor > saldoDisponivel + 0.0001)
-        return res.status(400).json({ error: `Saldo disponivel para ${resumo.ordem.numero}: R$ ${saldoDisponivel.toFixed(2)}` });
-
-      descFinal = descricaoRestanteOS(resumo.ordem.numero, resumo.ordem.clientenome, resumo.ordem.servico);
-      categoriaFinal = categoria || "Pagamento OS";
-    }
-
-    run(
-      "UPDATE lancamentos SET data=?,tipo=?,categoria=?,descricao=?,pagamento=?,valor=?,pago=?,ordemid=?,origem=? WHERE id=?",
-      [data, novoOrdemId ? "Entrada" : (tipo||"Diversos"), categoriaFinal, descFinal, pagamento, nValor, pagoFinal, novoOrdemId, origem, req.params.id]
-    );
-    res.json({ ok: true });
-  } catch(e) { next(e); }
+    next(e);
+  }
 });
 
 // DELETE /api/caixa/:id  — soft delete com auditoria

@@ -140,10 +140,13 @@ describe('route persistence contracts', () => {
 
   it('persists caixa categoria on manual launches', () => {
     const source = fs.readFileSync(new URL('../routes/caixa.js', import.meta.url), 'utf8');
+    const serviceSource = fs.readFileSync(new URL('../services/caixaLancamentoService.js', import.meta.url), 'utf8');
 
     expect(source).toMatch(/const\s*\{[^}]*categoria/s);
     expect(source).toMatch(/INSERT INTO lancamentos\s*\([^)]*categoria/s);
-    expect(source).toMatch(/UPDATE lancamentos SET[^"]*categoria=\?/s);
+    expect(source).toMatch(/createCaixaLancamentoService/);
+    expect(source).toMatch(/service\.editar\(req\.params\.id,\s*req\.body \?\? \{\},\s*req\.user\)/);
+    expect(serviceSource).toMatch(/UPDATE lancamentos SET[^"]*categoria=\?/s);
   });
 
   it('persists structured standalone sale items in caixa launches', () => {
@@ -163,10 +166,11 @@ describe('route persistence contracts', () => {
 
   it('keeps OS balance receipts as caixa entries and repairs old invalid balance receipt types', () => {
     const caixaSource = fs.readFileSync(new URL('../routes/caixa.js', import.meta.url), 'utf8');
+    const serviceSource = fs.readFileSync(new URL('../services/caixaLancamentoService.js', import.meta.url), 'utf8');
     const databaseSource = fs.readFileSync(new URL('../database.js', import.meta.url), 'utf8');
 
     expect(caixaSource).toMatch(/origem === "vendaavulsa" \|\| origem === "saldoos"\s*\?\s*"Entrada"/);
-    expect(caixaSource).toMatch(/novoOrdemId\s*\?\s*"Entrada"\s*:\s*\(tipo\|\|"Diversos"\)/);
+    expect(serviceSource).toMatch(/novoOrdemId\s*\?\s*"Entrada"\s*:\s*\(tipo \|\| "Diversos"\)/);
     expect(databaseSource).toMatch(/origem='saldoos' AND tipo != 'Entrada' AND deletedat IS NULL/);
   });
 
