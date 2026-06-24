@@ -451,6 +451,21 @@ describe('security configuration contracts', () => {
     expect(validarSource).toMatch(/NF-e cancelada nao pode ser reemitida/);
   });
 
+  it('validates cancelled NF-e before reserving, transmitting, or persisting emission attempts', () => {
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+    const postStart = source.indexOf("router.post('/emitir/:id'");
+    const postEnd = source.indexOf("// POST /api/nfe/:chave/cce");
+    const postEmitirSource = source.slice(postStart, postEnd);
+    const validarIndex = postEmitirSource.indexOf('const erroOrdem = validarOrdemEmitivel(os, itensBase)');
+
+    expect(validarIndex).toBeGreaterThan(-1);
+    expect(postEmitirSource.indexOf('createNfeAttemptRepository')).toBeGreaterThan(validarIndex);
+    expect(postEmitirSource.indexOf('createNfePersistenceService')).toBeGreaterThan(validarIndex);
+    expect(postEmitirSource.indexOf('createNfeEmissaoService')).toBeGreaterThan(validarIndex);
+    expect(postEmitirSource.indexOf('wizard.NFE_Autorizacao')).toBeGreaterThan(validarIndex);
+    expect(postEmitirSource.indexOf('service.emitir')).toBeGreaterThan(validarIndex);
+  });
+
   it('keeps manual NF-e invalidation routes before dynamic key routes', () => {
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
     const serviceSource = fs.readFileSync(new URL('../services/nfeInutilizacaoService.js', import.meta.url), 'utf8');
