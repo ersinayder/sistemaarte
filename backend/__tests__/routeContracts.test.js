@@ -422,16 +422,18 @@ describe('security configuration contracts', () => {
     expect(source).toMatch(/return res\.status\(400\)\.json\(\{\s*erro:\s*itensComOverrides\.erro\s*\}\)/);
   });
 
-  it('returns unused NF-e sequence numbers after clear SEFAZ rejections', () => {
+  it('delegates NF-e emission to the idempotent orchestrator without unsafe route fallbacks', () => {
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+    const postStart = source.indexOf("router.post('/emitir/:id'");
+    const nextPostStart = source.indexOf("router.post('/:chave/cce'", postStart);
+    const postEmitirSource = source.slice(postStart, nextPostStart);
 
-    expect(source).toMatch(/function devolverNumeroNFeRejeitada/);
-    expect(source).toMatch(/function rejeicaoPermiteDevolverNumeroNFe/);
-    expect(source).toMatch(/devolverNumeroNFeRejeitada\(db,\s*serie,\s*numero\)/);
-    expect(source).toMatch(/deveDevolverNumeroNFeAposFalhaAutorizacao\(sefazInfo\)\s*&&\s*rejeicaoPermiteDevolverNumeroNFe\(sefazInfo\.cstat\)/);
-    expect(source).toMatch(/rejeicaoPermiteDevolverNumeroNFe\(cStat\)/);
-    expect(source).toMatch(/Nao reutilizar numeros que a SEFAZ declarou como duplicados, denegados ou inutilizados/);
-    expect(source).toMatch(/return res\.status\(sefazInfo\.tipo === 'rejeicao' \|\| sefazInfo\.tipo === 'validacao_xml' \? 422 : 504\)/);
+    expect(source).toMatch(/createNfeEmissaoService/);
+    expect(source).not.toMatch(/JSON\.stringify\(resultado,\s*null,\s*2\)/);
+    expect(postEmitirSource).not.toMatch(/nfe_status\s*=\s*'rejeitado'/);
+    expect(postEmitirSource).not.toMatch(/nfe_status='rejeitado'/);
+    expect(postEmitirSource).not.toMatch(/detalhe:\s*e\.message/);
+    expect(postEmitirSource).not.toMatch(/guardTimeout/);
   });
 
   it('keeps manual NF-e invalidation routes before dynamic key routes', () => {
@@ -476,13 +478,15 @@ describe('security configuration contracts', () => {
 
   it('uses editable customer data in NF-e emission and persists it only after authorization', () => {
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+    const persistenceSource = fs.readFileSync(new URL('../services/nfePersistenceService.js', import.meta.url), 'utf8');
 
     expect(source).toMatch(/aplicarOverrideClienteNFe\(os,\s*req\.body\?\.cliente\)/);
     expect(source).toMatch(/cliente:\s*clienteComOverrides\.cliente/);
     expect(source).toMatch(/getAutXmlParaNFe\(clienteComOverrides\.cliente\.cpf\)/);
-    expect(source).toMatch(/function salvarClienteCadastroAposEmissao/);
-    expect(source).toMatch(/UPDATE clientes SET[\s\S]+name = \?[\s\S]+cpf = \?[\s\S]+WHERE id = \? AND deletedat IS NULL/);
-    expect(source.indexOf('const autorizado = cStat ===')).toBeLessThan(source.indexOf('salvarClienteCadastroAposEmissao(db, os, clienteComOverrides.cliente)'));
+    expect(source).toMatch(/createNfePersistenceService/);
+    expect(persistenceSource).toMatch(/UPDATE clientes[\s\S]+SET cpf = \?[\s\S]+WHERE id = \? AND deletedat IS NULL/);
+    expect(persistenceSource.indexOf("SET nfe_status = 'autorizado'"))
+      .toBeLessThan(persistenceSource.indexOf('UPDATE clientes'));
   });
 
   it('keeps NF-e trash as a soft delete that is hidden from the main list', () => {
