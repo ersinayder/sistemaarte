@@ -286,6 +286,20 @@ describe('nfePersistenceService', () => {
     expect(db.prepare('SELECT * FROM clientes ORDER BY id').all()).toEqual(clientesAntes);
   });
 
+  it('persiste numero fiscal vindo de cliente.numero quando c_numero esta ausente', () => {
+    const { c_numero: _omitido, ...clienteSemCNumero } = input().cliente;
+
+    expect(service.autorizar(input({
+      cliente: {
+        ...clienteSemCNumero,
+        numero: '22',
+      },
+    }))).toMatchObject({ status: 'autorizado' });
+    expect(db.prepare('SELECT numero FROM clientes WHERE id = 7').get()).toEqual({
+      numero: '22',
+    });
+  });
+
   it('reverte OS, cliente e tentativa quando o evento falha', () => {
     const before = snapshot(db);
     db.exec(`

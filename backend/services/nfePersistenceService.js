@@ -185,7 +185,7 @@ function createNfePersistenceService({
         cliente.cpf ?? null,
         cliente.ie ?? null,
         cliente.logradouro ?? null,
-        cliente.c_numero ?? null,
+        cliente.c_numero ?? cliente.numero ?? null,
         cliente.bairro ?? null,
         cliente.cidade ?? null,
         cliente.uf ?? null,
