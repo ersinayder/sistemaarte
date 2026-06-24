@@ -180,6 +180,9 @@ function buscarItensParaNFe(db, ordemId) {
 function validarOrdemEmitivel(os, itens) {
   if (!os) return { status: 404, erro: 'OS nao encontrada' };
   if (os.nfe_status === 'autorizado') return { status: 409, erro: 'NF-e ja autorizada para esta OS' };
+  if (['cancelado', 'cancelada'].includes(String(os.nfe_status || '').toLowerCase())) {
+    return { status: 409, erro: 'NF-e cancelada nao pode ser reemitida para esta OS' };
+  }
   if (!STATUS_NFE_EMISSAO.includes(os.status)) {
     return { status: 422, erro: `Status invalido para emissao: ${os.status}` };
   }

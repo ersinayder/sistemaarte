@@ -440,6 +440,17 @@ describe('security configuration contracts', () => {
     expect(postEmitirSource).not.toMatch(/guardTimeout/);
   });
 
+  it('blocks new NF-e emission when the local note is cancelled', () => {
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+    const validarSource = source.slice(
+      source.indexOf('function validarOrdemEmitivel'),
+      source.indexOf('function serializarPreviaEmissaoNFe')
+    );
+
+    expect(validarSource).toMatch(/cancelad[ao]/);
+    expect(validarSource).toMatch(/NF-e cancelada nao pode ser reemitida/);
+  });
+
   it('keeps manual NF-e invalidation routes before dynamic key routes', () => {
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
     const serviceSource = fs.readFileSync(new URL('../services/nfeInutilizacaoService.js', import.meta.url), 'utf8');
