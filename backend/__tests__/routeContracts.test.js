@@ -574,6 +574,17 @@ describe('security configuration contracts', () => {
     expect(source).toMatch(/<PendenciasFiscaisPanel pendencias=\{pendenciasFiscais\}/);
   });
 
+  it('opens read-only fiscal pending audit from the NF-e page', () => {
+    const source = fs.readFileSync(new URL('../../frontend/src/pages/NotasFiscais.jsx', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/function ModalAuditoriaPendenciaFiscal/);
+    expect(source).toMatch(/api\.get\(`\/nfe\/pendencias\/\$\{pendencia\.origem\}\/\$\{pendencia\.id\}\/transicoes`,\s*\{\s*skipGlobalErrorToast:\s*true\s*\}\)/);
+    expect(source).toMatch(/onAudit=\{setAuditoriaPendencia\}/);
+    expect(source).toMatch(/<PendenciasFiscaisPanel pendencias=\{pendenciasFiscais\} onRefresh=\{carregarPendenciasFiscais\} onAudit=\{setAuditoriaPendencia\}/);
+    expect(source).toMatch(/\{auditoriaPendencia && <ModalAuditoriaPendenciaFiscal pendencia=\{auditoriaPendencia\}/);
+    expect(source).not.toMatch(/Resolver pendencia|Reenviar pendencia|Consultar SEFAZ agora/);
+  });
+
   it('uses editable customer data in NF-e emission and persists it only after authorization', () => {
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
     const persistenceSource = fs.readFileSync(new URL('../services/nfePersistenceService.js', import.meta.url), 'utf8');
