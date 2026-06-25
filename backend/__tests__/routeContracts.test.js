@@ -668,6 +668,21 @@ describe('security configuration contracts', () => {
     expect(source).not.toMatch(/Resolver pendencia|Reenviar pendencia|Consultar SEFAZ agora/);
   });
 
+  it('shows admin-only integrity summary on Dashboard without corrective actions', () => {
+    const source = fs.readFileSync(new URL('../../frontend/src/pages/Dashboard.jsx', import.meta.url), 'utf8');
+    const panelStart = source.indexOf('function IntegridadeResumoPanel');
+    const nextFunction = source.indexOf('export default function Dashboard', panelStart);
+    const panelSource = source.slice(panelStart, nextFunction);
+
+    expect(source).toMatch(/function IntegridadeResumoPanel/);
+    expect(source).toMatch(/const \{ kpis: live, online \} = useKpiStream\(\)/);
+    expect(source).toMatch(/const \{ isAdmin \} = useAuth\(\) \|\| \{\}/);
+    expect(source).toMatch(/api\.get\(['"]\/kpis\/integridade['"],\s*\{\s*skipGlobalErrorToast:\s*true\s*\}\)/);
+    expect(source).toMatch(/isAdmin && integridadeResumo\?\.meta\?\.total > 0/);
+    expect(source).toMatch(/<IntegridadeResumoPanel resumo=\{integridadeResumo\} onNavigate=\{navigate\}/);
+    expect(panelSource).not.toMatch(/Corrigir|Consultar SEFAZ|Reenviar|Cancelar|Emitir CC-e|Editar OS/);
+  });
+
   it('uses editable customer data in NF-e emission and persists it only after authorization', () => {
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
     const persistenceSource = fs.readFileSync(new URL('../services/nfePersistenceService.js', import.meta.url), 'utf8');
