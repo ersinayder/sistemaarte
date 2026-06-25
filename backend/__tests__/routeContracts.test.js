@@ -444,14 +444,14 @@ describe('security configuration contracts', () => {
     expect(source).not.toMatch(/JSON\.stringify\(resultado,\s*null,\s*2\)/);
     expect(postEmitirSource).not.toMatch(/nfe_status\s*=\s*'rejeitado'/);
     expect(postEmitirSource).not.toMatch(/nfe_status='rejeitado'/);
-    expect(postEmitirSource).not.toMatch(/detalhe:\s*e\.message/);
+    expect(postEmitirSource).not.toMatch(/detalhe:\s*(e|err)\.message/);
     expect(postEmitirSource).not.toMatch(/guardTimeout/);
   });
 
   it('does not expose internal NF-e exception messages in fiscal event responses', () => {
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
 
-    expect(source).not.toMatch(/detalhe:\s*e\.message/);
+    expect(source).not.toMatch(/detalhe:\s*(e|err)\.message/);
   });
 
   it('delegates CC-e and cancellation to the idempotent fiscal event service', () => {
@@ -572,7 +572,9 @@ describe('security configuration contracts', () => {
     expect(source).toMatch(/montarResumoIntegridade/);
     expect(source).toMatch(/listarPendenciasFiscais/);
     expect(source).toMatch(/auditarIntegridadeFinanceiraOS/);
+    expect(source).toMatch(/getContasReceberPayload/);
     expect(source).toMatch(/auditarIntegridadeFiscalFinanceiraNFe/);
+    expect(routeSource).not.toMatch(/SUM\(CASE|MAX\(0/);
     expect(routeSource).not.toMatch(/getNFEWizard|callSEFAZ|NFE_|wizard\.|service\.executar/);
     expect(routeSource).not.toMatch(/res\.json\([^)]*(xml|payload|cpf|phone)/s);
   });

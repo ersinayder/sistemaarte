@@ -381,7 +381,6 @@ router.get('/status-servico', auth(['admin', 'caixa']), async (req, res) => {
       duracao_ms: Date.now() - inicio,
       erro: sefazInfo.mensagem,
       tipo: sefazInfo.tipo,
-      detalhe: err.message,
       contingencia: false,
     });
   }

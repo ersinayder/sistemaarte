@@ -6,6 +6,7 @@ const { criarSseConnectionTracker } = require("../domain/sseConnectionRules");
 const { getResumoFinanceiroOS } = require("../domain/financeiroRules");
 const { listarPendenciasFiscais } = require("../repositories/nfePendenciaRepository");
 const { auditarIntegridadeFinanceiraOS } = require("../services/financeiroIntegridadeService");
+const { getContasReceberPayload } = require("../services/financeiroReceberService");
 const { auditarIntegridadeFiscalFinanceiraNFe } = require("../services/nfeIntegridadeFinanceiraService");
 const { montarResumoIntegridade } = require("../services/integridadeResumoService");
 
@@ -74,24 +75,6 @@ router.get("/", auth(["admin","caixa"]), (_req, res, next) => {
   }
 });
 
-function getContasReceberResumo() {
-  return getAll(`
-    SELECT o.id,
-           o.numero,
-           o.clientenome,
-           o.status,
-           o.prazoentrega,
-           o.valortotal,
-           COALESCE(SUM(CASE WHEN l.pago=1 AND l.deletedat IS NULL THEN l.valor ELSE 0 END),0) AS recebido,
-           MAX(0, o.valortotal - COALESCE(SUM(CASE WHEN l.pago=1 AND l.deletedat IS NULL THEN l.valor ELSE 0 END),0)) AS saldo
-    FROM ordens o
-    LEFT JOIN lancamentos l ON l.ordemid = o.id
-    WHERE o.deletedat IS NULL AND o.status NOT IN ('Entregue','Cancelado')
-    GROUP BY o.id
-    HAVING saldo > 0.009
-  `);
-}
-
 router.get("/integridade", auth(["admin"]), (_req, res, next) => {
   try {
     const ordens = getAll(
@@ -109,7 +92,7 @@ router.get("/integridade", auth(["admin"]), (_req, res, next) => {
       pendenciasFiscais: listarPendenciasFiscais(db),
       integridadeFinanceira: auditarIntegridadeFinanceiraOS({
         ordens,
-        receberGerencial: getContasReceberResumo(),
+        receberGerencial: getContasReceberPayload(),
         getResumoFinanceiroOS,
       }),
       integridadeFiscalFinanceira: auditarIntegridadeFiscalFinanceiraNFe(notas),
