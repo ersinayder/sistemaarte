@@ -455,10 +455,10 @@ describe('security configuration contracts', () => {
 
     expect(source).toMatch(/createNfeEventoService/);
     expect(source).toMatch(/createNfeEventoAttemptRepository/);
+    expect(source).not.toMatch(/wizard\.NFE_CartaDeCorrecao/);
+    expect(source).not.toMatch(/wizard\.NFE_Cancelamento/);
     expect(cceSource).not.toMatch(/guardTimeout/);
     expect(cancelarSource).not.toMatch(/guardTimeout/);
-    expect(cceSource).not.toMatch(/wizard\.NFE_CartaDeCorrecao/);
-    expect(cancelarSource).not.toMatch(/wizard\.NFE_Cancelamento/);
     expect(cceSource).toMatch(/service\.executar/);
     expect(cancelarSource).toMatch(/service\.executar/);
   });

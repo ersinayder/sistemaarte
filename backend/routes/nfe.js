@@ -19,6 +19,10 @@ const { createNfePersistenceService } = require('../services/nfePersistenceServi
 const { createNfeEmissaoService } = require('../services/nfeEmissaoService');
 const { createNfeEventoService } = require('../services/nfeEventoService');
 const { transmitirInutilizacaoNFe } = require('../utils/nfeInutilizacao');
+const {
+  transmitirCcePayload,
+  transmitirCancelamentoPayload,
+} = require('../utils/nfeEventos');
 const { renderDanfeHtml } = require('../utils/danfe');
 const { sendPrintHtml } = require('../utils/print/base');
 const {
@@ -93,16 +97,6 @@ function getInutilizacaoService(db = getDB()) {
     transmitir: transmitirInutilizacaoNFe,
     classificarErro: getSefazErrorInfo,
   });
-}
-
-async function transmitirCcePayload(payload) {
-  const wizard = await getNFEWizard();
-  return callSEFAZ(() => wizard.NFE_CartaDeCorrecao(payload));
-}
-
-async function transmitirCancelamentoPayload(payload) {
-  const wizard = await getNFEWizard();
-  return callSEFAZ(() => wizard.NFE_Cancelamento(payload));
 }
 
 function dhEventoBRT() {
