@@ -936,7 +936,7 @@ router.post('/:chave/cce', auth(['admin', 'caixa']), async (req, res) => {
     console.error('[NF-e] ERRO POST /:chave/cce:', e.message, e.stack);
     if (!respondido) {
       clearTimeout(guardTimeout); respondido = true;
-      res.status(500).json({ erro: 'Erro interno ao emitir Carta de Correcao', detalhe: e.message });
+      res.status(500).json({ erro: 'Erro interno ao emitir Carta de Correcao' });
     }
   }
 });
@@ -1107,7 +1107,7 @@ router.post('/:chave/cancelar', auth(['admin', 'caixa']), async (req, res) => {
     console.error('[NF-e] ERRO POST /:chave/cancelar:', e.message, e.stack);
     if (!respondido) {
       clearTimeout(guardTimeout); respondido = true;
-      res.status(500).json({ erro: 'Erro interno ao cancelar NF-e', detalhe: e.message });
+      res.status(500).json({ erro: 'Erro interno ao cancelar NF-e' });
     }
   }
 });

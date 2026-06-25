@@ -440,6 +440,12 @@ describe('security configuration contracts', () => {
     expect(postEmitirSource).not.toMatch(/guardTimeout/);
   });
 
+  it('does not expose internal NF-e exception messages in fiscal event responses', () => {
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+
+    expect(source).not.toMatch(/detalhe:\s*e\.message/);
+  });
+
   it('blocks new NF-e emission when the local note is cancelled', () => {
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
     const validarSource = source.slice(
