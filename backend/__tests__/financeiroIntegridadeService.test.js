@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { auditarIntegridadeFinanceiraOS } from "../services/financeiroIntegridadeService.js";
+import {
+  auditarIntegridadeFinanceiraOS,
+  montarDetalheIntegridadeFinanceiraOS,
+} from "../services/financeiroIntegridadeService.js";
 
 describe("auditarIntegridadeFinanceiraOS", () => {
   const ordens = [
@@ -89,5 +92,38 @@ describe("auditarIntegridadeFinanceiraOS", () => {
         }),
       ])
     );
+  });
+
+  it("builds read-only detail with official saldo and launch inclusion flags", () => {
+    const detalhe = montarDetalheIntegridadeFinanceiraOS({
+      ordem: { id: 3, numero: "OS-3", clientenome: "Caio", status: "Em Produção", valortotal: 120 },
+      receberGerencial: { id: 3, saldo: 85, recebido: 35 },
+      lancamentos: [
+        { id: 7, data: "2026-06-25", tipo: "Entrada", categoria: "Saldo OS", descricao: "Pix", pagamento: "Pix", valor: 30, pago: 1, origem: "saldoos", deletedat: null },
+        { id: 8, data: "2026-06-25", tipo: "Entrada", categoria: "Saldo OS", descricao: "Pendente", pagamento: "Pix", valor: 20, pago: 0, origem: "saldoos", deletedat: null },
+        { id: 9, data: "2026-06-25", tipo: "Entrada", categoria: "Saldo OS", descricao: "Excluido", pagamento: "Pix", valor: 10, pago: 1, origem: "saldoos", deletedat: "2026-06-26" },
+      ],
+      getResumoFinanceiroOS: () => ({
+        ordem: { id: 3, numero: "OS-3", clientenome: "Caio", status: "Em Produção", valortotal: 120 },
+        recebido: 30,
+        saldo: 90,
+      }),
+    });
+
+    expect(detalhe.resumo).toEqual({
+      valorTotal: 120,
+      recebidoOficial: 30,
+      saldoOficial: 90,
+      excedente: 0,
+    });
+    expect(detalhe.receberGerencial).toEqual(expect.objectContaining({ saldo: 85 }));
+    expect(detalhe.lancamentos).toEqual([
+      expect.objectContaining({ id: 7, consideradoNoSaldo: true }),
+      expect.objectContaining({ id: 8, consideradoNoSaldo: false }),
+      expect.objectContaining({ id: 9, consideradoNoSaldo: false }),
+    ]);
+    expect(detalhe.apontamentos).toEqual([
+      expect.objectContaining({ tipo: "receber_divergente", severidade: "aviso" }),
+    ]);
   });
 });
