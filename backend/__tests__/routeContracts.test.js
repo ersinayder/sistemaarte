@@ -81,6 +81,7 @@ describe('route authorization contracts', () => {
     const nfeRouter = await loadRouter('../routes/nfe.js');
 
     expect(routeRoles(nfeRouter, 'get', '/status-servico')).toEqual(['admin', 'caixa']);
+    expect(routeRoles(nfeRouter, 'get', '/pendencias')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'get', '/emitir/:id/preview')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'post', '/emitir/:id')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'post', '/:chave/cce')).toEqual(['admin', 'caixa']);
@@ -501,6 +502,23 @@ describe('security configuration contracts', () => {
     expect(source).toMatch(/res\.setHeader\(['"]Content-Type['"],\s*['"]application\/xml; charset=utf-8['"]\)/);
     expect(serviceSource).toMatch(/const sharedBusyState/);
     expect(serviceSource).toMatch(/busyState\.busy/);
+  });
+
+  it('exposes sanitized fiscal pending attempts before dynamic key routes', async () => {
+    const nfeRouter = await loadRouter('../routes/nfe.js');
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+    const repositorySource = fs.readFileSync(new URL('../repositories/nfePendenciaRepository.js', import.meta.url), 'utf8');
+    const pendenciasStart = source.indexOf("router.get('/pendencias'");
+    const chaveEventosStart = source.indexOf("router.get('/:chave/eventos'");
+
+    expect(routeRoles(nfeRouter, 'get', '/pendencias')).toEqual(['admin', 'caixa']);
+    expect(source).toMatch(/listarPendenciasFiscais/);
+    expect(pendenciasStart).toBeGreaterThan(-1);
+    expect(pendenciasStart).toBeLessThan(chaveEventosStart);
+    expect(repositorySource).not.toMatch(/payload_json/);
+    expect(repositorySource).not.toMatch(/xml_envio/);
+    expect(repositorySource).not.toMatch(/xml_retorno/);
+    expect(repositorySource).not.toMatch(/erro_local/);
   });
 
   it('allows NF-e workflow for orders in production status', () => {

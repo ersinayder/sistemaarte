@@ -14,6 +14,7 @@ const {
 const { montarNFe } = require('../domain/nfeRules');
 const { createNfeAttemptRepository } = require('../repositories/nfeAttemptRepository');
 const { createNfeEventoAttemptRepository } = require('../repositories/nfeEventoAttemptRepository');
+const { listarPendenciasFiscais } = require('../repositories/nfePendenciaRepository');
 const { createNfeInutilizacaoService } = require('../services/nfeInutilizacaoService');
 const { createNfePersistenceService } = require('../services/nfePersistenceService');
 const { createNfeEmissaoService } = require('../services/nfeEmissaoService');
@@ -376,6 +377,24 @@ router.get('/status-servico', auth(['admin', 'caixa']), async (req, res) => {
       detalhe: err.message,
       contingencia: false,
     });
+  }
+});
+
+// GET /api/nfe/pendencias
+// Visao operacional read-only das tentativas fiscais ainda ativas.
+router.get('/pendencias', auth(['admin', 'caixa']), (req, res) => {
+  try {
+    const pendencias = listarPendenciasFiscais(getDB());
+    res.json({
+      pendencias,
+      meta: {
+        ambiente: tpAmbAtual(),
+        total: pendencias.length,
+      },
+    });
+  } catch (e) {
+    console.error('[NF-e] GET /pendencias:', e.message);
+    res.status(500).json({ erro: 'Erro ao listar pendencias fiscais' });
   }
 });
 
