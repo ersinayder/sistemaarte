@@ -13,9 +13,11 @@ const {
 } = require('../utils/nfe');
 const { montarNFe } = require('../domain/nfeRules');
 const { createNfeAttemptRepository } = require('../repositories/nfeAttemptRepository');
+const { createNfeEventoAttemptRepository } = require('../repositories/nfeEventoAttemptRepository');
 const { createNfeInutilizacaoService } = require('../services/nfeInutilizacaoService');
 const { createNfePersistenceService } = require('../services/nfePersistenceService');
 const { createNfeEmissaoService } = require('../services/nfeEmissaoService');
+const { createNfeEventoService } = require('../services/nfeEventoService');
 const { transmitirInutilizacaoNFe } = require('../utils/nfeInutilizacao');
 const { renderDanfeHtml } = require('../utils/danfe');
 const { sendPrintHtml } = require('../utils/print/base');
@@ -91,6 +93,16 @@ function getInutilizacaoService(db = getDB()) {
     transmitir: transmitirInutilizacaoNFe,
     classificarErro: getSefazErrorInfo,
   });
+}
+
+async function transmitirCcePayload(payload) {
+  const wizard = await getNFEWizard();
+  return callSEFAZ(() => wizard.NFE_CartaDeCorrecao(payload));
+}
+
+async function transmitirCancelamentoPayload(payload) {
+  const wizard = await getNFEWizard();
+  return callSEFAZ(() => wizard.NFE_Cancelamento(payload));
 }
 
 function dhEventoBRT() {
@@ -829,15 +841,6 @@ router.post('/:chave/cce', auth(['admin', 'caixa']), async (req, res) => {
     return res.status(422).json({ erro: 'Limite de 20 Cartas de Correcao atingido para esta NF-e.' });
   }
 
-  let respondido = false;
-  const guardTimeout = setTimeout(() => {
-    if (!respondido) {
-      respondido = true;
-      console.error(`[NF-e] Guard timeout CC-e chave=${chave}`);
-      res.status(504).json({ erro: 'SEFAZ demorou demais para responder. Aguarde alguns instantes, atualize a tela e tente novamente.' });
-    }
-  }, NFE_ROUTE_TIMEOUT_MS);
-
   try {
     const cnpj = getCnpjEmitente();
     const cOrgao = Number(chave.substring(0, 2));
@@ -867,77 +870,29 @@ router.post('/:chave/cce', auth(['admin', 'caixa']), async (req, res) => {
 
     console.log(`[NF-e] Iniciando CC-e chave=${chave} seq=${nSeqEvento}`);
 
-    const wizard = await getNFEWizard();
-    let resultado;
-    try {
-      resultado = await callSEFAZ(() => wizard.NFE_CartaDeCorrecao(eventoPayload));
-    } catch (sefazErr) {
-      console.error('[NF-e] Erro SEFAZ CC-e:', sefazErr.message);
-      if (!respondido) {
-        clearTimeout(guardTimeout); respondido = true;
-        return res.status(504).json({ erro: 'Sem resposta da SEFAZ', detalhe: sefazErr.message });
-      }
-      return;
-    }
-
-    console.log(`[NF-e] Resposta CC-e recebida tipo=${Array.isArray(resultado) ? 'array' : typeof resultado}`);
-
-    const parsed = parseRetEvento(resultado, dhEvento);
-    const autorizado = parsed.cStat === '135';
-
-    if (!autorizado) {
-      const xMotivo = parsed.xMotivo || `cStat ${parsed.cStat || 'desconhecido'}`;
-      const rejeicao = formatarRejeicaoSefaz({ cStat: parsed.cStat, xMotivo, contexto: 'cce' });
-      console.error(`[NF-e] CC-e rejeitada: cStat=${parsed.cStat} motivo=${xMotivo}`);
-      if (!respondido) {
-        clearTimeout(guardTimeout); respondido = true;
-        return res.status(422).json({
-          erro: rejeicao.mensagem,
-          cStat: parsed.cStat,
-          campo: rejeicao.campo,
-          item: rejeicao.item,
-          motivoOriginal: rejeicao.motivoOriginal,
-        });
-      }
-      return;
-    }
-
-    const xmlEvento = serializarXmlFiscal(resultado);
-
-    registrarEventoFiscal(db, {
-      ordemid: os.id,
-      chave,
-      tipo: 'cce',
-      nseqevento: nSeqEvento,
-      protocolo: parsed.protocolo,
-      cstat: parsed.cStat,
-      motivo: parsed.xMotivo,
-      texto: correcao,
-      xml: xmlEvento,
-      createdat: parsed.dhEvento,
+    const service = createNfeEventoService({
+      db,
+      attemptRepository: createNfeEventoAttemptRepository(db),
+      timeoutMs: NFE_ROUTE_TIMEOUT_MS,
+      logger: console,
+      salvarXmlDisco,
+      transmitir: transmitirCcePayload,
     });
 
-    salvarXmlDisco(`${chave}-cce-${pad(nSeqEvento, 2)}.xml`, xmlEvento);
-
-    console.log(`[NF-e] CC-e registrada chave=${chave} seq=${nSeqEvento} protocolo=${parsed.protocolo}`);
-
-    if (!respondido) {
-      clearTimeout(guardTimeout); respondido = true;
-      res.json({
-        ok: true,
-        chave,
-        sequencia: nSeqEvento,
-        protocolo: parsed.protocolo,
-        dhEvento: parsed.dhEvento,
-        cStat: parsed.cStat,
-      });
-    }
+    const result = await service.executar({
+      ordemId: os.id,
+      chave,
+      tipo: 'cce',
+      nSeqEvento,
+      texto: correcao,
+      payload: eventoPayload,
+      usuarioId: req.user?.id || null,
+      dhEvento,
+    });
+    return res.status(result.httpStatus).json(result);
   } catch (e) {
     console.error('[NF-e] ERRO POST /:chave/cce:', e.message, e.stack);
-    if (!respondido) {
-      clearTimeout(guardTimeout); respondido = true;
-      res.status(500).json({ erro: 'Erro interno ao emitir Carta de Correcao' });
-    }
+    return res.status(500).json({ erro: 'Erro interno ao emitir Carta de Correcao' });
   }
 });
 
@@ -988,15 +943,6 @@ router.post('/:chave/cancelar', auth(['admin', 'caixa']), async (req, res) => {
     }
   }
 
-  let respondido = false;
-  const guardTimeout = setTimeout(() => {
-    if (!respondido) {
-      respondido = true;
-      console.error(`[NF-e] Guard timeout cancelamento chave=${chave}`);
-      res.status(504).json({ erro: 'SEFAZ demorou demais para responder. Aguarde alguns instantes, atualize a tela e tente novamente.' });
-    }
-  }, NFE_ROUTE_TIMEOUT_MS);
-
   try {
     const cnpj  = getCnpjEmitente();
     const cOrgao = Number(chave.substring(0, 2));
@@ -1026,89 +972,30 @@ router.post('/:chave/cancelar', auth(['admin', 'caixa']), async (req, res) => {
 
     console.log(`[NF-e] Iniciando cancelamento chave=${chave} protocolo=${os.nfe_protocolo}`);
 
-    const wizard = await getNFEWizard();
-    let resultado;
-    try {
-      resultado = await callSEFAZ(() => wizard.NFE_Cancelamento(eventoPayload));
-    } catch (sefazErr) {
-      console.error('[NF-e] Erro SEFAZ cancelamento:', sefazErr.message);
-      if (!respondido) {
-        clearTimeout(guardTimeout); respondido = true;
-        return res.status(504).json({ erro: 'Sem resposta da SEFAZ', detalhe: sefazErr.message });
-      }
-      return;
-    }
-
-    console.log(`[NF-e] Resposta cancelamento recebida tipo=${Array.isArray(resultado) ? 'array' : typeof resultado}`);
-
-    const parsed = parseRetEvento(resultado, dhEvento);
-    const cStatResp    = parsed.cStat;
-    const nProtResp    = parsed.protocolo;
-    const dhEventoResp = parsed.dhEvento;
-
-    const cancelado = ['135', '155'].includes(cStatResp);
-
-    if (!cancelado) {
-      const xMotivo = parsed.xMotivo || `cStat ${cStatResp || 'desconhecido'}`;
-      const rejeicao = formatarRejeicaoSefaz({ cStat: cStatResp, xMotivo, contexto: 'cancelamento' });
-      console.error(`[NF-e] Cancelamento rejeitado: cStat=${cStatResp} motivo=${xMotivo}`);
-      if (!respondido) {
-        clearTimeout(guardTimeout); respondido = true;
-        return res.status(422).json({
-          erro: rejeicao.mensagem,
-          cStat: cStatResp,
-          campo: rejeicao.campo,
-          item: rejeicao.item,
-          motivoOriginal: rejeicao.motivoOriginal,
-        });
-      }
-      return;
-    }
-
-    db.prepare(`
-      UPDATE ordens SET
-        nfe_status           = 'cancelado',
-        nfe_cancelado_em     = ?,
-        nfe_cancel_protocolo = ?,
-        nfe_cancel_motivo    = ?
-      WHERE nfe_chave = ?
-    `).run(dhEventoResp, nProtResp, motivoStr, chave);
-
-    const xmlEvento = serializarXmlFiscal(resultado);
-
-    registrarEventoFiscal(db, {
-      ordemid: os.id,
-      chave,
-      tipo: 'cancelamento',
-      protocolo: nProtResp,
-      cstat: cStatResp,
-      motivo: parsed.xMotivo,
-      texto: motivoStr,
-      xml: xmlEvento,
-      createdat: dhEventoResp,
+    const service = createNfeEventoService({
+      db,
+      attemptRepository: createNfeEventoAttemptRepository(db),
+      timeoutMs: NFE_ROUTE_TIMEOUT_MS,
+      logger: console,
+      salvarXmlDisco,
+      transmitir: transmitirCancelamentoPayload,
     });
 
-    salvarXmlDisco(`${chave}-canc.xml`, xmlEvento);
+    const result = await service.executar({
+      ordemId: os.id,
+      chave,
+      tipo: 'cancelamento',
+      nSeqEvento: 1,
+      texto: motivoStr,
+      payload: eventoPayload,
+      usuarioId: req.user?.id || null,
+      dhEvento,
+    });
 
-    console.log(`[NF-e] Cancelamento registrado chave=${chave} nProtCanc=${nProtResp}`);
-
-    if (!respondido) {
-      clearTimeout(guardTimeout); respondido = true;
-      res.json({
-        ok:        true,
-        chave,
-        protocolo: nProtResp,
-        dhEvento:  dhEventoResp,
-        cStat:     cStatResp,
-      });
-    }
-
+    return res.status(result.httpStatus).json(result);
   } catch (e) {
     console.error('[NF-e] ERRO POST /:chave/cancelar:', e.message, e.stack);
-    if (!respondido) {
-      clearTimeout(guardTimeout); respondido = true;
-      res.status(500).json({ erro: 'Erro interno ao cancelar NF-e' });
-    }
+    return res.status(500).json({ erro: 'Erro interno ao cancelar NF-e' });
   }
 });
 

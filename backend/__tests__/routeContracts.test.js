@@ -446,6 +446,23 @@ describe('security configuration contracts', () => {
     expect(source).not.toMatch(/detalhe:\s*e\.message/);
   });
 
+  it('delegates CC-e and cancellation to the idempotent fiscal event service', () => {
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+    const cceStart = source.indexOf("router.post('/:chave/cce'");
+    const cancelarStart = source.indexOf("router.post('/:chave/cancelar'");
+    const cceSource = source.slice(cceStart, cancelarStart);
+    const cancelarSource = source.slice(cancelarStart);
+
+    expect(source).toMatch(/createNfeEventoService/);
+    expect(source).toMatch(/createNfeEventoAttemptRepository/);
+    expect(cceSource).not.toMatch(/guardTimeout/);
+    expect(cancelarSource).not.toMatch(/guardTimeout/);
+    expect(cceSource).not.toMatch(/wizard\.NFE_CartaDeCorrecao/);
+    expect(cancelarSource).not.toMatch(/wizard\.NFE_Cancelamento/);
+    expect(cceSource).toMatch(/service\.executar/);
+    expect(cancelarSource).toMatch(/service\.executar/);
+  });
+
   it('blocks new NF-e emission when the local note is cancelled', () => {
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
     const validarSource = source.slice(
