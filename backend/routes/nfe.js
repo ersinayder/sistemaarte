@@ -22,7 +22,10 @@ const { createNfeInutilizacaoService } = require('../services/nfeInutilizacaoSer
 const { createNfePersistenceService } = require('../services/nfePersistenceService');
 const { createNfeEmissaoService } = require('../services/nfeEmissaoService');
 const { createNfeEventoService } = require('../services/nfeEventoService');
-const { auditarIntegridadeFiscalFinanceiraNFe } = require('../services/nfeIntegridadeFinanceiraService');
+const {
+  auditarIntegridadeFiscalFinanceiraNFe,
+  montarDetalheIntegridadeFiscalFinanceiraNFe,
+} = require('../services/nfeIntegridadeFinanceiraService');
 const { transmitirInutilizacaoNFe } = require('../utils/nfeInutilizacao');
 const {
   transmitirCcePayload,
@@ -381,6 +384,30 @@ router.get('/status-servico', auth(['admin', 'caixa']), async (req, res) => {
       detalhe: err.message,
       contingencia: false,
     });
+  }
+});
+
+// GET /api/nfe/integridade-financeira/:ordemId
+// Detalhe local read-only da auditoria fiscal-financeira.
+router.get('/integridade-financeira/:ordemId', auth(['admin', 'caixa']), (req, res) => {
+  const ordemId = Number(req.params.ordemId);
+  if (!Number.isInteger(ordemId) || ordemId <= 0) {
+    return res.status(400).json({ erro: 'OS invalida.' });
+  }
+
+  try {
+    const nota = getDB().prepare(`
+      SELECT id, numero, clientenome, status, valortotal, nfe_status, nfe_chave, nfe_xml
+      FROM ordens
+      WHERE id = ? AND deletedat IS NULL AND nfe_status IS NOT NULL AND nfe_deletedat IS NULL
+    `).get(ordemId);
+    if (!nota) {
+      return res.status(404).json({ erro: 'NF-e da OS nao encontrada.' });
+    }
+    res.json(montarDetalheIntegridadeFiscalFinanceiraNFe(nota));
+  } catch (e) {
+    console.error('[NF-e] GET /integridade-financeira/:ordemId:', e.message);
+    res.status(500).json({ erro: 'Erro ao auditar detalhe fiscal-financeiro' });
   }
 });
 

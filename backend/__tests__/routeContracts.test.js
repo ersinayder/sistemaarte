@@ -82,6 +82,7 @@ describe('route authorization contracts', () => {
 
     expect(routeRoles(nfeRouter, 'get', '/status-servico')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'get', '/integridade-financeira')).toEqual(['admin', 'caixa']);
+    expect(routeRoles(nfeRouter, 'get', '/integridade-financeira/:ordemId')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'get', '/pendencias')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'get', '/pendencias/:origem/:id/transicoes')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'get', '/emitir/:id/preview')).toEqual(['admin', 'caixa']);
@@ -538,6 +539,24 @@ describe('security configuration contracts', () => {
     expect(routeStart).toBeLessThan(chaveEventosStart);
     expect(routeSource).not.toMatch(/getNFEWizard|callSEFAZ|NFE_|service\.executar|wizard\./);
     expect(routeSource).not.toMatch(/nfe_xml[:,]|xml:/);
+  });
+
+  it('exposes fiscal-financial integrity detail without SEFAZ calls', async () => {
+    const nfeRouter = await loadRouter('../routes/nfe.js');
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+    const routeStart = source.indexOf("router.get('/integridade-financeira/:ordemId'");
+    const listRouteStart = source.indexOf("router.get('/integridade-financeira'", routeStart + 1);
+    const routeSource = source.slice(routeStart, listRouteStart);
+
+    expect(routeRoles(nfeRouter, 'get', '/integridade-financeira/:ordemId')).toEqual(['admin', 'caixa']);
+    expect(source).toMatch(/montarDetalheIntegridadeFiscalFinanceiraNFe/);
+    expect(routeStart).toBeGreaterThan(-1);
+    expect(routeStart).toBeLessThan(listRouteStart);
+    expect(routeSource).toMatch(/Number\(req\.params\.ordemId\)/);
+    expect(routeSource).toMatch(/status\(400\)/);
+    expect(routeSource).toMatch(/status\(404\)/);
+    expect(routeSource).not.toMatch(/getNFEWizard|callSEFAZ|NFE_|service\.executar|wizard\./);
+    expect(routeSource).not.toMatch(/res\.json\([^)]*nfe_xml|xml:/s);
   });
 
   it('exposes sanitized fiscal pending transition audit without SEFAZ calls', async () => {
