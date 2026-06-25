@@ -1,5 +1,7 @@
 const { extrairXmlFiscal } = require("./nfeEmissaoService");
 
+const ORIENTACAO_DETALHE = "Conferencia manual necessaria. Esta auditoria nao altera OS, caixa ou NF-e.";
+
 function toMoney(value) {
   const number = Number(value || 0);
   return Math.round(number * 100) / 100;
@@ -86,7 +88,44 @@ function auditarIntegridadeFiscalFinanceiraNFe(notas = []) {
   };
 }
 
+function montarDetalheIntegridadeFiscalFinanceiraNFe(nota) {
+  const base = baseNota(nota);
+  const xml = extrairXmlFiscal(nota?.nfe_xml);
+  const valorNFe = xml ? extrairVNF(xml) : null;
+  const fiscal = {
+    status: base.nfeStatus,
+    chave: base.nfeChave,
+    xmlLocal: xml ? "presente" : "ausente",
+  };
+
+  if (valorNFe !== null) {
+    fiscal.valorNFe = valorNFe;
+  }
+
+  return {
+    ordem: {
+      id: base.ordemId,
+      numero: base.numero,
+      clienteNome: base.clienteNome,
+      status: base.statusOS,
+      valorTotal: base.valorOS,
+    },
+    fiscal,
+    apontamentos: auditarNota(nota).map(({
+      ordemId,
+      numero,
+      clienteNome,
+      statusOS,
+      nfeStatus,
+      nfeChave,
+      ...item
+    }) => item),
+    orientacao: ORIENTACAO_DETALHE,
+  };
+}
+
 module.exports = {
   auditarIntegridadeFiscalFinanceiraNFe,
+  montarDetalheIntegridadeFiscalFinanceiraNFe,
   extrairVNF,
 };
