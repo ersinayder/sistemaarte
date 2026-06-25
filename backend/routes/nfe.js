@@ -14,7 +14,10 @@ const {
 const { montarNFe } = require('../domain/nfeRules');
 const { createNfeAttemptRepository } = require('../repositories/nfeAttemptRepository');
 const { createNfeEventoAttemptRepository } = require('../repositories/nfeEventoAttemptRepository');
-const { listarPendenciasFiscais } = require('../repositories/nfePendenciaRepository');
+const {
+  buscarPendenciaFiscalComTransicoes,
+  listarPendenciasFiscais,
+} = require('../repositories/nfePendenciaRepository');
 const { createNfeInutilizacaoService } = require('../services/nfeInutilizacaoService');
 const { createNfePersistenceService } = require('../services/nfePersistenceService');
 const { createNfeEmissaoService } = require('../services/nfeEmissaoService');
@@ -395,6 +398,27 @@ router.get('/pendencias', auth(['admin', 'caixa']), (req, res) => {
   } catch (e) {
     console.error('[NF-e] GET /pendencias:', e.message);
     res.status(500).json({ erro: 'Erro ao listar pendencias fiscais' });
+  }
+});
+
+// GET /api/nfe/pendencias/:origem/:id/transicoes
+// Auditoria read-only de tentativa fiscal ativa. Nao consulta SEFAZ nem reenvia eventos.
+router.get('/pendencias/:origem/:id/transicoes', auth(['admin', 'caixa']), (req, res) => {
+  const origem = String(req.params.origem || '').trim();
+  const id = Number(req.params.id);
+  if (!['emissao', 'evento'].includes(origem) || !Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ erro: 'Pendencia fiscal invalida.' });
+  }
+
+  try {
+    const result = buscarPendenciaFiscalComTransicoes(getDB(), { origem, id });
+    if (!result) {
+      return res.status(404).json({ erro: 'Pendencia fiscal nao encontrada.' });
+    }
+    res.json(result);
+  } catch (e) {
+    console.error('[NF-e] GET /pendencias/:origem/:id/transicoes:', e.message);
+    res.status(500).json({ erro: 'Erro ao carregar auditoria da pendencia fiscal' });
   }
 });
 

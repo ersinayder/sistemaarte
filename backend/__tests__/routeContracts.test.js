@@ -82,6 +82,7 @@ describe('route authorization contracts', () => {
 
     expect(routeRoles(nfeRouter, 'get', '/status-servico')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'get', '/pendencias')).toEqual(['admin', 'caixa']);
+    expect(routeRoles(nfeRouter, 'get', '/pendencias/:origem/:id/transicoes')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'get', '/emitir/:id/preview')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'post', '/emitir/:id')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'post', '/:chave/cce')).toEqual(['admin', 'caixa']);
@@ -519,6 +520,22 @@ describe('security configuration contracts', () => {
     expect(repositorySource).not.toMatch(/xml_envio/);
     expect(repositorySource).not.toMatch(/xml_retorno/);
     expect(repositorySource).not.toMatch(/erro_local/);
+  });
+
+  it('exposes sanitized fiscal pending transition audit without SEFAZ calls', async () => {
+    const nfeRouter = await loadRouter('../routes/nfe.js');
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+    const repositorySource = fs.readFileSync(new URL('../repositories/nfePendenciaRepository.js', import.meta.url), 'utf8');
+    const routeStart = source.indexOf("router.get('/pendencias/:origem/:id/transicoes'");
+    const nextRouteStart = source.indexOf("router.get('/inutilizacoes/contexto'", routeStart);
+    const routeSource = source.slice(routeStart, nextRouteStart);
+
+    expect(routeRoles(nfeRouter, 'get', '/pendencias/:origem/:id/transicoes')).toEqual(['admin', 'caixa']);
+    expect(source).toMatch(/buscarPendenciaFiscalComTransicoes/);
+    expect(routeStart).toBeGreaterThan(-1);
+    expect(routeStart).toBeLessThan(source.indexOf("router.get('/:chave/eventos'"));
+    expect(routeSource).not.toMatch(/getNFEWizard|callSEFAZ|NFE_|service\.executar/);
+    expect(repositorySource).not.toMatch(/SELECT[^`]*(payload_json|xml_envio|xml_retorno|erro_local)/s);
   });
 
   it('allows NF-e workflow for orders in production status', () => {
