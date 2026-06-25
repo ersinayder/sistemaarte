@@ -28,6 +28,12 @@ const EVENTO_LABEL = {
   rejeicao: 'Rejeicao',
   cce: 'Carta de Correcao',
   cancelamento: 'Cancelamento',
+  emissao: 'Emissao',
+}
+
+const PENDENCIA_STATUS_LABEL = {
+  processando: 'Processando',
+  incerto: 'Incerto',
 }
 
 const HOMOLOGACAO_ALVO = 10
@@ -81,6 +87,79 @@ function StatusBadge({ status }) {
       fontSize: 'var(--text-xs)', fontWeight: 700,
       background: cfg.bg, color: cfg.text,
     }}>{cfg.label}</span>
+  )
+}
+
+function PendenciasFiscaisPanel({ pendencias, onRefresh }) {
+  const primeiras = pendencias.slice(0, 4)
+  const restantes = Math.max(0, pendencias.length - primeiras.length)
+
+  return (
+    <div style={{
+      background: 'var(--color-surface)',
+      border: '1px solid var(--color-gold)',
+      borderRadius: 'var(--radius-lg)',
+      padding: 'var(--space-3) var(--space-4)',
+      display: 'grid',
+      gap: 'var(--space-3)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', minWidth: 0 }}>
+          <FileWarning size={18} style={{ color: 'var(--color-gold)', flex: '0 0 auto' }} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800 }}>Pendencias fiscais em acompanhamento</div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+              {pendencias.length} tentativa{pendencias.length !== 1 ? 's' : ''} aguardando conclusao ou conciliacao
+            </div>
+          </div>
+        </div>
+        <button className="btn btn-ghost btn-sm" onClick={onRefresh} title="Atualizar pendencias fiscais">
+          Atualizar
+        </button>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 'var(--space-2)' }}>
+        {primeiras.map((p) => (
+          <div key={`${p.origem}-${p.id}`} style={{
+            border: '1px solid var(--color-border)',
+            borderRadius: 'var(--radius-md)',
+            padding: 'var(--space-2) var(--space-3)',
+            background: 'var(--color-surface-offset)',
+            minWidth: 0,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-2)', alignItems: 'center', marginBottom: 4 }}>
+              <span style={{ fontSize: 'var(--text-xs)', fontWeight: 800, color: 'var(--color-text)' }}>
+                {EVENTO_LABEL[p.tipo] || p.tipo}
+                {p.tipo === 'cce' && p.nseqevento ? ` #${p.nseqevento}` : ''}
+              </span>
+              <span style={{
+                fontSize: 'var(--text-xs)',
+                fontWeight: 800,
+                color: p.status === 'incerto' ? 'var(--color-error)' : 'var(--color-gold)',
+                whiteSpace: 'nowrap',
+              }}>
+                {PENDENCIA_STATUS_LABEL[p.status] || p.status}
+              </span>
+            </div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {p.numero_os || 'OS nao vinculada'} {p.cliente ? `- ${p.cliente}` : ''}
+            </div>
+            <div title={p.motivo || p.chave || ''} style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {p.motivo || p.chave || 'Sem motivo informado'}
+            </div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)', marginTop: 4 }}>
+              Atualizado em {fmtDate(p.updatedat)}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {restantes > 0 && (
+        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>
+          Mais {restantes} pendencia{restantes !== 1 ? 's' : ''} fiscal{restantes !== 1 ? 'is' : ''} fora da visualizacao compacta.
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -1013,8 +1092,18 @@ export default function NotasFiscais({ lixeira = false }) {
   const [cancelarNota, setCancelarNota] = useState(null)
   const [cceNota, setCceNota]         = useState(null)
   const [modalInutilizacao, setModalInutilizacao] = useState(false)
+  const [pendenciasFiscais, setPendenciasFiscais] = useState([])
   const [q, setQ]                     = useState('')
   const [filtroStatus, setFiltroStatus] = useState('todos')
+
+  const carregarPendenciasFiscais = useCallback(async () => {
+    try {
+      const r = await api.get('/nfe/pendencias', { skipGlobalErrorToast: true })
+      setPendenciasFiscais(r.data?.pendencias || [])
+    } catch {
+      setPendenciasFiscais([])
+    }
+  }, [])
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -1022,12 +1111,17 @@ export default function NotasFiscais({ lixeira = false }) {
       const r = await api.get(lixeira ? '/nfe/lixeira' : '/nfe')
       setNotas(r.data?.notas || [])
       setNfeMeta(r.data?.meta || { ambiente: null, autorizadas_homologacao: 0, alvo_homologacao: HOMOLOGACAO_ALVO })
+      if (lixeira) {
+        setPendenciasFiscais([])
+      } else {
+        await carregarPendenciasFiscais()
+      }
     } catch {
       toast.error(lixeira ? 'Erro ao carregar lixeira de NF-e' : 'Erro ao carregar notas fiscais')
     } finally {
       setLoading(false)
     }
-  }, [lixeira])
+  }, [carregarPendenciasFiscais, lixeira])
 
   useEffect(() => { carregar() }, [carregar])
 
@@ -1158,6 +1252,10 @@ export default function NotasFiscais({ lixeira = false }) {
           <div style={{ height: '100%', width: `${progressoHomologacao}%`, background: progressoHomologacao >= 100 ? 'var(--color-success)' : 'var(--color-primary)', transition: 'width var(--transition-interactive)' }} />
         </div>
       </div>}
+
+      {!lixeira && pendenciasFiscais.length > 0 && (
+        <PendenciasFiscaisPanel pendencias={pendenciasFiscais} onRefresh={carregarPendenciasFiscais} />
+      )}
 
       {/* Filtros */}
       <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', alignItems: 'center' }}>

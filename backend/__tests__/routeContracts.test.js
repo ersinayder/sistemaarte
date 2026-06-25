@@ -547,6 +547,16 @@ describe('security configuration contracts', () => {
     expect(source).not.toMatch(/<datalist/);
   });
 
+  it('shows fiscal pending attempts on the NF-e operational page', () => {
+    const source = fs.readFileSync(new URL('../../frontend/src/pages/NotasFiscais.jsx', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/function PendenciasFiscaisPanel/);
+    expect(source).toMatch(/api\.get\(['"]\/nfe\/pendencias['"],\s*\{\s*skipGlobalErrorToast:\s*true\s*\}\)/);
+    expect(source).toMatch(/setPendenciasFiscais\(r\.data\?\.pendencias \|\| \[\]\)/);
+    expect(source).toMatch(/\{!lixeira && pendenciasFiscais\.length > 0 && \(/);
+    expect(source).toMatch(/<PendenciasFiscaisPanel pendencias=\{pendenciasFiscais\}/);
+  });
+
   it('uses editable customer data in NF-e emission and persists it only after authorization', () => {
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
     const persistenceSource = fs.readFileSync(new URL('../services/nfePersistenceService.js', import.meta.url), 'utf8');
