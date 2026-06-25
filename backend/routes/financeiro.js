@@ -8,6 +8,8 @@ const {
   normalizarStatusContaPagar,
   validarContaPagar,
 } = require("../domain/financeiroAdminRules");
+const { getResumoFinanceiroOS } = require("../domain/financeiroRules");
+const { auditarIntegridadeFinanceiraOS } = require("../services/financeiroIntegridadeService");
 const {
   renderContasPagarHtml,
   renderContasReceberHtml,
@@ -273,6 +275,19 @@ router.delete("/contas-pagar/:id", auth(["admin"]), (req, res, next) => {
 router.get("/contas-receber", auth(["admin"]), (_req, res, next) => {
   try {
     res.json(getContasReceberPayload());
+  } catch (e) { next(e); }
+});
+
+router.get("/integridade-os", auth(["admin"]), (_req, res, next) => {
+  try {
+    const ordens = getAll(
+      "SELECT id, numero, clientenome, status, valortotal FROM ordens WHERE deletedat IS NULL ORDER BY id DESC"
+    );
+    res.json(auditarIntegridadeFinanceiraOS({
+      ordens,
+      receberGerencial: getContasReceberPayload(),
+      getResumoFinanceiroOS,
+    }));
   } catch (e) { next(e); }
 });
 
