@@ -233,6 +233,7 @@ describe('route persistence contracts', () => {
     expect(routeRoles(financeiroRouter, 'post', '/contas-pagar')).toEqual(['admin']);
     expect(routeRoles(financeiroRouter, 'patch', '/contas-pagar/:id/pagar')).toEqual(['admin']);
     expect(routeRoles(financeiroRouter, 'get', '/integridade-os')).toEqual(['admin']);
+    expect(routeRoles(financeiroRouter, 'get', '/integridade-os/:ordemId')).toEqual(['admin']);
     expect(routeRoles(financeiroRouter, 'get', '/contas-receber')).toEqual(['admin']);
     expect(routeRoles(financeiroRouter, 'get', '/contas-receber/pdf')).toEqual(['admin']);
     expect(routeRoles(financeiroRouter, 'get', '/dre')).toEqual(['admin']);

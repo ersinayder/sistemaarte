@@ -9,7 +9,10 @@ const {
   validarContaPagar,
 } = require("../domain/financeiroAdminRules");
 const { getResumoFinanceiroOS } = require("../domain/financeiroRules");
-const { auditarIntegridadeFinanceiraOS } = require("../services/financeiroIntegridadeService");
+const {
+  auditarIntegridadeFinanceiraOS,
+  montarDetalheIntegridadeFinanceiraOS,
+} = require("../services/financeiroIntegridadeService");
 const {
   renderContasPagarHtml,
   renderContasReceberHtml,
@@ -275,6 +278,33 @@ router.delete("/contas-pagar/:id", auth(["admin"]), (req, res, next) => {
 router.get("/contas-receber", auth(["admin"]), (_req, res, next) => {
   try {
     res.json(getContasReceberPayload());
+  } catch (e) { next(e); }
+});
+
+router.get("/integridade-os/:ordemId", auth(["admin"]), (req, res, next) => {
+  try {
+    const ordem = getOne(
+      "SELECT id, numero, clientenome, status, valortotal FROM ordens WHERE id=? AND deletedat IS NULL",
+      [req.params.ordemId]
+    );
+    if (!ordem) return res.status(404).json({ error: "OS nao encontrada" });
+
+    const receberGerencial = getContasReceberPayload()
+      .find((row) => Number(row.id) === Number(req.params.ordemId)) || null;
+    const lancamentos = getAll(
+      `SELECT id, data, tipo, categoria, descricao, pagamento, valor, pago, origem, deletedat
+       FROM lancamentos
+       WHERE ordemid=?
+       ORDER BY data ASC, id ASC`,
+      [req.params.ordemId]
+    );
+
+    res.json(montarDetalheIntegridadeFinanceiraOS({
+      ordem,
+      receberGerencial,
+      lancamentos,
+      getResumoFinanceiroOS,
+    }));
   } catch (e) { next(e); }
 });
 
