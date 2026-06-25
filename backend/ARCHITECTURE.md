@@ -70,6 +70,12 @@ Contratos operacionais:
 - Estados `incerto` e `rejeitado` também são projetados em `ordens.nfe_status`
   e `nfe_eventos` para ficarem visíveis na tela fiscal atual.
 
+Eventos fiscais posteriores a autorizacao, como CC-e e cancelamento, usam
+`services/nfeEventoService.js` com tentativas em `nfe_evento_tentativas` e
+transicoes em `nfe_evento_transicoes`. Estados `processando` e `incerto`
+bloqueiam retransmissao para evitar duplicidade legal quando a resposta da
+SEFAZ nao e conclusiva.
+
 ## Integridade financeira do caixa
 
 `PUT /api/caixa/:id` delega para `services/caixaLancamentoService.js`. A edição
