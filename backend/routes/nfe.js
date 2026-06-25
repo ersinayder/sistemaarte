@@ -22,6 +22,7 @@ const { createNfeInutilizacaoService } = require('../services/nfeInutilizacaoSer
 const { createNfePersistenceService } = require('../services/nfePersistenceService');
 const { createNfeEmissaoService } = require('../services/nfeEmissaoService');
 const { createNfeEventoService } = require('../services/nfeEventoService');
+const { auditarIntegridadeFiscalFinanceiraNFe } = require('../services/nfeIntegridadeFinanceiraService');
 const { transmitirInutilizacaoNFe } = require('../utils/nfeInutilizacao');
 const {
   transmitirCcePayload,
@@ -380,6 +381,23 @@ router.get('/status-servico', auth(['admin', 'caixa']), async (req, res) => {
       detalhe: err.message,
       contingencia: false,
     });
+  }
+});
+
+// GET /api/nfe/integridade-financeira
+// Auditoria local read-only: nao consulta SEFAZ, nao reenvia e nao altera dados.
+router.get('/integridade-financeira', auth(['admin', 'caixa']), (req, res) => {
+  try {
+    const notas = getDB().prepare(`
+      SELECT id, numero, clientenome, status, valortotal, nfe_status, nfe_chave, nfe_xml
+      FROM ordens
+      WHERE deletedat IS NULL AND nfe_status IS NOT NULL AND nfe_deletedat IS NULL
+      ORDER BY nfe_emitida_em DESC, id DESC
+    `).all();
+    res.json(auditarIntegridadeFiscalFinanceiraNFe(notas));
+  } catch (e) {
+    console.error('[NF-e] GET /integridade-financeira:', e.message);
+    res.status(500).json({ erro: 'Erro ao auditar integridade fiscal-financeira' });
   }
 });
 

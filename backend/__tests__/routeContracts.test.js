@@ -81,6 +81,7 @@ describe('route authorization contracts', () => {
     const nfeRouter = await loadRouter('../routes/nfe.js');
 
     expect(routeRoles(nfeRouter, 'get', '/status-servico')).toEqual(['admin', 'caixa']);
+    expect(routeRoles(nfeRouter, 'get', '/integridade-financeira')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'get', '/pendencias')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'get', '/pendencias/:origem/:id/transicoes')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'get', '/emitir/:id/preview')).toEqual(['admin', 'caixa']);
@@ -522,6 +523,21 @@ describe('security configuration contracts', () => {
     expect(repositorySource).not.toMatch(/xml_envio/);
     expect(repositorySource).not.toMatch(/xml_retorno/);
     expect(repositorySource).not.toMatch(/erro_local/);
+  });
+
+  it('exposes fiscal-financial integrity audit without SEFAZ calls', async () => {
+    const nfeRouter = await loadRouter('../routes/nfe.js');
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+    const routeStart = source.indexOf("router.get('/integridade-financeira'");
+    const chaveEventosStart = source.indexOf("router.get('/:chave/eventos'");
+    const routeSource = source.slice(routeStart, chaveEventosStart);
+
+    expect(routeRoles(nfeRouter, 'get', '/integridade-financeira')).toEqual(['admin', 'caixa']);
+    expect(source).toMatch(/auditarIntegridadeFiscalFinanceiraNFe/);
+    expect(routeStart).toBeGreaterThan(-1);
+    expect(routeStart).toBeLessThan(chaveEventosStart);
+    expect(routeSource).not.toMatch(/getNFEWizard|callSEFAZ|NFE_|service\.executar|wizard\./);
+    expect(routeSource).not.toMatch(/nfe_xml[:,]|xml:/);
   });
 
   it('exposes sanitized fiscal pending transition audit without SEFAZ calls', async () => {
