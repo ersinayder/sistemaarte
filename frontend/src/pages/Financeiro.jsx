@@ -35,7 +35,7 @@ function StatusBadge({ status }) {
   );
 }
 
-function IntegridadeFinanceiraPanel({ integridade }) {
+function IntegridadeFinanceiraPanel({ integridade, onAudit }) {
   const itens = integridade?.itens || [];
   const criticos = Number(integridade?.criticos || 0);
   const badgeColor = criticos > 0 ? 'var(--color-error)' : 'var(--color-success)';
@@ -54,7 +54,7 @@ function IntegridadeFinanceiraPanel({ integridade }) {
       {itens.length > 0 ? (
         <div className="table-wrap" style={{ marginTop: 'var(--space-3)' }}>
           <table>
-            <thead><tr><th>OS</th><th>Cliente</th><th>Tipo</th><th>Saldo oficial</th></tr></thead>
+            <thead><tr><th>OS</th><th>Cliente</th><th>Tipo</th><th>Saldo oficial</th><th></th></tr></thead>
             <tbody>
               {itens.slice(0, 5).map((item) => (
                 <tr key={`${item.tipo}-${item.ordemId}`}>
@@ -62,6 +62,9 @@ function IntegridadeFinanceiraPanel({ integridade }) {
                   <td>{item.clienteNome || '-'}</td>
                   <td>{item.mensagem}</td>
                   <td className="tabnum" style={{ fontWeight: 800 }}>{fmt(item.saldoOficial)}</td>
+                  <td>
+                    <button className="btn btn-ghost btn-sm" onClick={() => onAudit(item)}>Auditar</button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -71,6 +74,86 @@ function IntegridadeFinanceiraPanel({ integridade }) {
         <div className="empty-state" style={{ marginTop: 'var(--space-3)' }}>Nenhum apontamento financeiro nas OS.</div>
       )}
     </section>
+  );
+}
+
+function ModalAuditoriaFinanceiraOS({ apontamento, onClose }) {
+  const [detalhe, setDetalhe] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!apontamento?.ordemId) return;
+    let alive = true;
+    setLoading(true);
+    api.get(`/financeiro/integridade-os/${apontamento.ordemId}`, { skipGlobalErrorToast: true })
+      .then((r) => { if (alive) setDetalhe(r.data || null); })
+      .catch((e) => toast.error(e?.response?.data?.error || 'Erro ao carregar auditoria financeira da OS'))
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [apontamento?.ordemId]);
+
+  const resumo = detalhe?.resumo || {};
+  const lancamentos = detalhe?.lancamentos || [];
+  const apontamentos = detalhe?.apontamentos || [];
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-content" style={{ maxWidth: 860 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <div>
+            <h2 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 800 }}>Auditoria financeira da OS</h2>
+            <p className="text-muted" style={{ margin: '4px 0 0' }}>{detalhe?.ordem?.numero || apontamento?.numero || apontamento?.ordemId}</p>
+          </div>
+          <button className="btn btn-secondary btn-sm" onClick={onClose}>Fechar</button>
+        </div>
+        {loading ? (
+          <div className="loading-center"><div className="spinner" /></div>
+        ) : (
+          <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 'var(--space-3)' }}>
+              <StatCard label="Total da OS" value={fmt(resumo.valorTotal)} />
+              <StatCard label="Recebido oficial" value={fmt(resumo.recebidoOficial)} color="var(--color-success)" />
+              <StatCard label="Saldo oficial" value={fmt(resumo.saldoOficial)} color="var(--color-gold)" />
+              <StatCard label="Excedente" value={fmt(resumo.excedente)} color={Number(resumo.excedente || 0) > 0 ? 'var(--color-error)' : 'var(--color-text-muted)'} />
+            </div>
+            <div className="card card-pad">
+              <h3 style={{ margin: 0, fontSize: 'var(--text-sm)' }}>Apontamentos</h3>
+              <div className="settings-list" style={{ marginTop: 'var(--space-3)' }}>
+                {apontamentos.length === 0 ? <div className="empty-state">Nenhum apontamento recalculado para esta OS.</div> : apontamentos.map((item) => (
+                  <div className="settings-list-item" key={item.tipo}>
+                    <strong>{item.mensagem}</strong>
+                    <span>{item.severidade}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="card" style={{ overflow: 'hidden' }}>
+              <div style={{ padding: 'var(--space-4)', borderBottom: '1px solid var(--color-border)' }}>
+                <strong>Lancamentos da OS</strong>
+              </div>
+              <div className="table-wrap">
+                <table>
+                  <thead><tr><th>Data</th><th>Descricao</th><th>Pagamento</th><th>Valor</th><th>Status</th></tr></thead>
+                  <tbody>
+                    {lancamentos.length === 0 ? (
+                      <tr><td colSpan={5}><div className="empty-state">Nenhum lancamento vinculado a esta OS.</div></td></tr>
+                    ) : lancamentos.map((item) => (
+                      <tr key={item.id}>
+                        <td>{fmtD(item.data)}</td>
+                        <td>{item.descricao || item.categoria || '-'}</td>
+                        <td>{item.pagamento || '-'}</td>
+                        <td className="tabnum" style={{ fontWeight: 800 }}>{fmt(item.valor)}</td>
+                        <td>{item.consideradoNoSaldo ? 'Considerado' : 'Ignorado'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -145,6 +228,7 @@ export default function Financeiro() {
   const [receber, setReceber] = useState([]);
   const [dre, setDre] = useState(null);
   const [integridade, setIntegridade] = useState(null);
+  const [auditoriaOS, setAuditoriaOS] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
 
@@ -339,7 +423,7 @@ export default function Financeiro() {
           <button className="btn btn-secondary" onClick={load} disabled={loading}>Atualizar</button>
         </div>
       </div>
-      <IntegridadeFinanceiraPanel integridade={integridade} />
+      <IntegridadeFinanceiraPanel integridade={integridade} onAudit={setAuditoriaOS} />
       <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginBottom: 'var(--space-4)' }}>
         {TABS.map((item) => <button key={item.id} className={tab === item.id ? 'btn btn-primary' : 'btn btn-secondary'} onClick={() => setTab(item.id)}>{item.label}</button>)}
       </div>
@@ -348,6 +432,7 @@ export default function Financeiro() {
         : tab === 'pagar' ? renderPagar()
         : tab === 'receber' ? renderReceber()
         : renderDre()}
+      {auditoriaOS && <ModalAuditoriaFinanceiraOS apontamento={auditoriaOS} onClose={() => setAuditoriaOS(null)} />}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import React from 'react'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import api from '../services/api'
 import Financeiro from './Financeiro'
@@ -52,6 +53,21 @@ describe('Financeiro integridade de OS', () => {
           },
         })
       }
+      if (url === '/financeiro/integridade-os/10') {
+        return Promise.resolve({
+          data: {
+            ordem: { id: 10, numero: 'OS-10', clientenome: 'Ana', status: 'Entregue', valortotal: 100 },
+            resumo: { valorTotal: 100, recebidoOficial: 75, saldoOficial: 25, excedente: 0 },
+            receberGerencial: null,
+            apontamentos: [
+              { tipo: 'entregue_com_saldo', severidade: 'critico', mensagem: 'OS entregue ainda possui saldo oficial em aberto.' },
+            ],
+            lancamentos: [
+              { id: 5, data: '2026-06-25', tipo: 'Entrada', descricao: 'Pix', pagamento: 'Pix', valor: 75, pago: 1, consideradoNoSaldo: true },
+            ],
+          },
+        })
+      }
       return Promise.resolve({ data: null })
     })
   })
@@ -62,5 +78,19 @@ describe('Financeiro integridade de OS', () => {
     expect(await screen.findByText('Integridade das OS')).toBeInTheDocument()
     expect(screen.getByText('OS entregue ainda possui saldo oficial em aberto.')).toBeInTheDocument()
     expect(api.get).toHaveBeenCalledWith('/financeiro/integridade-os', { skipGlobalErrorToast: true })
+  })
+
+  it('opens a read-only detail modal for a financial integrity issue', async () => {
+    const user = userEvent.setup()
+    render(<Financeiro />)
+
+    await screen.findByText('Integridade das OS')
+    await user.click(screen.getByRole('button', { name: /auditar/i }))
+
+    expect(await screen.findByText('Auditoria financeira da OS')).toBeInTheDocument()
+    expect(screen.getAllByText('Pix').length).toBeGreaterThan(0)
+    expect(screen.getByText('Considerado')).toBeInTheDocument()
+    expect(api.get).toHaveBeenCalledWith('/financeiro/integridade-os/10', { skipGlobalErrorToast: true })
+    expect(screen.queryByRole('button', { name: /corrigir|quitar|excluir|reabrir/i })).not.toBeInTheDocument()
   })
 })
