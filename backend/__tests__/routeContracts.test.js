@@ -592,6 +592,20 @@ describe('security configuration contracts', () => {
     expect(source).toMatch(/<PendenciasFiscaisPanel pendencias=\{pendenciasFiscais\}/);
   });
 
+  it('shows fiscal-financial integrity findings on the NF-e operational page', () => {
+    const source = fs.readFileSync(new URL('../../frontend/src/pages/NotasFiscais.jsx', import.meta.url), 'utf8');
+    const panelStart = source.indexOf('function IntegridadeFiscalFinanceiraPanel');
+    const nextFunction = source.indexOf('function ModalAuditoriaPendenciaFiscal', panelStart);
+    const panelSource = source.slice(panelStart, nextFunction);
+
+    expect(source).toMatch(/function IntegridadeFiscalFinanceiraPanel/);
+    expect(source).toMatch(/api\.get\(['"]\/nfe\/integridade-financeira['"],\s*\{\s*skipGlobalErrorToast:\s*true\s*\}\)/);
+    expect(source).toMatch(/setIntegridadeFiscalFinanceira\(r\.data\?\.itens \|\| \[\]\)/);
+    expect(source).toMatch(/\{!lixeira && integridadeFiscalFinanceira\.length > 0 && \(/);
+    expect(source).toMatch(/<IntegridadeFiscalFinanceiraPanel itens=\{integridadeFiscalFinanceira\} onRefresh=\{carregarIntegridadeFiscalFinanceira\}/);
+    expect(panelSource).not.toMatch(/Reemitir|Cancelar|Corrigir|Consultar SEFAZ|Editar OS/);
+  });
+
   it('opens read-only fiscal pending audit from the NF-e page', () => {
     const source = fs.readFileSync(new URL('../../frontend/src/pages/NotasFiscais.jsx', import.meta.url), 'utf8');
 

@@ -168,6 +168,76 @@ function PendenciasFiscaisPanel({ pendencias, onRefresh, onAudit }) {
   )
 }
 
+function IntegridadeFiscalFinanceiraPanel({ itens, onRefresh }) {
+  const primeiros = itens.slice(0, 4)
+  const restantes = Math.max(0, itens.length - primeiros.length)
+  const criticos = itens.filter(item => item.severidade === 'critico').length
+
+  return (
+    <div style={{
+      background: 'var(--color-surface)',
+      border: '1px solid var(--color-error)',
+      borderRadius: 'var(--radius-lg)',
+      padding: 'var(--space-3) var(--space-4)',
+      display: 'grid',
+      gap: 'var(--space-3)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', minWidth: 0 }}>
+          <FileWarning size={18} style={{ color: 'var(--color-error)', flex: '0 0 auto' }} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800 }}>Integridade fiscal-financeira</div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+              {itens.length} apontamento{itens.length !== 1 ? 's' : ''} local{itens.length !== 1 ? 'is' : ''} - {criticos} critico{criticos !== 1 ? 's' : ''}
+            </div>
+          </div>
+        </div>
+        <button className="btn btn-ghost btn-sm" onClick={onRefresh} title="Atualizar integridade fiscal-financeira">
+          Atualizar
+        </button>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 'var(--space-2)' }}>
+        {primeiros.map((item) => (
+          <div key={`${item.tipo}-${item.ordemId}`} style={{
+            border: '1px solid var(--color-border)',
+            borderRadius: 'var(--radius-md)',
+            padding: 'var(--space-2) var(--space-3)',
+            background: 'var(--color-surface-offset)',
+            minWidth: 0,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-2)', alignItems: 'center', marginBottom: 4 }}>
+              <span style={{ fontSize: 'var(--text-xs)', fontWeight: 800, color: 'var(--color-text)' }}>
+                {item.numero || `OS ${item.ordemId}`}
+              </span>
+              <span style={{ fontSize: 'var(--text-xs)', fontWeight: 800, color: item.severidade === 'critico' ? 'var(--color-error)' : 'var(--color-gold)' }}>
+                {item.nfeStatus || item.severidade}
+              </span>
+            </div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {item.clienteNome || 'Cliente nao informado'}
+            </div>
+            <div title={item.mensagem} style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {item.mensagem}
+            </div>
+            <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginTop: 6, fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+              {item.valorOS !== undefined && <span>OS {fmt(item.valorOS)}</span>}
+              {item.valorNFe !== undefined && <span>NF-e {fmt(item.valorNFe)}</span>}
+              {item.diferenca !== undefined && <span>Dif. {fmt(item.diferenca)}</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {restantes > 0 && (
+        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>
+          Mais {restantes} apontamento{restantes !== 1 ? 's' : ''} fora da visualizacao compacta.
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ModalAuditoriaPendenciaFiscal({ pendencia, onClose }) {
   const [detalhe, setDetalhe] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -1213,6 +1283,7 @@ export default function NotasFiscais({ lixeira = false }) {
   const [cceNota, setCceNota]         = useState(null)
   const [modalInutilizacao, setModalInutilizacao] = useState(false)
   const [pendenciasFiscais, setPendenciasFiscais] = useState([])
+  const [integridadeFiscalFinanceira, setIntegridadeFiscalFinanceira] = useState([])
   const [auditoriaPendencia, setAuditoriaPendencia] = useState(null)
   const [q, setQ]                     = useState('')
   const [filtroStatus, setFiltroStatus] = useState('todos')
@@ -1226,6 +1297,15 @@ export default function NotasFiscais({ lixeira = false }) {
     }
   }, [])
 
+  const carregarIntegridadeFiscalFinanceira = useCallback(async () => {
+    try {
+      const r = await api.get('/nfe/integridade-financeira', { skipGlobalErrorToast: true })
+      setIntegridadeFiscalFinanceira(r.data?.itens || [])
+    } catch {
+      setIntegridadeFiscalFinanceira([])
+    }
+  }, [])
+
   const carregar = useCallback(async () => {
     setLoading(true)
     try {
@@ -1234,15 +1314,17 @@ export default function NotasFiscais({ lixeira = false }) {
       setNfeMeta(r.data?.meta || { ambiente: null, autorizadas_homologacao: 0, alvo_homologacao: HOMOLOGACAO_ALVO })
       if (lixeira) {
         setPendenciasFiscais([])
+        setIntegridadeFiscalFinanceira([])
       } else {
         await carregarPendenciasFiscais()
+        await carregarIntegridadeFiscalFinanceira()
       }
     } catch {
       toast.error(lixeira ? 'Erro ao carregar lixeira de NF-e' : 'Erro ao carregar notas fiscais')
     } finally {
       setLoading(false)
     }
-  }, [carregarPendenciasFiscais, lixeira])
+  }, [carregarIntegridadeFiscalFinanceira, carregarPendenciasFiscais, lixeira])
 
   useEffect(() => { carregar() }, [carregar])
 
@@ -1376,6 +1458,10 @@ export default function NotasFiscais({ lixeira = false }) {
 
       {!lixeira && pendenciasFiscais.length > 0 && (
         <PendenciasFiscaisPanel pendencias={pendenciasFiscais} onRefresh={carregarPendenciasFiscais} onAudit={setAuditoriaPendencia} />
+      )}
+
+      {!lixeira && integridadeFiscalFinanceira.length > 0 && (
+        <IntegridadeFiscalFinanceiraPanel itens={integridadeFiscalFinanceira} onRefresh={carregarIntegridadeFiscalFinanceira} />
       )}
 
       {/* Filtros */}
