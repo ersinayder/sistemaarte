@@ -35,6 +35,45 @@ function StatusBadge({ status }) {
   );
 }
 
+function IntegridadeFinanceiraPanel({ integridade }) {
+  const itens = integridade?.itens || [];
+  const criticos = Number(integridade?.criticos || 0);
+  const badgeColor = criticos > 0 ? 'var(--color-error)' : 'var(--color-success)';
+
+  return (
+    <section className="card card-pad" style={{ marginBottom: 'var(--space-4)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 'var(--text-base)' }}>Integridade das OS</h2>
+          <p className="text-muted" style={{ margin: '4px 0 0' }}>{Number(integridade?.total || 0)} apontamento(s) financeiro(s)</p>
+        </div>
+        <span style={{ fontSize: 10, fontWeight: 800, color: badgeColor, border: `1px solid ${badgeColor}55`, borderRadius: 'var(--radius-full)', padding: '2px 7px', whiteSpace: 'nowrap' }}>
+          {criticos > 0 ? `${criticos} critico(s)` : 'Sem criticos'}
+        </span>
+      </div>
+      {itens.length > 0 ? (
+        <div className="table-wrap" style={{ marginTop: 'var(--space-3)' }}>
+          <table>
+            <thead><tr><th>OS</th><th>Cliente</th><th>Tipo</th><th>Saldo oficial</th></tr></thead>
+            <tbody>
+              {itens.slice(0, 5).map((item) => (
+                <tr key={`${item.tipo}-${item.ordemId}`}>
+                  <td>{item.numero || item.ordemId}</td>
+                  <td>{item.clienteNome || '-'}</td>
+                  <td>{item.mensagem}</td>
+                  <td className="tabnum" style={{ fontWeight: 800 }}>{fmt(item.saldoOficial)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="empty-state" style={{ marginTop: 'var(--space-3)' }}>Nenhum apontamento financeiro nas OS.</div>
+      )}
+    </section>
+  );
+}
+
 function ContaForm({ initial, onCancel, onSave }) {
   const [form, setForm] = useState(() => ({
     fornecedor: initial?.fornecedor || '',
@@ -105,6 +144,7 @@ export default function Financeiro() {
   const [contas, setContas] = useState([]);
   const [receber, setReceber] = useState([]);
   const [dre, setDre] = useState(null);
+  const [integridade, setIntegridade] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
 
@@ -113,16 +153,18 @@ export default function Financeiro() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [resumoRes, contasRes, receberRes, dreRes] = await Promise.all([
+      const [resumoRes, contasRes, receberRes, dreRes, integridadeRes] = await Promise.all([
         api.get(`/financeiro/resumo?mes=${mes}`),
         api.get(`/financeiro/contas-pagar?mes=${mes}`),
         api.get('/financeiro/contas-receber'),
         api.get(`/financeiro/dre?mes=${mes}`),
+        api.get('/financeiro/integridade-os', { skipGlobalErrorToast: true }).catch(() => ({ data: null })),
       ]);
       setResumo(resumoRes.data || null);
       setContas(contasRes.data || []);
       setReceber(receberRes.data || []);
       setDre(dreRes.data || null);
+      setIntegridade(integridadeRes.data || null);
     } catch (e) {
       toast.error(e?.response?.data?.error || 'Erro ao carregar financeiro');
     } finally {
@@ -297,6 +339,7 @@ export default function Financeiro() {
           <button className="btn btn-secondary" onClick={load} disabled={loading}>Atualizar</button>
         </div>
       </div>
+      <IntegridadeFinanceiraPanel integridade={integridade} />
       <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginBottom: 'var(--space-4)' }}>
         {TABS.map((item) => <button key={item.id} className={tab === item.id ? 'btn btn-primary' : 'btn btn-secondary'} onClick={() => setTab(item.id)}>{item.label}</button>)}
       </div>
