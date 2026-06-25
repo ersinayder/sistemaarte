@@ -9,12 +9,28 @@ const {
   getNFEWizard,
   callSEFAZ,
   getSefazErrorInfo,
-  deveDevolverNumeroNFeAposFalhaAutorizacao,
   formatarRejeicaoSefaz,
 } = require('../utils/nfe');
 const { montarNFe } = require('../domain/nfeRules');
+const { createNfeAttemptRepository } = require('../repositories/nfeAttemptRepository');
+const { createNfeEventoAttemptRepository } = require('../repositories/nfeEventoAttemptRepository');
+const {
+  buscarPendenciaFiscalComTransicoes,
+  listarPendenciasFiscais,
+} = require('../repositories/nfePendenciaRepository');
 const { createNfeInutilizacaoService } = require('../services/nfeInutilizacaoService');
+const { createNfePersistenceService } = require('../services/nfePersistenceService');
+const { createNfeEmissaoService } = require('../services/nfeEmissaoService');
+const { createNfeEventoService } = require('../services/nfeEventoService');
+const {
+  auditarIntegridadeFiscalFinanceiraNFe,
+  montarDetalheIntegridadeFiscalFinanceiraNFe,
+} = require('../services/nfeIntegridadeFinanceiraService');
 const { transmitirInutilizacaoNFe } = require('../utils/nfeInutilizacao');
+const {
+  transmitirCcePayload,
+  transmitirCancelamentoPayload,
+} = require('../utils/nfeEventos');
 const { renderDanfeHtml } = require('../utils/danfe');
 const { sendPrintHtml } = require('../utils/print/base');
 const {
@@ -153,45 +169,7 @@ function extrairXmlFiscal(valor, depth = 0) {
 }
 
 function serializarXmlFiscal(resultado) {
-  return extrairXmlFiscal(resultado) || (typeof resultado === 'string'
-    ? resultado
-    : JSON.stringify(resultado, null, 2));
-}
-
-function proximoNumero(db, serie = '1') {
-  const row = db.prepare('SELECT ultimo_numero FROM nfe_sequencias WHERE serie = ?').get(serie);
-  if (!row) {
-    db.prepare('INSERT INTO nfe_sequencias (serie, ultimo_numero) VALUES (?, 1)').run(serie);
-    return pad(1, 9);
-  }
-  const proximo = row.ultimo_numero + 1;
-  db.prepare('UPDATE nfe_sequencias SET ultimo_numero = ? WHERE serie = ?').run(proximo, serie);
-  return pad(proximo, 9);
-}
-
-function devolverNumeroNFeRejeitada(db, serie, numero) {
-  const numeroInt = Number.parseInt(numero, 10);
-  if (!Number.isInteger(numeroInt) || numeroInt <= 0) return false;
-
-  const result = db.prepare(`
-    UPDATE nfe_sequencias
-    SET ultimo_numero = ?
-    WHERE serie = ? AND ultimo_numero = ?
-  `).run(numeroInt - 1, serie, numeroInt);
-
-  if (result.changes > 0) {
-    console.warn(`[NF-e] Numero ${numero}/${serie} devolvido a sequencia apos rejeicao fiscal.`);
-    return true;
-  }
-
-  console.warn(`[NF-e] Numero ${numero}/${serie} nao devolvido: sequencia ja avancou.`);
-  return false;
-}
-
-function rejeicaoPermiteDevolverNumeroNFe(cStat) {
-  // Nao reutilizar numeros que a SEFAZ declarou como duplicados, denegados ou inutilizados.
-  const codigo = String(cStat || '').trim();
-  return !['204', '205', '206', '302', '303'].includes(codigo);
+  return extrairXmlFiscal(resultado);
 }
 
 function buscarOrdemParaNFe(db, osId) {
@@ -216,6 +194,9 @@ function buscarItensParaNFe(db, ordemId) {
 function validarOrdemEmitivel(os, itens) {
   if (!os) return { status: 404, erro: 'OS nao encontrada' };
   if (os.nfe_status === 'autorizado') return { status: 409, erro: 'NF-e ja autorizada para esta OS' };
+  if (['cancelado', 'cancelada'].includes(String(os.nfe_status || '').toLowerCase())) {
+    return { status: 409, erro: 'NF-e cancelada nao pode ser reemitida para esta OS' };
+  }
   if (!STATUS_NFE_EMISSAO.includes(os.status)) {
     return { status: 422, erro: `Status invalido para emissao: ${os.status}` };
   }
@@ -258,35 +239,6 @@ function serializarPreviaEmissaoNFe({ os, itens, ambiente, serie }) {
     },
     itens: itens.map(serializarItemPreviaNFe),
   };
-}
-
-function salvarClienteCadastroAposEmissao(db, os, cliente) {
-  if (!os.clienteid) return;
-
-  db.prepare(`
-    UPDATE clientes SET
-      name = ?,
-      cpf = ?,
-      ie = ?,
-      logradouro = ?,
-      numero = ?,
-      bairro = ?,
-      cidade = ?,
-      uf = ?,
-      cep = ?
-    WHERE id = ? AND deletedat IS NULL
-  `).run(
-    cliente.clientenome || os.clientenome || null,
-    cliente.cpf || null,
-    cliente.ie || null,
-    cliente.logradouro || null,
-    cliente.c_numero || null,
-    cliente.bairro || null,
-    cliente.cidade || null,
-    cliente.uf || null,
-    cliente.cep || null,
-    os.clienteid
-  );
 }
 
 /**
@@ -429,9 +381,88 @@ router.get('/status-servico', auth(['admin', 'caixa']), async (req, res) => {
       duracao_ms: Date.now() - inicio,
       erro: sefazInfo.mensagem,
       tipo: sefazInfo.tipo,
-      detalhe: err.message,
       contingencia: false,
     });
+  }
+});
+
+// GET /api/nfe/integridade-financeira/:ordemId
+// Detalhe local read-only da auditoria fiscal-financeira.
+router.get('/integridade-financeira/:ordemId', auth(['admin', 'caixa']), (req, res) => {
+  const ordemId = Number(req.params.ordemId);
+  if (!Number.isInteger(ordemId) || ordemId <= 0) {
+    return res.status(400).json({ erro: 'OS invalida.' });
+  }
+
+  try {
+    const nota = getDB().prepare(`
+      SELECT id, numero, clientenome, status, valortotal, nfe_status, nfe_chave, nfe_xml
+      FROM ordens
+      WHERE id = ? AND deletedat IS NULL AND nfe_status IS NOT NULL AND nfe_deletedat IS NULL
+    `).get(ordemId);
+    if (!nota) {
+      return res.status(404).json({ erro: 'NF-e da OS nao encontrada.' });
+    }
+    res.json(montarDetalheIntegridadeFiscalFinanceiraNFe(nota));
+  } catch (e) {
+    console.error('[NF-e] GET /integridade-financeira/:ordemId:', e.message);
+    res.status(500).json({ erro: 'Erro ao auditar detalhe fiscal-financeiro' });
+  }
+});
+
+// GET /api/nfe/integridade-financeira
+// Auditoria local read-only: nao consulta SEFAZ, nao reenvia e nao altera dados.
+router.get('/integridade-financeira', auth(['admin', 'caixa']), (req, res) => {
+  try {
+    const notas = getDB().prepare(`
+      SELECT id, numero, clientenome, status, valortotal, nfe_status, nfe_chave, nfe_xml
+      FROM ordens
+      WHERE deletedat IS NULL AND nfe_status IS NOT NULL AND nfe_deletedat IS NULL
+      ORDER BY nfe_emitida_em DESC, id DESC
+    `).all();
+    res.json(auditarIntegridadeFiscalFinanceiraNFe(notas));
+  } catch (e) {
+    console.error('[NF-e] GET /integridade-financeira:', e.message);
+    res.status(500).json({ erro: 'Erro ao auditar integridade fiscal-financeira' });
+  }
+});
+
+// GET /api/nfe/pendencias
+// Visao operacional read-only das tentativas fiscais ainda ativas.
+router.get('/pendencias', auth(['admin', 'caixa']), (req, res) => {
+  try {
+    const pendencias = listarPendenciasFiscais(getDB());
+    res.json({
+      pendencias,
+      meta: {
+        ambiente: tpAmbAtual(),
+        total: pendencias.length,
+      },
+    });
+  } catch (e) {
+    console.error('[NF-e] GET /pendencias:', e.message);
+    res.status(500).json({ erro: 'Erro ao listar pendencias fiscais' });
+  }
+});
+
+// GET /api/nfe/pendencias/:origem/:id/transicoes
+// Auditoria read-only de tentativa fiscal ativa. Nao consulta SEFAZ nem reenvia eventos.
+router.get('/pendencias/:origem/:id/transicoes', auth(['admin', 'caixa']), (req, res) => {
+  const origem = String(req.params.origem || '').trim();
+  const id = Number(req.params.id);
+  if (!['emissao', 'evento'].includes(origem) || !Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ erro: 'Pendencia fiscal invalida.' });
+  }
+
+  try {
+    const result = buscarPendenciaFiscalComTransicoes(getDB(), { origem, id });
+    if (!result) {
+      return res.status(404).json({ erro: 'Pendencia fiscal nao encontrada.' });
+    }
+    res.json(result);
+  } catch (e) {
+    console.error('[NF-e] GET /pendencias/:origem/:id/transicoes:', e.message);
+    res.status(500).json({ erro: 'Erro ao carregar auditoria da pendencia fiscal' });
   }
 });
 
@@ -736,28 +767,15 @@ router.post('/:id/restore', auth(['admin']), (req, res) => {
 
 // POST /api/nfe/emitir/:id
 router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
-  let respondido = false;
   const db = getDB();
-  const osId = req.params.id;
-
-  const guardTimeout = setTimeout(() => {
-    if (!respondido) {
-      respondido = true;
-      console.error(`[NF-e] Guard timeout disparado para OS#${osId}`);
-      // Libera mutex se ainda estiver 'emitindo' (guard disparou antes da resposta SEFAZ)
-      try { db.prepare(`UPDATE ordens SET nfe_status='rejeitado' WHERE id=? AND nfe_status='emitindo'`).run(osId); } catch(_) {}
-      res.status(504).json({ erro: 'SEFAZ demorou demais para responder. Aguarde alguns instantes, atualize a tela e tente reemitir.' });
-    }
-  }, NFE_ROUTE_TIMEOUT_MS);
+  const osId = Number(req.params.id);
 
   try {
     const certificado = getCertificadoConfig();
     if (!certificado.pathCertificado || !certificado.senhaCertificado) {
-      clearTimeout(guardTimeout); respondido = true;
       return res.status(500).json({ erro: 'Certificado NF-e nao configurado. Configure na tela fiscal ou no .env.' });
     }
     if (!getCnpjEmitente()) {
-      clearTimeout(guardTimeout); respondido = true;
       return res.status(500).json({ erro: 'CNPJ do emitente nao configurado na tela fiscal ou no .env' });
     }
 
@@ -765,225 +783,93 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
     const itensBase = os ? buscarItensParaNFe(db, os.id) : [];
     const erroOrdem = validarOrdemEmitivel(os, itensBase);
     if (erroOrdem) {
-      clearTimeout(guardTimeout); respondido = true;
       return res.status(erroOrdem.status).json({ erro: erroOrdem.erro });
     }
 
     const overrides = req.body?.itens || req.body?.itensFiscal || [];
     const itensComOverrides = aplicarOverridesItensNFe(itensBase, overrides);
     if (!itensComOverrides.ok) {
-      clearTimeout(guardTimeout); respondido = true;
       return res.status(400).json({ erro: itensComOverrides.erro });
     }
     const erroItensFiscais = validarItensFiscaisNFe(itensComOverrides.itens);
     if (!erroItensFiscais.ok) {
-      clearTimeout(guardTimeout); respondido = true;
       return res.status(400).json({ erro: erroItensFiscais.erro });
     }
 
     const clienteComOverrides = aplicarOverrideClienteNFe(os, req.body?.cliente);
     if (!clienteComOverrides.ok) {
-      clearTimeout(guardTimeout); respondido = true;
       return res.status(400).json({ erro: clienteComOverrides.erro });
     }
 
     const emitente = getEmitenteConfig();
     const erroClienteFiscal = validarClienteFiscalNFe(clienteComOverrides.cliente);
     if (!erroClienteFiscal.ok) {
-      clearTimeout(guardTimeout); respondido = true;
       return res.status(400).json({ erro: erroClienteFiscal.erro });
     }
     const erroEmitenteFiscal = validarEmitenteFiscalNFe(emitente);
     if (!erroEmitenteFiscal.ok) {
-      clearTimeout(guardTimeout); respondido = true;
       return res.status(400).json({ erro: erroEmitenteFiscal.erro });
     }
 
-    // ── MUTEX: tenta adquirir o lock de emissao ────────────────────────────────
-    // UPDATE só executa se o status NÃO for 'emitindo' nem 'autorizado'.
-    // Se changes === 0, outro processo já pegou o lock — rejeita com 409.
-    const lock = db.prepare(`
-      UPDATE ordens
-      SET nfe_status = 'emitindo',
-          nfe_deletedat = NULL,
-          nfe_deletedpor = NULL,
-          nfe_deletedreason = NULL
-      WHERE id = ? AND (nfe_status IS NULL OR nfe_status NOT IN ('emitindo', 'autorizado'))
-    `).run(osId);
-
-    if (lock.changes === 0) {
-      clearTimeout(guardTimeout); respondido = true;
-      return res.status(409).json({
-        erro: 'NF-e ja esta sendo emitida ou ja foi autorizada. Aguarde e tente novamente.'
-      });
-    }
-    // ── fim do mutex ───────────────────────────────────────────────────────────
-
-    const serie  = getSerieNFe();
-    const numero = proximoNumero(db, serie);
+    const serie = getSerieNFe();
     const ambiente = tpAmbAtual();
+    const autXML = getAutXmlParaNFe(clienteComOverrides.cliente.cpf);
+    const attemptRepository = createNfeAttemptRepository(db);
+    const persistenceService = createNfePersistenceService({
+      db,
+      nfeAttemptRepository: attemptRepository,
+    });
+    const service = createNfeEmissaoService({
+      db,
+      attemptRepository,
+      persistenceService,
+      timeoutMs: NFE_ROUTE_TIMEOUT_MS,
+      logger: console,
+      formatarRejeicao: formatarRejeicaoSefaz,
+      classificarErro: getSefazErrorInfo,
+      montarPayload: ({ numero }) => montarNFe({
+        ordem: os,
+        itens: itensComOverrides.itens,
+        cliente: clienteComOverrides.cliente,
+        emitente,
+        numero,
+        serie,
+        ambiente,
+        autXML,
+      }),
+      transmitir: async (payload, tentativa) => {
+        const wizard = await getNFEWizard();
+        return callSEFAZ(() => wizard.NFE_Autorizacao({
+          idLote: tentativa.lote,
+          indSinc: 1,
+          NFe: payload,
+        }));
+      },
+      salvarXmlDisco,
+    });
 
-    const payload = montarNFe({
-      ordem:    os,
-      itens:    itensComOverrides.itens,
-      cliente:  clienteComOverrides.cliente,
-      emitente,
-      numero:   parseInt(numero, 10),
+    const result = await service.emitir({
+      ordemId: os.id,
+      usuarioId: req.user?.id || null,
       serie,
       ambiente,
-      autXML:   getAutXmlParaNFe(clienteComOverrides.cliente.cpf),
+      ordem: os,
+      itens: itensComOverrides.itens,
+      cliente: clienteComOverrides.cliente,
+      emitente,
+      autXML,
     });
 
-    const tpAmbLabel = ambiente === 1 ? '1(PROD)' : '2(HOMOL)';
-    console.log(`[NF-e] Iniciando emissao OS#${os.id} numero=${numero} tpAmb=${tpAmbLabel}`);
-    console.log('[NF-e] Payload ide:', JSON.stringify(payload.infNFe.ide));
-    console.log(`[NF-e] Payload pronto itens=${payload.infNFe.det?.length || 0}`);
-
-    const wizard = await getNFEWizard();
-    let resultado;
-    try {
-      resultado = await callSEFAZ(() => wizard.NFE_Autorizacao({
-        idLote:  numero,
-        indSinc: 1,
-        NFe:     payload,
-      }));
-    } catch (sefazErr) {
-      console.error('[NF-e] Erro na chamada SEFAZ:', sefazErr.message);
-      db.prepare(`UPDATE ordens SET nfe_status='rejeitado' WHERE id=? AND nfe_status='emitindo'`).run(osId);
-      const sefazInfo = getSefazErrorInfo(sefazErr);
-      if (deveDevolverNumeroNFeAposFalhaAutorizacao(sefazInfo) && rejeicaoPermiteDevolverNumeroNFe(sefazInfo.cstat)) {
-        devolverNumeroNFeRejeitada(db, serie, numero);
-      }
-      registrarEventoFiscal(db, {
-        ordemid: os.id,
-        chave: os.nfe_chave || `OS-${os.id}`,
-        tipo: 'rejeicao',
-        cstat: sefazInfo.cstat,
-        motivo: sefazInfo.mensagem,
-        texto: 'Erro de comunicacao com a SEFAZ durante emissao',
-      });
-      if (!respondido) {
-        clearTimeout(guardTimeout); respondido = true;
-        return res.status(sefazInfo.tipo === 'rejeicao' || sefazInfo.tipo === 'validacao_xml' ? 422 : 504).json({
-          erro: sefazInfo.mensagem,
-          tipo: sefazInfo.tipo,
-          detalhe: sefazErr.message,
-          contingencia: false,
-        });
-      }
-      return;
-    }
-
-    console.log(`[NF-e] Resposta SEFAZ recebida tipo=${Array.isArray(resultado) ? 'array' : typeof resultado}`);
-
-    let cStat = '', chave = '', protocolo = '', agora = new Date().toISOString();
-
-    if (Array.isArray(resultado)) {
-      const prot = resultado[0]?.protNFe?.infProt || resultado[0]?.infProt || resultado[0];
-      cStat     = String(prot?.cStat    || '');
-      chave     = prot?.chNFe           || '';
-      protocolo = prot?.nProt           || '';
-      agora     = prot?.dhRecbto        || agora;
-    } else {
-      cStat     = String(resultado?.cStat || resultado?.retEnviNFe?.protNFe?.infProt?.cStat || '');
-      chave     = resultado?.chNFe        || resultado?.retEnviNFe?.protNFe?.infProt?.chNFe || '';
-      protocolo = resultado?.nProt        || resultado?.retEnviNFe?.protNFe?.infProt?.nProt || '';
-      agora     = resultado?.dhRecbto     || agora;
-    }
-
-    const autorizado = cStat === '100';
-
-    if (!autorizado) {
-      const motivo = resultado?.[0]?.protNFe?.infProt?.xMotivo
-        || resultado?.xMotivo
-        || resultado?.retEnviNFe?.xMotivo
-        || resultado?.retEnviNFe?.protNFe?.infProt?.xMotivo
-        || `cStat ${cStat || 'desconhecido'}`;
-      const rejeicao = formatarRejeicaoSefaz({ cStat, xMotivo: motivo, contexto: 'autorizacao' });
-      if (rejeicaoPermiteDevolverNumeroNFe(cStat)) {
-        devolverNumeroNFeRejeitada(db, serie, numero);
-      }
-      db.prepare(`UPDATE ordens SET nfe_status='rejeitado' WHERE id=?`).run(osId);
-      const xmlRejeicao = serializarXmlFiscal(resultado);
-      registrarEventoFiscal(db, {
-        ordemid: os.id,
-        chave: chave || os.nfe_chave || `OS-${os.id}`,
-        tipo: 'rejeicao',
-        cstat: cStat || null,
-        motivo: rejeicao.mensagem,
-        texto: `Rejeicao de autorizacao NF-e. Retorno original: ${rejeicao.motivoOriginal}`,
-        xml: xmlRejeicao,
-      });
-      console.error(`[NF-e] Rejeitado OS#${os.id}: cStat=${cStat} motivo=${motivo}`);
-      if (!respondido) {
-        clearTimeout(guardTimeout); respondido = true;
-        return res.status(422).json({
-          erro: rejeicao.mensagem,
-          cStat,
-          campo: rejeicao.campo,
-          item: rejeicao.item,
-          motivoOriginal: rejeicao.motivoOriginal,
-        });
-      }
-      return;
-    }
-
-    // Serializar XML da resposta para armazenamento (obrigação legal 5 anos)
-    const xmlAutorizacao = serializarXmlFiscal(resultado);
-
-    // Salvar em banco (campo nfe_xml) + arquivo em backend/data/nfe_xmls/{chave}.xml
-    db.prepare(`
-      UPDATE ordens SET
-        nfe_status     = 'autorizado',
-        nfe_numero     = ?,
-        nfe_serie      = ?,
-        nfe_chave      = ?,
-        nfe_protocolo  = ?,
-        nfe_emitida_em = ?,
-        nfe_xml        = ?,
-        nfe_cancelado_em = NULL,
-        nfe_cancel_protocolo = NULL,
-        nfe_cancel_motivo = NULL,
-        nfe_deletedat = NULL,
-        nfe_deletedpor = NULL,
-        nfe_deletedreason = NULL
-      WHERE id = ?
-    `).run(numero, serie, chave, protocolo, agora, xmlAutorizacao, osId);
-
-    salvarClienteCadastroAposEmissao(db, os, clienteComOverrides.cliente);
-
-    if (chave) {
-      salvarXmlDisco(`${chave}.xml`, xmlAutorizacao);
-    }
-
-    registrarEventoFiscal(db, {
-      ordemid: os.id,
-      chave,
-      tipo: 'autorizacao',
-      protocolo,
-      cstat: cStat,
-      motivo: 'NF-e autorizada',
-      xml: xmlAutorizacao,
-      createdat: agora,
-    });
-
-    console.log(`[NF-e] Autorizada OS#${os.id} chave=${chave} protocolo=${protocolo}`);
-    if (!respondido) {
-      clearTimeout(guardTimeout); respondido = true;
-      res.json({ ok: true, numero, serie, chave, protocolo, emitida_em: agora });
-    }
-
+    return res.status(result.httpStatus).json(result);
   } catch (e) {
     console.error('[NF-e] ERRO POST /emitir:', e.message, e.stack);
-    // Garante que o mutex nunca fique travado em 'emitindo' após exceção inesperada
-    try { db.prepare(`UPDATE ordens SET nfe_status='rejeitado' WHERE id=? AND nfe_status='emitindo'`).run(osId); } catch(_) {}
-    if (!respondido) {
-      clearTimeout(guardTimeout); respondido = true;
-      res.status(500).json({ erro: 'Erro interno ao emitir NF-e', detalhe: e.message });
-    }
+    const status = e.status || 500;
+    return res.status(status).json({
+      erro: status === 500 ? 'Erro interno ao emitir NF-e' : e.message,
+      code: e.code || 'erro_emissao_nfe',
+    });
   }
 });
-
 // POST /api/nfe/:chave/cce
 // Body: { correcao: string (15 a 1000 chars) }
 router.post('/:chave/cce', auth(['admin', 'caixa']), async (req, res) => {
@@ -1036,15 +922,6 @@ router.post('/:chave/cce', auth(['admin', 'caixa']), async (req, res) => {
     return res.status(422).json({ erro: 'Limite de 20 Cartas de Correcao atingido para esta NF-e.' });
   }
 
-  let respondido = false;
-  const guardTimeout = setTimeout(() => {
-    if (!respondido) {
-      respondido = true;
-      console.error(`[NF-e] Guard timeout CC-e chave=${chave}`);
-      res.status(504).json({ erro: 'SEFAZ demorou demais para responder. Aguarde alguns instantes, atualize a tela e tente novamente.' });
-    }
-  }, NFE_ROUTE_TIMEOUT_MS);
-
   try {
     const cnpj = getCnpjEmitente();
     const cOrgao = Number(chave.substring(0, 2));
@@ -1074,77 +951,29 @@ router.post('/:chave/cce', auth(['admin', 'caixa']), async (req, res) => {
 
     console.log(`[NF-e] Iniciando CC-e chave=${chave} seq=${nSeqEvento}`);
 
-    const wizard = await getNFEWizard();
-    let resultado;
-    try {
-      resultado = await callSEFAZ(() => wizard.NFE_CartaDeCorrecao(eventoPayload));
-    } catch (sefazErr) {
-      console.error('[NF-e] Erro SEFAZ CC-e:', sefazErr.message);
-      if (!respondido) {
-        clearTimeout(guardTimeout); respondido = true;
-        return res.status(504).json({ erro: 'Sem resposta da SEFAZ', detalhe: sefazErr.message });
-      }
-      return;
-    }
-
-    console.log(`[NF-e] Resposta CC-e recebida tipo=${Array.isArray(resultado) ? 'array' : typeof resultado}`);
-
-    const parsed = parseRetEvento(resultado, dhEvento);
-    const autorizado = parsed.cStat === '135';
-
-    if (!autorizado) {
-      const xMotivo = parsed.xMotivo || `cStat ${parsed.cStat || 'desconhecido'}`;
-      const rejeicao = formatarRejeicaoSefaz({ cStat: parsed.cStat, xMotivo, contexto: 'cce' });
-      console.error(`[NF-e] CC-e rejeitada: cStat=${parsed.cStat} motivo=${xMotivo}`);
-      if (!respondido) {
-        clearTimeout(guardTimeout); respondido = true;
-        return res.status(422).json({
-          erro: rejeicao.mensagem,
-          cStat: parsed.cStat,
-          campo: rejeicao.campo,
-          item: rejeicao.item,
-          motivoOriginal: rejeicao.motivoOriginal,
-        });
-      }
-      return;
-    }
-
-    const xmlEvento = serializarXmlFiscal(resultado);
-
-    registrarEventoFiscal(db, {
-      ordemid: os.id,
-      chave,
-      tipo: 'cce',
-      nseqevento: nSeqEvento,
-      protocolo: parsed.protocolo,
-      cstat: parsed.cStat,
-      motivo: parsed.xMotivo,
-      texto: correcao,
-      xml: xmlEvento,
-      createdat: parsed.dhEvento,
+    const service = createNfeEventoService({
+      db,
+      attemptRepository: createNfeEventoAttemptRepository(db),
+      timeoutMs: NFE_ROUTE_TIMEOUT_MS,
+      logger: console,
+      salvarXmlDisco,
+      transmitir: transmitirCcePayload,
     });
 
-    salvarXmlDisco(`${chave}-cce-${pad(nSeqEvento, 2)}.xml`, xmlEvento);
-
-    console.log(`[NF-e] CC-e registrada chave=${chave} seq=${nSeqEvento} protocolo=${parsed.protocolo}`);
-
-    if (!respondido) {
-      clearTimeout(guardTimeout); respondido = true;
-      res.json({
-        ok: true,
-        chave,
-        sequencia: nSeqEvento,
-        protocolo: parsed.protocolo,
-        dhEvento: parsed.dhEvento,
-        cStat: parsed.cStat,
-      });
-    }
+    const result = await service.executar({
+      ordemId: os.id,
+      chave,
+      tipo: 'cce',
+      nSeqEvento,
+      texto: correcao,
+      payload: eventoPayload,
+      usuarioId: req.user?.id || null,
+      dhEvento,
+    });
+    return res.status(result.httpStatus).json(result);
   } catch (e) {
     console.error('[NF-e] ERRO POST /:chave/cce:', e.message, e.stack);
-    if (!respondido) {
-      clearTimeout(guardTimeout); respondido = true;
-      res.status(500).json({ erro: 'Erro interno ao emitir Carta de Correcao', detalhe: e.message });
-    }
+    return res.status(500).json({ erro: 'Erro interno ao emitir Carta de Correcao' });
   }
 });
 
@@ -1195,15 +1024,6 @@ router.post('/:chave/cancelar', auth(['admin', 'caixa']), async (req, res) => {
     }
   }
 
-  let respondido = false;
-  const guardTimeout = setTimeout(() => {
-    if (!respondido) {
-      respondido = true;
-      console.error(`[NF-e] Guard timeout cancelamento chave=${chave}`);
-      res.status(504).json({ erro: 'SEFAZ demorou demais para responder. Aguarde alguns instantes, atualize a tela e tente novamente.' });
-    }
-  }, NFE_ROUTE_TIMEOUT_MS);
-
   try {
     const cnpj  = getCnpjEmitente();
     const cOrgao = Number(chave.substring(0, 2));
@@ -1233,89 +1053,30 @@ router.post('/:chave/cancelar', auth(['admin', 'caixa']), async (req, res) => {
 
     console.log(`[NF-e] Iniciando cancelamento chave=${chave} protocolo=${os.nfe_protocolo}`);
 
-    const wizard = await getNFEWizard();
-    let resultado;
-    try {
-      resultado = await callSEFAZ(() => wizard.NFE_Cancelamento(eventoPayload));
-    } catch (sefazErr) {
-      console.error('[NF-e] Erro SEFAZ cancelamento:', sefazErr.message);
-      if (!respondido) {
-        clearTimeout(guardTimeout); respondido = true;
-        return res.status(504).json({ erro: 'Sem resposta da SEFAZ', detalhe: sefazErr.message });
-      }
-      return;
-    }
-
-    console.log(`[NF-e] Resposta cancelamento recebida tipo=${Array.isArray(resultado) ? 'array' : typeof resultado}`);
-
-    const parsed = parseRetEvento(resultado, dhEvento);
-    const cStatResp    = parsed.cStat;
-    const nProtResp    = parsed.protocolo;
-    const dhEventoResp = parsed.dhEvento;
-
-    const cancelado = ['135', '155'].includes(cStatResp);
-
-    if (!cancelado) {
-      const xMotivo = parsed.xMotivo || `cStat ${cStatResp || 'desconhecido'}`;
-      const rejeicao = formatarRejeicaoSefaz({ cStat: cStatResp, xMotivo, contexto: 'cancelamento' });
-      console.error(`[NF-e] Cancelamento rejeitado: cStat=${cStatResp} motivo=${xMotivo}`);
-      if (!respondido) {
-        clearTimeout(guardTimeout); respondido = true;
-        return res.status(422).json({
-          erro: rejeicao.mensagem,
-          cStat: cStatResp,
-          campo: rejeicao.campo,
-          item: rejeicao.item,
-          motivoOriginal: rejeicao.motivoOriginal,
-        });
-      }
-      return;
-    }
-
-    db.prepare(`
-      UPDATE ordens SET
-        nfe_status           = 'cancelado',
-        nfe_cancelado_em     = ?,
-        nfe_cancel_protocolo = ?,
-        nfe_cancel_motivo    = ?
-      WHERE nfe_chave = ?
-    `).run(dhEventoResp, nProtResp, motivoStr, chave);
-
-    const xmlEvento = serializarXmlFiscal(resultado);
-
-    registrarEventoFiscal(db, {
-      ordemid: os.id,
-      chave,
-      tipo: 'cancelamento',
-      protocolo: nProtResp,
-      cstat: cStatResp,
-      motivo: parsed.xMotivo,
-      texto: motivoStr,
-      xml: xmlEvento,
-      createdat: dhEventoResp,
+    const service = createNfeEventoService({
+      db,
+      attemptRepository: createNfeEventoAttemptRepository(db),
+      timeoutMs: NFE_ROUTE_TIMEOUT_MS,
+      logger: console,
+      salvarXmlDisco,
+      transmitir: transmitirCancelamentoPayload,
     });
 
-    salvarXmlDisco(`${chave}-canc.xml`, xmlEvento);
+    const result = await service.executar({
+      ordemId: os.id,
+      chave,
+      tipo: 'cancelamento',
+      nSeqEvento: 1,
+      texto: motivoStr,
+      payload: eventoPayload,
+      usuarioId: req.user?.id || null,
+      dhEvento,
+    });
 
-    console.log(`[NF-e] Cancelamento registrado chave=${chave} nProtCanc=${nProtResp}`);
-
-    if (!respondido) {
-      clearTimeout(guardTimeout); respondido = true;
-      res.json({
-        ok:        true,
-        chave,
-        protocolo: nProtResp,
-        dhEvento:  dhEventoResp,
-        cStat:     cStatResp,
-      });
-    }
-
+    return res.status(result.httpStatus).json(result);
   } catch (e) {
     console.error('[NF-e] ERRO POST /:chave/cancelar:', e.message, e.stack);
-    if (!respondido) {
-      clearTimeout(guardTimeout); respondido = true;
-      res.status(500).json({ erro: 'Erro interno ao cancelar NF-e', detalhe: e.message });
-    }
+    return res.status(500).json({ erro: 'Erro interno ao cancelar NF-e' });
   }
 });
 

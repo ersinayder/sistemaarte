@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import toast from 'react-hot-toast'
-import { FileWarning, Plus, RotateCcw, Trash2 } from 'lucide-react'
+import { FileWarning, Plus, RotateCcw, Trash2, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import { buscarEnderecoPorCep, maskCep } from '../utils/cep'
@@ -28,6 +28,12 @@ const EVENTO_LABEL = {
   rejeicao: 'Rejeicao',
   cce: 'Carta de Correcao',
   cancelamento: 'Cancelamento',
+  emissao: 'Emissao',
+}
+
+const PENDENCIA_STATUS_LABEL = {
+  processando: 'Processando',
+  incerto: 'Incerto',
 }
 
 const HOMOLOGACAO_ALVO = 10
@@ -81,6 +87,389 @@ function StatusBadge({ status }) {
       fontSize: 'var(--text-xs)', fontWeight: 700,
       background: cfg.bg, color: cfg.text,
     }}>{cfg.label}</span>
+  )
+}
+
+function PendenciasFiscaisPanel({ pendencias, onRefresh, onAudit }) {
+  const primeiras = pendencias.slice(0, 4)
+  const restantes = Math.max(0, pendencias.length - primeiras.length)
+
+  return (
+    <div style={{
+      background: 'var(--color-surface)',
+      border: '1px solid var(--color-gold)',
+      borderRadius: 'var(--radius-lg)',
+      padding: 'var(--space-3) var(--space-4)',
+      display: 'grid',
+      gap: 'var(--space-3)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', minWidth: 0 }}>
+          <FileWarning size={18} style={{ color: 'var(--color-gold)', flex: '0 0 auto' }} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800 }}>Pendencias fiscais em acompanhamento</div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+              {pendencias.length} tentativa{pendencias.length !== 1 ? 's' : ''} aguardando conclusao ou conciliacao
+            </div>
+          </div>
+        </div>
+        <button className="btn btn-ghost btn-sm" onClick={onRefresh} title="Atualizar pendencias fiscais">
+          Atualizar
+        </button>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 'var(--space-2)' }}>
+        {primeiras.map((p) => (
+          <div key={`${p.origem}-${p.id}`} style={{
+            border: '1px solid var(--color-border)',
+            borderRadius: 'var(--radius-md)',
+            padding: 'var(--space-2) var(--space-3)',
+            background: 'var(--color-surface-offset)',
+            minWidth: 0,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-2)', alignItems: 'center', marginBottom: 4 }}>
+              <span style={{ fontSize: 'var(--text-xs)', fontWeight: 800, color: 'var(--color-text)' }}>
+                {EVENTO_LABEL[p.tipo] || p.tipo}
+                {p.tipo === 'cce' && p.nseqevento ? ` #${p.nseqevento}` : ''}
+              </span>
+              <span style={{
+                fontSize: 'var(--text-xs)',
+                fontWeight: 800,
+                color: p.status === 'incerto' ? 'var(--color-error)' : 'var(--color-gold)',
+                whiteSpace: 'nowrap',
+              }}>
+                {PENDENCIA_STATUS_LABEL[p.status] || p.status}
+              </span>
+            </div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {p.numero_os || 'OS nao vinculada'} {p.cliente ? `- ${p.cliente}` : ''}
+            </div>
+            <div title={p.motivo || p.chave || ''} style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {p.motivo || p.chave || 'Sem motivo informado'}
+            </div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)', marginTop: 4 }}>
+              Atualizado em {fmtDate(p.updatedat)}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'var(--space-2)' }}>
+              <button className="btn btn-ghost btn-sm" onClick={() => onAudit(p)} title="Auditar transicoes da pendencia fiscal">
+                Auditar
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {restantes > 0 && (
+        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>
+          Mais {restantes} pendencia{restantes !== 1 ? 's' : ''} fiscal{restantes !== 1 ? 'is' : ''} fora da visualizacao compacta.
+        </div>
+      )}
+    </div>
+  )
+}
+
+function IntegridadeFiscalFinanceiraPanel({ itens, onRefresh, onAudit }) {
+  const primeiros = itens.slice(0, 4)
+  const restantes = Math.max(0, itens.length - primeiros.length)
+  const criticos = itens.filter(item => item.severidade === 'critico').length
+
+  return (
+    <div style={{
+      background: 'var(--color-surface)',
+      border: '1px solid var(--color-error)',
+      borderRadius: 'var(--radius-lg)',
+      padding: 'var(--space-3) var(--space-4)',
+      display: 'grid',
+      gap: 'var(--space-3)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', minWidth: 0 }}>
+          <FileWarning size={18} style={{ color: 'var(--color-error)', flex: '0 0 auto' }} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800 }}>Integridade fiscal-financeira</div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+              {itens.length} apontamento{itens.length !== 1 ? 's' : ''} local{itens.length !== 1 ? 'is' : ''} - {criticos} critico{criticos !== 1 ? 's' : ''}
+            </div>
+          </div>
+        </div>
+        <button className="btn btn-ghost btn-sm" onClick={onRefresh} title="Atualizar integridade fiscal-financeira">
+          Atualizar
+        </button>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 'var(--space-2)' }}>
+        {primeiros.map((item) => (
+          <div key={`${item.tipo}-${item.ordemId}`} style={{
+            border: '1px solid var(--color-border)',
+            borderRadius: 'var(--radius-md)',
+            padding: 'var(--space-2) var(--space-3)',
+            background: 'var(--color-surface-offset)',
+            minWidth: 0,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-2)', alignItems: 'center', marginBottom: 4 }}>
+              <span style={{ fontSize: 'var(--text-xs)', fontWeight: 800, color: 'var(--color-text)' }}>
+                {item.numero || `OS ${item.ordemId}`}
+              </span>
+              <span style={{ fontSize: 'var(--text-xs)', fontWeight: 800, color: item.severidade === 'critico' ? 'var(--color-error)' : 'var(--color-gold)' }}>
+                {item.nfeStatus || item.severidade}
+              </span>
+            </div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {item.clienteNome || 'Cliente nao informado'}
+            </div>
+            <div title={item.mensagem} style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {item.mensagem}
+            </div>
+            <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginTop: 6, fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+              {item.valorOS !== undefined && <span>OS {fmt(item.valorOS)}</span>}
+              {item.valorNFe !== undefined && <span>NF-e {fmt(item.valorNFe)}</span>}
+              {item.diferenca !== undefined && <span>Dif. {fmt(item.diferenca)}</span>}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'var(--space-2)' }}>
+              <button className="btn btn-ghost btn-sm" onClick={() => onAudit(item)} title="Auditar integridade fiscal-financeira">
+                Auditar
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {restantes > 0 && (
+        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>
+          Mais {restantes} apontamento{restantes !== 1 ? 's' : ''} fora da visualizacao compacta.
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ModalAuditoriaIntegridadeFiscalFinanceira({ apontamento, onClose }) {
+  const [detalhe, setDetalhe] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  const carregarAuditoria = useCallback(async () => {
+    if (!apontamento?.ordemId) return
+    setLoading(true)
+    try {
+      const r = await api.get(`/nfe/integridade-financeira/${apontamento.ordemId}`, { skipGlobalErrorToast: true })
+      setDetalhe(r.data)
+    } catch (e) {
+      toast.error(e.response?.data?.erro || 'Erro ao carregar auditoria fiscal-financeira')
+      setDetalhe(null)
+    } finally {
+      setLoading(false)
+    }
+  }, [apontamento?.ordemId])
+
+  useEffect(() => { carregarAuditoria() }, [carregarAuditoria])
+
+  const ordem = detalhe?.ordem || {}
+  const fiscal = detalhe?.fiscal || {}
+  const apontamentos = detalhe?.apontamentos || []
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: 'oklch(from var(--color-text) l c h / 0.4)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 'var(--space-4)',
+      }}
+      onClick={e => e.target === e.currentTarget && onClose()}
+    >
+      <div style={{
+        width: '100%', maxWidth: 720,
+        background: 'var(--color-surface)',
+        borderRadius: 'var(--radius-xl)',
+        boxShadow: 'var(--shadow-lg)',
+        display: 'flex', flexDirection: 'column',
+        maxHeight: '86vh', overflow: 'hidden',
+      }}>
+        <div style={{ padding: 'var(--space-4) var(--space-5)', borderBottom: '1px solid var(--color-divider)', display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', alignItems: 'flex-start' }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 800 }}>Auditoria fiscal-financeira</h2>
+            <p style={{ margin: '2px 0 0', fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
+              {ordem.numero || apontamento?.numero || `OS ${apontamento?.ordemId}`}
+            </p>
+          </div>
+          <button className="btn btn-icon btn-ghost" onClick={onClose} aria-label="Fechar">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div style={{ padding: 'var(--space-4) var(--space-5)', overflow: 'auto', display: 'grid', gap: 'var(--space-4)' }}>
+          {loading ? (
+            <div style={{ padding: 'var(--space-6)', textAlign: 'center', color: 'var(--color-text-muted)' }}>
+              <div className="spinner" style={{ margin: '0 auto var(--space-3)' }} />Carregando auditoria...
+            </div>
+          ) : (
+            <>
+              <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-3)', background: 'var(--color-surface-offset)', display: 'grid', gap: 'var(--space-2)' }}>
+                <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800 }}>{ordem.clienteNome || 'Cliente nao informado'}</div>
+                <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                  <span>Status OS: {ordem.status || 'nao informado'}</span>
+                  <span>Status NF-e: {fiscal.status || 'nao informado'}</span>
+                  <span>XML local: {fiscal.xmlLocal || 'nao informado'}</span>
+                </div>
+                <div style={{ overflowWrap: 'anywhere', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                  Chave: {fiscal.chave || 'nao informada'}
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 'var(--space-2)' }}>
+                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3)', background: 'var(--color-surface-offset)' }}>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>Total OS</div>
+                  <strong>{fmt(ordem.valorTotal)}</strong>
+                </div>
+                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3)', background: 'var(--color-surface-offset)' }}>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>Total NF-e</div>
+                  <strong>{fiscal.valorNFe === undefined ? 'Indisponivel' : fmt(fiscal.valorNFe)}</strong>
+                </div>
+                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3)', background: 'var(--color-surface-offset)' }}>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>Apontamentos</div>
+                  <strong>{apontamentos.length}</strong>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
+                {apontamentos.map((item, index) => (
+                  <div key={`${item.tipo}-${index}`} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-3)' }}>
+                    <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800, color: item.severidade === 'critico' ? 'var(--color-error)' : 'var(--color-gold)' }}>
+                      {item.tipo}
+                    </div>
+                    <div style={{ marginTop: 4, fontSize: 'var(--text-sm)' }}>{item.mensagem}</div>
+                    <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginTop: 6, fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                      {item.valorOS !== undefined && <span>OS {fmt(item.valorOS)}</span>}
+                      {item.valorNFe !== undefined && <span>NF-e {fmt(item.valorNFe)}</span>}
+                      {item.diferenca !== undefined && <span>Dif. {fmt(item.diferenca)}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>
+                {detalhe?.orientacao || 'Conferencia manual necessaria. Esta auditoria nao altera OS, caixa ou NF-e.'}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ModalAuditoriaPendenciaFiscal({ pendencia, onClose }) {
+  const [detalhe, setDetalhe] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  const carregarAuditoria = useCallback(async () => {
+    if (!pendencia?.origem || !pendencia?.id) return
+    setLoading(true)
+    try {
+      const r = await api.get(`/nfe/pendencias/${pendencia.origem}/${pendencia.id}/transicoes`, { skipGlobalErrorToast: true })
+      setDetalhe(r.data)
+    } catch (e) {
+      toast.error(e.response?.data?.erro || 'Erro ao carregar auditoria da pendencia fiscal')
+      setDetalhe(null)
+    } finally {
+      setLoading(false)
+    }
+  }, [pendencia?.id, pendencia?.origem])
+
+  useEffect(() => { carregarAuditoria() }, [carregarAuditoria])
+
+  const p = detalhe?.pendencia || pendencia
+  const transicoes = detalhe?.transicoes || []
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: 'oklch(from var(--color-text) l c h / 0.4)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 'var(--space-4)',
+      }}
+      onClick={e => e.target === e.currentTarget && onClose()}
+    >
+      <div style={{
+        width: '100%', maxWidth: 720,
+        background: 'var(--color-surface)',
+        borderRadius: 'var(--radius-xl)',
+        boxShadow: 'var(--shadow-lg)',
+        display: 'flex', flexDirection: 'column',
+        maxHeight: '86vh', overflow: 'hidden',
+      }}>
+        <div style={{ padding: 'var(--space-4) var(--space-5)', borderBottom: '1px solid var(--color-divider)', display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', alignItems: 'flex-start' }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 800 }}>Auditoria da pendencia fiscal</h2>
+            <p style={{ margin: '2px 0 0', fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
+              {EVENTO_LABEL[p?.tipo] || p?.tipo || 'Pendencia'} - {p?.numero_os || 'OS nao vinculada'}
+            </p>
+          </div>
+          <button className="btn btn-icon btn-ghost" onClick={onClose} aria-label="Fechar">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+
+        <div style={{ padding: 'var(--space-4) var(--space-5)', overflow: 'auto', display: 'grid', gap: 'var(--space-4)' }}>
+          <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-3)', background: 'var(--color-surface-offset)', display: 'grid', gap: 'var(--space-2)' }}>
+            <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{ fontSize: 'var(--text-xs)', fontWeight: 800, color: p?.status === 'incerto' ? 'var(--color-error)' : 'var(--color-gold)' }}>
+                {PENDENCIA_STATUS_LABEL[p?.status] || p?.status || 'Status pendente'}
+              </span>
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                Atualizado em {fmtDate(p?.updatedat)}
+              </span>
+            </div>
+            <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700 }}>
+              {p?.cliente || 'Cliente nao informado'} {p?.numero_nfe ? `- NF-e ${p.numero_nfe}/${p.serie}` : ''}
+            </div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', overflowWrap: 'anywhere' }}>
+              {p?.motivo || p?.chave || 'Sem motivo fiscal registrado.'}
+            </div>
+            {p?.status === 'incerto' && (
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-error)', fontWeight: 700 }}>
+                Nao reenviar cegamente. Use esta trilha para conferir o ultimo estado antes da conciliacao fiscal.
+              </div>
+            )}
+          </div>
+
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
+              <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800 }}>Linha do tempo</div>
+              <button className="btn btn-ghost btn-sm" onClick={carregarAuditoria} disabled={loading}>
+                Atualizar
+              </button>
+            </div>
+            {loading ? (
+              <div style={{ padding: 'var(--space-6)', textAlign: 'center', color: 'var(--color-text-muted)' }}>
+                <div className="spinner" style={{ margin: '0 auto var(--space-3)' }} />Carregando auditoria...
+              </div>
+            ) : transicoes.length === 0 ? (
+              <div style={{ padding: 'var(--space-4)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
+                Nenhuma transicao registrada para esta tentativa.
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
+                {transicoes.map((t) => (
+                  <div key={t.id} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3)', display: 'grid', gap: 4 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 'var(--text-sm)', fontWeight: 800 }}>{PENDENCIA_STATUS_LABEL[t.status] || t.status}</span>
+                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>{fmtDate(t.createdat)}</span>
+                    </div>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                      {t.estado_anterior || 'inicio'} {'->'} {t.estado_novo || t.status}
+                      {t.cstat ? ` - cStat ${t.cstat}` : ''}
+                    </div>
+                    {t.motivo && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text)', overflowWrap: 'anywhere' }}>{t.motivo}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -1013,8 +1402,30 @@ export default function NotasFiscais({ lixeira = false }) {
   const [cancelarNota, setCancelarNota] = useState(null)
   const [cceNota, setCceNota]         = useState(null)
   const [modalInutilizacao, setModalInutilizacao] = useState(false)
+  const [pendenciasFiscais, setPendenciasFiscais] = useState([])
+  const [integridadeFiscalFinanceira, setIntegridadeFiscalFinanceira] = useState([])
+  const [auditoriaPendencia, setAuditoriaPendencia] = useState(null)
+  const [auditoriaIntegridadeFiscalFinanceira, setAuditoriaIntegridadeFiscalFinanceira] = useState(null)
   const [q, setQ]                     = useState('')
   const [filtroStatus, setFiltroStatus] = useState('todos')
+
+  const carregarPendenciasFiscais = useCallback(async () => {
+    try {
+      const r = await api.get('/nfe/pendencias', { skipGlobalErrorToast: true })
+      setPendenciasFiscais(r.data?.pendencias || [])
+    } catch {
+      setPendenciasFiscais([])
+    }
+  }, [])
+
+  const carregarIntegridadeFiscalFinanceira = useCallback(async () => {
+    try {
+      const r = await api.get('/nfe/integridade-financeira', { skipGlobalErrorToast: true })
+      setIntegridadeFiscalFinanceira(r.data?.itens || [])
+    } catch {
+      setIntegridadeFiscalFinanceira([])
+    }
+  }, [])
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -1022,12 +1433,19 @@ export default function NotasFiscais({ lixeira = false }) {
       const r = await api.get(lixeira ? '/nfe/lixeira' : '/nfe')
       setNotas(r.data?.notas || [])
       setNfeMeta(r.data?.meta || { ambiente: null, autorizadas_homologacao: 0, alvo_homologacao: HOMOLOGACAO_ALVO })
+      if (lixeira) {
+        setPendenciasFiscais([])
+        setIntegridadeFiscalFinanceira([])
+      } else {
+        await carregarPendenciasFiscais()
+        await carregarIntegridadeFiscalFinanceira()
+      }
     } catch {
       toast.error(lixeira ? 'Erro ao carregar lixeira de NF-e' : 'Erro ao carregar notas fiscais')
     } finally {
       setLoading(false)
     }
-  }, [lixeira])
+  }, [carregarIntegridadeFiscalFinanceira, carregarPendenciasFiscais, lixeira])
 
   useEffect(() => { carregar() }, [carregar])
 
@@ -1159,6 +1577,14 @@ export default function NotasFiscais({ lixeira = false }) {
         </div>
       </div>}
 
+      {!lixeira && pendenciasFiscais.length > 0 && (
+        <PendenciasFiscaisPanel pendencias={pendenciasFiscais} onRefresh={carregarPendenciasFiscais} onAudit={setAuditoriaPendencia} />
+      )}
+
+      {!lixeira && integridadeFiscalFinanceira.length > 0 && (
+        <IntegridadeFiscalFinanceiraPanel itens={integridadeFiscalFinanceira} onRefresh={carregarIntegridadeFiscalFinanceira} onAudit={setAuditoriaIntegridadeFiscalFinanceira} />
+      )}
+
       {/* Filtros */}
       <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', alignItems: 'center' }}>
         <div style={{ position: 'relative', flex: '1 1 220px', minWidth: 180 }}>
@@ -1282,6 +1708,8 @@ export default function NotasFiscais({ lixeira = false }) {
       {detalhe && <ModalDetalhe nfe={detalhe} onClose={() => setDetalhe(null)} />}
       {cancelarNota && <ModalCancelamento nfe={cancelarNota} onClose={() => setCancelarNota(null)} onSuccess={carregar} />}
       {cceNota && <ModalCCE nfe={cceNota} onClose={() => setCceNota(null)} onSuccess={carregar} />}
+      {auditoriaPendencia && <ModalAuditoriaPendenciaFiscal pendencia={auditoriaPendencia} onClose={() => setAuditoriaPendencia(null)} />}
+      {auditoriaIntegridadeFiscalFinanceira && <ModalAuditoriaIntegridadeFiscalFinanceira apontamento={auditoriaIntegridadeFiscalFinanceira} onClose={() => setAuditoriaIntegridadeFiscalFinanceira(null)} />}
       <InutilizacaoModal open={modalInutilizacao} onClose={() => setModalInutilizacao(false)} onSuccess={carregar} />
     </div>
   )

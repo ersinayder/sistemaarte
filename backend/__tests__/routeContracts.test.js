@@ -81,6 +81,10 @@ describe('route authorization contracts', () => {
     const nfeRouter = await loadRouter('../routes/nfe.js');
 
     expect(routeRoles(nfeRouter, 'get', '/status-servico')).toEqual(['admin', 'caixa']);
+    expect(routeRoles(nfeRouter, 'get', '/integridade-financeira')).toEqual(['admin', 'caixa']);
+    expect(routeRoles(nfeRouter, 'get', '/integridade-financeira/:ordemId')).toEqual(['admin', 'caixa']);
+    expect(routeRoles(nfeRouter, 'get', '/pendencias')).toEqual(['admin', 'caixa']);
+    expect(routeRoles(nfeRouter, 'get', '/pendencias/:origem/:id/transicoes')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'get', '/emitir/:id/preview')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'post', '/emitir/:id')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'post', '/:chave/cce')).toEqual(['admin', 'caixa']);
@@ -100,6 +104,7 @@ describe('route authorization contracts', () => {
     const financeiroRouter = await loadRouter('../routes/financeiro.js');
     const clientesRouter = await loadRouter('../routes/clientes.js');
     const produtosRouter = await loadRouter('../routes/produtos.js');
+    const kpisRouter = await loadRouter('../routes/kpis.js');
 
     expect(routeRoles(caixaRouter, 'get', '/')).toEqual(['admin', 'caixa']);
     expect(routeRoles(caixaRouter, 'get', '/fechamento')).toEqual(['admin', 'caixa']);
@@ -112,6 +117,7 @@ describe('route authorization contracts', () => {
     expect(routeRoles(clientesRouter, 'get', '/:id/ordens')).toEqual(['admin', 'caixa']);
     expect(routeRoles(produtosRouter, 'get', '/')).toEqual(['admin', 'caixa']);
     expect(routeRoles(produtosRouter, 'get', '/:id')).toEqual(['admin', 'caixa']);
+    expect(routeRoles(kpisRouter, 'get', '/integridade')).toEqual(['admin']);
   });
 
   it('keeps CEP lookup behind the authenticated API for admin and caixa', async () => {
@@ -140,10 +146,13 @@ describe('route persistence contracts', () => {
 
   it('persists caixa categoria on manual launches', () => {
     const source = fs.readFileSync(new URL('../routes/caixa.js', import.meta.url), 'utf8');
+    const serviceSource = fs.readFileSync(new URL('../services/caixaLancamentoService.js', import.meta.url), 'utf8');
 
     expect(source).toMatch(/const\s*\{[^}]*categoria/s);
     expect(source).toMatch(/INSERT INTO lancamentos\s*\([^)]*categoria/s);
-    expect(source).toMatch(/UPDATE lancamentos SET[^"]*categoria=\?/s);
+    expect(source).toMatch(/createCaixaLancamentoService/);
+    expect(source).toMatch(/service\.editar\(req\.params\.id,\s*req\.body \?\? \{\},\s*req\.user\)/);
+    expect(serviceSource).toMatch(/UPDATE lancamentos SET[^"]*categoria=\?/s);
   });
 
   it('persists structured standalone sale items in caixa launches', () => {
@@ -163,10 +172,11 @@ describe('route persistence contracts', () => {
 
   it('keeps OS balance receipts as caixa entries and repairs old invalid balance receipt types', () => {
     const caixaSource = fs.readFileSync(new URL('../routes/caixa.js', import.meta.url), 'utf8');
+    const serviceSource = fs.readFileSync(new URL('../services/caixaLancamentoService.js', import.meta.url), 'utf8');
     const databaseSource = fs.readFileSync(new URL('../database.js', import.meta.url), 'utf8');
 
     expect(caixaSource).toMatch(/origem === "vendaavulsa" \|\| origem === "saldoos"\s*\?\s*"Entrada"/);
-    expect(caixaSource).toMatch(/novoOrdemId\s*\?\s*"Entrada"\s*:\s*\(tipo\|\|"Diversos"\)/);
+    expect(serviceSource).toMatch(/novoOrdemId\s*\?\s*"Entrada"\s*:\s*\(tipo \|\| "Diversos"\)/);
     expect(databaseSource).toMatch(/origem='saldoos' AND tipo != 'Entrada' AND deletedat IS NULL/);
   });
 
@@ -226,6 +236,8 @@ describe('route persistence contracts', () => {
     expect(routeRoles(financeiroRouter, 'get', '/contas-pagar/pdf')).toEqual(['admin']);
     expect(routeRoles(financeiroRouter, 'post', '/contas-pagar')).toEqual(['admin']);
     expect(routeRoles(financeiroRouter, 'patch', '/contas-pagar/:id/pagar')).toEqual(['admin']);
+    expect(routeRoles(financeiroRouter, 'get', '/integridade-os')).toEqual(['admin']);
+    expect(routeRoles(financeiroRouter, 'get', '/integridade-os/:ordemId')).toEqual(['admin']);
     expect(routeRoles(financeiroRouter, 'get', '/contas-receber')).toEqual(['admin']);
     expect(routeRoles(financeiroRouter, 'get', '/contas-receber/pdf')).toEqual(['admin']);
     expect(routeRoles(financeiroRouter, 'get', '/dre')).toEqual(['admin']);
@@ -422,16 +434,67 @@ describe('security configuration contracts', () => {
     expect(source).toMatch(/return res\.status\(400\)\.json\(\{\s*erro:\s*itensComOverrides\.erro\s*\}\)/);
   });
 
-  it('returns unused NF-e sequence numbers after clear SEFAZ rejections', () => {
+  it('delegates NF-e emission to the idempotent orchestrator without unsafe route fallbacks', () => {
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+    const postStart = source.indexOf("router.post('/emitir/:id'");
+    const nextPostStart = source.indexOf("router.post('/:chave/cce'", postStart);
+    const postEmitirSource = source.slice(postStart, nextPostStart);
+
+    expect(source).toMatch(/createNfeEmissaoService/);
+    expect(source).not.toMatch(/JSON\.stringify\(resultado,\s*null,\s*2\)/);
+    expect(postEmitirSource).not.toMatch(/nfe_status\s*=\s*'rejeitado'/);
+    expect(postEmitirSource).not.toMatch(/nfe_status='rejeitado'/);
+    expect(postEmitirSource).not.toMatch(/detalhe:\s*(e|err)\.message/);
+    expect(postEmitirSource).not.toMatch(/guardTimeout/);
+  });
+
+  it('does not expose internal NF-e exception messages in fiscal event responses', () => {
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
 
-    expect(source).toMatch(/function devolverNumeroNFeRejeitada/);
-    expect(source).toMatch(/function rejeicaoPermiteDevolverNumeroNFe/);
-    expect(source).toMatch(/devolverNumeroNFeRejeitada\(db,\s*serie,\s*numero\)/);
-    expect(source).toMatch(/deveDevolverNumeroNFeAposFalhaAutorizacao\(sefazInfo\)\s*&&\s*rejeicaoPermiteDevolverNumeroNFe\(sefazInfo\.cstat\)/);
-    expect(source).toMatch(/rejeicaoPermiteDevolverNumeroNFe\(cStat\)/);
-    expect(source).toMatch(/Nao reutilizar numeros que a SEFAZ declarou como duplicados, denegados ou inutilizados/);
-    expect(source).toMatch(/return res\.status\(sefazInfo\.tipo === 'rejeicao' \|\| sefazInfo\.tipo === 'validacao_xml' \? 422 : 504\)/);
+    expect(source).not.toMatch(/detalhe:\s*(e|err)\.message/);
+  });
+
+  it('delegates CC-e and cancellation to the idempotent fiscal event service', () => {
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+    const cceStart = source.indexOf("router.post('/:chave/cce'");
+    const cancelarStart = source.indexOf("router.post('/:chave/cancelar'");
+    const cceSource = source.slice(cceStart, cancelarStart);
+    const cancelarSource = source.slice(cancelarStart);
+
+    expect(source).toMatch(/createNfeEventoService/);
+    expect(source).toMatch(/createNfeEventoAttemptRepository/);
+    expect(source).not.toMatch(/wizard\.NFE_CartaDeCorrecao/);
+    expect(source).not.toMatch(/wizard\.NFE_Cancelamento/);
+    expect(cceSource).not.toMatch(/guardTimeout/);
+    expect(cancelarSource).not.toMatch(/guardTimeout/);
+    expect(cceSource).toMatch(/service\.executar/);
+    expect(cancelarSource).toMatch(/service\.executar/);
+  });
+
+  it('blocks new NF-e emission when the local note is cancelled', () => {
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+    const validarSource = source.slice(
+      source.indexOf('function validarOrdemEmitivel'),
+      source.indexOf('function serializarPreviaEmissaoNFe')
+    );
+
+    expect(validarSource).toMatch(/cancelad[ao]/);
+    expect(validarSource).toMatch(/NF-e cancelada nao pode ser reemitida/);
+  });
+
+  it('validates cancelled NF-e before reserving, transmitting, or persisting emission attempts', () => {
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+    const postStart = source.indexOf("router.post('/emitir/:id'");
+    const postEnd = source.indexOf("// POST /api/nfe/:chave/cce");
+    const postEmitirSource = source.slice(postStart, postEnd);
+    const validarIndex = postEmitirSource.indexOf('const erroOrdem = validarOrdemEmitivel(os, itensBase)');
+
+    expect(validarIndex).toBeGreaterThan(-1);
+    expect(postEmitirSource.indexOf('createNfeAttemptRepository')).toBeGreaterThan(validarIndex);
+    expect(postEmitirSource.indexOf('createNfePersistenceService')).toBeGreaterThan(validarIndex);
+    expect(postEmitirSource.indexOf('createNfeEmissaoService')).toBeGreaterThan(validarIndex);
+    expect(postEmitirSource.indexOf('wizard.NFE_Autorizacao')).toBeGreaterThan(validarIndex);
+    expect(postEmitirSource.indexOf('service.emitir')).toBeGreaterThan(validarIndex);
   });
 
   it('keeps manual NF-e invalidation routes before dynamic key routes', () => {
@@ -446,6 +509,90 @@ describe('security configuration contracts', () => {
     expect(source).toMatch(/res\.setHeader\(['"]Content-Type['"],\s*['"]application\/xml; charset=utf-8['"]\)/);
     expect(serviceSource).toMatch(/const sharedBusyState/);
     expect(serviceSource).toMatch(/busyState\.busy/);
+  });
+
+  it('exposes sanitized fiscal pending attempts before dynamic key routes', async () => {
+    const nfeRouter = await loadRouter('../routes/nfe.js');
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+    const repositorySource = fs.readFileSync(new URL('../repositories/nfePendenciaRepository.js', import.meta.url), 'utf8');
+    const pendenciasStart = source.indexOf("router.get('/pendencias'");
+    const chaveEventosStart = source.indexOf("router.get('/:chave/eventos'");
+
+    expect(routeRoles(nfeRouter, 'get', '/pendencias')).toEqual(['admin', 'caixa']);
+    expect(source).toMatch(/listarPendenciasFiscais/);
+    expect(pendenciasStart).toBeGreaterThan(-1);
+    expect(pendenciasStart).toBeLessThan(chaveEventosStart);
+    expect(repositorySource).not.toMatch(/payload_json/);
+    expect(repositorySource).not.toMatch(/xml_envio/);
+    expect(repositorySource).not.toMatch(/xml_retorno/);
+    expect(repositorySource).not.toMatch(/erro_local/);
+  });
+
+  it('exposes fiscal-financial integrity audit without SEFAZ calls', async () => {
+    const nfeRouter = await loadRouter('../routes/nfe.js');
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+    const routeStart = source.indexOf("router.get('/integridade-financeira'");
+    const chaveEventosStart = source.indexOf("router.get('/:chave/eventos'");
+    const routeSource = source.slice(routeStart, chaveEventosStart);
+
+    expect(routeRoles(nfeRouter, 'get', '/integridade-financeira')).toEqual(['admin', 'caixa']);
+    expect(source).toMatch(/auditarIntegridadeFiscalFinanceiraNFe/);
+    expect(routeStart).toBeGreaterThan(-1);
+    expect(routeStart).toBeLessThan(chaveEventosStart);
+    expect(routeSource).not.toMatch(/getNFEWizard|callSEFAZ|NFE_|service\.executar|wizard\./);
+    expect(routeSource).not.toMatch(/nfe_xml[:,]|xml:/);
+  });
+
+  it('exposes fiscal-financial integrity detail without SEFAZ calls', async () => {
+    const nfeRouter = await loadRouter('../routes/nfe.js');
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+    const routeStart = source.indexOf("router.get('/integridade-financeira/:ordemId'");
+    const listRouteStart = source.indexOf("router.get('/integridade-financeira'", routeStart + 1);
+    const routeSource = source.slice(routeStart, listRouteStart);
+
+    expect(routeRoles(nfeRouter, 'get', '/integridade-financeira/:ordemId')).toEqual(['admin', 'caixa']);
+    expect(source).toMatch(/montarDetalheIntegridadeFiscalFinanceiraNFe/);
+    expect(routeStart).toBeGreaterThan(-1);
+    expect(routeStart).toBeLessThan(listRouteStart);
+    expect(routeSource).toMatch(/Number\(req\.params\.ordemId\)/);
+    expect(routeSource).toMatch(/status\(400\)/);
+    expect(routeSource).toMatch(/status\(404\)/);
+    expect(routeSource).not.toMatch(/getNFEWizard|callSEFAZ|NFE_|service\.executar|wizard\./);
+    expect(routeSource).not.toMatch(/res\.json\([^)]*nfe_xml|xml:/s);
+  });
+
+  it('exposes admin-only integrity summary without external fiscal calls', async () => {
+    const kpisRouter = await loadRouter('../routes/kpis.js');
+    const source = fs.readFileSync(new URL('../routes/kpis.js', import.meta.url), 'utf8');
+    const routeStart = source.indexOf('router.get("/integridade"');
+    const streamStart = source.indexOf('router.get("/stream"');
+    const routeSource = source.slice(routeStart, streamStart);
+
+    expect(routeRoles(kpisRouter, 'get', '/integridade')).toEqual(['admin']);
+    expect(source).toMatch(/montarResumoIntegridade/);
+    expect(source).toMatch(/listarPendenciasFiscais/);
+    expect(source).toMatch(/auditarIntegridadeFinanceiraOS/);
+    expect(source).toMatch(/getContasReceberPayload/);
+    expect(source).toMatch(/auditarIntegridadeFiscalFinanceiraNFe/);
+    expect(routeSource).not.toMatch(/SUM\(CASE|MAX\(0/);
+    expect(routeSource).not.toMatch(/getNFEWizard|callSEFAZ|NFE_|wizard\.|service\.executar/);
+    expect(routeSource).not.toMatch(/res\.json\([^)]*(xml|payload|cpf|phone)/s);
+  });
+
+  it('exposes sanitized fiscal pending transition audit without SEFAZ calls', async () => {
+    const nfeRouter = await loadRouter('../routes/nfe.js');
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+    const repositorySource = fs.readFileSync(new URL('../repositories/nfePendenciaRepository.js', import.meta.url), 'utf8');
+    const routeStart = source.indexOf("router.get('/pendencias/:origem/:id/transicoes'");
+    const nextRouteStart = source.indexOf("router.get('/inutilizacoes/contexto'", routeStart);
+    const routeSource = source.slice(routeStart, nextRouteStart);
+
+    expect(routeRoles(nfeRouter, 'get', '/pendencias/:origem/:id/transicoes')).toEqual(['admin', 'caixa']);
+    expect(source).toMatch(/buscarPendenciaFiscalComTransicoes/);
+    expect(routeStart).toBeGreaterThan(-1);
+    expect(routeStart).toBeLessThan(source.indexOf("router.get('/:chave/eventos'"));
+    expect(routeSource).not.toMatch(/getNFEWizard|callSEFAZ|NFE_|service\.executar/);
+    expect(repositorySource).not.toMatch(/SELECT[^`]*(payload_json|xml_envio|xml_retorno|erro_local)/s);
   });
 
   it('allows NF-e workflow for orders in production status', () => {
@@ -474,15 +621,81 @@ describe('security configuration contracts', () => {
     expect(source).not.toMatch(/<datalist/);
   });
 
+  it('shows fiscal pending attempts on the NF-e operational page', () => {
+    const source = fs.readFileSync(new URL('../../frontend/src/pages/NotasFiscais.jsx', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/function PendenciasFiscaisPanel/);
+    expect(source).toMatch(/api\.get\(['"]\/nfe\/pendencias['"],\s*\{\s*skipGlobalErrorToast:\s*true\s*\}\)/);
+    expect(source).toMatch(/setPendenciasFiscais\(r\.data\?\.pendencias \|\| \[\]\)/);
+    expect(source).toMatch(/\{!lixeira && pendenciasFiscais\.length > 0 && \(/);
+    expect(source).toMatch(/<PendenciasFiscaisPanel pendencias=\{pendenciasFiscais\}/);
+  });
+
+  it('shows fiscal-financial integrity findings on the NF-e operational page', () => {
+    const source = fs.readFileSync(new URL('../../frontend/src/pages/NotasFiscais.jsx', import.meta.url), 'utf8');
+    const panelStart = source.indexOf('function IntegridadeFiscalFinanceiraPanel');
+    const nextFunction = source.indexOf('function ModalAuditoriaPendenciaFiscal', panelStart);
+    const panelSource = source.slice(panelStart, nextFunction);
+
+    expect(source).toMatch(/function IntegridadeFiscalFinanceiraPanel/);
+    expect(source).toMatch(/api\.get\(['"]\/nfe\/integridade-financeira['"],\s*\{\s*skipGlobalErrorToast:\s*true\s*\}\)/);
+    expect(source).toMatch(/setIntegridadeFiscalFinanceira\(r\.data\?\.itens \|\| \[\]\)/);
+    expect(source).toMatch(/\{!lixeira && integridadeFiscalFinanceira\.length > 0 && \(/);
+    expect(source).toMatch(/<IntegridadeFiscalFinanceiraPanel itens=\{integridadeFiscalFinanceira\} onRefresh=\{carregarIntegridadeFiscalFinanceira\}/);
+    expect(panelSource).not.toMatch(/Reemitir|Cancelar|Corrigir|Consultar SEFAZ|Editar OS/);
+  });
+
+  it('opens read-only fiscal-financial integrity detail from the NF-e page', () => {
+    const source = fs.readFileSync(new URL('../../frontend/src/pages/NotasFiscais.jsx', import.meta.url), 'utf8');
+    const modalStart = source.indexOf('function ModalAuditoriaIntegridadeFiscalFinanceira');
+    const nextFunction = source.indexOf('function ModalAuditoriaPendenciaFiscal', modalStart);
+    const modalSource = source.slice(modalStart, nextFunction);
+
+    expect(source).toMatch(/function ModalAuditoriaIntegridadeFiscalFinanceira/);
+    expect(source).toMatch(/api\.get\(`\/nfe\/integridade-financeira\/\$\{apontamento\.ordemId\}`,\s*\{\s*skipGlobalErrorToast:\s*true\s*\}\)/);
+    expect(source).toMatch(/onAudit=\{setAuditoriaIntegridadeFiscalFinanceira\}/);
+    expect(source).toMatch(/<IntegridadeFiscalFinanceiraPanel itens=\{integridadeFiscalFinanceira\} onRefresh=\{carregarIntegridadeFiscalFinanceira\} onAudit=\{setAuditoriaIntegridadeFiscalFinanceira\}/);
+    expect(source).toMatch(/\{auditoriaIntegridadeFiscalFinanceira && <ModalAuditoriaIntegridadeFiscalFinanceira apontamento=\{auditoriaIntegridadeFiscalFinanceira\}/);
+    expect(modalSource).not.toMatch(/Reemitir|Cancelar|Corrigir|Consultar SEFAZ|Editar OS|Emitir CC-e/);
+  });
+
+  it('opens read-only fiscal pending audit from the NF-e page', () => {
+    const source = fs.readFileSync(new URL('../../frontend/src/pages/NotasFiscais.jsx', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/function ModalAuditoriaPendenciaFiscal/);
+    expect(source).toMatch(/api\.get\(`\/nfe\/pendencias\/\$\{pendencia\.origem\}\/\$\{pendencia\.id\}\/transicoes`,\s*\{\s*skipGlobalErrorToast:\s*true\s*\}\)/);
+    expect(source).toMatch(/onAudit=\{setAuditoriaPendencia\}/);
+    expect(source).toMatch(/<PendenciasFiscaisPanel pendencias=\{pendenciasFiscais\} onRefresh=\{carregarPendenciasFiscais\} onAudit=\{setAuditoriaPendencia\}/);
+    expect(source).toMatch(/\{auditoriaPendencia && <ModalAuditoriaPendenciaFiscal pendencia=\{auditoriaPendencia\}/);
+    expect(source).not.toMatch(/Resolver pendencia|Reenviar pendencia|Consultar SEFAZ agora/);
+  });
+
+  it('shows admin-only integrity summary on Dashboard without corrective actions', () => {
+    const source = fs.readFileSync(new URL('../../frontend/src/pages/Dashboard.jsx', import.meta.url), 'utf8');
+    const panelStart = source.indexOf('function IntegridadeResumoPanel');
+    const nextFunction = source.indexOf('export default function Dashboard', panelStart);
+    const panelSource = source.slice(panelStart, nextFunction);
+
+    expect(source).toMatch(/function IntegridadeResumoPanel/);
+    expect(source).toMatch(/const \{ kpis: live, online \} = useKpiStream\(\)/);
+    expect(source).toMatch(/const \{ isAdmin \} = useAuth\(\) \|\| \{\}/);
+    expect(source).toMatch(/api\.get\(['"]\/kpis\/integridade['"],\s*\{\s*skipGlobalErrorToast:\s*true\s*\}\)/);
+    expect(source).toMatch(/isAdmin && integridadeResumo\?\.meta\?\.total > 0/);
+    expect(source).toMatch(/<IntegridadeResumoPanel resumo=\{integridadeResumo\} onNavigate=\{navigate\}/);
+    expect(panelSource).not.toMatch(/Corrigir|Consultar SEFAZ|Reenviar|Cancelar|Emitir CC-e|Editar OS/);
+  });
+
   it('uses editable customer data in NF-e emission and persists it only after authorization', () => {
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+    const persistenceSource = fs.readFileSync(new URL('../services/nfePersistenceService.js', import.meta.url), 'utf8');
 
     expect(source).toMatch(/aplicarOverrideClienteNFe\(os,\s*req\.body\?\.cliente\)/);
     expect(source).toMatch(/cliente:\s*clienteComOverrides\.cliente/);
     expect(source).toMatch(/getAutXmlParaNFe\(clienteComOverrides\.cliente\.cpf\)/);
-    expect(source).toMatch(/function salvarClienteCadastroAposEmissao/);
-    expect(source).toMatch(/UPDATE clientes SET[\s\S]+name = \?[\s\S]+cpf = \?[\s\S]+WHERE id = \? AND deletedat IS NULL/);
-    expect(source.indexOf('const autorizado = cStat ===')).toBeLessThan(source.indexOf('salvarClienteCadastroAposEmissao(db, os, clienteComOverrides.cliente)'));
+    expect(source).toMatch(/createNfePersistenceService/);
+    expect(persistenceSource).toMatch(/UPDATE clientes[\s\S]+SET cpf = \?[\s\S]+WHERE id = \? AND deletedat IS NULL/);
+    expect(persistenceSource.indexOf("SET nfe_status = 'autorizado'"))
+      .toBeLessThan(persistenceSource.indexOf('UPDATE clientes'));
   });
 
   it('keeps NF-e trash as a soft delete that is hidden from the main list', () => {

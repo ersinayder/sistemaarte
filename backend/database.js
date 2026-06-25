@@ -16,6 +16,143 @@ const DATA_DIR = path.join(__dirname, "data");
 const DB_FILE  = path.join(DATA_DIR, "oficina.db");
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
+const NFE_EMISSAO_ORDEM_INDEX_DDL = `CREATE INDEX IF NOT EXISTS idx_nfe_emissao_tentativas_ordem
+  ON nfe_emissao_tentativas(ordemid, createdat DESC)`;
+const NFE_EMISSAO_NUMERO_TRIGGER_STATEMENTS = [
+  `CREATE TRIGGER IF NOT EXISTS trg_nfe_emissao_tentativas_numero_insert
+    BEFORE INSERT ON nfe_emissao_tentativas
+    WHEN typeof(NEW.numero) <> 'integer'
+      OR NEW.numero NOT BETWEEN 1 AND 999999999
+    BEGIN
+      SELECT RAISE(ABORT, 'nfe_numero_fora_limite');
+    END`,
+  `CREATE TRIGGER IF NOT EXISTS trg_nfe_emissao_tentativas_numero_update
+    BEFORE UPDATE OF numero ON nfe_emissao_tentativas
+    WHEN typeof(NEW.numero) <> 'integer'
+      OR NEW.numero NOT BETWEEN 1 AND 999999999
+    BEGIN
+      SELECT RAISE(ABORT, 'nfe_numero_fora_limite');
+    END`,
+];
+
+const NFE_EMISSAO_SCHEMA_STATEMENTS = [
+  `CREATE TABLE IF NOT EXISTS nfe_emissao_tentativas (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    ordemid         INTEGER NOT NULL,
+    operacao        TEXT NOT NULL DEFAULT 'emissao',
+    idempotency_key TEXT NOT NULL UNIQUE,
+    numero          INTEGER NOT NULL CHECK (typeof(numero)='integer' AND numero BETWEEN 1 AND 999999999),
+    serie           TEXT NOT NULL,
+    lote            TEXT,
+    status          TEXT NOT NULL CHECK (status IN ('processando','incerto','autorizado','rejeitado','falha_local')),
+    cstat           TEXT,
+    motivo          TEXT,
+    chave           TEXT,
+    protocolo       TEXT,
+    xml_envio       TEXT,
+    xml_retorno     TEXT,
+    erro_local      TEXT,
+    solicitado_por INTEGER,
+    createdat       TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    updatedat       TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    concluido_em    TEXT
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_nfe_emissao_tentativa_ativa
+    ON nfe_emissao_tentativas(ordemid, operacao)
+    WHERE status IN ('processando','incerto')`,
+  NFE_EMISSAO_ORDEM_INDEX_DDL,
+  `CREATE TABLE IF NOT EXISTS nfe_emissao_transicoes (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    tentativaid INTEGER NOT NULL,
+    ordemid     INTEGER NOT NULL,
+    status      TEXT NOT NULL,
+    estado_anterior TEXT,
+    estado_novo TEXT,
+    cstat       TEXT,
+    motivo      TEXT,
+    createdat   TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_nfe_emissao_transicoes_tentativa
+    ON nfe_emissao_transicoes(tentativaid, id)`,
+  ...NFE_EMISSAO_NUMERO_TRIGGER_STATEMENTS,
+];
+
+const NFE_EMISSAO_MIGRATION_STATEMENTS = [
+  ...NFE_EMISSAO_SCHEMA_STATEMENTS,
+  "DROP TRIGGER IF EXISTS trg_nfe_emissao_tentativas_numero_insert",
+  "DROP TRIGGER IF EXISTS trg_nfe_emissao_tentativas_numero_update",
+  ...NFE_EMISSAO_NUMERO_TRIGGER_STATEMENTS,
+  "ALTER TABLE nfe_emissao_transicoes ADD COLUMN estado_anterior TEXT",
+  "ALTER TABLE nfe_emissao_transicoes ADD COLUMN estado_novo TEXT",
+  `UPDATE nfe_emissao_transicoes
+    SET estado_novo = COALESCE(estado_novo, status)`,
+  `UPDATE nfe_emissao_transicoes AS atual
+    SET estado_anterior = COALESCE(
+      estado_anterior,
+      (
+        SELECT anterior.status
+        FROM nfe_emissao_transicoes AS anterior
+        WHERE anterior.tentativaid = atual.tentativaid
+          AND anterior.id < atual.id
+        ORDER BY anterior.id DESC
+        LIMIT 1
+      )
+    )`,
+  "DROP INDEX IF EXISTS idx_nfe_emissao_tentativas_ordem",
+  NFE_EMISSAO_ORDEM_INDEX_DDL,
+];
+
+const NFE_EVENTO_SCHEMA_STATEMENTS = [
+  `CREATE TABLE IF NOT EXISTS nfe_evento_tentativas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ordemid INTEGER NOT NULL,
+    chave TEXT NOT NULL,
+    tipo TEXT NOT NULL CHECK (tipo IN ('cce','cancelamento')),
+    nseqevento INTEGER NOT NULL DEFAULT 1,
+    idempotency_key TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL CHECK (status IN ('processando','incerto','autorizado','rejeitado','falha_local')),
+    cstat TEXT,
+    motivo TEXT,
+    protocolo TEXT,
+    payload_json TEXT,
+    xml_retorno TEXT,
+    erro_local TEXT,
+    solicitado_por INTEGER,
+    createdat TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    updatedat TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    concluido_em TEXT
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_nfe_evento_tentativa_ativa
+    ON nfe_evento_tentativas(chave, tipo, nseqevento)
+    WHERE status IN ('processando','incerto')`,
+  `CREATE INDEX IF NOT EXISTS idx_nfe_evento_tentativas_chave
+    ON nfe_evento_tentativas(chave, tipo, createdat DESC)`,
+  `CREATE TABLE IF NOT EXISTS nfe_evento_transicoes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tentativaid INTEGER NOT NULL,
+    ordemid INTEGER NOT NULL,
+    chave TEXT NOT NULL,
+    tipo TEXT NOT NULL,
+    nseqevento INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    estado_anterior TEXT,
+    estado_novo TEXT,
+    cstat TEXT,
+    motivo TEXT,
+    createdat TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_nfe_evento_transicoes_tentativa
+    ON nfe_evento_transicoes(tentativaid, id)`,
+];
+
+function getNfeEmissaoSchemaStatements() {
+  return [...NFE_EMISSAO_SCHEMA_STATEMENTS];
+}
+
+function getNfeEmissaoMigrationStatements() {
+  return [...NFE_EMISSAO_MIGRATION_STATEMENTS];
+}
+
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
   id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -316,6 +453,7 @@ CREATE TABLE IF NOT EXISTS nfe_eventos (
 );
 CREATE INDEX IF NOT EXISTS idx_nfe_eventos_chave_tipo ON nfe_eventos(chave, tipo);
 CREATE INDEX IF NOT EXISTS idx_nfe_eventos_ordemid ON nfe_eventos(ordemid);
+${NFE_EVENTO_SCHEMA_STATEMENTS.join(";\n")};
 CREATE TABLE IF NOT EXISTS nfe_inutilizacoes (
   id                 INTEGER PRIMARY KEY AUTOINCREMENT,
   ambiente           INTEGER NOT NULL,
@@ -343,6 +481,7 @@ CREATE INDEX IF NOT EXISTS idx_nfe_inutilizacoes_status
   ON nfe_inutilizacoes(status);
 CREATE INDEX IF NOT EXISTS idx_nfe_inutilizacoes_faixa
   ON nfe_inutilizacoes(numero_inicial, numero_final);
+${NFE_EMISSAO_SCHEMA_STATEMENTS.join(";\n")};
 `;
 
 let db;
@@ -592,6 +731,10 @@ function initDB() {
     "CREATE INDEX IF NOT EXISTS idx_nfe_inutilizacoes_status ON nfe_inutilizacoes(status)",
     `CREATE INDEX IF NOT EXISTS idx_nfe_inutilizacoes_faixa
       ON nfe_inutilizacoes(numero_inicial, numero_final)`,
+    // v19 - reserva atomica e historico monotonicamente auditavel da emissao NF-e
+    ...NFE_EMISSAO_MIGRATION_STATEMENTS,
+    // v20 - tentativas idempotentes de eventos fiscais (CC-e e cancelamento)
+    ...NFE_EVENTO_SCHEMA_STATEMENTS,
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {}
@@ -809,4 +952,15 @@ function backup() {
   });
 }
 
-module.exports = { initDB, run, runInsert, getAll, getOne, transaction, backup, getDB: () => db };
+module.exports = {
+  initDB,
+  run,
+  runInsert,
+  getAll,
+  getOne,
+  transaction,
+  backup,
+  getDB: () => db,
+  getNfeEmissaoSchemaStatements,
+  getNfeEmissaoMigrationStatements,
+};

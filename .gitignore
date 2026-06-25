@@ -46,3 +46,6 @@ Thumbs.db
 
 # Brainstorm visual temporario
 .superpowers/
+
+# Isolated implementation worktrees
+.worktrees/

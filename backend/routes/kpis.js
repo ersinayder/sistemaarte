@@ -1,8 +1,14 @@
 const router = require("express").Router();
-const { getOne } = require("../database");
+const { getAll, getOne, getDB } = require("../database");
 const { auth } = require("../middlewares/auth");
 const { hoje } = require("../utils/dates");
 const { criarSseConnectionTracker } = require("../domain/sseConnectionRules");
+const { getResumoFinanceiroOS } = require("../domain/financeiroRules");
+const { listarPendenciasFiscais } = require("../repositories/nfePendenciaRepository");
+const { auditarIntegridadeFinanceiraOS } = require("../services/financeiroIntegridadeService");
+const { getContasReceberPayload } = require("../services/financeiroReceberService");
+const { auditarIntegridadeFiscalFinanceiraNFe } = require("../services/nfeIntegridadeFinanceiraService");
+const { montarResumoIntegridade } = require("../services/integridadeResumoService");
 
 function calcKpis() {
   const hj = hoje();
@@ -64,6 +70,33 @@ function calcKpis() {
 router.get("/", auth(["admin","caixa"]), (_req, res, next) => {
   try {
     res.json(calcKpis());
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get("/integridade", auth(["admin"]), (_req, res, next) => {
+  try {
+    const ordens = getAll(
+      "SELECT id, numero, clientenome, status, valortotal FROM ordens WHERE deletedat IS NULL ORDER BY id DESC"
+    );
+    const db = getDB();
+    const notas = db.prepare(`
+      SELECT id, numero, clientenome, status, valortotal, nfe_status, nfe_chave, nfe_xml
+      FROM ordens
+      WHERE deletedat IS NULL AND nfe_status IS NOT NULL AND nfe_deletedat IS NULL
+      ORDER BY nfe_emitida_em DESC, id DESC
+    `).all();
+
+    res.json(montarResumoIntegridade({
+      pendenciasFiscais: listarPendenciasFiscais(db),
+      integridadeFinanceira: auditarIntegridadeFinanceiraOS({
+        ordens,
+        receberGerencial: getContasReceberPayload(),
+        getResumoFinanceiroOS,
+      }),
+      integridadeFiscalFinanceira: auditarIntegridadeFiscalFinanceiraNFe(notas),
+    }));
   } catch (e) {
     next(e);
   }
