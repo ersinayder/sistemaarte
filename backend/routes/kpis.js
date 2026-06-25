@@ -1,8 +1,13 @@
 const router = require("express").Router();
-const { getOne } = require("../database");
+const { getAll, getOne, getDB } = require("../database");
 const { auth } = require("../middlewares/auth");
 const { hoje } = require("../utils/dates");
 const { criarSseConnectionTracker } = require("../domain/sseConnectionRules");
+const { getResumoFinanceiroOS } = require("../domain/financeiroRules");
+const { listarPendenciasFiscais } = require("../repositories/nfePendenciaRepository");
+const { auditarIntegridadeFinanceiraOS } = require("../services/financeiroIntegridadeService");
+const { auditarIntegridadeFiscalFinanceiraNFe } = require("../services/nfeIntegridadeFinanceiraService");
+const { montarResumoIntegridade } = require("../services/integridadeResumoService");
 
 function calcKpis() {
   const hj = hoje();
@@ -64,6 +69,51 @@ function calcKpis() {
 router.get("/", auth(["admin","caixa"]), (_req, res, next) => {
   try {
     res.json(calcKpis());
+  } catch (e) {
+    next(e);
+  }
+});
+
+function getContasReceberResumo() {
+  return getAll(`
+    SELECT o.id,
+           o.numero,
+           o.clientenome,
+           o.status,
+           o.prazoentrega,
+           o.valortotal,
+           COALESCE(SUM(CASE WHEN l.pago=1 AND l.deletedat IS NULL THEN l.valor ELSE 0 END),0) AS recebido,
+           MAX(0, o.valortotal - COALESCE(SUM(CASE WHEN l.pago=1 AND l.deletedat IS NULL THEN l.valor ELSE 0 END),0)) AS saldo
+    FROM ordens o
+    LEFT JOIN lancamentos l ON l.ordemid = o.id
+    WHERE o.deletedat IS NULL AND o.status NOT IN ('Entregue','Cancelado')
+    GROUP BY o.id
+    HAVING saldo > 0.009
+  `);
+}
+
+router.get("/integridade", auth(["admin"]), (_req, res, next) => {
+  try {
+    const ordens = getAll(
+      "SELECT id, numero, clientenome, status, valortotal FROM ordens WHERE deletedat IS NULL ORDER BY id DESC"
+    );
+    const db = getDB();
+    const notas = db.prepare(`
+      SELECT id, numero, clientenome, status, valortotal, nfe_status, nfe_chave, nfe_xml
+      FROM ordens
+      WHERE deletedat IS NULL AND nfe_status IS NOT NULL AND nfe_deletedat IS NULL
+      ORDER BY nfe_emitida_em DESC, id DESC
+    `).all();
+
+    res.json(montarResumoIntegridade({
+      pendenciasFiscais: listarPendenciasFiscais(db),
+      integridadeFinanceira: auditarIntegridadeFinanceiraOS({
+        ordens,
+        receberGerencial: getContasReceberResumo(),
+        getResumoFinanceiroOS,
+      }),
+      integridadeFiscalFinanceira: auditarIntegridadeFiscalFinanceiraNFe(notas),
+    }));
   } catch (e) {
     next(e);
   }

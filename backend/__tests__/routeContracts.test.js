@@ -104,6 +104,7 @@ describe('route authorization contracts', () => {
     const financeiroRouter = await loadRouter('../routes/financeiro.js');
     const clientesRouter = await loadRouter('../routes/clientes.js');
     const produtosRouter = await loadRouter('../routes/produtos.js');
+    const kpisRouter = await loadRouter('../routes/kpis.js');
 
     expect(routeRoles(caixaRouter, 'get', '/')).toEqual(['admin', 'caixa']);
     expect(routeRoles(caixaRouter, 'get', '/fechamento')).toEqual(['admin', 'caixa']);
@@ -116,6 +117,7 @@ describe('route authorization contracts', () => {
     expect(routeRoles(clientesRouter, 'get', '/:id/ordens')).toEqual(['admin', 'caixa']);
     expect(routeRoles(produtosRouter, 'get', '/')).toEqual(['admin', 'caixa']);
     expect(routeRoles(produtosRouter, 'get', '/:id')).toEqual(['admin', 'caixa']);
+    expect(routeRoles(kpisRouter, 'get', '/integridade')).toEqual(['admin']);
   });
 
   it('keeps CEP lookup behind the authenticated API for admin and caixa', async () => {
@@ -557,6 +559,22 @@ describe('security configuration contracts', () => {
     expect(routeSource).toMatch(/status\(404\)/);
     expect(routeSource).not.toMatch(/getNFEWizard|callSEFAZ|NFE_|service\.executar|wizard\./);
     expect(routeSource).not.toMatch(/res\.json\([^)]*nfe_xml|xml:/s);
+  });
+
+  it('exposes admin-only integrity summary without external fiscal calls', async () => {
+    const kpisRouter = await loadRouter('../routes/kpis.js');
+    const source = fs.readFileSync(new URL('../routes/kpis.js', import.meta.url), 'utf8');
+    const routeStart = source.indexOf('router.get("/integridade"');
+    const streamStart = source.indexOf('router.get("/stream"');
+    const routeSource = source.slice(routeStart, streamStart);
+
+    expect(routeRoles(kpisRouter, 'get', '/integridade')).toEqual(['admin']);
+    expect(source).toMatch(/montarResumoIntegridade/);
+    expect(source).toMatch(/listarPendenciasFiscais/);
+    expect(source).toMatch(/auditarIntegridadeFinanceiraOS/);
+    expect(source).toMatch(/auditarIntegridadeFiscalFinanceiraNFe/);
+    expect(routeSource).not.toMatch(/getNFEWizard|callSEFAZ|NFE_|wizard\.|service\.executar/);
+    expect(routeSource).not.toMatch(/res\.json\([^)]*(xml|payload|cpf|phone)/s);
   });
 
   it('exposes sanitized fiscal pending transition audit without SEFAZ calls', async () => {
