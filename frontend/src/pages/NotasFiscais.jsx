@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import toast from 'react-hot-toast'
-import { FileWarning, Plus, RotateCcw, Trash2 } from 'lucide-react'
+import { FileWarning, Plus, RotateCcw, Trash2, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import { buscarEnderecoPorCep, maskCep } from '../utils/cep'
@@ -168,7 +168,7 @@ function PendenciasFiscaisPanel({ pendencias, onRefresh, onAudit }) {
   )
 }
 
-function IntegridadeFiscalFinanceiraPanel({ itens, onRefresh }) {
+function IntegridadeFiscalFinanceiraPanel({ itens, onRefresh, onAudit }) {
   const primeiros = itens.slice(0, 4)
   const restantes = Math.max(0, itens.length - primeiros.length)
   const criticos = itens.filter(item => item.severidade === 'critico').length
@@ -225,6 +225,11 @@ function IntegridadeFiscalFinanceiraPanel({ itens, onRefresh }) {
               {item.valorNFe !== undefined && <span>NF-e {fmt(item.valorNFe)}</span>}
               {item.diferenca !== undefined && <span>Dif. {fmt(item.diferenca)}</span>}
             </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'var(--space-2)' }}>
+              <button className="btn btn-ghost btn-sm" onClick={() => onAudit(item)} title="Auditar integridade fiscal-financeira">
+                Auditar
+              </button>
+            </div>
           </div>
         ))}
       </div>
@@ -234,6 +239,121 @@ function IntegridadeFiscalFinanceiraPanel({ itens, onRefresh }) {
           Mais {restantes} apontamento{restantes !== 1 ? 's' : ''} fora da visualizacao compacta.
         </div>
       )}
+    </div>
+  )
+}
+
+function ModalAuditoriaIntegridadeFiscalFinanceira({ apontamento, onClose }) {
+  const [detalhe, setDetalhe] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  const carregarAuditoria = useCallback(async () => {
+    if (!apontamento?.ordemId) return
+    setLoading(true)
+    try {
+      const r = await api.get(`/nfe/integridade-financeira/${apontamento.ordemId}`, { skipGlobalErrorToast: true })
+      setDetalhe(r.data)
+    } catch (e) {
+      toast.error(e.response?.data?.erro || 'Erro ao carregar auditoria fiscal-financeira')
+      setDetalhe(null)
+    } finally {
+      setLoading(false)
+    }
+  }, [apontamento?.ordemId])
+
+  useEffect(() => { carregarAuditoria() }, [carregarAuditoria])
+
+  const ordem = detalhe?.ordem || {}
+  const fiscal = detalhe?.fiscal || {}
+  const apontamentos = detalhe?.apontamentos || []
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: 'oklch(from var(--color-text) l c h / 0.4)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 'var(--space-4)',
+      }}
+      onClick={e => e.target === e.currentTarget && onClose()}
+    >
+      <div style={{
+        width: '100%', maxWidth: 720,
+        background: 'var(--color-surface)',
+        borderRadius: 'var(--radius-xl)',
+        boxShadow: 'var(--shadow-lg)',
+        display: 'flex', flexDirection: 'column',
+        maxHeight: '86vh', overflow: 'hidden',
+      }}>
+        <div style={{ padding: 'var(--space-4) var(--space-5)', borderBottom: '1px solid var(--color-divider)', display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', alignItems: 'flex-start' }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 800 }}>Auditoria fiscal-financeira</h2>
+            <p style={{ margin: '2px 0 0', fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
+              {ordem.numero || apontamento?.numero || `OS ${apontamento?.ordemId}`}
+            </p>
+          </div>
+          <button className="btn btn-icon btn-ghost" onClick={onClose} aria-label="Fechar">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div style={{ padding: 'var(--space-4) var(--space-5)', overflow: 'auto', display: 'grid', gap: 'var(--space-4)' }}>
+          {loading ? (
+            <div style={{ padding: 'var(--space-6)', textAlign: 'center', color: 'var(--color-text-muted)' }}>
+              <div className="spinner" style={{ margin: '0 auto var(--space-3)' }} />Carregando auditoria...
+            </div>
+          ) : (
+            <>
+              <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-3)', background: 'var(--color-surface-offset)', display: 'grid', gap: 'var(--space-2)' }}>
+                <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800 }}>{ordem.clienteNome || 'Cliente nao informado'}</div>
+                <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                  <span>Status OS: {ordem.status || 'nao informado'}</span>
+                  <span>Status NF-e: {fiscal.status || 'nao informado'}</span>
+                  <span>XML local: {fiscal.xmlLocal || 'nao informado'}</span>
+                </div>
+                <div style={{ overflowWrap: 'anywhere', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                  Chave: {fiscal.chave || 'nao informada'}
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 'var(--space-2)' }}>
+                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3)', background: 'var(--color-surface-offset)' }}>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>Total OS</div>
+                  <strong>{fmt(ordem.valorTotal)}</strong>
+                </div>
+                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3)', background: 'var(--color-surface-offset)' }}>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>Total NF-e</div>
+                  <strong>{fiscal.valorNFe === undefined ? 'Indisponivel' : fmt(fiscal.valorNFe)}</strong>
+                </div>
+                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3)', background: 'var(--color-surface-offset)' }}>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>Apontamentos</div>
+                  <strong>{apontamentos.length}</strong>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
+                {apontamentos.map((item, index) => (
+                  <div key={`${item.tipo}-${index}`} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-3)' }}>
+                    <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800, color: item.severidade === 'critico' ? 'var(--color-error)' : 'var(--color-gold)' }}>
+                      {item.tipo}
+                    </div>
+                    <div style={{ marginTop: 4, fontSize: 'var(--text-sm)' }}>{item.mensagem}</div>
+                    <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginTop: 6, fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                      {item.valorOS !== undefined && <span>OS {fmt(item.valorOS)}</span>}
+                      {item.valorNFe !== undefined && <span>NF-e {fmt(item.valorNFe)}</span>}
+                      {item.diferenca !== undefined && <span>Dif. {fmt(item.diferenca)}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>
+                {detalhe?.orientacao || 'Conferencia manual necessaria. Esta auditoria nao altera OS, caixa ou NF-e.'}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -1285,6 +1405,7 @@ export default function NotasFiscais({ lixeira = false }) {
   const [pendenciasFiscais, setPendenciasFiscais] = useState([])
   const [integridadeFiscalFinanceira, setIntegridadeFiscalFinanceira] = useState([])
   const [auditoriaPendencia, setAuditoriaPendencia] = useState(null)
+  const [auditoriaIntegridadeFiscalFinanceira, setAuditoriaIntegridadeFiscalFinanceira] = useState(null)
   const [q, setQ]                     = useState('')
   const [filtroStatus, setFiltroStatus] = useState('todos')
 
@@ -1461,7 +1582,7 @@ export default function NotasFiscais({ lixeira = false }) {
       )}
 
       {!lixeira && integridadeFiscalFinanceira.length > 0 && (
-        <IntegridadeFiscalFinanceiraPanel itens={integridadeFiscalFinanceira} onRefresh={carregarIntegridadeFiscalFinanceira} />
+        <IntegridadeFiscalFinanceiraPanel itens={integridadeFiscalFinanceira} onRefresh={carregarIntegridadeFiscalFinanceira} onAudit={setAuditoriaIntegridadeFiscalFinanceira} />
       )}
 
       {/* Filtros */}
@@ -1588,6 +1709,7 @@ export default function NotasFiscais({ lixeira = false }) {
       {cancelarNota && <ModalCancelamento nfe={cancelarNota} onClose={() => setCancelarNota(null)} onSuccess={carregar} />}
       {cceNota && <ModalCCE nfe={cceNota} onClose={() => setCceNota(null)} onSuccess={carregar} />}
       {auditoriaPendencia && <ModalAuditoriaPendenciaFiscal pendencia={auditoriaPendencia} onClose={() => setAuditoriaPendencia(null)} />}
+      {auditoriaIntegridadeFiscalFinanceira && <ModalAuditoriaIntegridadeFiscalFinanceira apontamento={auditoriaIntegridadeFiscalFinanceira} onClose={() => setAuditoriaIntegridadeFiscalFinanceira(null)} />}
       <InutilizacaoModal open={modalInutilizacao} onClose={() => setModalInutilizacao(false)} onSuccess={carregar} />
     </div>
   )

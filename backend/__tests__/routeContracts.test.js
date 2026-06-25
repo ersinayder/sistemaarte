@@ -625,6 +625,20 @@ describe('security configuration contracts', () => {
     expect(panelSource).not.toMatch(/Reemitir|Cancelar|Corrigir|Consultar SEFAZ|Editar OS/);
   });
 
+  it('opens read-only fiscal-financial integrity detail from the NF-e page', () => {
+    const source = fs.readFileSync(new URL('../../frontend/src/pages/NotasFiscais.jsx', import.meta.url), 'utf8');
+    const modalStart = source.indexOf('function ModalAuditoriaIntegridadeFiscalFinanceira');
+    const nextFunction = source.indexOf('function ModalAuditoriaPendenciaFiscal', modalStart);
+    const modalSource = source.slice(modalStart, nextFunction);
+
+    expect(source).toMatch(/function ModalAuditoriaIntegridadeFiscalFinanceira/);
+    expect(source).toMatch(/api\.get\(`\/nfe\/integridade-financeira\/\$\{apontamento\.ordemId\}`,\s*\{\s*skipGlobalErrorToast:\s*true\s*\}\)/);
+    expect(source).toMatch(/onAudit=\{setAuditoriaIntegridadeFiscalFinanceira\}/);
+    expect(source).toMatch(/<IntegridadeFiscalFinanceiraPanel itens=\{integridadeFiscalFinanceira\} onRefresh=\{carregarIntegridadeFiscalFinanceira\} onAudit=\{setAuditoriaIntegridadeFiscalFinanceira\}/);
+    expect(source).toMatch(/\{auditoriaIntegridadeFiscalFinanceira && <ModalAuditoriaIntegridadeFiscalFinanceira apontamento=\{auditoriaIntegridadeFiscalFinanceira\}/);
+    expect(modalSource).not.toMatch(/Reemitir|Cancelar|Corrigir|Consultar SEFAZ|Editar OS|Emitir CC-e/);
+  });
+
   it('opens read-only fiscal pending audit from the NF-e page', () => {
     const source = fs.readFileSync(new URL('../../frontend/src/pages/NotasFiscais.jsx', import.meta.url), 'utf8');
 
