@@ -5,53 +5,24 @@ import { toast } from 'react-hot-toast';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { buscarEnderecoPorCep, maskCep } from '../utils/cep';
+import {
+  getDocumentoInputState,
+  maskCNPJ,
+  maskCPF,
+  normalizeCnpj,
+  onlyDigits,
+  validaCNPJ,
+  validaCPF,
+} from '../utils/documentos';
 
 const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
-const maskCPF  = v => v.replace(/\D/g,'')
-  .replace(/(\d{3})(\d)/,'$1.$2')
-  .replace(/(\d{3})(\d)/,'$1.$2')
-  .replace(/(\d{3})(\d{1,2})$/,'$1-$2')
-  .slice(0,14);
-
-const maskCNPJ = v => v.replace(/\D/g,'')
-  .replace(/(\d{2})(\d)/,'$1.$2')
-  .replace(/(\d{3})(\d)/,'$1.$2')
-  .replace(/(\d{3})(\d)/,'$1/$2')
-  .replace(/(\d{4})(\d{1,2})$/,'$1-$2')
-  .slice(0,18);
-
-const onlyDigits = v => String(v || '').replace(/\D/g,'');
 const documentoTipo = (documento, ie = '') => {
-  const digits = onlyDigits(documento);
-  if (digits.length > 11 || (!digits && ie)) return 'PJ';
+  const normalized = normalizeCnpj(documento);
+  if (/[A-Z]/.test(normalized) || normalized.length > 11 || (!normalized && ie)) return 'PJ';
   return 'PF';
 };
-const documentoLabel = documento => onlyDigits(documento).length > 11 ? 'CNPJ' : 'CPF';
-
-const validaCPF = cpf => {
-  const n = cpf.replace(/\D/g,'');
-  if (n.length !== 11 || /^(\d)\1{10}$/.test(n)) return false;
-  let s = 0;
-  for (let i = 0; i < 9; i++) s += parseInt(n[i]) * (10 - i);
-  let r = (s * 10) % 11; if (r === 10 || r === 11) r = 0;
-  if (r !== parseInt(n[9])) return false;
-  s = 0;
-  for (let i = 0; i < 10; i++) s += parseInt(n[i]) * (11 - i);
-  r = (s * 10) % 11; if (r === 10 || r === 11) r = 0;
-  return r === parseInt(n[10]);
-};
-
-const validaCNPJ = cnpj => {
-  const n = cnpj.replace(/\D/g,'');
-  if (n.length !== 14 || /^(\d)\1{13}$/.test(n)) return false;
-  const calc = (s) => {
-    let sum = 0, pos = s - 7;
-    for (let i = s; i >= 1; i--) { sum += parseInt(n[s - i]) * pos--; if (pos < 2) pos = 9; }
-    return sum % 11 < 2 ? 0 : 11 - (sum % 11);
-  };
-  return calc(12) === parseInt(n[12]) && calc(13) === parseInt(n[13]);
-};
+const documentoLabel = documento => documentoTipo(documento) === 'PJ' ? 'CNPJ' : 'CPF';
 
 const STATUS_COLOR = {
   'Recebido':    'var(--status-aguardando)',
@@ -117,13 +88,13 @@ export default function Clientes() {
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const buscarCNPJ = async (raw) => {
-    const n = raw.replace(/\D/g,'');
+    const n = normalizeCnpj(raw);
     if (n.length !== 14) return;
     if (!validaCNPJ(n)) { setCnpjError('CNPJ inválido'); return; }
     setCnpjError('');
     setCnpjLoading(true);
     try {
-      const { data: d } = await api.get(`/clientes/cnpj/${n}`);
+      const { data: d } = await api.get(`/clientes/cnpj/${encodeURIComponent(n)}`);
       setForm(f => ({
         ...f,
         nome:       f.nome.trim()       ? f.nome       : (d.razao_social || d.nome_fantasia || f.nome),
@@ -164,27 +135,22 @@ export default function Clientes() {
   };
 
   const handleDocumento = (v) => {
-    const digits = onlyDigits(v).slice(0, 14);
-    const tipo = digits.length > 11 ? 'PJ' : 'PF';
-    const masked = tipo === 'PJ' ? maskCNPJ(digits) : maskCPF(digits);
+    const state = getDocumentoInputState(v, form.tipo);
+    const normalized = normalizeCnpj(v);
 
     setForm(f => ({
       ...f,
-      tipo,
-      cpf: tipo === 'PF' ? masked : '',
-      cnpj: tipo === 'PJ' ? masked : '',
-      ie: tipo === 'PF' ? '' : f.ie,
+      tipo: state.tipo,
+      cpf: state.cpf,
+      cnpj: state.cnpj,
+      ie: state.tipo === 'PF' ? '' : f.ie,
     }));
 
-    setCpfError('');
-    setCnpjError('');
+    setCpfError(state.cpfError);
+    setCnpjError(state.cnpjError);
 
-    if (tipo === 'PF' && digits.length === 11) {
-      setCpfError(validaCPF(digits) ? '' : 'CPF inválido');
-    }
-
-    if (tipo === 'PJ' && digits.length === 14) {
-      buscarCNPJ(masked);
+    if (state.tipo === 'PJ' && normalized.length === 14 && !state.cnpjError) {
+      buscarCNPJ(state.cnpj);
     }
   };
 
@@ -649,7 +615,8 @@ export default function Clientes() {
                     value={form.tipo === 'PJ' ? form.cnpj : form.cpf}
                     onChange={e => handleDocumento(e.target.value)}
                     placeholder="CPF ou CNPJ"
-                    inputMode="numeric"
+                    inputMode="text"
+                    autoCapitalize="characters"
                   />
                   {cpfError && <span className="form-error">{cpfError}</span>}
                   {cnpjError && <span className="form-error">{cnpjError}</span>}
