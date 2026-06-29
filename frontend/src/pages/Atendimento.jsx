@@ -421,8 +421,8 @@ function QuickClientModal({ open, cliente, initialName, onClose, onSaved }) {
         uf: f.uf.trim() ? f.uf : (d.uf || f.uf),
       }))
       toast.success('Dados do CNPJ carregados')
-    } catch {
-      setCnpjError('CNPJ não encontrado')
+    } catch(err) {
+      setCnpjError(err?.response?.data?.error || 'CNPJ não encontrado')
     } finally {
       setCnpjLoading(false)
     }
