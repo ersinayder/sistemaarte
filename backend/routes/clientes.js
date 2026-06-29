@@ -2,7 +2,7 @@ const router = require("express").Router();
 const { getAll, getOne, run, runInsert, transaction } = require("../database");
 const { auth } = require("../middlewares/auth");
 const { normalizarPaginacao, montarMetaPaginacao } = require("../domain/paginationRules");
-const { normalizeCnpj, validaCNPJ } = require("../domain/cnpjRules");
+const { consultarCnpj } = require("../services/cnpjLookupService");
 
 const SEL_CLIENTE = `
   SELECT c.*,
@@ -53,34 +53,10 @@ router.get("/", auth(["admin","caixa"]), (req, res, next) => {
 });
 
 router.get("/cnpj/:cnpj", auth(["admin","caixa"]), async (req, res, next) => {
-  const cnpj = normalizeCnpj(req.params.cnpj);
-  if (cnpj.length !== 14) {
-    return res.status(400).json({ error: "CNPJ deve conter 14 caracteres" });
-  }
-  if (!validaCNPJ(cnpj)) {
-    return res.status(400).json({ error: "CNPJ invalido" });
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-
   try {
-    const r = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${encodeURIComponent(cnpj)}`, {
-      signal: controller.signal,
-      headers: { accept: "application/json" },
-    });
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) {
-      return res.status(r.status).json({ error: data?.message || "CNPJ nao encontrado" });
-    }
-    res.json(data);
+    res.json(await consultarCnpj(req.params.cnpj));
   } catch(e) {
-    if (e.name === "AbortError") {
-      return res.status(504).json({ error: "Consulta de CNPJ demorou demais" });
-    }
     next(e);
-  } finally {
-    clearTimeout(timeout);
   }
 });
 

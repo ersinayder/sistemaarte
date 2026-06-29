@@ -108,8 +108,8 @@ export default function Clientes() {
         uf:         f.uf.trim()         ? f.uf         : (d.uf || f.uf),
       }));
       toast.success('Dados do CNPJ carregados');
-    } catch {
-      setCnpjError('CNPJ não encontrado na Receita Federal');
+    } catch(e) {
+      setCnpjError(e?.response?.data?.error || 'CNPJ não encontrado na Receita Federal');
     } finally {
       setCnpjLoading(false);
     }
