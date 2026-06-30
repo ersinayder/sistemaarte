@@ -25,6 +25,8 @@ const { createNfeEventoService } = require('../services/nfeEventoService');
 const {
   auditarIntegridadeFiscalFinanceiraNFe,
   montarDetalheIntegridadeFiscalFinanceiraNFe,
+  prepararConciliacaoIntegridadeFiscalFinanceiraNFe,
+  inserirConciliacaoIntegridadeFiscalFinanceiraNFe,
 } = require('../services/nfeIntegridadeFinanceiraService');
 const { transmitirInutilizacaoNFe } = require('../utils/nfeInutilizacao');
 const {
@@ -298,6 +300,15 @@ function resumirStatusServico(resultado) {
   };
 }
 
+const SELECT_ULTIMA_CONCILIACAO_INTEGRIDADE_NFE = `
+  (SELECT ci.tipo FROM nfe_integridade_conciliacoes ci WHERE ci.ordemid = o.id ORDER BY ci.createdat DESC, ci.id DESC LIMIT 1) AS conciliacao_tipo,
+  (SELECT ci.valor_os FROM nfe_integridade_conciliacoes ci WHERE ci.ordemid = o.id ORDER BY ci.createdat DESC, ci.id DESC LIMIT 1) AS conciliacao_valor_os,
+  (SELECT ci.valor_nfe FROM nfe_integridade_conciliacoes ci WHERE ci.ordemid = o.id ORDER BY ci.createdat DESC, ci.id DESC LIMIT 1) AS conciliacao_valor_nfe,
+  (SELECT ci.motivo FROM nfe_integridade_conciliacoes ci WHERE ci.ordemid = o.id ORDER BY ci.createdat DESC, ci.id DESC LIMIT 1) AS conciliacao_motivo,
+  (SELECT ci.createdat FROM nfe_integridade_conciliacoes ci WHERE ci.ordemid = o.id ORDER BY ci.createdat DESC, ci.id DESC LIMIT 1) AS conciliacao_createdat,
+  (SELECT ci.createdby FROM nfe_integridade_conciliacoes ci WHERE ci.ordemid = o.id ORDER BY ci.createdat DESC, ci.id DESC LIMIT 1) AS conciliacao_createdby
+`;
+
 // GET /api/nfe
 router.get('/', auth(['admin', 'caixa']), (req, res) => {
   try {
@@ -386,6 +397,41 @@ router.get('/status-servico', auth(['admin', 'caixa']), async (req, res) => {
   }
 });
 
+// POST /api/nfe/integridade-financeira/:ordemId/conciliar
+// Concilia localmente um apontamento fiscal-financeiro; nao consulta SEFAZ nem altera OS/caixa/XML.
+router.post('/integridade-financeira/:ordemId/conciliar', auth(['admin']), (req, res) => {
+  const ordemId = Number(req.params.ordemId);
+  if (!Number.isInteger(ordemId) || ordemId <= 0) {
+    return res.status(400).json({ erro: 'OS invalida.' });
+  }
+
+  try {
+    const db = getDB();
+    const nota = db.prepare(`
+      SELECT o.id, o.numero, o.clientenome, o.status, o.valortotal, o.nfe_status, o.nfe_chave,
+             ${SELECT_ULTIMA_CONCILIACAO_INTEGRIDADE_NFE},
+             o.nfe_xml
+      FROM ordens o
+      WHERE o.id = ? AND o.deletedat IS NULL AND o.nfe_status IS NOT NULL AND o.nfe_deletedat IS NULL
+    `).get(ordemId);
+    if (!nota) {
+      return res.status(404).json({ erro: 'NF-e da OS nao encontrada.' });
+    }
+    const conciliacao = prepararConciliacaoIntegridadeFiscalFinanceiraNFe(nota, {
+      motivo: req.body?.motivo,
+      userId: req.user?.id,
+    });
+    if (!conciliacao.ok) {
+      return res.status(conciliacao.status || 422).json({ erro: conciliacao.erro });
+    }
+    inserirConciliacaoIntegridadeFiscalFinanceiraNFe(db, conciliacao.registro);
+    res.status(201).json({ ok: true, conciliacao: conciliacao.registro });
+  } catch (e) {
+    console.error('[NF-e] POST /integridade-financeira/:ordemId/conciliar:', e.message);
+    res.status(500).json({ erro: 'Erro ao conciliar apontamento fiscal-financeiro' });
+  }
+});
+
 // GET /api/nfe/integridade-financeira/:ordemId
 // Detalhe local read-only da auditoria fiscal-financeira.
 router.get('/integridade-financeira/:ordemId', auth(['admin', 'caixa']), (req, res) => {
@@ -396,9 +442,11 @@ router.get('/integridade-financeira/:ordemId', auth(['admin', 'caixa']), (req, r
 
   try {
     const nota = getDB().prepare(`
-      SELECT id, numero, clientenome, status, valortotal, nfe_status, nfe_chave, nfe_xml
-      FROM ordens
-      WHERE id = ? AND deletedat IS NULL AND nfe_status IS NOT NULL AND nfe_deletedat IS NULL
+      SELECT o.id, o.numero, o.clientenome, o.status, o.valortotal, o.nfe_status, o.nfe_chave,
+             ${SELECT_ULTIMA_CONCILIACAO_INTEGRIDADE_NFE},
+             o.nfe_xml
+      FROM ordens o
+      WHERE o.id = ? AND o.deletedat IS NULL AND o.nfe_status IS NOT NULL AND o.nfe_deletedat IS NULL
     `).get(ordemId);
     if (!nota) {
       return res.status(404).json({ erro: 'NF-e da OS nao encontrada.' });
@@ -415,10 +463,12 @@ router.get('/integridade-financeira/:ordemId', auth(['admin', 'caixa']), (req, r
 router.get('/integridade-financeira', auth(['admin', 'caixa']), (req, res) => {
   try {
     const notas = getDB().prepare(`
-      SELECT id, numero, clientenome, status, valortotal, nfe_status, nfe_chave, nfe_xml
-      FROM ordens
-      WHERE deletedat IS NULL AND nfe_status IS NOT NULL AND nfe_deletedat IS NULL
-      ORDER BY nfe_emitida_em DESC, id DESC
+      SELECT o.id, o.numero, o.clientenome, o.status, o.valortotal, o.nfe_status, o.nfe_chave,
+             ${SELECT_ULTIMA_CONCILIACAO_INTEGRIDADE_NFE},
+             o.nfe_xml
+      FROM ordens o
+      WHERE o.deletedat IS NULL AND o.nfe_status IS NOT NULL AND o.nfe_deletedat IS NULL
+      ORDER BY o.nfe_emitida_em DESC, o.id DESC
     `).all();
     res.json(auditarIntegridadeFiscalFinanceiraNFe(notas));
   } catch (e) {

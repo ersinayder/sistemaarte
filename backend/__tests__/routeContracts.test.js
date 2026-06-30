@@ -83,6 +83,7 @@ describe('route authorization contracts', () => {
     expect(routeRoles(nfeRouter, 'get', '/status-servico')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'get', '/integridade-financeira')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'get', '/integridade-financeira/:ordemId')).toEqual(['admin', 'caixa']);
+    expect(routeRoles(nfeRouter, 'post', '/integridade-financeira/:ordemId/conciliar')).toEqual(['admin']);
     expect(routeRoles(nfeRouter, 'get', '/pendencias')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'get', '/pendencias/:origem/:id/transicoes')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'get', '/emitir/:id/preview')).toEqual(['admin', 'caixa']);
@@ -561,6 +562,24 @@ describe('security configuration contracts', () => {
     expect(routeSource).not.toMatch(/res\.json\([^)]*nfe_xml|xml:/s);
   });
 
+  it('allows admin to locally reconcile fiscal-financial total divergence without SEFAZ calls', async () => {
+    const nfeRouter = await loadRouter('../routes/nfe.js');
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+    const databaseSource = fs.readFileSync(new URL('../database.js', import.meta.url), 'utf8');
+    const routeStart = source.indexOf("router.post('/integridade-financeira/:ordemId/conciliar'");
+    const nextRouteStart = source.indexOf("router.get('/integridade-financeira/:ordemId'", routeStart);
+    const routeSource = source.slice(routeStart, nextRouteStart);
+
+    expect(routeRoles(nfeRouter, 'post', '/integridade-financeira/:ordemId/conciliar')).toEqual(['admin']);
+    expect(routeStart).toBeGreaterThan(-1);
+    expect(routeStart).toBeLessThan(nextRouteStart);
+    expect(routeSource).toMatch(/prepararConciliacaoIntegridadeFiscalFinanceiraNFe/);
+    expect(routeSource).toMatch(/inserirConciliacaoIntegridadeFiscalFinanceiraNFe/);
+    expect(routeSource).not.toMatch(/getNFEWizard|callSEFAZ|NFE_|service\.executar|wizard\./);
+    expect(databaseSource).toMatch(/CREATE TABLE IF NOT EXISTS nfe_integridade_conciliacoes/);
+    expect(databaseSource).toMatch(/CREATE INDEX IF NOT EXISTS idx_nfe_integridade_conciliacoes_ordem/);
+  });
+
   it('exposes admin-only integrity summary without external fiscal calls', async () => {
     const kpisRouter = await loadRouter('../routes/kpis.js');
     const source = fs.readFileSync(new URL('../routes/kpis.js', import.meta.url), 'utf8');
@@ -657,6 +676,18 @@ describe('security configuration contracts', () => {
     expect(source).toMatch(/<IntegridadeFiscalFinanceiraPanel itens=\{integridadeFiscalFinanceira\} onRefresh=\{carregarIntegridadeFiscalFinanceira\} onAudit=\{setAuditoriaIntegridadeFiscalFinanceira\}/);
     expect(source).toMatch(/\{auditoriaIntegridadeFiscalFinanceira && <ModalAuditoriaIntegridadeFiscalFinanceira apontamento=\{auditoriaIntegridadeFiscalFinanceira\}/);
     expect(modalSource).not.toMatch(/Reemitir|Cancelar|Corrigir|Consultar SEFAZ|Editar OS|Emitir CC-e/);
+  });
+
+  it('offers admin-only local reconciliation for divergent fiscal-financial findings', () => {
+    const source = fs.readFileSync(new URL('../../frontend/src/pages/NotasFiscais.jsx', import.meta.url), 'utf8');
+    const modalStart = source.indexOf('function ModalAuditoriaIntegridadeFiscalFinanceira');
+    const nextFunction = source.indexOf('function ModalAuditoriaPendenciaFiscal', modalStart);
+    const modalSource = source.slice(modalStart, nextFunction);
+
+    expect(source).toMatch(/isAdmin && apontamentos\.some\(item => item\.tipo === 'nfe_total_divergente'\)/);
+    expect(source).toMatch(/api\.post\(`\/nfe\/integridade-financeira\/\$\{ordem\.id \|\| apontamento\?\.ordemId\}\/conciliar`,\s*\{\s*motivo: motivoConciliacao/);
+    expect(source).toMatch(/onConciliado=\{\(\) => carregarIntegridadeFiscalFinanceira\(\)\}/);
+    expect(modalSource).not.toMatch(/Conciliar.*SEFAZ|Corrigir.*XML|Editar.*OS/s);
   });
 
   it('opens read-only fiscal pending audit from the NF-e page', () => {

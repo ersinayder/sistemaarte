@@ -145,6 +145,21 @@ const NFE_EVENTO_SCHEMA_STATEMENTS = [
     ON nfe_evento_transicoes(tentativaid, id)`,
 ];
 
+const NFE_INTEGRIDADE_CONCILIACOES_SCHEMA_STATEMENTS = [
+  `CREATE TABLE IF NOT EXISTS nfe_integridade_conciliacoes (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    ordemid     INTEGER NOT NULL,
+    tipo        TEXT NOT NULL,
+    valor_os    REAL NOT NULL,
+    valor_nfe   REAL NOT NULL,
+    motivo      TEXT NOT NULL,
+    createdby   INTEGER,
+    createdat   TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_nfe_integridade_conciliacoes_ordem
+    ON nfe_integridade_conciliacoes(ordemid, tipo, createdat DESC)`,
+];
+
 function getNfeEmissaoSchemaStatements() {
   return [...NFE_EMISSAO_SCHEMA_STATEMENTS];
 }
@@ -481,6 +496,7 @@ CREATE INDEX IF NOT EXISTS idx_nfe_inutilizacoes_status
   ON nfe_inutilizacoes(status);
 CREATE INDEX IF NOT EXISTS idx_nfe_inutilizacoes_faixa
   ON nfe_inutilizacoes(numero_inicial, numero_final);
+${NFE_INTEGRIDADE_CONCILIACOES_SCHEMA_STATEMENTS.join(";\n")};
 ${NFE_EMISSAO_SCHEMA_STATEMENTS.join(";\n")};
 `;
 
@@ -735,6 +751,8 @@ function initDB() {
     ...NFE_EMISSAO_MIGRATION_STATEMENTS,
     // v20 - tentativas idempotentes de eventos fiscais (CC-e e cancelamento)
     ...NFE_EVENTO_SCHEMA_STATEMENTS,
+    // v21 - conciliacao local auditavel de apontamentos fiscal-financeiros
+    ...NFE_INTEGRIDADE_CONCILIACOES_SCHEMA_STATEMENTS,
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {}
