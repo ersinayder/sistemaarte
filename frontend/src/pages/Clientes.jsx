@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { buscarEnderecoPorCep, maskCep } from '../utils/cep';
+import { buscarEnderecoPorCep, maskCep, onlyCepDigits } from '../utils/cep';
 import {
   getDocumentoInputState,
   maskCNPJ,
@@ -95,6 +95,13 @@ export default function Clientes() {
     setCnpjLoading(true);
     try {
       const { data: d } = await api.get(`/clientes/cnpj/${encodeURIComponent(n)}`);
+      const cepCnpj = onlyCepDigits(d.cep);
+      const enderecoIncompleto = cepCnpj.length === 8 && [
+        d.logradouro,
+        d.bairro,
+        d.municipio || d.cidade,
+        d.uf,
+      ].some(value => !String(value || '').trim());
       setForm(f => ({
         ...f,
         nome:       f.nome.trim()       ? f.nome       : (d.razao_social || d.nome_fantasia || f.nome),
@@ -104,9 +111,26 @@ export default function Clientes() {
         logradouro: f.logradouro.trim() ? f.logradouro : (d.logradouro || f.logradouro),
         numero:     f.numero.trim()     ? f.numero     : (d.numero || f.numero),
         bairro:     f.bairro.trim()     ? f.bairro     : (d.bairro || f.bairro),
-        cidade:     f.cidade.trim()     ? f.cidade     : (d.municipio || f.cidade),
+        cidade:     f.cidade.trim()     ? f.cidade     : (d.municipio || d.cidade || f.cidade),
         uf:         f.uf.trim()         ? f.uf         : (d.uf || f.uf),
       }));
+      if (enderecoIncompleto) {
+        setCepLoading(true);
+        try {
+          const endereco = await buscarEnderecoPorCep(cepCnpj);
+          if (endereco) {
+            setForm(f => ({
+              ...f,
+              cep:        f.cep.trim()        ? f.cep        : endereco.cep,
+              logradouro: f.logradouro.trim() ? f.logradouro : (endereco.logradouro || f.logradouro),
+              bairro:     f.bairro.trim()     ? f.bairro     : (endereco.bairro     || f.bairro),
+              cidade:     f.cidade.trim()     ? f.cidade     : (endereco.cidade     || f.cidade),
+              uf:         f.uf.trim()         ? f.uf         : (endereco.uf         || f.uf),
+            }));
+          }
+        } catch {}
+        finally { setCepLoading(false); }
+      }
       toast.success('Dados do CNPJ carregados');
     } catch(e) {
       setCnpjError(e?.response?.data?.error || 'CNPJ não encontrado na Receita Federal');
