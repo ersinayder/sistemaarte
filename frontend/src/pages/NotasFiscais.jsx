@@ -243,9 +243,11 @@ function IntegridadeFiscalFinanceiraPanel({ itens, onRefresh, onAudit }) {
   )
 }
 
-function ModalAuditoriaIntegridadeFiscalFinanceira({ apontamento, onClose }) {
+function ModalAuditoriaIntegridadeFiscalFinanceira({ apontamento, onClose, isAdmin, onConciliado }) {
   const [detalhe, setDetalhe] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [motivoConciliacao, setMotivoConciliacao] = useState('NF-e emitida sem impacto no caixa da OS.')
+  const [conciliando, setConciliando] = useState(false)
 
   const carregarAuditoria = useCallback(async () => {
     if (!apontamento?.ordemId) return
@@ -266,6 +268,22 @@ function ModalAuditoriaIntegridadeFiscalFinanceira({ apontamento, onClose }) {
   const ordem = detalhe?.ordem || {}
   const fiscal = detalhe?.fiscal || {}
   const apontamentos = detalhe?.apontamentos || []
+  const podeConciliar = isAdmin && apontamentos.some(item => item.tipo === 'nfe_total_divergente')
+
+  const handleConciliar = async () => {
+    if (!podeConciliar) return
+    setConciliando(true)
+    try {
+      await api.post(`/nfe/integridade-financeira/${ordem.id || apontamento?.ordemId}/conciliar`, { motivo: motivoConciliacao }, { skipGlobalErrorToast: true })
+      toast.success('Apontamento conciliado localmente')
+      onConciliado?.()
+      onClose()
+    } catch (e) {
+      toast.error(e.response?.data?.erro || 'Nao foi possivel conciliar o apontamento')
+    } finally {
+      setConciliando(false)
+    }
+  }
 
   return (
     <div
@@ -350,6 +368,23 @@ function ModalAuditoriaIntegridadeFiscalFinanceira({ apontamento, onClose }) {
               <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>
                 {detalhe?.orientacao || 'Conferencia manual necessaria. Esta auditoria nao altera OS, caixa ou NF-e.'}
               </div>
+
+              {podeConciliar && (
+                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-3)', background: 'var(--color-surface-offset)', display: 'grid', gap: 'var(--space-2)' }}>
+                  <label style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)' }}>Motivo da conciliacao local</label>
+                  <textarea
+                    value={motivoConciliacao}
+                    onChange={e => setMotivoConciliacao(e.target.value)}
+                    rows={3}
+                    style={{ width: '100%', resize: 'vertical', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-surface)', color: 'var(--color-text)', padding: 'var(--space-3)', fontSize: 'var(--text-sm)' }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <button className="btn btn-primary btn-sm" onClick={handleConciliar} disabled={conciliando || motivoConciliacao.trim().length < 10}>
+                      {conciliando ? 'Conciliando...' : 'Conciliar localmente'}
+                    </button>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -1709,7 +1744,7 @@ export default function NotasFiscais({ lixeira = false }) {
       {cancelarNota && <ModalCancelamento nfe={cancelarNota} onClose={() => setCancelarNota(null)} onSuccess={carregar} />}
       {cceNota && <ModalCCE nfe={cceNota} onClose={() => setCceNota(null)} onSuccess={carregar} />}
       {auditoriaPendencia && <ModalAuditoriaPendenciaFiscal pendencia={auditoriaPendencia} onClose={() => setAuditoriaPendencia(null)} />}
-      {auditoriaIntegridadeFiscalFinanceira && <ModalAuditoriaIntegridadeFiscalFinanceira apontamento={auditoriaIntegridadeFiscalFinanceira} onClose={() => setAuditoriaIntegridadeFiscalFinanceira(null)} />}
+      {auditoriaIntegridadeFiscalFinanceira && <ModalAuditoriaIntegridadeFiscalFinanceira apontamento={auditoriaIntegridadeFiscalFinanceira} onClose={() => setAuditoriaIntegridadeFiscalFinanceira(null)} isAdmin={isAdmin} onConciliado={() => carregarIntegridadeFiscalFinanceira()} />}
       <InutilizacaoModal open={modalInutilizacao} onClose={() => setModalInutilizacao(false)} onSuccess={carregar} />
     </div>
   )

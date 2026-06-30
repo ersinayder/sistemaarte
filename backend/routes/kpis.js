@@ -10,6 +10,15 @@ const { getContasReceberPayload } = require("../services/financeiroReceberServic
 const { auditarIntegridadeFiscalFinanceiraNFe } = require("../services/nfeIntegridadeFinanceiraService");
 const { montarResumoIntegridade } = require("../services/integridadeResumoService");
 
+const SELECT_ULTIMA_CONCILIACAO_INTEGRIDADE_NFE = `
+  (SELECT ci.tipo FROM nfe_integridade_conciliacoes ci WHERE ci.ordemid = o.id ORDER BY ci.createdat DESC, ci.id DESC LIMIT 1) AS conciliacao_tipo,
+  (SELECT ci.valor_os FROM nfe_integridade_conciliacoes ci WHERE ci.ordemid = o.id ORDER BY ci.createdat DESC, ci.id DESC LIMIT 1) AS conciliacao_valor_os,
+  (SELECT ci.valor_nfe FROM nfe_integridade_conciliacoes ci WHERE ci.ordemid = o.id ORDER BY ci.createdat DESC, ci.id DESC LIMIT 1) AS conciliacao_valor_nfe,
+  (SELECT ci.motivo FROM nfe_integridade_conciliacoes ci WHERE ci.ordemid = o.id ORDER BY ci.createdat DESC, ci.id DESC LIMIT 1) AS conciliacao_motivo,
+  (SELECT ci.createdat FROM nfe_integridade_conciliacoes ci WHERE ci.ordemid = o.id ORDER BY ci.createdat DESC, ci.id DESC LIMIT 1) AS conciliacao_createdat,
+  (SELECT ci.createdby FROM nfe_integridade_conciliacoes ci WHERE ci.ordemid = o.id ORDER BY ci.createdat DESC, ci.id DESC LIMIT 1) AS conciliacao_createdby
+`;
+
 function calcKpis() {
   const hj = hoje();
 
@@ -82,10 +91,12 @@ router.get("/integridade", auth(["admin"]), (_req, res, next) => {
     );
     const db = getDB();
     const notas = db.prepare(`
-      SELECT id, numero, clientenome, status, valortotal, nfe_status, nfe_chave, nfe_xml
-      FROM ordens
-      WHERE deletedat IS NULL AND nfe_status IS NOT NULL AND nfe_deletedat IS NULL
-      ORDER BY nfe_emitida_em DESC, id DESC
+      SELECT o.id, o.numero, o.clientenome, o.status, o.valortotal, o.nfe_status, o.nfe_chave,
+             ${SELECT_ULTIMA_CONCILIACAO_INTEGRIDADE_NFE},
+             o.nfe_xml
+      FROM ordens o
+      WHERE o.deletedat IS NULL AND o.nfe_status IS NOT NULL AND o.nfe_deletedat IS NULL
+      ORDER BY o.nfe_emitida_em DESC, o.id DESC
     `).all();
 
     res.json(montarResumoIntegridade({

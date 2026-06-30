@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   auditarIntegridadeFiscalFinanceiraNFe,
   montarDetalheIntegridadeFiscalFinanceiraNFe,
+  prepararConciliacaoIntegridadeFiscalFinanceiraNFe,
 } from "../services/nfeIntegridadeFinanceiraService.js";
 
 describe("auditarIntegridadeFiscalFinanceiraNFe", () => {
@@ -30,6 +31,96 @@ describe("auditarIntegridadeFiscalFinanceiraNFe", () => {
       }),
     ]);
     expect(result.meta).toEqual({ total: 1, criticos: 1, avisos: 0 });
+  });
+
+  it("does not report a divergent total already reconciled for the same local values", () => {
+    const result = auditarIntegridadeFiscalFinanceiraNFe([
+      {
+        id: 10,
+        numero: "OS-10",
+        clientenome: "Ana",
+        status: "Entregue",
+        valortotal: 1,
+        nfe_status: "autorizado",
+        nfe_chave: "35111111111111111111111111111111111111111111",
+        nfe_xml: "<nfeProc><NFe><infNFe><total><ICMSTot><vNF>1500.00</vNF></ICMSTot></total></infNFe></NFe></nfeProc>",
+        conciliacao_tipo: "nfe_total_divergente",
+        conciliacao_valor_os: 1,
+        conciliacao_valor_nfe: 1500,
+        conciliacao_motivo: "NF-e emitida sem impacto no caixa da OS.",
+        conciliacao_createdat: "2026-06-30T20:00:00.000Z",
+        conciliacao_createdby: 7,
+      },
+    ]);
+
+    expect(result).toEqual({
+      itens: [],
+      meta: { total: 0, criticos: 0, avisos: 0 },
+    });
+  });
+
+  it("reports a divergent total again when current values differ from the reconciliation", () => {
+    const result = auditarIntegridadeFiscalFinanceiraNFe([
+      {
+        id: 10,
+        numero: "OS-10",
+        clientenome: "Ana",
+        status: "Entregue",
+        valortotal: 2,
+        nfe_status: "autorizado",
+        nfe_chave: "35111111111111111111111111111111111111111111",
+        nfe_xml: "<nfeProc><NFe><infNFe><total><ICMSTot><vNF>1500.00</vNF></ICMSTot></total></infNFe></NFe></nfeProc>",
+        conciliacao_tipo: "nfe_total_divergente",
+        conciliacao_valor_os: 1,
+        conciliacao_valor_nfe: 1500,
+        conciliacao_motivo: "NF-e emitida sem impacto no caixa da OS.",
+        conciliacao_createdat: "2026-06-30T20:00:00.000Z",
+        conciliacao_createdby: 7,
+      },
+    ]);
+
+    expect(result.itens).toEqual([
+      expect.objectContaining({
+        tipo: "nfe_total_divergente",
+        valorOS: 2,
+        valorNFe: 1500,
+        diferenca: -1498,
+      }),
+    ]);
+    expect(result.meta).toEqual({ total: 1, criticos: 1, avisos: 0 });
+  });
+
+  it("prepares an auditable reconciliation for an active divergent total", () => {
+    const result = prepararConciliacaoIntegridadeFiscalFinanceiraNFe(
+      {
+        id: 10,
+        numero: "OS-10",
+        clientenome: "Ana",
+        status: "Entregue",
+        valortotal: 1,
+        nfe_status: "autorizado",
+        nfe_chave: "35111111111111111111111111111111111111111111",
+        nfe_xml: "<nfeProc><NFe><infNFe><total><ICMSTot><vNF>1500.00</vNF></ICMSTot></total></infNFe></NFe></nfeProc>",
+      },
+      {
+        motivo: "NF-e emitida somente para atender pedido fiscal, sem impacto no caixa.",
+        userId: 7,
+        now: () => "2026-06-30T20:00:00.000Z",
+      }
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      registro: {
+        ordemId: 10,
+        tipo: "nfe_total_divergente",
+        valorOS: 1,
+        valorNFe: 1500,
+        motivo: "NF-e emitida somente para atender pedido fiscal, sem impacto no caixa.",
+        createdBy: 7,
+        createdAt: "2026-06-30T20:00:00.000Z",
+      },
+    });
   });
 
   it("reports missing authorized XML and cancelled NFe on delivered OS", () => {
