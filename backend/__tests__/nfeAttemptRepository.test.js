@@ -459,6 +459,73 @@ describe('nfeAttemptRepository', () => {
     ]);
   });
 
+  it('bloqueia reutilizacao quando outra OS ja ocupou a mesma serie e numero', () => {
+    const primeira = repository.reservar({
+      ordemId: 17,
+      serie: '1',
+      usuarioId: 9,
+      cstatsReutilizaveis: ['232'],
+    });
+    repository.transicionar(primeira.id, 'rejeitado', {
+      cStat: '232',
+      motivo: 'IE do destinatario nao informada',
+    });
+    db.prepare(`
+      INSERT INTO nfe_emissao_tentativas
+        (ordemid, operacao, idempotency_key, numero, serie, lote, status, cstat, createdat, updatedat)
+      VALUES
+        (18, 'emissao', 'emissao:18:1:1:a1', 1, '1', '000000001', 'autorizado', '100', 'agora', 'agora')
+    `).run();
+
+    expect(() => repository.reservar({
+      ordemId: 17,
+      serie: '1',
+      usuarioId: 9,
+      cstatsReutilizaveis: ['232'],
+    })).toThrow(expect.objectContaining({
+      status: 409,
+      code: 'nfe_numero_rejeitado_indisponivel',
+    }));
+  });
+
+  it('reutiliza rejeicao corrigivel apos falha_local posterior do mesmo numero', () => {
+    const primeira = repository.reservar({
+      ordemId: 17,
+      serie: '1',
+      usuarioId: 9,
+      cstatsReutilizaveis: ['232'],
+    });
+    repository.transicionar(primeira.id, 'rejeitado', {
+      cStat: '232',
+      motivo: 'IE do destinatario nao informada',
+    });
+    const tentativaLocal = repository.reservar({
+      ordemId: 17,
+      serie: '1',
+      usuarioId: 9,
+      cstatsReutilizaveis: ['232'],
+    });
+    repository.transicionar(tentativaLocal.id, 'falha_local', {
+      cStat: 'xml_schema',
+      motivo: 'XML invalido antes da transmissao',
+    });
+
+    const reemissao = repository.reservar({
+      ordemId: 17,
+      serie: '1',
+      usuarioId: 9,
+      cstatsReutilizaveis: ['232'],
+    });
+
+    expect(reemissao).toMatchObject({
+      numero: 1,
+      lote: '000000001',
+      idempotency_key: 'emissao:17:1:1:a3',
+    });
+    expect(db.prepare('SELECT ultimo_numero FROM nfe_sequencias WHERE serie = ?').get('1'))
+      .toEqual({ ultimo_numero: 1 });
+  });
+
   it.each(['processando', 'incerto', 'autorizado'])(
     'nao devolve numero no estado %s',
     (estado) => {

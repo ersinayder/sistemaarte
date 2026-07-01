@@ -332,13 +332,23 @@ function createNfeEmissaoService({
       });
     }
     if (info?.tipo === 'rejeicao') {
-      return finalizarRejeicao(tentativa, input, {
+      const respostaRejeicao = {
         cStat: String(info.cStat ?? info.cstat ?? '').trim(),
         motivo: info.mensagem || onlyMessage(error),
         chave: info.chave || null,
         protocolo: info.protocolo || null,
         xml: info.xml || null,
-      });
+      };
+      if (classificarResultadoEmissao(respostaRejeicao) !== 'rejeitado') {
+        return marcarIncerto(tentativa, input, {
+          cStat: respostaRejeicao.cStat || 'rejeicao',
+          motivo: respostaRejeicao.motivo,
+          chave: respostaRejeicao.chave,
+          protocolo: respostaRejeicao.protocolo,
+          xmlRetorno: respostaRejeicao.xml,
+        });
+      }
+      return finalizarRejeicao(tentativa, input, respostaRejeicao);
     }
     return marcarIncerto(tentativa, input, {
       cStat: info?.cStat ?? info?.cstat ?? 'comunicacao',

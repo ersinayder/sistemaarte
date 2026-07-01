@@ -370,6 +370,32 @@ describe('nfeNotasService', () => {
     });
   });
 
+  it('does not resolve a note hidden only by legacy OS fiscal trash fields', () => {
+    const db = makeDb();
+    const chave = '31260600000000000000550010000003031000000010';
+    db.prepare(`
+      INSERT INTO ordens
+        (id, numero, nfe_deletedat, nfe_deletedpor, nfe_deletedreason)
+      VALUES
+        (16, 'OS-16', '2026-07-01 10:00:00', 9, 'Oculta antes da entidade canonica')
+    `).run();
+    const info = db.prepare(`
+      INSERT INTO nfe_notas
+        (origem, ordemid, cliente_snapshot, emitente_snapshot, valortotal, ambiente, numero, serie, chave, status)
+      VALUES
+        ('ordem', 16, '{}', '{}', 80, 2, '303', '1', ?, 'autorizado')
+    `).run(chave);
+    const id = Number(info.lastInsertRowid);
+
+    expect(resolverNotaPorChave(db, chave)).toBeNull();
+    expect(resolverNotaPorId(db, id)).toBeNull();
+    expect(resolverNotaPorId(db, id, { includeDeleted: true })).toMatchObject({
+      id,
+      chave,
+      status: 'autorizado',
+    });
+  });
+
   it('finds only active OS notes for duplicate emission protection', () => {
     const db = makeDb();
     db.prepare(`
@@ -447,6 +473,37 @@ describe('nfeNotasService', () => {
 
     expect(restaurarNotaDaLixeira(db, id).changes).toBe(1);
     expect(resolverNotaPorId(db, id)).toMatchObject({ id, deletedat: null });
+  });
+
+  it('restores notes hidden by legacy OS fiscal trash fields', () => {
+    const db = makeDb();
+    db.prepare(`
+      INSERT INTO ordens
+        (id, numero, nfe_deletedat, nfe_deletedpor, nfe_deletedreason)
+      VALUES
+        (31, 'OS-31', '2026-07-01 10:00:00', 7, 'Oculta no legado')
+    `).run();
+    const info = db.prepare(`
+      INSERT INTO nfe_notas
+        (origem, ordemid, cliente_snapshot, emitente_snapshot, valortotal, ambiente, numero, serie, chave, status)
+      VALUES
+        ('ordem', 31, '{}', '{}', 80, 2, '000000309', '1',
+         '31260600000000000000550010000003091000000010', 'rejeitado')
+    `).run();
+    const id = Number(info.lastInsertRowid);
+
+    expect(resolverNotaPorId(db, id)).toBeNull();
+    expect(restaurarNotaDaLixeira(db, id).changes).toBe(1);
+    expect(resolverNotaPorId(db, id)).toMatchObject({ id, deletedat: null });
+    expect(db.prepare(`
+      SELECT nfe_deletedat, nfe_deletedpor, nfe_deletedreason
+      FROM ordens
+      WHERE id = 31
+    `).get()).toEqual({
+      nfe_deletedat: null,
+      nfe_deletedpor: null,
+      nfe_deletedreason: null,
+    });
   });
 
   it('creates an emitindo note and replaces its item snapshots', () => {
@@ -554,6 +611,78 @@ describe('nfeNotasService', () => {
     });
     expect(db.prepare('SELECT COUNT(*) AS total FROM nfe_notas WHERE ordemid=40').get())
       .toEqual({ total: 1 });
+  });
+
+  it('reuses rejected canonical order note when legacy number was stored without padding', () => {
+    const db = makeDb();
+    const primeira = criarNotaEmitindo(db, {
+      origem: 'ordem',
+      ordemid: 41,
+      cliente_snapshot: { nome: 'Cliente antes' },
+      emitente_snapshot: { xNome: 'Arte' },
+      valortotal: 91,
+      numero: '309',
+      serie: '1',
+    });
+    marcarNotaRejeitada(db, primeira.id, {
+      cstat: '232',
+      motivo: 'IE do destinatario nao informada',
+    });
+
+    const segunda = criarNotaEmitindo(db, {
+      origem: 'ordem',
+      ordemid: 41,
+      cliente_snapshot: { nome: 'Cliente corrigido' },
+      emitente_snapshot: { xNome: 'Arte' },
+      valortotal: 150,
+      numero: '000000309',
+      serie: '1',
+    });
+
+    expect(segunda.id).toBe(primeira.id);
+    expect(resolverNotaPorId(db, primeira.id)).toMatchObject({
+      status: 'emitindo',
+      numero: '309',
+      valortotal: 150,
+      rejeicao_cstat: null,
+    });
+    expect(db.prepare('SELECT COUNT(*) AS total FROM nfe_notas WHERE ordemid=41').get())
+      .toEqual({ total: 1 });
+  });
+
+  it('reuses avulsa note after local XML validation failure returned the fiscal number', () => {
+    const db = makeDb();
+    const primeira = criarNotaEmitindo(db, {
+      origem: 'avulsa',
+      cliente_snapshot: { nome: 'Cliente avulso' },
+      emitente_snapshot: { xNome: 'Arte' },
+      valortotal: 91,
+      numero: '000000312',
+      serie: '1',
+    });
+    marcarNotaRejeitada(db, primeira.id, {
+      cstat: 'xml_schema',
+      motivo: 'XML invalido antes da transmissao.',
+    });
+
+    const segunda = criarNotaEmitindo(db, {
+      origem: 'avulsa',
+      cliente_snapshot: { nome: 'Cliente avulso corrigido' },
+      emitente_snapshot: { xNome: 'Arte' },
+      valortotal: 150,
+      numero: '000000312',
+      serie: '1',
+    });
+
+    expect(segunda.id).toBe(primeira.id);
+    expect(resolverNotaPorId(db, primeira.id)).toMatchObject({
+      origem: 'avulsa',
+      status: 'emitindo',
+      valortotal: 150,
+      rejeicao_cstat: null,
+    });
+    expect(db.prepare('SELECT COUNT(*) AS total FROM nfe_notas WHERE origem = ? AND numero = ?')
+      .get('avulsa', '000000312')).toEqual({ total: 1 });
   });
 
   it('marks canonical notes as authorized or rejected', () => {

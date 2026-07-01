@@ -35,12 +35,23 @@ OS-0351 -> reemite NF-e 298/299
   reutilizavel, a proxima tentativa da mesma OS reaproveita `numero`, `serie`
   e `lote`, criando apenas novo ordinal de idempotencia (`a2`, `a3`...).
 - Essa reutilizacao nao altera `nfe_sequencias.ultimo_numero`.
+- A reutilizacao e bloqueada se outra OS ou outra nota canonica ja ocupa a
+  mesma `serie` e `numero`.
+- Se depois da rejeicao corrigivel houver apenas `falha_local` posterior do
+  mesmo numero, a proxima tentativa ainda reaproveita o numero rejeitado.
 - `backend/services/nfeEmissaoService.js` nao devolve numero global em
   rejeicao da SEFAZ.
 - `devolverNumero()` fica restrito a `falha_local`, antes da transmissao.
 - `backend/services/nfeNotasService.js` reaproveita a linha canonica
   `nfe_notas` rejeitada da mesma OS/numero/serie, limpando campos de rejeicao
   quando a nota volta para `emitindo`.
+- XML autorizado e DANFE so podem ser servidos para nota `autorizado` ou
+  `cancelado`, e o XML precisa ser um `nfeProc` autorizado valido da propria
+  chave.
+- Emissao avulsa tambem segue a classificacao conservadora: retorno nao
+  conclusivo vira `incerto`, nao rejeicao terminal.
+- Exportacao em lote de XML/DANFE tambem valida o `nfeProc` autorizado da
+  chave antes de incluir o arquivo no ZIP.
 
 ## CStats reutilizaveis
 
@@ -53,6 +64,8 @@ que o numero ja foi usado. Exemplos que continuam bloqueantes/incertos:
 - `204`, `205`, `206`, `539`: duplicidade/numeracao.
 - `302`, `303`: denegacao/situacao cadastral que nao deve ser tratada como
   simples reaproveitamento automatico.
+- Rejeicao textual sem cStat reconhecido tambem fica `incerto`; nao pode virar
+  rejeicao terminal por heuristica.
 
 ## Testes obrigatorios
 
@@ -60,7 +73,7 @@ Antes de alterar essa regra, rode:
 
 ```powershell
 cd backend
-npm.cmd test -- nfeEmissionRules.test.js nfeAttemptRepository.test.js nfeEmissaoService.test.js nfeNotasService.test.js
+npm.cmd test -- nfeEmissionRules.test.js nfeAttemptRepository.test.js nfeEmissaoService.test.js nfeNotasService.test.js routeContracts.test.js
 ```
 
 Coberturas principais:
@@ -71,6 +84,10 @@ Coberturas principais:
   OS no meio e reemissao da OS original com o mesmo numero.
 - `nfeNotasService.test.js`: reemissao da mesma OS/numero reutiliza a nota
   canonica rejeitada em vez de criar linhas duplicadas.
+- `routeContracts.test.js`: XML/DANFE exigem nota autorizada/cancelada e XML
+  legal validado antes de baixar documento fiscal, inclusive na emissao avulsa.
+- `nfeExportService.test.js`: exportacao em lote pula XML sem autorizacao legal
+  valida.
 
 ## Operacao
 

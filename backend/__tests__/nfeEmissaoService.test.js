@@ -491,6 +491,10 @@ describe('nfeEmissaoService', () => {
 
   it.each([
     ['duplicidade 204', rejeicaoRaw('204', 'Duplicidade de NF-e')],
+    ['numero inutilizado 205', rejeicaoRaw('205', 'NF-e esta inutilizada na Base de dados da SEFAZ')],
+    ['NF-e denegada 206', rejeicaoRaw('206', 'NF-e ja esta denegada na Base de dados da SEFAZ')],
+    ['uso denegado 302', rejeicaoRaw('302', 'Uso Denegado: Irregularidade fiscal do destinatario')],
+    ['destinatario nao habilitado 303', rejeicaoRaw('303', 'Uso Denegado: Destinatario nao habilitado')],
     ['duplicidade 539', rejeicaoRaw('539', 'Duplicidade com diferenca')],
     ['cStat desconhecido', rejeicaoRaw('9999', 'Retorno desconhecido')],
     ['retorno vazio', null],
@@ -507,6 +511,29 @@ describe('nfeEmissaoService', () => {
     expect(harness.attemptRepository.buscarPorId(1).status).toBe('incerto');
     expect(harness.db.prepare('SELECT ultimo_numero FROM nfe_sequencias WHERE serie = ?').get('1'))
       .toEqual({ ultimo_numero: 1 });
+  });
+
+  it('erro textual de rejeicao sem cStat conhecido fica incerto para nao liberar reemissao', async () => {
+    harness = createHarness({
+      transmitir: vi.fn().mockRejectedValue(new Error('Rejeicao: retorno textual sem codigo')),
+      classificarErro: vi.fn(() => ({
+        tipo: 'rejeicao',
+        cstat: 'rejeicao',
+        mensagem: 'SEFAZ rejeitou a emissao, mas a biblioteca nao informou cStat.',
+      })),
+    });
+
+    await expect(harness.service.emitir(baseInput())).resolves.toMatchObject({
+      httpStatus: 409,
+      ok: false,
+      status: 'incerto',
+      cStat: 'rejeicao',
+    });
+    expect(harness.attemptRepository.buscarPorId(1)).toMatchObject({
+      status: 'incerto',
+      cstat: 'rejeicao',
+    });
+    expect(harness.transmitir).toHaveBeenCalledTimes(1);
   });
 
   it('falha ao salvar XML em disco preserva autorizacao no banco e retorna alerta', async () => {

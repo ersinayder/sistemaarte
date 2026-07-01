@@ -37,7 +37,13 @@ const {
   transmitirCancelamentoPayload,
 } = require('../utils/nfeEventos');
 const { renderDanfeHtml } = require('../utils/danfe');
-const { sendPrintHtml } = require('../utils/print/base');
+const { renderDanfePdf } = require('../utils/pdf/danfePdf');
+const { gerarExportacaoNFe } = require('../services/nfeExportService');
+const {
+  extrairXmlFiscal,
+  filenameSeguro,
+  serializarXmlFiscal,
+} = require('../utils/nfeXml');
 const {
   tpAmbAtual,
   getCertificadoConfig,
@@ -49,11 +55,13 @@ const {
 const {
   aplicarOverrideClienteNFe,
   aplicarOverridesItensNFe,
+  classificarResultadoEmissao,
   normalizarItensAvulsosNFe,
   serializarItemPreviaNFe,
   validarClienteFiscalNFe,
   validarEmitenteFiscalNFe,
   validarItensFiscaisNFe,
+  validarXmlAutorizacao,
 } = require('../domain/nfeEmissionRules');
 const {
   buscarNotaAtivaParaOrdem,
@@ -115,6 +123,10 @@ function devolverNumeroNFeFalhaLocal(db, serie, numero) {
        AND ultimo_numero = ?
   `).run(String(serie), numeroNormalizado);
   return result.changes === 1;
+}
+
+function notaPermiteDocumentoAutorizacao(nota) {
+  return ['autorizado', 'cancelado'].includes(String(nota?.status || '').toLowerCase());
 }
 
 function maskCnpj(cnpj) {
@@ -180,48 +192,6 @@ function parseRetEvento(resultado, fallbackDhEvento) {
     dhEvento: retEvento?.dhRegEvento || fallbackDhEvento,
     xMotivo: retEvento?.xMotivo || '',
   };
-}
-
-function extrairXmlFiscal(valor, depth = 0) {
-  if (!valor || depth > 5) return null;
-
-  if (typeof valor === 'string') {
-    const texto = valor.trim();
-    if (texto.startsWith('<')) return texto;
-    if (texto.startsWith('{') || texto.startsWith('[')) {
-      try {
-        return extrairXmlFiscal(JSON.parse(texto), depth + 1);
-      } catch (_) {
-        return null;
-      }
-    }
-    return null;
-  }
-
-  if (Array.isArray(valor)) {
-    for (const item of valor) {
-      const xml = extrairXmlFiscal(item, depth + 1);
-      if (xml) return xml;
-    }
-    return null;
-  }
-
-  if (typeof valor === 'object') {
-    for (const key of ['xml', 'xmlAssinado', 'xmlProc', 'nfeProc', 'procNFe']) {
-      const xml = extrairXmlFiscal(valor[key], depth + 1);
-      if (xml) return xml;
-    }
-    for (const item of Object.values(valor)) {
-      const xml = extrairXmlFiscal(item, depth + 1);
-      if (xml) return xml;
-    }
-  }
-
-  return null;
-}
-
-function serializarXmlFiscal(resultado) {
-  return extrairXmlFiscal(resultado);
 }
 
 function buscarOrdemParaNFe(db, osId) {
@@ -439,10 +409,6 @@ function registrarEventoFiscal(db, evento) {
   } catch (err) {
     console.error(`[NF-e] Falha ao registrar evento fiscal (${evento.tipo}):`, err.message);
   }
-}
-
-function filenameSeguro(value) {
-  return String(value || 'nfe').replace(/[^a-zA-Z0-9._-]/g, '_');
 }
 
 function resumirStatusServico(resultado) {
@@ -766,7 +732,8 @@ router.post('/avulsa', auth(['admin', 'caixa']), async (req, res) => {
       console.error('[NF-e] Guard timeout disparado para NF-e avulsa');
       if (notaEmitindo && !autorizadaNaSefaz) {
         try {
-          marcarNotaRejeitada(db, notaEmitindo.id, {
+          marcarNotaIncerta(db, notaEmitindo.id, {
+            cstat: 'timeout',
             motivo: 'Timeout aguardando resposta da SEFAZ',
           });
         } catch (_) {}
@@ -866,27 +833,39 @@ router.post('/avulsa', auth(['admin', 'caixa']), async (req, res) => {
     } catch (sefazErr) {
       console.error('[NF-e] Erro na chamada SEFAZ avulsa:', sefazErr.message);
       const sefazInfo = getSefazErrorInfo(sefazErr);
-      marcarNotaRejeitada(db, notaEmitindo.id, {
-        cstat: sefazInfo.cstat,
-        motivo: sefazInfo.mensagem,
-      });
-      if (sefazInfo.tipo === 'validacao_xml') {
+      const cStatErro = String(sefazInfo.cStat ?? sefazInfo.cstat ?? '').trim();
+      const rejeicaoConclusiva = sefazInfo.tipo === 'rejeicao'
+        && classificarResultadoEmissao({ cStat: cStatErro }) === 'rejeitado';
+      const falhaLocal = sefazInfo.tipo === 'validacao_xml';
+      if (falhaLocal || rejeicaoConclusiva) {
+        marcarNotaRejeitada(db, notaEmitindo.id, {
+          cstat: cStatErro || null,
+          motivo: sefazInfo.mensagem,
+        });
+      } else {
+        marcarNotaIncerta(db, notaEmitindo.id, {
+          cstat: cStatErro || sefazInfo.tipo || 'comunicacao',
+          motivo: sefazInfo.mensagem,
+        });
+      }
+      if (falhaLocal) {
         devolverNumeroNFeFalhaLocal(db, serie, numero);
       }
       registrarEventoFiscal(db, {
         nfeid: notaEmitindo.id,
         ordemid: null,
         chave: notaEmitindo.chave || `NFE-${notaEmitindo.id}`,
-        tipo: 'rejeicao',
-        cstat: sefazInfo.cstat,
+        tipo: falhaLocal || rejeicaoConclusiva ? 'rejeicao' : 'incerto',
+        cstat: cStatErro || null,
         motivo: sefazInfo.mensagem,
         texto: 'Erro de comunicacao com a SEFAZ durante emissao avulsa',
       });
       if (!respondido) {
         clearTimeout(guardTimeout); respondido = true;
-        return res.status(sefazInfo.tipo === 'rejeicao' || sefazInfo.tipo === 'validacao_xml' ? 422 : 504).json({
+        return res.status(falhaLocal || rejeicaoConclusiva ? 422 : 409).json({
           erro: sefazInfo.mensagem,
           tipo: sefazInfo.tipo,
+          cStat: cStatErro || undefined,
           contingencia: false,
         });
       }
@@ -915,17 +894,27 @@ router.post('/avulsa', auth(['admin', 'caixa']), async (req, res) => {
         || `cStat ${cStat || 'desconhecido'}`;
       const rejeicao = formatarRejeicaoSefaz({ cStat, xMotivo: motivo, contexto: 'autorizacao' });
       const xmlRejeicao = serializarXmlFiscal(resultado);
-      marcarNotaRejeitada(db, notaEmitindo.id, {
-        cstat: cStat || null,
-        motivo: rejeicao.mensagem,
-        xml: xmlRejeicao,
-        chave: chave || null,
-      });
+      const rejeicaoConclusiva = classificarResultadoEmissao({ cStat }) === 'rejeitado';
+      if (rejeicaoConclusiva) {
+        marcarNotaRejeitada(db, notaEmitindo.id, {
+          cstat: cStat || null,
+          motivo: rejeicao.mensagem,
+          xml: xmlRejeicao,
+          chave: chave || null,
+        });
+      } else {
+        marcarNotaIncerta(db, notaEmitindo.id, {
+          cstat: cStat || 'retorno_desconhecido',
+          motivo: rejeicao.mensagem,
+          xml: xmlRejeicao,
+          chave: chave || null,
+        });
+      }
       registrarEventoFiscal(db, {
         nfeid: notaEmitindo.id,
         ordemid: null,
         chave: chave || notaEmitindo.chave || `NFE-${notaEmitindo.id}`,
-        tipo: 'rejeicao',
+        tipo: rejeicaoConclusiva ? 'rejeicao' : 'incerto',
         cstat: cStat || null,
         motivo: rejeicao.mensagem,
         texto: `Rejeicao de autorizacao NF-e avulsa. Retorno original: ${rejeicao.motivoOriginal}`,
@@ -933,7 +922,7 @@ router.post('/avulsa', auth(['admin', 'caixa']), async (req, res) => {
       });
       if (!respondido) {
         clearTimeout(guardTimeout); respondido = true;
-        return res.status(422).json({
+        return res.status(rejeicaoConclusiva ? 422 : 409).json({
           erro: rejeicao.mensagem,
           cStat,
           campo: rejeicao.campo,
@@ -945,6 +934,35 @@ router.post('/avulsa', auth(['admin', 'caixa']), async (req, res) => {
     }
 
     const xmlAutorizacao = serializarXmlFiscal(resultado);
+    if (!chave || !protocolo || !validarXmlAutorizacao(xmlAutorizacao, chave)) {
+      marcarNotaIncerta(db, notaEmitindo.id, {
+        cstat: cStat || null,
+        motivo: 'Autorizacao sem XML legal valido ou chave/protocolo divergente.',
+        chave: chave || null,
+        protocolo: protocolo || null,
+        xml: xmlAutorizacao || null,
+      });
+      registrarEventoFiscal(db, {
+        nfeid: notaEmitindo.id,
+        ordemid: null,
+        chave: chave || notaEmitindo.chave || `NFE-${notaEmitindo.id}`,
+        tipo: 'incerto',
+        protocolo: protocolo || null,
+        cstat: cStat || null,
+        motivo: 'Autorizacao sem XML legal valido ou chave/protocolo divergente.',
+        xml: xmlAutorizacao || null,
+      });
+      if (!respondido) {
+        clearTimeout(guardTimeout); respondido = true;
+        return res.status(409).json({
+          erro: 'Autorizacao sem XML legal valido ou chave/protocolo divergente.',
+          cStat,
+          chave,
+          protocolo,
+        });
+      }
+      return;
+    }
     autorizadaNaSefaz = true;
     db.transaction(() => {
       const itensSnapshot = documento.itens.map(({ id, ...item }) => item);
@@ -981,7 +999,8 @@ router.post('/avulsa', auth(['admin', 'caixa']), async (req, res) => {
     console.error('[NF-e] ERRO POST /avulsa:', e.message, e.stack);
     if (notaEmitindo && !autorizadaNaSefaz) {
       try {
-        marcarNotaRejeitada(db, notaEmitindo.id, {
+        marcarNotaIncerta(db, notaEmitindo.id, {
+          cstat: 'falha_local_desconhecida',
           motivo: e.message || 'Erro interno ao emitir NF-e avulsa',
         });
       } catch (_) {}
@@ -990,6 +1009,31 @@ router.post('/avulsa', auth(['admin', 'caixa']), async (req, res) => {
       clearTimeout(guardTimeout); respondido = true;
       res.status(500).json({ erro: 'Erro interno ao emitir NF-e avulsa' });
     }
+  }
+});
+
+// GET /api/nfe/exportar?tipo=xml|danfe&inicio=YYYY-MM-DD&fim=YYYY-MM-DD
+router.get('/exportar', auth(['admin', 'caixa']), async (req, res) => {
+  try {
+    const result = await gerarExportacaoNFe({
+      db: getDB(),
+      tipo: req.query.tipo,
+      inicio: req.query.inicio,
+      fim: req.query.fim,
+    });
+
+    res.setHeader('Content-Type', result.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+    res.send(result.buffer);
+  } catch (e) {
+    const status = e.status || 500;
+    if (status >= 500) {
+      console.error('[NF-e] GET /exportar:', e.message);
+    }
+    res.status(status).json({
+      erro: e.status ? e.message : 'Erro ao exportar NF-e',
+      code: e.code || 'erro_exportacao_nfe',
+    });
   }
 });
 
@@ -1057,6 +1101,9 @@ router.get('/:chave/xml/autorizacao', auth(['admin', 'caixa']), (req, res) => {
     if (!nota) {
       return res.status(404).json({ erro: 'NF-e nao encontrada para esta chave' });
     }
+    if (!notaPermiteDocumentoAutorizacao(nota)) {
+      return res.status(422).json({ erro: 'XML de autorizacao disponivel apenas para NF-e autorizada ou cancelada.' });
+    }
     if (!nota.xml) {
       return res.status(404).json({ erro: 'XML de autorizacao nao encontrado para esta NF-e' });
     }
@@ -1064,6 +1111,9 @@ router.get('/:chave/xml/autorizacao', auth(['admin', 'caixa']), (req, res) => {
     const xml = extrairXmlFiscal(nota.xml);
     if (!xml) {
       return res.status(422).json({ erro: 'XML de autorizacao salvo em formato invalido para esta NF-e' });
+    }
+    if (!validarXmlAutorizacao(xml, chave)) {
+      return res.status(422).json({ erro: 'XML de autorizacao salvo nao corresponde a um nfeProc autorizado desta chave.' });
     }
 
     res.setHeader('Content-Type', 'application/xml; charset=utf-8');
@@ -1076,7 +1126,7 @@ router.get('/:chave/xml/autorizacao', auth(['admin', 'caixa']), (req, res) => {
 });
 
 // GET /api/nfe/:chave/danfe
-router.get('/:chave/danfe', auth(['admin', 'caixa']), (req, res) => {
+router.get('/:chave/danfe', auth(['admin', 'caixa']), async (req, res) => {
   const { chave } = req.params;
   if (!chave || !/^\d{44}$/.test(chave)) {
     return res.status(400).json({ erro: 'Chave NF-e invalida. Deve conter exatamente 44 digitos.' });
@@ -1087,6 +1137,9 @@ router.get('/:chave/danfe', auth(['admin', 'caixa']), (req, res) => {
     if (!nota) {
       return res.status(404).json({ erro: 'NF-e nao encontrada para esta chave' });
     }
+    if (!notaPermiteDocumentoAutorizacao(nota)) {
+      return res.status(422).json({ erro: 'DANFE disponivel apenas para NF-e autorizada ou cancelada.' });
+    }
     if (!nota.xml) {
       return res.status(404).json({ erro: 'XML de autorizacao nao encontrado para esta NF-e' });
     }
@@ -1095,9 +1148,15 @@ router.get('/:chave/danfe', auth(['admin', 'caixa']), (req, res) => {
     if (!xml) {
       return res.status(422).json({ erro: 'XML de autorizacao salvo em formato invalido para esta NF-e' });
     }
+    if (!validarXmlAutorizacao(xml, chave)) {
+      return res.status(422).json({ erro: 'XML de autorizacao salvo nao corresponde a um nfeProc autorizado desta chave.' });
+    }
 
     const html = renderDanfeHtml(xml);
-    sendPrintHtml(res, `danfe-${filenameSeguro(chave)}.html`, html);
+    const pdf = await renderDanfePdf(html);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="danfe-${filenameSeguro(chave)}.pdf"`);
+    res.send(pdf);
   } catch (e) {
     console.error('[NF-e] GET /:chave/danfe:', e.message);
     res.status(e.statusCode || 500).json({ erro: e.statusCode ? e.message : 'Erro ao gerar DANFE' });

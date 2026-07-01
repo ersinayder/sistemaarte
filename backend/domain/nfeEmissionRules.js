@@ -207,6 +207,7 @@ const CSTATS_REJEICAO_REUTILIZA_NUMERO = new Set([
   '725',
   '778',
 ]);
+const CSTATS_EMISSAO_NAO_CONCLUSIVA = new Set(['205', '206', '302', '303']);
 const ESTADOS_EMISSAO_BLOQUEANTES = new Set(['processando', 'incerto']);
 
 function hasOwn(obj, field) {
@@ -372,6 +373,7 @@ function classificarResultadoEmissao(resultado) {
 
   const cStat = normalizarCStat(resultado.cStat ?? resultado.cstat);
   if (cStat === CSTAT_AUTORIZADO) return 'autorizado';
+  if (CSTATS_EMISSAO_NAO_CONCLUSIVA.has(cStat)) return 'incerto';
   if (CSTATS_REJEICAO_CONHECIDA.has(cStat)) return 'rejeitado';
   return 'incerto';
 }

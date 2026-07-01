@@ -217,11 +217,11 @@ Esta secao resume o que ja foi implementado e validado no sistema ate agora. Use
 | Produtos | Implementado | CRUD, estoque/cadastro, campos fiscais por produto (`ncm`, `cfop`, `csosn`, `origem_fiscal`, `unidade`) e soft delete. |
 | Propostas | Implementado | Funil comercial separado de OS, itens, status, PDF/HTML imprimivel, mensagem WhatsApp manual e geracao de OS somente apos aprovacao. |
 | Financeiro admin | Implementado | Resumo mensal, contas a pagar, baixa criando lancamento no caixa, contas a receber, DRE e relatorios imprimiveis. Admin only. |
-| NF-e | Implementado em homologacao | Emissao, cancelamento, CC-e, DANFE HTML real, XML legal em banco e disco, eventos fiscais, preview/edit fiscal antes de emitir, catalogo de rejeicoes SEFAZ. |
+| NF-e | Implementado em homologacao | Emissao, cancelamento, CC-e, DANFE PDF baixavel, XML legal em banco e disco, eventos fiscais, preview/edit fiscal antes de emitir, catalogo de rejeicoes SEFAZ. |
 | Configuracoes | Implementado | Empresa, fiscal, certificado `.pfx`, senha criptografavel, autorizados XML, WhatsApp, backup, seguranca e saude do sistema. Admin only. |
 | Backups | Implementado localmente | Backup local diario 2h BRT, rotacao, `backup-status.json`, endpoint/status na Configuracoes. Offsite ainda pendente. |
 | WhatsApp | Operacional com atencao a sessao local | Configuracao em `/configuracoes`, envio local por `whatsapp-service`, QR Code na tela quando o servico retorna estado `qr`, modo manual assistido como fallback e proposta abrindo `wa.me` com mensagem pronta. |
-| Relatorios/prints | Implementado | OS A5, fechamento de caixa, resumo financeiro, contas a pagar/receber, DRE, relatorio de producao, proposta e DANFE em HTML imprimivel. |
+| Relatorios/prints | Implementado | OS A5, fechamento de caixa, resumo financeiro, contas a pagar/receber, DRE, relatorio de producao e proposta em HTML imprimivel; DANFE fiscal em PDF baixavel. |
 
 ### Frontend atual
 
@@ -327,10 +327,15 @@ Regra obrigatoria:
 
 - Reemissao da mesma OS apos rejeicao corrigivel reutiliza o mesmo `numero` e `serie`.
 - Isso vale mesmo que outra OS tenha emitido NF-e autorizada no intervalo.
+- Nunca reutilizar se outra OS/nota canonica ja ocupa a mesma `serie` e `numero`.
+- `falha_local` posterior do mesmo numero nao cancela o reaproveitamento da rejeicao corrigivel original.
 - Rejeicao da SEFAZ nao chama devolucao global de `nfe_sequencias`.
 - `devolverNumero()` e somente para `falha_local` comprovadamente antes da transmissao.
 - A linha canonica em `nfe_notas` rejeitada da mesma OS/numero/serie deve voltar para `emitindo` na reemissao, sem criar duplicata.
 - Nao incluir duplicidade/denegacao nessa regra: `204`, `205`, `206`, `302`, `303`, `539` continuam bloqueantes/incertos.
+- Rejeicao textual sem cStat reconhecido fica `incerto`, nunca terminal.
+- XML autorizado e DANFE so saem de nota `autorizado`/`cancelado` com `nfeProc` valido para a chave.
+- NF-e avulsa e exportacao em lote seguem a mesma regra conservadora: nada de documento fiscal ou nova emissao "limpa" a partir de retorno nao conclusivo.
 
 Arquivo operacional: `docs/nfe-reemissao-rejeicao-sequencia.md`.
 
@@ -338,7 +343,7 @@ Testes obrigatorios ao mexer nessa area:
 
 ```powershell
 cd backend
-npm.cmd test -- nfeEmissionRules.test.js nfeAttemptRepository.test.js nfeEmissaoService.test.js nfeNotasService.test.js
+npm.cmd test -- nfeEmissionRules.test.js nfeAttemptRepository.test.js nfeEmissaoService.test.js nfeNotasService.test.js routeContracts.test.js
 ```
 
 ### NF-e - inutilizacao manual segura
@@ -368,7 +373,8 @@ Implementada para uso administrativo quando houver quebra de numeracao de NF-e s
 
 ### Impressao e documentos
 
-- Toda impressao operacional e HTML imprimivel servido pelo backend, nao PDF binario gerado no servidor.
+- Toda impressao operacional e HTML imprimivel servido pelo backend. Excecao fiscal aprovada: DANFE NF-e e PDF baixavel gerado no backend a partir do XML autorizado.
+- DANFE PDF usa Chrome/Edge instalado via `puppeteer-core`; se o Windows Server tiver caminho diferente, configurar `DANFE_PDF_CHROME_PATH` ou `PUPPETEER_EXECUTABLE_PATH`.
 - `sendPrintHtml()` aplica headers corretos e CSP especifica de impressao.
 - OS usa `renderOrdemServicoHtml()` e resumo financeiro oficial.
 - Impressao direta no servidor usa `backend/utils/print/serverPrinter.js`.
@@ -770,7 +776,7 @@ O guard timeout de 40s também libera o mutex (`nfe_status='rejeitado'`) se o st
 
 ```js
 // Salvo em duas camadas:
-// 1. Banco: campo nfe_xml TEXT na tabela ordens
+// 1. Banco: tabela canonica nfe_notas, campo xml TEXT
 // 2. Arquivo: backend/data/nfe_xmls/{chave}.xml  (e {chave}-canc.xml para cancelamentos)
 salvarXmlDisco(`${chave}.xml`, xmlAutorizacao);
 salvarXmlDisco(`${chave}-canc.xml`, xmlEvento);
@@ -795,7 +801,7 @@ O backup diário às 2h BRT já cobre `backend/data/` — o diretório `nfe_xmls
 - Mostra indicador temporario de homologacao: notas autorizadas X/10 e ambiente atual
 - Mostra motivo persistido da última rejeição quando `nfe_status='rejeitado'`
 - Permite ações por status:
-  - `autorizado`: CC-e, baixar XML de autorização, DANFE real em HTML imprimível, cancelar, detalhes
+  - `autorizado`: CC-e, baixar XML de autorização, DANFE PDF baixável, cancelar, detalhes
   - `rejeitado`: reemitir, detalhes
   - `cancelado`: baixar XML de autorização, reemitir, detalhes
   - `emitindo`: atualizar andamento, detalhes
@@ -810,14 +816,15 @@ O backup diário às 2h BRT já cobre `backend/data/` — o diretório `nfe_xmls
 GET  /api/nfe                         # lista notas sem XML pesado; retorna meta.ambiente e contador homologacao
 GET  /api/nfe/:chave/eventos          # eventos por chave NF-e
 GET  /api/nfe/ordem/:ordemId/eventos  # eventos por OS (útil para rejeição sem chave)
-GET  /api/nfe/:chave/xml/autorizacao  # baixa XML da autorização salvo em ordens.nfe_xml
+GET  /api/nfe/:chave/xml/autorizacao  # baixa XML da autorização salvo na nota canônica
+GET  /api/nfe/:chave/danfe            # baixa DANFE em PDF a partir do XML autorizado
 GET  /api/nfe/eventos/:eventoId/xml   # baixa XML de CC-e/cancelamento/rejeição
 POST /api/nfe/:chave/cce              # emite CC-e
 POST /api/nfe/:chave/cancelar         # cancela NF-e autorizada
 ```
 
 Eventos fiscais ficam em `nfe_eventos` com `tipo`: `autorizacao`, `rejeicao`, `cce`, `cancelamento`.
-Novas emissões registram autorização/rejeição nessa tabela. Notas antigas podem ter `nfe_xml` e dados de cancelamento em `ordens`, mas não necessariamente eventos retroativos em `nfe_eventos`.
+Novas emissões registram autorização/rejeição nessa tabela. O fluxo atual deve ler NF-e da tabela canônica `nfe_notas`; dados legados em `ordens` existem apenas para compatibilidade/backfill.
 
 ### Rejeições SEFAZ — mensagens operacionais
 
@@ -908,7 +915,7 @@ Implementar contingência real é backlog — documentar para o usuário que a e
 - [ ] Mínimo **10 NF-es bem-sucedidas** em homologação (`NFE_AMBIENTE_NUM=2`) — contador atual: ~2
 - [x] Implementar Carta de Correção (CC-e) — `tpEvento: '110110'` (pendente teste SEFAZ em homologação)
 - [x] Tela de NF-e com histórico de eventos, motivo de rejeição, reemissão, download de XML, aviso de CC-e, confirmação forte de cancelamento e contador X/10 homologação
-- [x] DANFE na tela NF-e — endpoint `GET /api/nfe/:chave/danfe` gera HTML imprimível a partir do XML autorizado salvo
+- [x] DANFE na tela NF-e — endpoint `GET /api/nfe/:chave/danfe` gera PDF baixável a partir do XML autorizado salvo
 - [ ] Alterar `NFE_AMBIENTE_NUM=1` no `.env` do servidor
 - [ ] Reiniciar PM2: `pm2 restart sistemaarte-backend` (necessário para recarregar vars do `.env`)
 - [ ] Emitir primeira nota real de baixo valor para validar
@@ -939,7 +946,7 @@ Implementar contingência real é backlog — documentar para o usuário que a e
 | NF-e: `montarNFe()` sem wrapper | `nfe.ide` undefined | Retorna `{ infNFe: {...} }` — sempre acessar `payload.infNFe.ide` |
 | NF-e: emissão simultânea | Race condition + SQLite lock (2–8s por emissão) | Mutex atômico com `UPDATE WHERE NOT IN ('emitindo','autorizado')` — `changes===0` → 409 |
 | NF-e: mutex preso em 'emitindo' | Crash antes do finally liberar | Guard timeout de 40s + catch global reseta para `'rejeitado'` |
-| NF-e: XML não salvo | Obrigação legal 5 anos — multa fiscal | Salvar em `nfe_xml` no banco E em `backend/data/nfe_xmls/` |
+| NF-e: XML não salvo | Obrigação legal 5 anos — multa fiscal | Salvar XML na tabela canônica `nfe_notas` E em `backend/data/nfe_xmls/` |
 | NF-e: path do .pfx com barra | Crash silencioso no Windows | Sempre usar `path.resolve()` — nunca string hardcoded |
 | NF-e: go-live sem `pm2 restart` | `.env` não recarrega — continua em homologação | `pm2 restart sistemaarte-backend` após alterar `NFE_AMBIENTE_NUM` |
 | NF-e: cancelar nota >24h | SEFAZ rejeita "Prazo superior ao previsto" | Resetar `nfe_status` no banco e reemitir antes de cancelar |
@@ -1058,7 +1065,7 @@ Operações SaaS e LGPD:
 
 Ordem recomendada para evolução do sistema:
 
-1. **DANFE real** — concluído e validado em produção após deploy. Usa o XML autorizado salvo em `ordens.nfe_xml` / `backend/data/nfe_xmls`, gera DANFE em HTML imprimível e troca o botão da tela de Notas Fiscais por uma ação real de imprimir/visualizar. Também há botão de DANFE dentro da OS que já tem NF-e emitida.
+1. **DANFE real** — concluído e evoluído para PDF baixável. Usa o XML autorizado da nota canônica `nfe_notas` / `backend/data/nfe_xmls` e troca o botão da tela de Notas Fiscais por download do PDF. Também há botão de DANFE dentro da OS que já tem NF-e emitida.
 2. **Propostas + funil básico** — concluído nesta sessão. A tela `/orcamento` continua como calculadora rápida de balcão e pode salvar proposta; a OS só nasce por `Gerar OS` em proposta aprovada ou por venda imediata.
 3. **PDF de proposta para WhatsApp/balcão** — concluído. Gera HTML imprimível autenticado da proposta para salvar PDF, imprimir ou enviar manualmente pelo WhatsApp.
 4. **Aprovar proposta e gerar OS** — concluído. Quando a proposta é aprovada internamente, o sistema reaproveita cliente, itens, total, observações e prazo para criar a OS com numeração `OS-XXXX`.
@@ -1197,11 +1204,11 @@ Concluído e validado em produção após deploy de 2026-05-19.
 
 Caminho esperado:
 
-- Usar o XML autorizado salvo em `ordens.nfe_xml` / `backend/data/nfe_xmls`
-- Gerar DANFE em HTML imprimível pelo endpoint `GET /api/nfe/:chave/danfe`
+- Usar o XML autorizado salvo em `nfe_notas.xml` / `backend/data/nfe_xmls`
+- Gerar DANFE em PDF baixável pelo endpoint `GET /api/nfe/:chave/danfe`
 - Adicionar botão real na tela de Notas Fiscais
 - Adicionar botão dentro da OS emitida
-- Ao clicar, o usuário consegue visualizar/imprimir e salvar como PDF pelo navegador
+- Ao clicar, o usuário baixa `danfe-<chave>.pdf`
 
 ---
 

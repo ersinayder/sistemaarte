@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import toast from 'react-hot-toast'
-import { FileWarning, Plus, RotateCcw, Trash2, X } from 'lucide-react'
+import { Download, FileWarning, Plus, RotateCcw, Trash2, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import { buscarEnderecoPorCep, maskCep } from '../utils/cep'
@@ -99,8 +99,21 @@ function itemAvulsoParaNfe(data = {}) {
   }
 }
 
-async function baixarArquivo(url, nomeArquivo) {
-  const r = await api.get(url, { responseType: 'blob', timeout: 45000 })
+async function mensagemErroBlob(e, fallback) {
+  const data = e?.response?.data
+  if (data?.erro) return data.erro
+  if (data instanceof Blob && data.type?.includes('application/json')) {
+    try {
+      const parsed = JSON.parse(await data.text())
+      if (parsed?.erro) return parsed.erro
+      if (parsed?.error) return parsed.error
+    } catch (_) {}
+  }
+  return fallback
+}
+
+async function baixarArquivo(url, nomeArquivo, config = {}) {
+  const r = await api.get(url, { responseType: 'blob', timeout: 45000, ...config })
   const href = URL.createObjectURL(r.data)
   const a = document.createElement('a')
   a.href = href
@@ -111,12 +124,16 @@ async function baixarArquivo(url, nomeArquivo) {
   URL.revokeObjectURL(href)
 }
 
-function abrirDanfe(chave) {
+async function baixarDanfe(chave) {
   if (!chave) {
     toast.error('Chave da NF-e indisponivel')
     return
   }
-  window.open(`/api/nfe/${chave}/danfe`, '_blank', 'noopener,noreferrer')
+  try {
+    await baixarArquivo(`/nfe/${chave}/danfe`, `danfe-${chave}.pdf`)
+  } catch (e) {
+    toast.error(await mensagemErroBlob(e, 'DANFE indisponivel'))
+  }
 }
 
 function mensagemErroNfe(e, fallback = 'Erro ao emitir NF-e') {
@@ -1663,7 +1680,7 @@ function ModalDetalhe({ nfe, onClose }) {
                     <button className="btn btn-ghost btn-sm" onClick={baixarXmlAutorizacao}>XML autorizacao</button>
                   )}
                   {['autorizado', 'cancelado'].includes(nfe.nfe_status) && nfe.nfe_chave && (
-                    <button className="btn btn-ghost btn-sm" onClick={() => abrirDanfe(nfe.nfe_chave)} title="Abrir DANFE para impressao">DANFE</button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => baixarDanfe(nfe.nfe_chave)} title="Baixar DANFE em PDF">DANFE</button>
                   )}
                 </div>
               </div>
@@ -1837,6 +1854,89 @@ function ModalCCE({ nfe, onClose, onSuccess }) {
   )
 }
 
+function ModalExportacaoNFe({ onClose }) {
+  const hoje = new Date().toISOString().slice(0, 10)
+  const primeiroDiaMes = `${hoje.slice(0, 8)}01`
+  const [tipo, setTipo] = useState('xml')
+  const [inicio, setInicio] = useState(primeiroDiaMes)
+  const [fim, setFim] = useState(hoje)
+  const [baixando, setBaixando] = useState(false)
+
+  const handleSubmit = async () => {
+    if (!inicio || !fim) {
+      toast.error('Informe data inicial e data final')
+      return
+    }
+    if (inicio > fim) {
+      toast.error('Data inicial nao pode ser maior que data final')
+      return
+    }
+
+    setBaixando(true)
+    try {
+      await baixarArquivo('/nfe/exportar', `nfe-${tipo}-${inicio}-a-${fim}.zip`, {
+        params: { tipo, inicio, fim },
+        responseType: 'blob',
+        timeout: 120000,
+        skipGlobalErrorToast: true,
+      })
+      toast.success('Exportacao gerada')
+      onClose()
+    } catch (e) {
+      toast.error(await mensagemErroBlob(e, 'Nao foi possivel exportar NF-e'))
+    } finally {
+      setBaixando(false)
+    }
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="exportar-nfe-title"
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'oklch(from var(--color-text) l c h / 0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-4)' }}
+      onClick={e => e.target === e.currentTarget && !baixando && onClose()}
+    >
+      <div style={{ width: 'min(460px, calc(100vw - 32px))', background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }}>
+        <div style={{ padding: 'var(--space-4) var(--space-5)', borderBottom: '1px solid var(--color-divider)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-4)' }}>
+          <div>
+            <h2 id="exportar-nfe-title" style={{ fontSize: 'var(--text-lg)', fontWeight: 700, margin: 0 }}>Exportar NF-e</h2>
+            <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>Baixe XML ou DANFE PDF por periodo de emissao.</p>
+          </div>
+          <button className="btn btn-icon btn-ghost" onClick={onClose} disabled={baixando} aria-label="Fechar">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div style={{ padding: 'var(--space-5)', display: 'grid', gap: 'var(--space-4)' }}>
+          <label style={{ display: 'grid', gap: 6 }}>
+            <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)' }}>Tipo</span>
+            <select className="form-input" value={tipo} onChange={e => setTipo(e.target.value)} disabled={baixando}>
+              <option value="xml">XML</option>
+              <option value="danfe">DANFE PDF</option>
+            </select>
+          </label>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 'var(--space-3)' }}>
+            <label style={{ display: 'grid', gap: 6 }}>
+              <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)' }}>Data inicial</span>
+              <input className="form-input" type="date" value={inicio} onChange={e => setInicio(e.target.value)} disabled={baixando} />
+            </label>
+            <label style={{ display: 'grid', gap: 6 }}>
+              <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)' }}>Data final</span>
+              <input className="form-input" type="date" value={fim} onChange={e => setFim(e.target.value)} disabled={baixando} />
+            </label>
+          </div>
+        </div>
+
+        <div style={{ padding: 'var(--space-4) var(--space-5)', borderTop: '1px solid var(--color-divider)', display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)' }}>
+          <button className="btn btn-ghost" onClick={onClose} disabled={baixando}>Cancelar</button>
+          <button className="btn btn-primary" onClick={handleSubmit} disabled={baixando}>{baixando ? 'Exportando...' : 'Exportar'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function NotasFiscais({ lixeira = false }) {
   const navigate = useNavigate()
   const { isAdmin } = useAuth() || {}
@@ -1848,6 +1948,7 @@ export default function NotasFiscais({ lixeira = false }) {
   const [cancelarNota, setCancelarNota] = useState(null)
   const [cceNota, setCceNota]         = useState(null)
   const [modalInutilizacao, setModalInutilizacao] = useState(false)
+  const [modalExportacao, setModalExportacao] = useState(false)
   const [pendenciasFiscais, setPendenciasFiscais] = useState([])
   const [integridadeFiscalFinanceira, setIntegridadeFiscalFinanceira] = useState([])
   const [auditoriaPendencia, setAuditoriaPendencia] = useState(null)
@@ -1974,6 +2075,9 @@ export default function NotasFiscais({ lixeira = false }) {
             </button>
           ) : (
             <>
+              <button className="btn btn-ghost" onClick={() => setModalExportacao(true)} style={{ gap: 'var(--space-2)' }}>
+                <Download size={16} /> Exportar
+              </button>
               {isAdmin && (
                 <button className="btn btn-ghost" onClick={() => navigate('/nfe/lixeira')} style={{ gap: 'var(--space-2)' }}>
                   <Trash2 size={16} /> Lixeira
@@ -2115,14 +2219,14 @@ export default function NotasFiscais({ lixeira = false }) {
                         <>
                           <button className="btn btn-ghost btn-sm" onClick={() => setCceNota(n)} title="Emitir CC-e">CC-e</button>
                           <button className="btn btn-ghost btn-sm" onClick={() => baixarXmlAutorizacao(n)} title="Baixar XML autorizado">XML</button>
-                          <button className="btn btn-ghost btn-sm" onClick={() => abrirDanfe(n.nfe_chave)} title="Abrir DANFE para impressao">DANFE</button>
+                          <button className="btn btn-ghost btn-sm" onClick={() => baixarDanfe(n.nfe_chave)} title="Baixar DANFE em PDF">DANFE</button>
                           <button className="btn btn-ghost btn-sm" onClick={() => setCancelarNota(n)} title="Cancelar NF-e">Cancelar</button>
                         </>
                       )}
                       {!lixeira && n.nfe_status === 'cancelado' && n.nfe_chave && (
                         <>
                           <button className="btn btn-ghost btn-sm" onClick={() => baixarXmlAutorizacao(n)} title="Baixar XML autorizado">XML</button>
-                          <button className="btn btn-ghost btn-sm" onClick={() => abrirDanfe(n.nfe_chave)} title="Abrir DANFE para impressao">DANFE</button>
+                          <button className="btn btn-ghost btn-sm" onClick={() => baixarDanfe(n.nfe_chave)} title="Baixar DANFE em PDF">DANFE</button>
                         </>
                       )}
                       {!lixeira && ['rejeitado', 'cancelado'].includes(n.nfe_status) && STATUS_NFE_EMISSAO.includes(n.status) && (
@@ -2156,6 +2260,7 @@ export default function NotasFiscais({ lixeira = false }) {
       {cceNota && <ModalCCE nfe={cceNota} onClose={() => setCceNota(null)} onSuccess={carregar} />}
       {auditoriaPendencia && <ModalAuditoriaPendenciaFiscal pendencia={auditoriaPendencia} onClose={() => setAuditoriaPendencia(null)} />}
       {auditoriaIntegridadeFiscalFinanceira && <ModalAuditoriaIntegridadeFiscalFinanceira apontamento={auditoriaIntegridadeFiscalFinanceira} onClose={() => setAuditoriaIntegridadeFiscalFinanceira(null)} isAdmin={isAdmin} onConciliado={() => carregarIntegridadeFiscalFinanceira()} />}
+      {modalExportacao && <ModalExportacaoNFe onClose={() => setModalExportacao(false)} />}
       <InutilizacaoModal open={modalInutilizacao} onClose={() => setModalInutilizacao(false)} onSuccess={carregar} />
     </div>
   )

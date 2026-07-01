@@ -23,7 +23,11 @@ describe('nfeEmissionRules', () => {
       ['codigo desconhecido', { cStat: '999' }, 'incerto'],
       ['autorizacao', { cStat: 100 }, 'autorizado'],
       ['duplicidade potencialmente autorizada', { cStat: '204' }, 'incerto'],
+      ['numero inutilizado', { cStat: '205' }, 'incerto'],
+      ['NF-e denegada', { cStat: '206' }, 'incerto'],
       ['duplicidade com diferenca na chave', { cStat: '539' }, 'incerto'],
+      ['uso denegado destinatario', { cStat: '302' }, 'incerto'],
+      ['destinatario nao habilitado', { cStat: '303' }, 'incerto'],
       ['CFOP incompativel', { cStat: '386' }, 'rejeitado'],
       ['NCM inexistente', { cStat: '778' }, 'rejeitado'],
     ])('classifica %s', (_cenario, resultado, estadoEsperado) => {

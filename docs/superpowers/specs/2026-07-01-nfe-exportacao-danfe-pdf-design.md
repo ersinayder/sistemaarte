@@ -21,8 +21,9 @@ O `AGENTS.md` antigo orienta que DANFE seja HTML imprimivel e que o sistema nao 
   - DANFE PDF.
 - Entregar o lote como `.zip`.
 - Preservar permissoes atuais de NF-e: `admin` e `caixa`.
-- Usar `nfe_emitida_em` como criterio de periodo.
-- Exportar apenas notas com `nfe_status` `autorizado` ou `cancelado`, pois sao as notas com XML autorizado/DANFE disponivel.
+- Usar `nfe_notas.createdat` como criterio de periodo, exposto na API como `nfe_emitida_em`.
+- Exportar apenas notas com `nfe_notas.status` `autorizado` ou `cancelado`, pois sao as notas com XML autorizado/DANFE disponivel.
+- Incluir notas de origem `ordem` e `avulsa`.
 
 ## Fora de Escopo
 
@@ -55,9 +56,10 @@ O botao individual `DANFE` continua aparecendo nas notas autorizadas e cancelada
 O endpoint existente `GET /api/nfe/:chave/danfe` sera mantido como caminho publico da aplicacao, mas sua resposta muda:
 
 - valida chave com 44 digitos;
-- busca a OS por `nfe_chave`;
-- exige `deletedat IS NULL`;
-- exige `nfe_xml` presente e parseavel por `extrairXmlFiscal()`;
+- busca a nota fiscal canonica por chave em `nfe_notas`, via `resolverNotaPorChave()`;
+- exige nota nao enviada para a lixeira fiscal;
+- nao depende de OS ativa, pois a NF-e continua intacta mesmo se a OS for enviada para a lixeira operacional;
+- exige `nfe_notas.xml` presente e parseavel por `extrairXmlFiscal()`;
 - renderiza o DANFE a partir do HTML existente de `renderDanfeHtml(xml)`;
 - converte o HTML para PDF no backend;
 - responde com:
@@ -68,7 +70,7 @@ A conversao deve ficar isolada em um utilitario dedicado, por exemplo `backend/u
 
 ### Motor de PDF
 
-A implementacao recomendada e renderizar o HTML atual em Chromium headless e gerar PDF A4. A escolha final do pacote deve ser validada no plano de implementacao, considerando Windows Server, GitHub Actions self-hosted e Node.js 22.
+A implementacao recomendada e renderizar o HTML atual em Chromium headless e gerar PDF A4. A implementacao final usa `puppeteer-core`, preferindo `DANFE_PDF_CHROME_PATH`/`PUPPETEER_EXECUTABLE_PATH` e depois Chrome/Edge instalado no Windows, para evitar depender do Chromium baixado no cache do Puppeteer.
 
 Requisitos do PDF:
 
@@ -92,17 +94,18 @@ Contrato:
 - valida `tipo`, `inicio` e `fim`;
 - rejeita periodo invertido;
 - aplica limite maximo de periodo para evitar ZIP gigante. Limite recomendado: 370 dias;
-- consulta notas nao deletadas fiscalmente e nao deletadas como OS:
-  - `o.deletedat IS NULL`;
-  - `o.nfe_deletedat IS NULL`;
-  - `o.nfe_status IN ('autorizado', 'cancelado')`;
-  - `date(o.nfe_emitida_em)` entre `inicio` e `fim`;
-- ordena por `nfe_emitida_em`, `nfe_numero`.
+- consulta notas canonicas em `nfe_notas n` com `LEFT JOIN ordens o ON o.id = n.ordemid`;
+- nao exporta notas enviadas para a lixeira fiscal:
+  - `COALESCE(n.deletedat, CASE WHEN n.origem = 'ordem' THEN o.nfe_deletedat ELSE NULL END) IS NULL`;
+- nao filtra `o.deletedat`, pois a lixeira de OS nao deve esconder/exportar-bloquear NF-e autorizada;
+- filtra `n.status IN ('autorizado', 'cancelado')`;
+- filtra `date(n.createdat)` entre `inicio` e `fim`;
+- ordena por data de emissao e numero da NF-e.
 
 Para `tipo=xml`:
 
 - adiciona um arquivo por nota: `xml/<nfe_numero>-<chave>.xml`;
-- usa o XML autorizado extraido de `nfe_xml`.
+- usa o XML autorizado extraido de `nfe_notas.xml`.
 
 Para `tipo=danfe`:
 
@@ -127,7 +130,7 @@ Nome recomendado do ZIP:
 
 ## Frontend
 
-Alterar `frontend/src/pages/NotasFiscais.jsx`.
+Alterar `frontend/src/pages/NotasFiscais.jsx` e `frontend/src/pages/OrdemDetalhe.jsx`.
 
 ### Botao DANFE Individual
 
@@ -178,6 +181,9 @@ Backend:
 - teste de validacao de chave invalida;
 - teste de ZIP XML por periodo;
 - teste de ZIP DANFE por periodo com manifesto;
+- teste garantindo inclusao de nota avulsa;
+- teste garantindo que OS em lixeira operacional nao remove a NF-e exportavel;
+- teste garantindo que nota na lixeira fiscal nao e exportada;
 - teste de periodo invalido/invertido;
 - teste de permissao `admin`/`caixa`.
 
@@ -186,7 +192,8 @@ Frontend:
 - renderiza botao `Exportar` na tela principal de NF-e;
 - modal abre e mostra tipo, data inicial e data final;
 - ao confirmar, chama `/nfe/exportar` com os parametros corretos;
-- botao `DANFE` usa download e nao `window.open`.
+- botao `DANFE` usa download e nao `window.open`;
+- painel fiscal da OS baixa o mesmo DANFE PDF individual.
 
 Verificacao manual:
 
@@ -198,7 +205,7 @@ Verificacao manual:
 
 ## Riscos
 
-- Dependencia de Chromium/headless no Windows Server pode exigir ajuste de instalacao/deploy.
+- Dependencia de Chrome/Edge headless no Windows Server pode exigir instalar o navegador ou configurar `DANFE_PDF_CHROME_PATH`.
 - PDF fiscal precisa preservar dimensoes A4 e legibilidade do DANFE atual.
 - Exportar muitos DANFEs em PDF pode ser mais lento que exportar XML. O limite de periodo e o manifesto reduzem risco operacional.
 
@@ -207,5 +214,7 @@ Verificacao manual:
 - O endpoint atual de DANFE sera substituido totalmente por PDF.
 - O DANFE HTML nao sera mantido como contrato publico.
 - A exportacao em lote de DANFE usara PDF.
-- O periodo usa `nfe_emitida_em`.
+- O periodo usa `nfe_notas.createdat`, exposto na API como `nfe_emitida_em`.
+- A exportacao inclui NF-e avulsa.
+- A lixeira operacional de OS nao altera a existencia/exportabilidade da NF-e.
 - O lote inicial nao inclui XMLs de eventos fiscais.

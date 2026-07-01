@@ -31,6 +31,10 @@ function normalizarCStats(values = []) {
   ));
 }
 
+function hasTable(db, table) {
+  return Boolean(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(table));
+}
+
 function createNfeAttemptRepository(db, deps = {}) {
   const agora = deps.agora || (() => new Date().toISOString());
 
@@ -116,10 +120,48 @@ function createNfeAttemptRepository(db, deps = {}) {
             AND posterior.operacao = rejeitada.operacao
             AND posterior.serie = rejeitada.serie
             AND posterior.id > rejeitada.id
+            AND NOT (
+              posterior.numero = rejeitada.numero
+              AND posterior.status = 'falha_local'
+            )
         )
       ORDER BY rejeitada.id DESC
       LIMIT 1
     `).get(ordemId, serie, ...cstats) || null;
+  }
+
+  function numeroOcupadoPorOutraOrdem({ ordemId, serie, numero }) {
+    const tentativa = db.prepare(`
+      SELECT id
+      FROM nfe_emissao_tentativas
+      WHERE operacao = 'emissao'
+        AND serie = ?
+        AND numero = ?
+        AND ordemid <> ?
+        AND status <> 'falha_local'
+      LIMIT 1
+    `).get(serie, numero, ordemId);
+    if (tentativa) return true;
+
+    if (!hasTable(db, 'nfe_notas')) return false;
+    const hasOrdens = hasTable(db, 'ordens');
+    const deletedClause = hasOrdens
+      ? "COALESCE(n.deletedat, CASE WHEN n.origem = 'ordem' THEN o.nfe_deletedat ELSE NULL END) IS NULL"
+      : 'n.deletedat IS NULL';
+    const joinOrdens = hasOrdens ? 'LEFT JOIN ordens o ON o.id = n.ordemid' : '';
+    const nota = db.prepare(`
+      SELECT n.id
+      FROM nfe_notas n
+      ${joinOrdens}
+      WHERE n.serie = ?
+        AND TRIM(COALESCE(n.numero, '')) <> ''
+        AND TRIM(n.numero) NOT GLOB '*[^0-9]*'
+        AND CAST(TRIM(n.numero) AS INTEGER) = ?
+        AND ${deletedClause}
+        AND COALESCE(n.ordemid, -1) <> ?
+      LIMIT 1
+    `).get(serie, numero, ordemId);
+    return Boolean(nota);
   }
 
   const reservarTransaction = db.transaction(({
@@ -144,6 +186,17 @@ function createNfeAttemptRepository(db, deps = {}) {
       cstatsReutilizaveis
     );
     if (rejeicaoReutilizavel) {
+      if (numeroOcupadoPorOutraOrdem({
+        ordemId,
+        serie: serieNormalizada,
+        numero: rejeicaoReutilizavel.numero,
+      })) {
+        throw repositoryError(
+          409,
+          'nfe_numero_rejeitado_indisponivel',
+          'A numeracao rejeitada ja esta ocupada por outra NF-e. Revise a sequencia antes de reenviar.'
+        );
+      }
       return criarTentativaProcessando({
         ordemId,
         serie: serieNormalizada,
