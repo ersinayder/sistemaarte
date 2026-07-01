@@ -273,6 +273,101 @@ function restaurarNotaDaLixeira(db, id) {
   `).run(id);
 }
 
+function criarNotaEmitindo(db, data = {}) {
+  const info = db.prepare(`
+    INSERT INTO nfe_notas
+      (origem, ordemid, clienteid, cliente_snapshot, emitente_snapshot, valortotal,
+       descontovalor, pagamento, ambiente, numero, serie, status, criadopor)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'emitindo', ?)
+  `).run(
+    data.origem,
+    data.ordemid || null,
+    data.clienteid || null,
+    json(data.cliente_snapshot || {}),
+    json(data.emitente_snapshot || {}),
+    Number(data.valortotal || 0),
+    Number(data.descontovalor || 0),
+    data.pagamento || 'Pix',
+    Number(data.ambiente || 2),
+    data.numero || null,
+    data.serie || '1',
+    data.criadopor || null
+  );
+  return resolverNotaPorId(db, Number(info.lastInsertRowid), { includeDeleted: true });
+}
+
+function substituirItensNota(db, nfeid, itens = []) {
+  db.prepare('DELETE FROM nfe_itens WHERE nfeid=?').run(nfeid);
+  const insert = db.prepare(`
+    INSERT INTO nfe_itens
+      (nfeid, ordem_item_id, produto_id, nome, quantidade, preco_unitario, avulso,
+       ncm, cfop, csosn, origem_fiscal, unidade)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  for (const item of itens) {
+    insert.run(
+      nfeid,
+      item.id || item.ordem_item_id || null,
+      item.produto_id || null,
+      item.nome || item.produto_nome || 'PRODUTO',
+      Number(item.quantidade || 1),
+      Number(item.preco_unitario || 0),
+      item.avulso ? 1 : 0,
+      String(item.ncm || '44151000'),
+      String(item.cfop || '5102'),
+      String(item.csosn || '400'),
+      String(item.origem_fiscal ?? '0'),
+      item.unidade || 'UN'
+    );
+  }
+}
+
+function marcarNotaAutorizada(db, id, data = {}) {
+  return db.prepare(`
+    UPDATE nfe_notas
+    SET status='autorizado',
+        chave=?,
+        protocolo=?,
+        xml=?,
+        rejeicao_cstat=NULL,
+        rejeicao_motivo=NULL,
+        cancelado_em=NULL,
+        cancel_protocolo=NULL,
+        cancel_motivo=NULL,
+        deletedat=NULL,
+        deletedpor=NULL,
+        deletedreason=NULL,
+        createdat=COALESCE(?, createdat),
+        updatedat=datetime('now','localtime')
+    WHERE id=?
+  `).run(
+    data.chave || null,
+    data.protocolo || null,
+    data.xml || null,
+    data.emitida_em || null,
+    id
+  );
+}
+
+function marcarNotaRejeitada(db, id, data = {}) {
+  return db.prepare(`
+    UPDATE nfe_notas
+    SET status='rejeitado',
+        chave=COALESCE(?, chave),
+        rejeicao_cstat=?,
+        rejeicao_motivo=?,
+        xml=COALESCE(?, xml),
+        updatedat=datetime('now','localtime')
+    WHERE id=?
+  `).run(
+    data.chave || null,
+    data.cstat || null,
+    data.motivo || null,
+    data.xml || null,
+    id
+  );
+}
+
 function buscarNotaAtivaParaOrdem(db, ordemid) {
   if (!hasTable(db, 'nfe_notas')) return null;
   const rows = db.prepare(`
@@ -289,10 +384,14 @@ function buscarNotaAtivaParaOrdem(db, ordemid) {
 module.exports = {
   backfillNfeNotasFromOrdens,
   buscarNotaAtivaParaOrdem,
+  criarNotaEmitindo,
   listarEventosNota,
   listarNotasFiscais,
+  marcarNotaAutorizada,
+  marcarNotaRejeitada,
   moverNotaParaLixeira,
   resolverNotaPorChave,
   resolverNotaPorId,
   restaurarNotaDaLixeira,
+  substituirItensNota,
 };

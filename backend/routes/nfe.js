@@ -34,12 +34,17 @@ const {
   validarItensFiscaisNFe,
 } = require('../domain/nfeEmissionRules');
 const {
+  buscarNotaAtivaParaOrdem,
+  criarNotaEmitindo,
   listarEventosNota,
   listarNotasFiscais,
+  marcarNotaAutorizada,
+  marcarNotaRejeitada,
   moverNotaParaLixeira,
   resolverNotaPorChave,
   resolverNotaPorId,
   restaurarNotaDaLixeira,
+  substituirItensNota,
 } = require('../services/nfeNotasService');
 
 // Rotas fiscais leem/escrevem a entidade canonica nfe_notas na fase 1.
@@ -706,13 +711,22 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
   let respondido = false;
   const db = getDB();
   const osId = req.params.id;
+  let notaEmitindo = null;
+  let numero = null;
+  let serie = null;
+  let autorizadaNaSefaz = false;
 
   const guardTimeout = setTimeout(() => {
     if (!respondido) {
       respondido = true;
       console.error(`[NF-e] Guard timeout disparado para OS#${osId}`);
-      // Libera mutex se ainda estiver 'emitindo' (guard disparou antes da resposta SEFAZ)
-      try { db.prepare(`UPDATE ordens SET nfe_status='rejeitado' WHERE id=? AND nfe_status='emitindo'`).run(osId); } catch(_) {}
+      if (notaEmitindo && !autorizadaNaSefaz) {
+        try {
+          marcarNotaRejeitada(db, notaEmitindo.id, {
+            motivo: 'Timeout aguardando resposta da SEFAZ',
+          });
+        } catch (_) {}
+      }
       res.status(504).json({ erro: 'SEFAZ demorou demais para responder. Aguarde alguns instantes, atualize a tela e tente reemitir.' });
     }
   }, NFE_ROUTE_TIMEOUT_MS);
@@ -766,29 +780,30 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
       return res.status(400).json({ erro: erroEmitenteFiscal.erro });
     }
 
-    // ── MUTEX: tenta adquirir o lock de emissao ────────────────────────────────
-    // UPDATE só executa se o status NÃO for 'emitindo' nem 'autorizado'.
-    // Se changes === 0, outro processo já pegou o lock — rejeita com 409.
-    const lock = db.prepare(`
-      UPDATE ordens
-      SET nfe_status = 'emitindo',
-          nfe_deletedat = NULL,
-          nfe_deletedpor = NULL,
-          nfe_deletedreason = NULL
-      WHERE id = ? AND (nfe_status IS NULL OR nfe_status NOT IN ('emitindo', 'autorizado'))
-    `).run(osId);
-
-    if (lock.changes === 0) {
+    const notaAtiva = buscarNotaAtivaParaOrdem(db, os.id);
+    if (notaAtiva) {
       clearTimeout(guardTimeout); respondido = true;
       return res.status(409).json({
-        erro: 'NF-e ja esta sendo emitida ou ja foi autorizada. Aguarde e tente novamente.'
+        erro: 'NF-e ja autorizada ou em emissao para esta OS'
       });
     }
-    // ── fim do mutex ───────────────────────────────────────────────────────────
-
-    const serie  = getSerieNFe();
-    const numero = proximoNumero(db, serie);
+    serie = getSerieNFe();
+    numero = proximoNumero(db, serie);
     const ambiente = tpAmbAtual();
+    notaEmitindo = criarNotaEmitindo(db, {
+      origem: 'ordem',
+      ordemid: os.id,
+      clienteid: os.clienteid || null,
+      cliente_snapshot: clienteComOverrides.cliente,
+      emitente_snapshot: emitente,
+      valortotal: Number(os.valortotal || 0),
+      descontovalor: Number(os.descontovalor || 0),
+      pagamento: os.pagamento || 'Pix',
+      ambiente,
+      numero,
+      serie,
+      criadopor: req.user?.id || null,
+    });
 
     const payload = montarNFe({
       ordem:    os,
@@ -816,14 +831,17 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
       }));
     } catch (sefazErr) {
       console.error('[NF-e] Erro na chamada SEFAZ:', sefazErr.message);
-      db.prepare(`UPDATE ordens SET nfe_status='rejeitado' WHERE id=? AND nfe_status='emitindo'`).run(osId);
       const sefazInfo = getSefazErrorInfo(sefazErr);
+      marcarNotaRejeitada(db, notaEmitindo.id, {
+        cstat: sefazInfo.cstat,
+        motivo: sefazInfo.mensagem,
+      });
       if (deveDevolverNumeroNFeAposFalhaAutorizacao(sefazInfo) && rejeicaoPermiteDevolverNumeroNFe(sefazInfo.cstat)) {
         devolverNumeroNFeRejeitada(db, serie, numero);
       }
       registrarEventoFiscal(db, {
         ordemid: os.id,
-        chave: os.nfe_chave || `OS-${os.id}`,
+        chave: notaEmitindo.chave || `NFE-${notaEmitindo.id}`,
         tipo: 'rejeicao',
         cstat: sefazInfo.cstat,
         motivo: sefazInfo.mensagem,
@@ -870,11 +888,16 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
       if (rejeicaoPermiteDevolverNumeroNFe(cStat)) {
         devolverNumeroNFeRejeitada(db, serie, numero);
       }
-      db.prepare(`UPDATE ordens SET nfe_status='rejeitado' WHERE id=?`).run(osId);
       const xmlRejeicao = serializarXmlFiscal(resultado);
+      marcarNotaRejeitada(db, notaEmitindo.id, {
+        cstat: cStat || null,
+        motivo: rejeicao.mensagem,
+        xml: xmlRejeicao,
+        chave: chave || null,
+      });
       registrarEventoFiscal(db, {
         ordemid: os.id,
-        chave: chave || os.nfe_chave || `OS-${os.id}`,
+        chave: chave || notaEmitindo.chave || `NFE-${notaEmitindo.id}`,
         tipo: 'rejeicao',
         cstat: cStat || null,
         motivo: rejeicao.mensagem,
@@ -898,24 +921,16 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
     // Serializar XML da resposta para armazenamento (obrigação legal 5 anos)
     const xmlAutorizacao = serializarXmlFiscal(resultado);
 
-    // Salvar em banco (campo nfe_xml) + arquivo em backend/data/nfe_xmls/{chave}.xml
-    db.prepare(`
-      UPDATE ordens SET
-        nfe_status     = 'autorizado',
-        nfe_numero     = ?,
-        nfe_serie      = ?,
-        nfe_chave      = ?,
-        nfe_protocolo  = ?,
-        nfe_emitida_em = ?,
-        nfe_xml        = ?,
-        nfe_cancelado_em = NULL,
-        nfe_cancel_protocolo = NULL,
-        nfe_cancel_motivo = NULL,
-        nfe_deletedat = NULL,
-        nfe_deletedpor = NULL,
-        nfe_deletedreason = NULL
-      WHERE id = ?
-    `).run(numero, serie, chave, protocolo, agora, xmlAutorizacao, osId);
+    autorizadaNaSefaz = true;
+    db.transaction(() => {
+      substituirItensNota(db, notaEmitindo.id, itensComOverrides.itens);
+      marcarNotaAutorizada(db, notaEmitindo.id, {
+        chave,
+        protocolo,
+        xml: xmlAutorizacao,
+        emitida_em: agora,
+      });
+    })();
 
     salvarClienteCadastroAposEmissao(db, os, clienteComOverrides.cliente);
 
@@ -942,8 +957,13 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
 
   } catch (e) {
     console.error('[NF-e] ERRO POST /emitir:', e.message, e.stack);
-    // Garante que o mutex nunca fique travado em 'emitindo' após exceção inesperada
-    try { db.prepare(`UPDATE ordens SET nfe_status='rejeitado' WHERE id=? AND nfe_status='emitindo'`).run(osId); } catch(_) {}
+    if (notaEmitindo && !autorizadaNaSefaz) {
+      try {
+        marcarNotaRejeitada(db, notaEmitindo.id, {
+          motivo: e.message || 'Erro interno ao emitir NF-e',
+        });
+      } catch (_) {}
+    }
     if (!respondido) {
       clearTimeout(guardTimeout); respondido = true;
       res.status(500).json({ erro: 'Erro interno ao emitir NF-e', detalhe: e.message });

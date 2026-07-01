@@ -3,12 +3,16 @@ import { describe, expect, it } from 'vitest';
 import {
   backfillNfeNotasFromOrdens,
   buscarNotaAtivaParaOrdem,
+  criarNotaEmitindo,
   listarEventosNota,
   listarNotasFiscais,
+  marcarNotaAutorizada,
+  marcarNotaRejeitada,
   moverNotaParaLixeira,
   resolverNotaPorChave,
   resolverNotaPorId,
   restaurarNotaDaLixeira,
+  substituirItensNota,
 } from '../services/nfeNotasService.js';
 
 function makeDb() {
@@ -316,5 +320,105 @@ describe('nfeNotasService', () => {
 
     expect(restaurarNotaDaLixeira(db, id).changes).toBe(1);
     expect(resolverNotaPorId(db, id)).toMatchObject({ id, deletedat: null });
+  });
+
+  it('creates an emitindo note and replaces its item snapshots', () => {
+    const db = makeDb();
+    const nota = criarNotaEmitindo(db, {
+      origem: 'ordem',
+      ordemid: 40,
+      clienteid: 5,
+      cliente_snapshot: { nome: 'Cliente OS' },
+      emitente_snapshot: { xNome: 'Arte' },
+      valortotal: 91,
+      descontovalor: 0,
+      pagamento: 'Pix',
+      ambiente: 2,
+      numero: '309',
+      serie: '1',
+      criadopor: 7,
+    });
+
+    substituirItensNota(db, nota.id, [{
+      id: 90,
+      produto_id: 3,
+      nome: 'Item OS',
+      quantidade: 2,
+      preco_unitario: 45.5,
+      avulso: false,
+      ncm: '44151000',
+      cfop: '5102',
+      csosn: '400',
+      origem_fiscal: '0',
+      unidade: 'UN',
+    }]);
+
+    expect(nota).toMatchObject({
+      origem: 'ordem',
+      ordemid: 40,
+      clienteid: 5,
+      status: 'emitindo',
+      numero: '309',
+      criadopor: 7,
+    });
+    expect(JSON.parse(nota.cliente_snapshot)).toMatchObject({ nome: 'Cliente OS' });
+    expect(db.prepare('SELECT * FROM nfe_itens WHERE nfeid=?').get(nota.id)).toMatchObject({
+      ordem_item_id: 90,
+      produto_id: 3,
+      nome: 'Item OS',
+      quantidade: 2,
+      preco_unitario: 45.5,
+      ncm: '44151000',
+    });
+  });
+
+  it('marks canonical notes as authorized or rejected', () => {
+    const db = makeDb();
+    const autorizada = criarNotaEmitindo(db, {
+      origem: 'avulsa',
+      cliente_snapshot: {},
+      emitente_snapshot: {},
+      valortotal: 80,
+      ambiente: 2,
+      numero: '310',
+      serie: '1',
+    });
+    const rejeitada = criarNotaEmitindo(db, {
+      origem: 'avulsa',
+      cliente_snapshot: {},
+      emitente_snapshot: {},
+      valortotal: 80,
+      ambiente: 2,
+      numero: '311',
+      serie: '1',
+    });
+
+    marcarNotaAutorizada(db, autorizada.id, {
+      chave: '31260600000000000000550010000003101000000010',
+      protocolo: '131260000310',
+      xml: '<nfeProc />',
+      emitida_em: '2026-07-01T10:00:00-03:00',
+    });
+    marcarNotaRejeitada(db, rejeitada.id, {
+      cstat: '539',
+      motivo: 'Duplicidade de NF-e',
+      xml: '<retEnviNFe />',
+      chave: '31260600000000000000550010000003111000000010',
+    });
+
+    expect(resolverNotaPorId(db, autorizada.id)).toMatchObject({
+      status: 'autorizado',
+      chave: '31260600000000000000550010000003101000000010',
+      protocolo: '131260000310',
+      xml: '<nfeProc />',
+      createdat: '2026-07-01T10:00:00-03:00',
+    });
+    expect(resolverNotaPorId(db, rejeitada.id)).toMatchObject({
+      status: 'rejeitado',
+      rejeicao_cstat: '539',
+      rejeicao_motivo: 'Duplicidade de NF-e',
+      xml: '<retEnviNFe />',
+      chave: '31260600000000000000550010000003111000000010',
+    });
   });
 });

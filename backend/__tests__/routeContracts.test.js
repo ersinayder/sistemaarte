@@ -485,6 +485,19 @@ describe('security configuration contracts', () => {
     expect(source.indexOf('const autorizado = cStat ===')).toBeLessThan(source.indexOf('salvarClienteCadastroAposEmissao(db, os, clienteComOverrides.cliente)'));
   });
 
+  it('emits OS NF-e through nfe_notas without writing active legacy ordem fields', () => {
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/buscarNotaAtivaParaOrdem/);
+    expect(source).toMatch(/criarNotaEmitindo/);
+    expect(source).toMatch(/marcarNotaAutorizada/);
+    expect(source).toMatch(/marcarNotaRejeitada/);
+    expect(source).toMatch(/substituirItensNota/);
+    expect(source).not.toMatch(/UPDATE ordens\s+SET\s+nfe_status = 'emitindo'/);
+    expect(source).not.toMatch(/UPDATE ordens SET nfe_status='rejeitado'/);
+    expect(source).not.toMatch(/nfe_xml\s+=\s+\?/);
+  });
+
   it('routes NF-e list and fiscal document reads through nfe_notas', () => {
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
 
