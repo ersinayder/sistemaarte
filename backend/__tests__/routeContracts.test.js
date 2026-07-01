@@ -488,6 +488,17 @@ describe('security configuration contracts', () => {
     expect(source.indexOf('const autorizado = cStat ===')).toBeLessThan(source.indexOf('salvarClienteCadastroAposEmissao(db, os, clienteComOverrides.cliente)'));
   });
 
+  it('hydrates OS NF-e summary from nfe_notas without selecting canonical XML', () => {
+    const source = fs.readFileSync(new URL('../routes/ordens.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/LEFT JOIN nfe_notas nn/);
+    expect(source).toMatch(/nn\.status AS nfe_status/);
+    expect(source).toMatch(/nn\.chave AS nfe_chave/);
+    expect(source).toMatch(/nn\.createdat AS nfe_emitida_em/);
+    expect(source).toMatch(/NULL AS nfe_xml/);
+    expect(source).not.toMatch(/nn\.xml/);
+  });
+
   it('emits OS NF-e through nfe_notas without writing active legacy ordem fields', () => {
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
 
