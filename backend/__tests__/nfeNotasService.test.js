@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import { describe, expect, it } from 'vitest';
 import {
+  aplicarLixeiraResidualNFeLegado,
   backfillNfeNotasFromOrdens,
   buscarNotaAtivaParaOrdem,
   criarNotaEmitindo,
@@ -255,6 +256,32 @@ describe('nfeNotasService', () => {
         nfe_deletedreason: 'Ocultada antes da entidade canonica',
       }),
     ]);
+  });
+
+  it('moves imported legacy NF-e numbers below 278 to the fiscal trash', () => {
+    const db = makeDb();
+    db.prepare(`
+      INSERT INTO ordens
+        (id, numero, clientenome, servico, status, valortotal, nfe_status, nfe_numero, nfe_serie, nfe_chave)
+      VALUES
+        (12, 'OS-12', 'Cliente Residual', 'Homologacao antiga', 'Pronto', 10, 'autorizado', '000000277', '1',
+         '31260600000000000000550010000002771000000010'),
+        (13, 'OS-13', 'Cliente Real', 'Emissao real', 'Pronto', 20, 'autorizado', '000000278', '1',
+         '31260600000000000000550010000002781000000010')
+    `).run();
+
+    backfillNfeNotasFromOrdens(db);
+
+    expect(aplicarLixeiraResidualNFeLegado(db).changes).toBe(1);
+    expect(listarNotasFiscais(db).map((nota) => nota.nfe_numero)).toEqual(['000000278']);
+    expect(listarNotasFiscais(db, { lixeira: true })).toEqual([
+      expect.objectContaining({
+        ordemid: 12,
+        nfe_numero: '000000277',
+        nfe_deletedreason: 'Ocultada automaticamente: numeracao de homologacao residual anterior a 278',
+      }),
+    ]);
+    expect(aplicarLixeiraResidualNFeLegado(db).changes).toBe(0);
   });
 
   it('resolves a canonical note by its access key', () => {

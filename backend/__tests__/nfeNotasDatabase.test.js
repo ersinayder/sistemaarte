@@ -35,9 +35,13 @@ describe('nfe_notas database schema', () => {
 
   it('runs the phase 1 legacy backfill after NF-e note migrations', () => {
     expect(databaseSource).toMatch(/backfillNfeNotasFromOrdens/);
+    expect(databaseSource).toMatch(/aplicarLixeiraResidualNFeLegado/);
     expect(databaseSource).toMatch(/Falha ao executar backfill inicial de NF-e/);
     expect(databaseSource.indexOf('for (const sql of migrations)')).toBeLessThan(
       databaseSource.indexOf('backfillNfeNotasFromOrdens')
+    );
+    expect(databaseSource.indexOf('backfillNfeNotasFromOrdens(db')).toBeLessThan(
+      databaseSource.indexOf('aplicarLixeiraResidualNFeLegado(db')
     );
   });
 });
