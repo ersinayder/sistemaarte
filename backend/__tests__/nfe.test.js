@@ -127,4 +127,39 @@ describe('montarNFe', () => {
     expect(imp.PIS.PISNT.CST).toBe('07');
     expect(imp.COFINS.COFINSNT.CST).toBe('07');
   });
+
+  it('monta NF-e from an avulsa-shaped fiscal DTO without an OS id', () => {
+    const { infNFe } = montarNFe({
+      ordem: { valortotal: 91, descontovalor: 0, pagamento: 'Pix' },
+      itens: [{
+        produto_id: null,
+        nome: 'Item avulso',
+        quantidade: 2,
+        preco_unitario: 45.5,
+        ncm: '44151000',
+        cfop: '5102',
+        csosn: '400',
+        unidade: 'UN',
+        origem_fiscal: '0',
+      }],
+      cliente: {
+        clientenome: 'Cliente Fiscal',
+        cpf: '12345678901',
+        logradouro: 'Rua A',
+        c_numero: '10',
+        bairro: 'Centro',
+        cidade: 'Ipatinga',
+        uf: 'MG',
+        cep: '35160000',
+      },
+      emitente,
+      numero: 300,
+      serie: '1',
+      ambiente: 2,
+    });
+
+    expect(infNFe.det).toHaveLength(1);
+    expect(infNFe.total.ICMSTot.vNF).toBe('91.00');
+    expect(infNFe.pag.detPag[0].tPag).toBe('17');
+  });
 });
