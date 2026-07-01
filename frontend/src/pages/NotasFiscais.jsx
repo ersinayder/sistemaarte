@@ -1325,24 +1325,6 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
                   ))}
                 </div>
 
-                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-3)', display: 'grid', gap: 'var(--space-2)' }}>
-                  <label style={{ display: 'grid', gap: 6 }}>
-                    <span style={{ fontSize: 'var(--text-sm)', fontWeight: 800 }}>Informacoes complementares</span>
-                    <textarea
-                      className="form-input"
-                      aria-label="Informacoes complementares"
-                      value={previa.informacoes_complementares || ''}
-                      onChange={e => atualizarInformacoesComplementares(e.target.value)}
-                      maxLength={MAX_INFORMACOES_COMPLEMENTARES_NFE}
-                      rows={3}
-                      style={{ width: '100%', minHeight: 78, resize: 'vertical', padding: '8px 10px', fontSize: 'var(--text-sm)', lineHeight: 1.4 }}
-                    />
-                  </label>
-                  <div style={{ textAlign: 'right', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontVariantNumeric: 'tabular-nums' }}>
-                    {String(previa.informacoes_complementares || '').length}/{MAX_INFORMACOES_COMPLEMENTARES_NFE}
-                  </div>
-                </div>
-
                 <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
                   <div style={{ padding: 'var(--space-2) var(--space-3)', borderBottom: '1px solid var(--color-divider)', display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
                     <div>
@@ -1377,6 +1359,26 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
                       </tbody>
                     </table>
                   </div>
+                </div>
+
+                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-2) var(--space-3)', display: 'grid', gap: 6 }}>
+                  <label style={{ display: 'grid', gap: 6 }}>
+                    <span style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', alignItems: 'center', fontSize: 'var(--text-sm)', fontWeight: 800 }}>
+                      <span>Informacoes complementares</span>
+                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                        {String(previa.informacoes_complementares || '').length}/{MAX_INFORMACOES_COMPLEMENTARES_NFE}
+                      </span>
+                    </span>
+                    <textarea
+                      className="form-input"
+                      aria-label="Informacoes complementares"
+                      value={previa.informacoes_complementares || ''}
+                      onChange={e => atualizarInformacoesComplementares(e.target.value)}
+                      maxLength={MAX_INFORMACOES_COMPLEMENTARES_NFE}
+                      rows={2}
+                      style={{ width: '100%', minHeight: 52, maxHeight: 110, resize: 'vertical', padding: '7px 10px', fontSize: 'var(--text-sm)', lineHeight: 1.35 }}
+                    />
+                  </label>
                 </div>
               </>
             )}
