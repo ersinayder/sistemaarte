@@ -30,4 +30,12 @@ describe('nfe_notas database schema', () => {
     expect(databaseSource).toMatch(/ALTER TABLE ordens ADD COLUMN nfe_xml TEXT/);
     expect(databaseSource).not.toMatch(/DROP COLUMN nfe_/);
   });
+
+  it('runs the phase 1 legacy backfill after NF-e note migrations', () => {
+    expect(databaseSource).toMatch(/backfillNfeNotasFromOrdens/);
+    expect(databaseSource).toMatch(/Falha ao executar backfill inicial de NF-e/);
+    expect(databaseSource.indexOf('for (const sql of migrations)')).toBeLessThan(
+      databaseSource.indexOf('backfillNfeNotasFromOrdens')
+    );
+  });
 });

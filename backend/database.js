@@ -714,6 +714,13 @@ function initDB() {
     try { db.exec(sql); } catch (_) {}
   }
 
+  try {
+    const { backfillNfeNotasFromOrdens } = require("./services/nfeNotasService");
+    backfillNfeNotasFromOrdens(db, { ambiente: 2, emitente: {} });
+  } catch (error) {
+    console.warn("[database] Falha ao executar backfill inicial de NF-e:", String(error?.message || error));
+  }
+
   // ── Tabela de sequências NF-e ────────────────────────────────────────────────
   db.exec(`
     CREATE TABLE IF NOT EXISTS nfe_sequencias (
