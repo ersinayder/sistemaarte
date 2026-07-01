@@ -97,6 +97,7 @@ describe('route authorization contracts', () => {
     expect(routeRoles(nfeRouter, 'get', '/inutilizacoes')).toEqual(['admin']);
     expect(routeRoles(nfeRouter, 'post', '/inutilizacoes')).toEqual(['admin']);
     expect(routeRoles(nfeRouter, 'get', '/inutilizacoes/:id/xml/:tipo')).toEqual(['admin']);
+    expect(routeRoles(nfeRouter, 'get', '/exportar')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'get', '/lixeira')).toEqual(['admin']);
     expect(routeRoles(nfeRouter, 'delete', '/:id')).toEqual(['admin']);
     expect(routeRoles(nfeRouter, 'post', '/:id/restore')).toEqual(['admin']);
@@ -795,7 +796,19 @@ describe('security configuration contracts', () => {
     expect(source).toMatch(/resolverNotaPorChave/);
     expect(source).toMatch(/nfe_notas/);
     expect(source).toMatch(/router\.get\(['"]\/:chave\/xml\/autorizacao['"]/);
-    expect(source).toMatch(/renderDanfeHtml\(xml\)/);
+    expect(source).toMatch(/renderDanfePdf\(html\)/);
+    expect(source).toMatch(/Content-Type['"],\s*['"]application\/pdf/);
+    expect(source).toMatch(/attachment; filename="danfe-\$\{filenameSeguro\(chave\)\}\.pdf"/);
+  });
+
+  it('wires NF-e ZIP export before dynamic fiscal routes', () => {
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/gerarExportacaoNFe/);
+    expect(source).toMatch(/router\.get\(['"]\/exportar['"],\s*auth\(\[['"]admin['"],\s*['"]caixa['"]\]\)/);
+    expect(source.indexOf("router.get('/exportar'")).toBeLessThan(source.indexOf("router.get('/:chave/eventos'"));
+    expect(source).toMatch(/Content-Type['"],\s*result\.contentType/);
+    expect(source).toMatch(/Content-Disposition['"],\s*`attachment; filename="\$\{result\.filename\}"/);
   });
 
   it('resolves CC-e and cancellation through nfe_notas instead of legacy ordem fiscal columns', () => {

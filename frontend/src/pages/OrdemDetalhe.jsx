@@ -74,6 +74,18 @@ function buildWppUrl(ordem) {
   return `https://wa.me/${tel}?text=${encodeURIComponent(msg)}`
 }
 
+async function baixarArquivo(url, nomeArquivo) {
+  const r = await api.get(url, { responseType: 'blob', timeout: 45000 })
+  const href = URL.createObjectURL(r.data)
+  const a = document.createElement('a')
+  a.href = href
+  a.download = nomeArquivo
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(href)
+}
+
 function IconWhatsApp() {
   return (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
@@ -197,12 +209,16 @@ export default function OrdemDetalhe({ context }) {
   }
 
   const imprimirOS = () => window.open(`/api/ordens/${id}/pdf`, '_blank', 'noopener,noreferrer')
-  const abrirDanfe = () => {
+  const baixarDanfe = async () => {
     if (!ordem?.nfe_chave) {
       toast.error('Chave da NF-e indisponivel')
       return
     }
-    window.open(`/api/nfe/${ordem.nfe_chave}/danfe`, '_blank', 'noopener,noreferrer')
+    try {
+      await baixarArquivo(`/nfe/${ordem.nfe_chave}/danfe`, `danfe-${ordem.nfe_chave}.pdf`)
+    } catch (e) {
+      toast.error(e.response?.data?.erro || 'DANFE indisponivel')
+    }
   }
 
   // ── NF-e ──────────────────────────────────────────────────────────────────
@@ -509,7 +525,7 @@ export default function OrdemDetalhe({ context }) {
                 </div>
                 <button
                   className="btn btn-sm"
-                  onClick={abrirDanfe}
+                  onClick={baixarDanfe}
                   style={{
                     width: '100%',
                     marginTop: 'var(--space-3)',
@@ -522,7 +538,7 @@ export default function OrdemDetalhe({ context }) {
                     gap: 'var(--space-2)',
                   }}
                 >
-                  <IconNFe /> Abrir DANFE
+                  <IconNFe /> Baixar DANFE
                 </button>
               </div>
             )}

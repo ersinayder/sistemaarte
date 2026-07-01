@@ -22,7 +22,8 @@
     "jsonwebtoken": "^9.0.0",
     "libxmljs2": "0.37.0",
     "multer": "^1.4.5-lts.1",
-    "nfewizard-io": "1.1.0"
+    "nfewizard-io": "1.1.0",
+    "puppeteer-core": "^25.3.0"
   },
   "overrides": {
     "@nfewizard/shared": "1.1.0",
