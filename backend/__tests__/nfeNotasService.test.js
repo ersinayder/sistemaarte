@@ -3,8 +3,12 @@ import { describe, expect, it } from 'vitest';
 import {
   backfillNfeNotasFromOrdens,
   buscarNotaAtivaParaOrdem,
+  listarEventosNota,
   listarNotasFiscais,
+  moverNotaParaLixeira,
   resolverNotaPorChave,
+  resolverNotaPorId,
+  restaurarNotaDaLixeira,
 } from '../services/nfeNotasService.js';
 
 function makeDb() {
@@ -119,7 +123,11 @@ function makeDb() {
       ordemid INTEGER,
       nfeid INTEGER,
       tipo TEXT NOT NULL,
+      nseqevento INTEGER NOT NULL DEFAULT 1,
       protocolo TEXT,
+      cstat TEXT,
+      motivo TEXT,
+      texto TEXT,
       xml TEXT,
       createdat TEXT DEFAULT (datetime('now','localtime'))
     );
@@ -249,5 +257,64 @@ describe('nfeNotasService', () => {
       status: 'autorizado',
     });
     expect(buscarNotaAtivaParaOrdem(db, 999)).toBeNull();
+  });
+
+  it('resolves notes by id and respects trash visibility by default', () => {
+    const db = makeDb();
+    const info = db.prepare(`
+      INSERT INTO nfe_notas
+        (origem, cliente_snapshot, emitente_snapshot, valortotal, ambiente, numero, serie, chave, status, deletedat)
+      VALUES
+        ('avulsa', '{}', '{}', 80, 2, '306', '1',
+         '31260600000000000000550010000003061000000010', 'rejeitado', datetime('now','localtime'))
+    `).run();
+
+    expect(resolverNotaPorId(db, Number(info.lastInsertRowid))).toBeNull();
+    expect(resolverNotaPorId(db, Number(info.lastInsertRowid), { includeDeleted: true })).toMatchObject({
+      numero: '306',
+      status: 'rejeitado',
+    });
+  });
+
+  it('lists events linked by note id, key, or legacy ordem id', () => {
+    const db = makeDb();
+    const chave = '31260600000000000000550010000003071000000010';
+    const info = db.prepare(`
+      INSERT INTO nfe_notas
+        (origem, ordemid, cliente_snapshot, emitente_snapshot, valortotal, ambiente, numero, serie, chave, status)
+      VALUES
+        ('ordem', 30, '{}', '{}', 80, 2, '307', '1', ?, 'autorizado')
+    `).run(chave);
+    const nota = { id: Number(info.lastInsertRowid), ordemid: 30, chave };
+    db.prepare("INSERT INTO nfe_eventos (nfeid, ordemid, chave, tipo, protocolo, xml) VALUES (?, NULL, '', 'autorizacao', 'p1', '<xml/>')").run(nota.id);
+    db.prepare("INSERT INTO nfe_eventos (nfeid, ordemid, chave, tipo, protocolo, xml) VALUES (NULL, NULL, ?, 'cce', 'p2', NULL)").run(chave);
+    db.prepare("INSERT INTO nfe_eventos (nfeid, ordemid, chave, tipo, protocolo, xml) VALUES (NULL, 30, '', 'rejeicao', 'p3', '')").run();
+
+    const eventos = listarEventosNota(db, nota);
+
+    expect(eventos).toHaveLength(3);
+    expect(eventos.map((evento) => evento.tipo).sort()).toEqual(['autorizacao', 'cce', 'rejeicao']);
+    expect(eventos.find((evento) => evento.tipo === 'autorizacao')).toMatchObject({ tem_xml: 1 });
+  });
+
+  it('moves and restores notes from fiscal trash without touching OS data', () => {
+    const db = makeDb();
+    const info = db.prepare(`
+      INSERT INTO nfe_notas
+        (origem, cliente_snapshot, emitente_snapshot, valortotal, ambiente, numero, serie, chave, status)
+      VALUES
+        ('avulsa', '{}', '{}', 80, 2, '308', '1',
+         '31260600000000000000550010000003081000000010', 'rejeitado')
+    `).run();
+    const id = Number(info.lastInsertRowid);
+
+    expect(moverNotaParaLixeira(db, id, 7, 'Teste fiscal').changes).toBe(1);
+    expect(resolverNotaPorId(db, id, { includeDeleted: true })).toMatchObject({
+      deletedpor: 7,
+      deletedreason: 'Teste fiscal',
+    });
+
+    expect(restaurarNotaDaLixeira(db, id).changes).toBe(1);
+    expect(resolverNotaPorId(db, id)).toMatchObject({ id, deletedat: null });
   });
 });

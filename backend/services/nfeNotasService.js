@@ -226,6 +226,53 @@ function resolverNotaPorChave(db, chave) {
   `).get(chave) || null;
 }
 
+function resolverNotaPorId(db, id, options = {}) {
+  if (!hasTable(db, 'nfe_notas')) return null;
+  const includeDeleted = Boolean(options.includeDeleted);
+  const clause = includeDeleted ? 'id = ?' : 'id = ? AND deletedat IS NULL';
+  return db.prepare(`
+    SELECT *
+    FROM nfe_notas
+    WHERE ${clause}
+    LIMIT 1
+  `).get(id) || null;
+}
+
+function listarEventosNota(db, nota) {
+  if (!nota || !hasTable(db, 'nfe_eventos')) return [];
+  return db.prepare(`
+    SELECT id, nfeid, ordemid, chave, tipo, nseqevento, protocolo, cstat, motivo, texto, createdat,
+           CASE WHEN xml IS NOT NULL AND length(xml) > 0 THEN 1 ELSE 0 END AS tem_xml
+    FROM nfe_eventos
+    WHERE nfeid = ?
+       OR chave = ?
+       OR (? IS NOT NULL AND ordemid = ?)
+    ORDER BY createdat DESC, id DESC
+  `).all(nota.id, nota.chave || '', nota.ordemid || null, nota.ordemid || null);
+}
+
+function moverNotaParaLixeira(db, id, userId, reason) {
+  return db.prepare(`
+    UPDATE nfe_notas
+    SET deletedat=datetime('now','localtime'),
+        deletedpor=?,
+        deletedreason=?,
+        updatedat=datetime('now','localtime')
+    WHERE id=?
+  `).run(userId || null, reason, id);
+}
+
+function restaurarNotaDaLixeira(db, id) {
+  return db.prepare(`
+    UPDATE nfe_notas
+    SET deletedat=NULL,
+        deletedpor=NULL,
+        deletedreason=NULL,
+        updatedat=datetime('now','localtime')
+    WHERE id=?
+  `).run(id);
+}
+
 function buscarNotaAtivaParaOrdem(db, ordemid) {
   if (!hasTable(db, 'nfe_notas')) return null;
   const rows = db.prepare(`
@@ -242,6 +289,10 @@ function buscarNotaAtivaParaOrdem(db, ordemid) {
 module.exports = {
   backfillNfeNotasFromOrdens,
   buscarNotaAtivaParaOrdem,
+  listarEventosNota,
   listarNotasFiscais,
+  moverNotaParaLixeira,
   resolverNotaPorChave,
+  resolverNotaPorId,
+  restaurarNotaDaLixeira,
 };

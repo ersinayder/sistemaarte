@@ -485,25 +485,39 @@ describe('security configuration contracts', () => {
     expect(source.indexOf('const autorizado = cStat ===')).toBeLessThan(source.indexOf('salvarClienteCadastroAposEmissao(db, os, clienteComOverrides.cliente)'));
   });
 
+  it('routes NF-e list and fiscal document reads through nfe_notas', () => {
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/listarNotasFiscais/);
+    expect(source).toMatch(/resolverNotaPorChave/);
+    expect(source).toMatch(/nfe_notas/);
+    expect(source).toMatch(/router\.get\(['"]\/:chave\/xml\/autorizacao['"]/);
+    expect(source).toMatch(/renderDanfeHtml\(xml\)/);
+  });
+
   it('keeps NF-e trash as a soft delete that is hidden from the main list', () => {
     const databaseSource = fs.readFileSync(new URL('../database.js', import.meta.url), 'utf8');
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+    const serviceSource = fs.readFileSync(new URL('../services/nfeNotasService.js', import.meta.url), 'utf8');
 
     expect(databaseSource).toMatch(/ALTER TABLE ordens ADD COLUMN nfe_deletedat TEXT/);
     expect(databaseSource).toMatch(/ALTER TABLE ordens ADD COLUMN nfe_deletedpor INTEGER/);
     expect(databaseSource).toMatch(/ALTER TABLE ordens ADD COLUMN nfe_deletedreason TEXT/);
-    expect(source).toMatch(/WHERE o\.nfe_status IS NOT NULL AND o\.deletedat IS NULL AND o\.nfe_deletedat IS NULL/);
+    expect(source).toMatch(/listarNotasFiscais\(getDB\(\),\s*\{\s*lixeira:\s*false\s*\}\)/);
     expect(source).toMatch(/router\.get\(['"]\/lixeira['"],\s*auth\(\['admin'\]\)/);
-    expect(source).toMatch(/o\.nfe_deletedat IS NOT NULL/);
-    expect(source).toMatch(/UPDATE ordens SET nfe_deletedat=datetime\('now','localtime'\), nfe_deletedpor=\?, nfe_deletedreason=\?/);
-    expect(source).toMatch(/UPDATE ordens SET nfe_deletedat=NULL, nfe_deletedpor=NULL, nfe_deletedreason=NULL/);
+    expect(source).toMatch(/listarNotasFiscais\(getDB\(\),\s*\{\s*lixeira:\s*true\s*\}\)/);
+    expect(source).toMatch(/moverNotaParaLixeira/);
+    expect(source).toMatch(/restaurarNotaDaLixeira/);
+    expect(serviceSource).toMatch(/UPDATE nfe_notas\s+SET deletedat=datetime\('now','localtime'\)/);
+    expect(serviceSource).toMatch(/UPDATE nfe_notas\s+SET deletedat=NULL/);
+    expect(source).not.toMatch(/UPDATE ordens SET nfe_deletedat/);
   });
 
   it('blocks moving authorized or cancelled NF-e records to fiscal trash', () => {
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
 
     expect(source).toMatch(/const STATUS_NFE_LIXEIRA = \['rejeitado'\]/);
-    expect(source).toMatch(/!STATUS_NFE_LIXEIRA\.includes\(nota\.nfe_status\)/);
+    expect(source).toMatch(/!STATUS_NFE_LIXEIRA\.includes\(nota\.status\)/);
     expect(source).toMatch(/NF-e autorizada ou cancelada nao pode ser movida para a lixeira/);
   });
 });

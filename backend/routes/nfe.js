@@ -33,7 +33,16 @@ const {
   validarEmitenteFiscalNFe,
   validarItensFiscaisNFe,
 } = require('../domain/nfeEmissionRules');
+const {
+  listarEventosNota,
+  listarNotasFiscais,
+  moverNotaParaLixeira,
+  resolverNotaPorChave,
+  resolverNotaPorId,
+  restaurarNotaDaLixeira,
+} = require('../services/nfeNotasService');
 
+// Rotas fiscais leem/escrevem a entidade canonica nfe_notas na fase 1.
 // Diretório canônico para XMLs — obrigação legal 5 anos
 const NFE_XMLS_DIR = path.resolve(__dirname, '..', 'data', 'nfe_xmls');
 const CCE_COND_USO =
@@ -349,21 +358,7 @@ function resumirStatusServico(resultado) {
 // GET /api/nfe
 router.get('/', auth(['admin', 'caixa']), (req, res) => {
   try {
-    const rows = getDB().prepare(`
-      SELECT o.id, o.numero, o.clienteid, COALESCE(c.name, o.clientenome) AS clientenome, o.servico, o.valortotal, o.status,
-             o.nfe_numero, o.nfe_serie, o.nfe_chave, o.nfe_protocolo, o.nfe_status,
-             o.nfe_emitida_em, o.nfe_cancelado_em, o.nfe_cancel_protocolo, o.nfe_cancel_motivo,
-             o.nfe_deletedat, o.nfe_deletedpor, o.nfe_deletedreason,
-             (SELECT COUNT(*) FROM nfe_eventos e WHERE e.chave = o.nfe_chave AND e.tipo = 'cce') AS nfe_cce_count,
-             (SELECT MAX(createdat) FROM nfe_eventos e WHERE e.chave = o.nfe_chave AND e.tipo = 'cce') AS nfe_cce_ultima_em,
-             (SELECT e.motivo FROM nfe_eventos e WHERE e.ordemid = o.id AND e.tipo = 'rejeicao' ORDER BY e.createdat DESC, e.id DESC LIMIT 1) AS nfe_rejeicao_motivo,
-             (SELECT e.cstat FROM nfe_eventos e WHERE e.ordemid = o.id AND e.tipo = 'rejeicao' ORDER BY e.createdat DESC, e.id DESC LIMIT 1) AS nfe_rejeicao_cstat,
-             (SELECT COUNT(*) FROM nfe_eventos e WHERE e.chave = o.nfe_chave OR (o.nfe_chave IS NULL AND e.ordemid = o.id)) AS nfe_eventos_count
-      FROM ordens o
-      LEFT JOIN clientes c ON o.clienteid = c.id
-      WHERE o.nfe_status IS NOT NULL AND o.deletedat IS NULL AND o.nfe_deletedat IS NULL
-      ORDER BY o.nfe_emitida_em DESC
-    `).all();
+    const rows = listarNotasFiscais(getDB(), { lixeira: false });
     const alvoHomologacao = Number(process.env.NFE_HOMOLOGACAO_ALVO || 10);
     const autorizadasHomologacao = rows.filter(n => n.nfe_status === 'autorizado').length;
     res.json({
@@ -383,19 +378,7 @@ router.get('/', auth(['admin', 'caixa']), (req, res) => {
 // GET /api/nfe/lixeira
 router.get('/lixeira', auth(['admin']), (req, res) => {
   try {
-    const rows = getDB().prepare(`
-      SELECT o.id, o.numero, o.clienteid, COALESCE(c.name, o.clientenome) AS clientenome, o.servico, o.valortotal, o.status,
-             o.nfe_numero, o.nfe_serie, o.nfe_chave, o.nfe_protocolo, o.nfe_status,
-             o.nfe_emitida_em, o.nfe_cancelado_em, o.nfe_cancel_protocolo, o.nfe_cancel_motivo,
-             o.nfe_deletedat, o.nfe_deletedpor, o.nfe_deletedreason,
-             (SELECT e.motivo FROM nfe_eventos e WHERE e.ordemid = o.id AND e.tipo = 'rejeicao' ORDER BY e.createdat DESC, e.id DESC LIMIT 1) AS nfe_rejeicao_motivo,
-             (SELECT e.cstat FROM nfe_eventos e WHERE e.ordemid = o.id AND e.tipo = 'rejeicao' ORDER BY e.createdat DESC, e.id DESC LIMIT 1) AS nfe_rejeicao_cstat,
-             (SELECT COUNT(*) FROM nfe_eventos e WHERE e.chave = o.nfe_chave OR (o.nfe_chave IS NULL AND e.ordemid = o.id)) AS nfe_eventos_count
-      FROM ordens o
-      LEFT JOIN clientes c ON o.clienteid = c.id
-      WHERE o.nfe_status IS NOT NULL AND o.deletedat IS NULL AND o.nfe_deletedat IS NOT NULL
-      ORDER BY o.nfe_deletedat DESC
-    `).all();
+    const rows = listarNotasFiscais(getDB(), { lixeira: true });
     res.json({ notas: rows, meta: { ambiente: tpAmbAtual() } });
   } catch (e) {
     console.error('[NF-e] GET /lixeira:', e.message);
@@ -505,18 +488,12 @@ router.get('/:chave/eventos', auth(['admin', 'caixa']), (req, res) => {
 
   try {
     const db = getDB();
-    const os = db.prepare('SELECT id, nfe_chave, nfe_status FROM ordens WHERE nfe_chave = ? AND deletedat IS NULL').get(chave);
-    if (!os) {
+    const nota = resolverNotaPorChave(db, chave);
+    if (!nota) {
       return res.status(404).json({ erro: 'NF-e nao encontrada para esta chave' });
     }
 
-    const eventos = db.prepare(`
-      SELECT id, ordemid, chave, tipo, nseqevento, protocolo, cstat, motivo, texto, createdat,
-             CASE WHEN xml IS NOT NULL AND length(xml) > 0 THEN 1 ELSE 0 END AS tem_xml
-      FROM nfe_eventos
-      WHERE chave = ?
-      ORDER BY createdat ASC, id ASC
-    `).all(chave);
+    const eventos = listarEventosNota(db, nota);
 
     res.json({ eventos });
   } catch (e) {
@@ -562,15 +539,15 @@ router.get('/:chave/xml/autorizacao', auth(['admin', 'caixa']), (req, res) => {
   }
 
   try {
-    const os = getDB().prepare('SELECT nfe_xml FROM ordens WHERE nfe_chave = ? AND deletedat IS NULL').get(chave);
-    if (!os) {
+    const nota = resolverNotaPorChave(getDB(), chave);
+    if (!nota) {
       return res.status(404).json({ erro: 'NF-e nao encontrada para esta chave' });
     }
-    if (!os.nfe_xml) {
+    if (!nota.xml) {
       return res.status(404).json({ erro: 'XML de autorizacao nao encontrado para esta NF-e' });
     }
 
-    const xml = extrairXmlFiscal(os.nfe_xml);
+    const xml = extrairXmlFiscal(nota.xml);
     if (!xml) {
       return res.status(422).json({ erro: 'XML de autorizacao salvo em formato invalido para esta NF-e' });
     }
@@ -592,15 +569,15 @@ router.get('/:chave/danfe', auth(['admin', 'caixa']), (req, res) => {
   }
 
   try {
-    const os = getDB().prepare('SELECT nfe_xml FROM ordens WHERE nfe_chave = ? AND deletedat IS NULL').get(chave);
-    if (!os) {
+    const nota = resolverNotaPorChave(getDB(), chave);
+    if (!nota) {
       return res.status(404).json({ erro: 'NF-e nao encontrada para esta chave' });
     }
-    if (!os.nfe_xml) {
+    if (!nota.xml) {
       return res.status(404).json({ erro: 'XML de autorizacao nao encontrado para esta NF-e' });
     }
 
-    const xml = extrairXmlFiscal(os.nfe_xml);
+    const xml = extrairXmlFiscal(nota.xml);
     if (!xml) {
       return res.status(422).json({ erro: 'XML de autorizacao salvo em formato invalido para esta NF-e' });
     }
@@ -679,26 +656,21 @@ router.get('/emitir/:id/preview', auth(['admin', 'caixa']), (req, res) => {
 router.delete('/:id', auth(['admin']), (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
-    return res.status(400).json({ erro: 'ID de OS invalido' });
+    return res.status(400).json({ erro: 'ID de NF-e invalido' });
   }
 
   try {
     const db = getDB();
-    const nota = db.prepare(`
-      SELECT id, nfe_status, nfe_deletedat
-      FROM ordens
-      WHERE id = ? AND deletedat IS NULL AND nfe_status IS NOT NULL
-    `).get(id);
+    const nota = resolverNotaPorId(db, id, { includeDeleted: true });
 
     if (!nota) return res.status(404).json({ erro: 'NF-e nao encontrada' });
-    if (nota.nfe_deletedat) return res.json({ ok: true, jaNaLixeira: true });
-    if (!STATUS_NFE_LIXEIRA.includes(nota.nfe_status)) {
+    if (nota.deletedat) return res.json({ ok: true, jaNaLixeira: true });
+    if (!STATUS_NFE_LIXEIRA.includes(nota.status)) {
       return res.status(409).json({ erro: 'NF-e autorizada ou cancelada nao pode ser movida para a lixeira' });
     }
 
     const reason = String(req.body?.motivo || req.body?.reason || 'Ocultada da tela fiscal').trim().slice(0, 250);
-    db.prepare("UPDATE ordens SET nfe_deletedat=datetime('now','localtime'), nfe_deletedpor=?, nfe_deletedreason=? WHERE id=?")
-      .run(req.user?.id || null, reason, id);
+    moverNotaParaLixeira(db, id, req.user?.id || null, reason);
 
     res.json({ ok: true });
   } catch (e) {
@@ -711,21 +683,16 @@ router.delete('/:id', auth(['admin']), (req, res) => {
 router.post('/:id/restore', auth(['admin']), (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
-    return res.status(400).json({ erro: 'ID de OS invalido' });
+    return res.status(400).json({ erro: 'ID de NF-e invalido' });
   }
 
   try {
     const db = getDB();
-    const nota = db.prepare(`
-      SELECT id
-      FROM ordens
-      WHERE id = ? AND deletedat IS NULL AND nfe_status IS NOT NULL AND nfe_deletedat IS NOT NULL
-    `).get(id);
+    const nota = resolverNotaPorId(db, id, { includeDeleted: true });
 
-    if (!nota) return res.status(404).json({ erro: 'NF-e nao encontrada na lixeira' });
+    if (!nota || !nota.deletedat) return res.status(404).json({ erro: 'NF-e nao encontrada na lixeira' });
 
-    db.prepare('UPDATE ordens SET nfe_deletedat=NULL, nfe_deletedpor=NULL, nfe_deletedreason=NULL WHERE id=?')
-      .run(id);
+    restaurarNotaDaLixeira(db, id);
 
     res.json({ ok: true });
   } catch (e) {
