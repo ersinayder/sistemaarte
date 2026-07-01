@@ -368,6 +368,19 @@ function marcarNotaRejeitada(db, id, data = {}) {
   );
 }
 
+function montarDocumentoFiscalAvulso({ cliente, itens, pagamento = 'Pix' } = {}) {
+  const total = (itens || []).reduce((acc, item) => (
+    acc + Number(item.quantidade || 1) * Number(item.preco_unitario || 0)
+  ), 0);
+  return {
+    valortotal: Math.round(total * 100) / 100,
+    descontovalor: 0,
+    pagamento,
+    cliente,
+    itens,
+  };
+}
+
 function buscarNotaAtivaParaOrdem(db, ordemid) {
   if (!hasTable(db, 'nfe_notas')) return null;
   const rows = db.prepare(`
@@ -389,6 +402,7 @@ module.exports = {
   listarNotasFiscais,
   marcarNotaAutorizada,
   marcarNotaRejeitada,
+  montarDocumentoFiscalAvulso,
   moverNotaParaLixeira,
   resolverNotaPorChave,
   resolverNotaPorId,

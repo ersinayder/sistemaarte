@@ -8,6 +8,7 @@ import {
   listarNotasFiscais,
   marcarNotaAutorizada,
   marcarNotaRejeitada,
+  montarDocumentoFiscalAvulso,
   moverNotaParaLixeira,
   resolverNotaPorChave,
   resolverNotaPorId,
@@ -420,5 +421,40 @@ describe('nfeNotasService', () => {
       xml: '<retEnviNFe />',
       chave: '31260600000000000000550010000003111000000010',
     });
+  });
+
+  it('builds an avulsa fiscal document total without requiring OS or caixa data', () => {
+    const documento = montarDocumentoFiscalAvulso({
+      cliente: { clientenome: 'Cliente Avulso' },
+      pagamento: 'Pix',
+      itens: [
+        { nome: 'Item 1', quantidade: 2, preco_unitario: 25.5 },
+        { nome: 'Item 2', quantidade: 1, preco_unitario: 29 },
+      ],
+    });
+
+    expect(documento).toMatchObject({
+      valortotal: 80,
+      descontovalor: 0,
+      pagamento: 'Pix',
+      cliente: { clientenome: 'Cliente Avulso' },
+    });
+    expect(documento.itens).toHaveLength(2);
+  });
+
+  it('creates avulsa notes without requiring ordem or caixa tables', () => {
+    const db = makeDb();
+    const nota = criarNotaEmitindo(db, {
+      origem: 'avulsa',
+      cliente_snapshot: {},
+      emitente_snapshot: {},
+      valortotal: 80,
+      ambiente: 2,
+      numero: '312',
+      serie: '1',
+    });
+
+    expect(nota.origem).toBe('avulsa');
+    expect(nota.ordemid).toBeNull();
   });
 });

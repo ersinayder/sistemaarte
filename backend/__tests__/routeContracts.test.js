@@ -81,6 +81,9 @@ describe('route authorization contracts', () => {
     const nfeRouter = await loadRouter('../routes/nfe.js');
 
     expect(routeRoles(nfeRouter, 'get', '/status-servico')).toEqual(['admin', 'caixa']);
+    expect(routeRoles(nfeRouter, 'get', '/avulsa/preview')).toEqual(['admin', 'caixa']);
+    expect(routeRoles(nfeRouter, 'post', '/avulsa/preview')).toEqual(['admin', 'caixa']);
+    expect(routeRoles(nfeRouter, 'post', '/avulsa')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'get', '/emitir/:id/preview')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'post', '/emitir/:id')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'post', '/:chave/cce')).toEqual(['admin', 'caixa']);
@@ -496,6 +499,21 @@ describe('security configuration contracts', () => {
     expect(source).not.toMatch(/UPDATE ordens\s+SET\s+nfe_status = 'emitindo'/);
     expect(source).not.toMatch(/UPDATE ordens SET nfe_status='rejeitado'/);
     expect(source).not.toMatch(/nfe_xml\s+=\s+\?/);
+  });
+
+  it('keeps avulsa NF-e emission independent from OS and caixa writes', () => {
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+    const start = source.indexOf("router.post('/avulsa'");
+    const end = source.indexOf("router.get('/:chave/eventos'", start);
+    const avulsaRoute = source.slice(start, end);
+
+    expect(start).toBeGreaterThan(-1);
+    expect(avulsaRoute).toMatch(/origem:\s*'avulsa'/);
+    expect(avulsaRoute).toMatch(/ordemid:\s*null/);
+    expect(avulsaRoute).not.toMatch(/INSERT INTO ordens/);
+    expect(avulsaRoute).not.toMatch(/INSERT INTO lancamentos/);
+    expect(avulsaRoute).not.toMatch(/INSERT INTO lancamento_itens/);
+    expect(avulsaRoute).not.toMatch(/salvarClienteCadastroAposEmissao/);
   });
 
   it('routes NF-e list and fiscal document reads through nfe_notas', () => {

@@ -28,6 +28,7 @@ const {
 const {
   aplicarOverrideClienteNFe,
   aplicarOverridesItensNFe,
+  normalizarItensAvulsosNFe,
   serializarItemPreviaNFe,
   validarClienteFiscalNFe,
   validarEmitenteFiscalNFe,
@@ -40,6 +41,7 @@ const {
   listarNotasFiscais,
   marcarNotaAutorizada,
   marcarNotaRejeitada,
+  montarDocumentoFiscalAvulso,
   moverNotaParaLixeira,
   resolverNotaPorChave,
   resolverNotaPorId,
@@ -274,6 +276,81 @@ function serializarPreviaEmissaoNFe({ os, itens, ambiente, serie }) {
   };
 }
 
+function clienteAvulsoBase(row = {}) {
+  return {
+    clienteid: row.id || row.clienteid || null,
+    clientenome: row.name || row.clientenome || 'CONSUMIDOR FINAL',
+    cpf: row.cpf || '',
+    ie: row.ie || '',
+    logradouro: row.logradouro || '',
+    c_numero: row.numero || row.c_numero || '',
+    bairro: row.bairro || '',
+    cidade: row.cidade || '',
+    uf: row.uf || '',
+    cep: row.cep || '',
+  };
+}
+
+function carregarClienteAvulso(db, raw = {}) {
+  const id = Number(raw?.id || raw?.clienteid || 0);
+  if (!Number.isInteger(id) || id <= 0) return clienteAvulsoBase();
+  const row = db.prepare(`
+    SELECT id, name, cpf, ie, logradouro, numero, bairro, cidade, uf, cep
+    FROM clientes
+    WHERE id = ? AND deletedat IS NULL
+  `).get(id);
+  return clienteAvulsoBase(row || {});
+}
+
+function normalizarClienteAvulso(db, raw = {}) {
+  const base = carregarClienteAvulso(db, raw);
+  const resultado = aplicarOverrideClienteNFe(base, raw);
+  if (!resultado.ok) return resultado;
+  return {
+    ok: true,
+    cliente: {
+      ...resultado.cliente,
+      clienteid: base.clienteid || Number(raw?.id || raw?.clienteid || 0) || null,
+    },
+  };
+}
+
+function serializarClienteAvulso(cliente = {}) {
+  return {
+    id: cliente.clienteid || null,
+    nome: cliente.clientenome === 'CONSUMIDOR FINAL' && !cliente.cpf ? '' : (cliente.clientenome || ''),
+    documento: cliente.cpf || '',
+    ie: cliente.ie || '',
+    logradouro: cliente.logradouro || '',
+    numero: cliente.c_numero || '',
+    bairro: cliente.bairro || '',
+    cidade: cliente.cidade || '',
+    uf: cliente.uf || '',
+    cep: cliente.cep || '',
+  };
+}
+
+function serializarPreviaAvulsa({ documento, cliente, itens }) {
+  return {
+    origem: 'avulsa',
+    ordem: {
+      numero: 'Avulsa',
+      servico: 'NF-e avulsa',
+      pagamento: documento.pagamento || 'Pix',
+      valortotal: Number(documento.valortotal || 0),
+      descontovalor: Number(documento.descontovalor || 0),
+    },
+    cliente: serializarClienteAvulso(cliente),
+    emitente: getEmitenteConfig(),
+    fiscal: {
+      ambiente: tpAmbAtual(),
+      serie: getSerieNFe(),
+      autXML: cliente?.cpf ? getAutXmlParaNFe(cliente.cpf) : [],
+    },
+    itens: itens || [],
+  };
+}
+
 function salvarClienteCadastroAposEmissao(db, os, cliente) {
   if (!os.clienteid) return;
 
@@ -481,6 +558,277 @@ router.get('/inutilizacoes/:id/xml/:tipo', auth(['admin']), (req, res) => {
     const status = e.status || 500;
     console.error('[NF-e] GET /inutilizacoes/:id/xml/:tipo:', e.message);
     res.status(status).json({ erro: e.message || 'Erro ao baixar XML de inutilizacao' });
+  }
+});
+
+// GET /api/nfe/avulsa/preview
+router.get('/avulsa/preview', auth(['admin', 'caixa']), (req, res) => {
+  res.json(serializarPreviaAvulsa({
+    documento: montarDocumentoFiscalAvulso({ cliente: clienteAvulsoBase(), itens: [], pagamento: 'Pix' }),
+    cliente: clienteAvulsoBase(),
+    itens: [],
+  }));
+});
+
+// POST /api/nfe/avulsa/preview
+router.post('/avulsa/preview', auth(['admin', 'caixa']), (req, res) => {
+  try {
+    const itensNormalizados = normalizarItensAvulsosNFe(req.body?.itens || []);
+    if (!itensNormalizados.ok) {
+      return res.status(400).json({ erro: itensNormalizados.erro });
+    }
+
+    const clienteNormalizado = normalizarClienteAvulso(getDB(), req.body?.cliente || {});
+    if (!clienteNormalizado.ok) {
+      return res.status(400).json({ erro: clienteNormalizado.erro });
+    }
+
+    const documento = montarDocumentoFiscalAvulso({
+      cliente: clienteNormalizado.cliente,
+      itens: itensNormalizados.itens,
+      pagamento: req.body?.pagamento || 'Pix',
+    });
+
+    res.json(serializarPreviaAvulsa({
+      documento,
+      cliente: clienteNormalizado.cliente,
+      itens: itensNormalizados.itens,
+    }));
+  } catch (e) {
+    console.error('[NF-e] POST /avulsa/preview:', e.message);
+    res.status(500).json({ erro: 'Erro ao montar previa de NF-e avulsa' });
+  }
+});
+
+// POST /api/nfe/avulsa
+router.post('/avulsa', auth(['admin', 'caixa']), async (req, res) => {
+  let respondido = false;
+  const db = getDB();
+  let notaEmitindo = null;
+  let numero = null;
+  let serie = null;
+  let autorizadaNaSefaz = false;
+
+  const guardTimeout = setTimeout(() => {
+    if (!respondido) {
+      respondido = true;
+      console.error('[NF-e] Guard timeout disparado para NF-e avulsa');
+      if (notaEmitindo && !autorizadaNaSefaz) {
+        try {
+          marcarNotaRejeitada(db, notaEmitindo.id, {
+            motivo: 'Timeout aguardando resposta da SEFAZ',
+          });
+        } catch (_) {}
+      }
+      res.status(504).json({ erro: 'SEFAZ demorou demais para responder. Aguarde alguns instantes, atualize a tela e tente reemitir.' });
+    }
+  }, NFE_ROUTE_TIMEOUT_MS);
+
+  try {
+    const certificado = getCertificadoConfig();
+    if (!certificado.pathCertificado || !certificado.senhaCertificado) {
+      clearTimeout(guardTimeout); respondido = true;
+      return res.status(500).json({ erro: 'Certificado NF-e nao configurado. Configure na tela fiscal ou no .env.' });
+    }
+    if (!getCnpjEmitente()) {
+      clearTimeout(guardTimeout); respondido = true;
+      return res.status(500).json({ erro: 'CNPJ do emitente nao configurado na tela fiscal ou no .env' });
+    }
+
+    const itensNormalizados = normalizarItensAvulsosNFe(req.body?.itens || []);
+    if (!itensNormalizados.ok) {
+      clearTimeout(guardTimeout); respondido = true;
+      return res.status(400).json({ erro: itensNormalizados.erro });
+    }
+
+    const clienteNormalizado = normalizarClienteAvulso(db, req.body?.cliente || {});
+    if (!clienteNormalizado.ok) {
+      clearTimeout(guardTimeout); respondido = true;
+      return res.status(400).json({ erro: clienteNormalizado.erro });
+    }
+
+    const emitente = getEmitenteConfig();
+    const erroEmitenteFiscal = validarEmitenteFiscalNFe(emitente);
+    if (!erroEmitenteFiscal.ok) {
+      clearTimeout(guardTimeout); respondido = true;
+      return res.status(400).json({ erro: erroEmitenteFiscal.erro });
+    }
+
+    const documento = montarDocumentoFiscalAvulso({
+      cliente: clienteNormalizado.cliente,
+      itens: itensNormalizados.itens,
+      pagamento: req.body?.pagamento || 'Pix',
+    });
+    serie = getSerieNFe();
+    numero = proximoNumero(db, serie);
+    const ambiente = tpAmbAtual();
+
+    notaEmitindo = criarNotaEmitindo(db, {
+      origem: 'avulsa',
+      ordemid: null,
+      clienteid: clienteNormalizado.cliente.clienteid || null,
+      cliente_snapshot: clienteNormalizado.cliente,
+      emitente_snapshot: emitente,
+      valortotal: documento.valortotal,
+      descontovalor: documento.descontovalor,
+      pagamento: documento.pagamento,
+      ambiente,
+      numero,
+      serie,
+      criadopor: req.user?.id || null,
+    });
+
+    const payload = montarNFe({
+      ordem: {
+        valortotal: documento.valortotal,
+        descontovalor: documento.descontovalor,
+        pagamento: documento.pagamento,
+      },
+      itens: documento.itens,
+      cliente: clienteNormalizado.cliente,
+      emitente,
+      numero: parseInt(numero, 10),
+      serie,
+      ambiente,
+      autXML: clienteNormalizado.cliente?.cpf ? getAutXmlParaNFe(clienteNormalizado.cliente.cpf) : [],
+    });
+
+    const wizard = await getNFEWizard();
+    let resultado;
+    try {
+      resultado = await callSEFAZ(() => wizard.NFE_Autorizacao({
+        idLote: numero,
+        indSinc: 1,
+        NFe: payload,
+      }));
+    } catch (sefazErr) {
+      console.error('[NF-e] Erro na chamada SEFAZ avulsa:', sefazErr.message);
+      const sefazInfo = getSefazErrorInfo(sefazErr);
+      marcarNotaRejeitada(db, notaEmitindo.id, {
+        cstat: sefazInfo.cstat,
+        motivo: sefazInfo.mensagem,
+      });
+      if (deveDevolverNumeroNFeAposFalhaAutorizacao(sefazInfo) && rejeicaoPermiteDevolverNumeroNFe(sefazInfo.cstat)) {
+        devolverNumeroNFeRejeitada(db, serie, numero);
+      }
+      registrarEventoFiscal(db, {
+        ordemid: null,
+        chave: notaEmitindo.chave || `NFE-${notaEmitindo.id}`,
+        tipo: 'rejeicao',
+        cstat: sefazInfo.cstat,
+        motivo: sefazInfo.mensagem,
+        texto: 'Erro de comunicacao com a SEFAZ durante emissao avulsa',
+      });
+      if (!respondido) {
+        clearTimeout(guardTimeout); respondido = true;
+        return res.status(sefazInfo.tipo === 'rejeicao' || sefazInfo.tipo === 'validacao_xml' ? 422 : 504).json({
+          erro: sefazInfo.mensagem,
+          tipo: sefazInfo.tipo,
+          detalhe: sefazErr.message,
+          contingencia: false,
+        });
+      }
+      return;
+    }
+
+    let cStat = '', chave = '', protocolo = '', agora = new Date().toISOString();
+    if (Array.isArray(resultado)) {
+      const prot = resultado[0]?.protNFe?.infProt || resultado[0]?.infProt || resultado[0];
+      cStat = String(prot?.cStat || '');
+      chave = prot?.chNFe || '';
+      protocolo = prot?.nProt || '';
+      agora = prot?.dhRecbto || agora;
+    } else {
+      cStat = String(resultado?.cStat || resultado?.retEnviNFe?.protNFe?.infProt?.cStat || '');
+      chave = resultado?.chNFe || resultado?.retEnviNFe?.protNFe?.infProt?.chNFe || '';
+      protocolo = resultado?.nProt || resultado?.retEnviNFe?.protNFe?.infProt?.nProt || '';
+      agora = resultado?.dhRecbto || agora;
+    }
+
+    if (cStat !== '100') {
+      const motivo = resultado?.[0]?.protNFe?.infProt?.xMotivo
+        || resultado?.xMotivo
+        || resultado?.retEnviNFe?.xMotivo
+        || resultado?.retEnviNFe?.protNFe?.infProt?.xMotivo
+        || `cStat ${cStat || 'desconhecido'}`;
+      const rejeicao = formatarRejeicaoSefaz({ cStat, xMotivo: motivo, contexto: 'autorizacao' });
+      if (rejeicaoPermiteDevolverNumeroNFe(cStat)) {
+        devolverNumeroNFeRejeitada(db, serie, numero);
+      }
+      const xmlRejeicao = serializarXmlFiscal(resultado);
+      marcarNotaRejeitada(db, notaEmitindo.id, {
+        cstat: cStat || null,
+        motivo: rejeicao.mensagem,
+        xml: xmlRejeicao,
+        chave: chave || null,
+      });
+      registrarEventoFiscal(db, {
+        ordemid: null,
+        chave: chave || notaEmitindo.chave || `NFE-${notaEmitindo.id}`,
+        tipo: 'rejeicao',
+        cstat: cStat || null,
+        motivo: rejeicao.mensagem,
+        texto: `Rejeicao de autorizacao NF-e avulsa. Retorno original: ${rejeicao.motivoOriginal}`,
+        xml: xmlRejeicao,
+      });
+      if (!respondido) {
+        clearTimeout(guardTimeout); respondido = true;
+        return res.status(422).json({
+          erro: rejeicao.mensagem,
+          cStat,
+          campo: rejeicao.campo,
+          item: rejeicao.item,
+          motivoOriginal: rejeicao.motivoOriginal,
+        });
+      }
+      return;
+    }
+
+    const xmlAutorizacao = serializarXmlFiscal(resultado);
+    autorizadaNaSefaz = true;
+    db.transaction(() => {
+      const itensSnapshot = documento.itens.map(({ id, ...item }) => item);
+      substituirItensNota(db, notaEmitindo.id, itensSnapshot);
+      marcarNotaAutorizada(db, notaEmitindo.id, {
+        chave,
+        protocolo,
+        xml: xmlAutorizacao,
+        emitida_em: agora,
+      });
+    })();
+
+    if (chave) {
+      salvarXmlDisco(`${chave}.xml`, xmlAutorizacao);
+    }
+
+    registrarEventoFiscal(db, {
+      ordemid: null,
+      chave,
+      tipo: 'autorizacao',
+      protocolo,
+      cstat: cStat,
+      motivo: 'NF-e avulsa autorizada',
+      xml: xmlAutorizacao,
+      createdat: agora,
+    });
+
+    if (!respondido) {
+      clearTimeout(guardTimeout); respondido = true;
+      res.json({ ok: true, numero, serie, chave, protocolo, emitida_em: agora, origem: 'avulsa' });
+    }
+  } catch (e) {
+    console.error('[NF-e] ERRO POST /avulsa:', e.message, e.stack);
+    if (notaEmitindo && !autorizadaNaSefaz) {
+      try {
+        marcarNotaRejeitada(db, notaEmitindo.id, {
+          motivo: e.message || 'Erro interno ao emitir NF-e avulsa',
+        });
+      } catch (_) {}
+    }
+    if (!respondido) {
+      clearTimeout(guardTimeout); respondido = true;
+      res.status(500).json({ erro: 'Erro interno ao emitir NF-e avulsa', detalhe: e.message });
+    }
   }
 });
 
