@@ -39,6 +39,17 @@ function mapTpPag(pagamento) {
 }
 
 const COD_MUNICIPIO_IPATINGA = '3131307';
+const MAX_INF_CPL = 5000;
+
+function normalizarInformacoesComplementares(value) {
+  if (value === null || value === undefined) return '';
+  return String(value)
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, ' ')
+    .trim()
+    .slice(0, MAX_INF_CPL);
+}
 
 function montarEnderecoDest(cliente) {
   if (!cliente?.logradouro) return null;
@@ -223,6 +234,9 @@ function montarNFe({ ordem, itens, cliente, emitente, numero, serie, ambiente, a
   const tpAmb = resolverTpAmb(ambiente);
   const descontosItens = distribuirDesconto(itens, descontoDaOrdem(ordem, itens));
   const totais = calcularTotais(itens, descontosItens.reduce((acc, value) => acc + value, 0));
+  const infCpl = normalizarInformacoesComplementares(
+    ordem?.informacoes_complementares ?? ordem?.informacoesComplementares
+  );
 
   // emit usa CNPJCPF — a lib valida e converte para a tag CNPJ ou CPF no XML
   const emit = {
@@ -272,8 +286,11 @@ function montarNFe({ ordem, itens, cliente, emitente, numero, serie, ambiente, a
   if (Array.isArray(autXML) && autXML.length > 0) {
     infNFe.autXML = autXML;
   }
+  if (infCpl) {
+    infNFe.infAdic = { infCpl };
+  }
 
   return { infNFe };
 }
 
-module.exports = { montarNFe };
+module.exports = { montarNFe, normalizarInformacoesComplementares };

@@ -141,6 +141,28 @@ describe('nfe inutilizacao service', () => {
     expect(transmitir).not.toHaveBeenCalled();
   });
 
+  it('bloqueia inutilizacao quando numero existe em nfe_notas', async () => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS nfe_notas (
+        id INTEGER PRIMARY KEY,
+        ambiente INTEGER,
+        numero TEXT,
+        serie TEXT,
+        status TEXT
+      );
+    `);
+    db.prepare("INSERT INTO nfe_notas (ambiente, numero, serie, status) VALUES (2, '000000280', '1', 'autorizado')").run();
+
+    await expect(service.solicitar({
+      ...pedidoBase,
+      idempotencyKey: 'req-280-nfe-notas',
+    }, 7)).rejects.toMatchObject({
+      status: 409,
+      code: 'numero_utilizado',
+    });
+    expect(transmitir).not.toHaveBeenCalled();
+  });
+
   it('bloqueia sobreposicao processando, autorizada ou incerta e permite adjacencia', async () => {
     const insert = db.prepare(`
       INSERT INTO nfe_inutilizacoes

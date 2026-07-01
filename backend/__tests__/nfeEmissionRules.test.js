@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   aplicarOverridesItensNFe,
   aplicarOverrideClienteNFe,
+  normalizarItensAvulsosNFe,
   normalizarItemFiscalOverride,
   serializarItemPreviaNFe,
   validarClienteFiscalNFe,
@@ -281,6 +282,56 @@ describe('nfeEmissionRules', () => {
 
     expect(resultado.ok).toBe(false);
     expect(resultado.erro).toBe('Item "Produto zerado": quantidade deve ser maior que zero.');
+  });
+
+  it('normalizes full avulsa items with fiscal fields and commercial totals', () => {
+    const resultado = normalizarItensAvulsosNFe([
+      {
+        produto_id: 3,
+        nome: 'Moldura avulsa',
+        quantidade: '2',
+        preco_unitario: '45.50',
+        avulso: false,
+        ncm: '44.15.10.00',
+        cfop: '5102',
+        csosn: '400',
+        origem_fiscal: '0',
+        unidade: 'un',
+      },
+    ]);
+
+    expect(resultado.ok).toBe(true);
+    expect(resultado.itens[0]).toMatchObject({
+      produto_id: 3,
+      nome: 'Moldura avulsa',
+      quantidade: 2,
+      preco_unitario: 45.5,
+      subtotal: 91,
+      avulso: false,
+      ncm: '44151000',
+      cfop: '5102',
+      csosn: '400',
+      origem_fiscal: '0',
+      unidade: 'UN',
+    });
+  });
+
+  it('rejects avulsa items without commercial value before issuing NF-e', () => {
+    const resultado = normalizarItensAvulsosNFe([
+      {
+        nome: 'Sem preco',
+        quantidade: 1,
+        preco_unitario: 0,
+        ncm: '44151000',
+        cfop: '5102',
+        csosn: '400',
+        origem_fiscal: '0',
+        unidade: 'UN',
+      },
+    ]);
+
+    expect(resultado.ok).toBe(false);
+    expect(resultado.erro).toContain('preco unitario');
   });
 
   it('rejects emitente with invalid CEP before XML generation', () => {

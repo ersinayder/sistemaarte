@@ -32,6 +32,7 @@ function createNfeEventoService({
   clearTimeoutFn = clearTimeout,
   agora = () => new Date().toISOString(),
   logger = console,
+  onEventoAutorizado,
 }) {
   if (!db || !attemptRepository || !transmitir) {
     throw new TypeError('db, attemptRepository e transmitir sao obrigatorios.');
@@ -59,9 +60,10 @@ function createNfeEventoService({
   function registrarEvento(input, resposta) {
     db.prepare(`
       INSERT INTO nfe_eventos
-        (ordemid, chave, tipo, nseqevento, protocolo, cstat, motivo, texto, xml, createdat)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (nfeid, ordemid, chave, tipo, nseqevento, protocolo, cstat, motivo, texto, xml, createdat)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
+      input.nfeid || null,
       input.ordemId,
       input.chave,
       input.tipo,
@@ -95,6 +97,9 @@ function createNfeEventoService({
       }
 
       registrarEvento(input, resposta);
+      if (typeof onEventoAutorizado === 'function') {
+        onEventoAutorizado(input, resposta);
+      }
       return attemptRepository.transicionarNaTransacao(tentativa.id, 'autorizado', {
         cStat: resposta.cStat,
         motivo: resposta.motivo,

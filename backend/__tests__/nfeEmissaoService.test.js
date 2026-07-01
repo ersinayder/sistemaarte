@@ -3,6 +3,13 @@ import Database from 'better-sqlite3';
 import { createNfeAttemptRepository } from '../repositories/nfeAttemptRepository.js';
 import { createNfePersistenceService } from '../services/nfePersistenceService.js';
 import { createNfeEmissaoService } from '../services/nfeEmissaoService.js';
+import {
+  criarNotaEmitindo,
+  marcarNotaAutorizada,
+  marcarNotaIncerta,
+  marcarNotaRejeitada,
+  substituirItensNota,
+} from '../services/nfeNotasService.js';
 
 const AGORA = '2026-06-21T10:00:00.000Z';
 const CHAVE = '31260607500718000196550010000000011000000019';
@@ -45,6 +52,7 @@ function createDb() {
     );
     CREATE TABLE nfe_eventos (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nfeid INTEGER,
       ordemid INTEGER,
       chave TEXT NOT NULL,
       tipo TEXT NOT NULL,
@@ -94,6 +102,54 @@ function createDb() {
       cstat TEXT,
       motivo TEXT,
       createdat TEXT NOT NULL
+    );
+    CREATE TABLE nfe_notas (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      origem TEXT NOT NULL,
+      ordemid INTEGER DEFAULT NULL,
+      clienteid INTEGER DEFAULT NULL,
+      cliente_snapshot TEXT NOT NULL DEFAULT '{}',
+      emitente_snapshot TEXT NOT NULL DEFAULT '{}',
+      valortotal REAL NOT NULL DEFAULT 0,
+      descontovalor REAL NOT NULL DEFAULT 0,
+      pagamento TEXT DEFAULT 'Pix',
+      informacoes_complementares TEXT,
+      ambiente INTEGER NOT NULL DEFAULT 2,
+      numero TEXT,
+      serie TEXT NOT NULL DEFAULT '1',
+      chave TEXT,
+      protocolo TEXT,
+      status TEXT NOT NULL,
+      xml TEXT,
+      rejeicao_cstat TEXT,
+      rejeicao_motivo TEXT,
+      cancelado_em TEXT,
+      cancel_protocolo TEXT,
+      cancel_motivo TEXT,
+      deletedat TEXT DEFAULT NULL,
+      deletedpor INTEGER DEFAULT NULL,
+      deletedreason TEXT DEFAULT NULL,
+      criadopor INTEGER DEFAULT NULL,
+      imported_legacy INTEGER NOT NULL DEFAULT 0,
+      createdat TEXT DEFAULT (datetime('now','localtime')),
+      updatedat TEXT DEFAULT (datetime('now','localtime'))
+    );
+    CREATE TABLE nfe_itens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nfeid INTEGER NOT NULL,
+      ordem_item_id INTEGER DEFAULT NULL,
+      produto_id INTEGER DEFAULT NULL,
+      nome TEXT NOT NULL,
+      quantidade REAL NOT NULL DEFAULT 1,
+      preco_unitario REAL NOT NULL DEFAULT 0,
+      subtotal REAL GENERATED ALWAYS AS (quantidade * preco_unitario) STORED,
+      avulso INTEGER DEFAULT 0,
+      ncm TEXT NOT NULL,
+      cfop TEXT NOT NULL,
+      csosn TEXT NOT NULL,
+      origem_fiscal TEXT NOT NULL DEFAULT '0',
+      unidade TEXT NOT NULL DEFAULT 'UN',
+      createdat TEXT DEFAULT (datetime('now','localtime'))
     );
   `);
   return db;
@@ -177,16 +233,41 @@ function createHarness(overrides = {}) {
   const db = createDb();
   seed(db);
   const attemptRepository = createNfeAttemptRepository(db, { agora: () => AGORA });
+  const nfeNotasService = overrides.withCanonicalNotes ? {
+    substituirItensNota,
+    marcarNotaAutorizada,
+  } : overrides.nfeNotasService;
   const persistenceService = createNfePersistenceService({
     db,
     attemptRepository,
     agora: () => AGORA,
+    nfeNotasService,
   });
   const transmitir = overrides.transmitir || vi.fn().mockResolvedValue(authRaw());
   const montarPayload = overrides.montarPayload || vi.fn(({ numero, serie }) => ({
     infNFe: { ide: { nNF: String(numero), serie } },
   }));
   const salvarXmlDisco = overrides.salvarXmlDisco || vi.fn(() => 'arquivo.xml');
+  const canonicalNotes = overrides.withCanonicalNotes ? {
+    criarNotaEmitindo: (tentativa, input) => criarNotaEmitindo(db, {
+      origem: 'ordem',
+      ordemid: input.ordemId,
+      clienteid: input.cliente?.clienteid || null,
+      cliente_snapshot: input.cliente,
+      emitente_snapshot: input.emitente,
+      valortotal: 100,
+      descontovalor: 0,
+      pagamento: 'Pix',
+      informacoes_complementares: input.informacoesComplementares || null,
+      ambiente: input.ambiente,
+      numero: String(tentativa.numero).padStart(9, '0'),
+      serie: tentativa.serie,
+      criadopor: input.usuarioId,
+    }),
+    marcarNotaRejeitada: (_tentativa, input, data) => marcarNotaRejeitada(db, input.nfeNotaId, data),
+    marcarNotaIncerta: (_tentativa, input, data) => marcarNotaIncerta(db, input.nfeNotaId, data),
+    marcarNotaFalhaLocal: (_tentativa, input, data) => marcarNotaRejeitada(db, input.nfeNotaId, data),
+  } : overrides.canonicalNotes;
   const service = createNfeEmissaoService({
     db,
     attemptRepository,
@@ -199,6 +280,7 @@ function createHarness(overrides = {}) {
     setTimeoutFn: overrides.setTimeoutFn,
     clearTimeoutFn: overrides.clearTimeoutFn,
     logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
+    canonicalNotes,
   });
 
   return { db, attemptRepository, persistenceService, service, transmitir, montarPayload, salvarXmlDisco };
@@ -356,6 +438,41 @@ describe('nfeEmissaoService', () => {
     });
     expect(harness.db.prepare('SELECT nfe_status, nfe_chave, nfe_xml FROM ordens WHERE id = 17').get())
       .toEqual({ nfe_status: 'autorizado', nfe_chave: CHAVE, nfe_xml: XML });
+  });
+
+  it('alimenta a entidade canonica de NF-e no fluxo idempotente de OS', async () => {
+    harness = createHarness({ withCanonicalNotes: true });
+
+    await expect(harness.service.emitir(baseInput({
+      informacoesComplementares: 'Pedido interno 123.',
+    }))).resolves.toMatchObject({
+      httpStatus: 200,
+      ok: true,
+      status: 'autorizado',
+      chave: CHAVE,
+    });
+
+    const nota = harness.db.prepare(`
+      SELECT id, origem, ordemid, clienteid, numero, serie, chave, protocolo, status,
+             informacoes_complementares, xml
+      FROM nfe_notas
+    `).get();
+    expect(nota).toMatchObject({
+      origem: 'ordem',
+      ordemid: 17,
+      clienteid: 7,
+      numero: '000000001',
+      serie: '1',
+      chave: CHAVE,
+      protocolo: PROTOCOLO,
+      status: 'autorizado',
+      informacoes_complementares: 'Pedido interno 123.',
+      xml: XML,
+    });
+    expect(harness.db.prepare('SELECT nfeid, ordem_item_id, nome FROM nfe_itens').get())
+      .toMatchObject({ nfeid: nota.id, ordem_item_id: 1, nome: 'Moldura' });
+    expect(harness.db.prepare('SELECT nfeid, tipo, cstat FROM nfe_eventos').get())
+      .toMatchObject({ nfeid: nota.id, tipo: 'autorizacao', cstat: '100' });
   });
 
   it('erro de comunicacao apos reserva vira incerto, sem rejeitar nem devolver numero', async () => {

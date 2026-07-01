@@ -81,6 +81,7 @@ function createNfePersistenceService({
   db,
   attemptRepository,
   nfeAttemptRepository,
+  nfeNotasService,
   agora = () => new Date().toISOString(),
 }) {
   const repository = attemptRepository || nfeAttemptRepository;
@@ -197,11 +198,23 @@ function createNfePersistenceService({
       }
     }
 
+    const nfeid = input.nfeNotaId || input.nfeid || null;
+    if (nfeid && nfeNotasService) {
+      nfeNotasService.substituirItensNota(db, nfeid, input.itens || []);
+      nfeNotasService.marcarNotaAutorizada(db, nfeid, {
+        chave: autorizacao.chave,
+        protocolo: autorizacao.protocolo,
+        xml: input.xml,
+        emitida_em: input.emitidaEm || timestamp,
+      });
+    }
+
     db.prepare(`
       INSERT INTO nfe_eventos
-        (ordemid, chave, tipo, nseqevento, protocolo, cstat, motivo, xml, createdat)
-      VALUES (?, ?, 'autorizacao', 1, ?, ?, ?, ?, ?)
+        (nfeid, ordemid, chave, tipo, nseqevento, protocolo, cstat, motivo, xml, createdat)
+      VALUES (?, ?, ?, 'autorizacao', 1, ?, ?, ?, ?, ?)
     `).run(
+      nfeid,
       input.ordemId,
       autorizacao.chave,
       autorizacao.protocolo,

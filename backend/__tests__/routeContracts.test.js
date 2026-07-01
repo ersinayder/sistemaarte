@@ -81,6 +81,9 @@ describe('route authorization contracts', () => {
     const nfeRouter = await loadRouter('../routes/nfe.js');
 
     expect(routeRoles(nfeRouter, 'get', '/status-servico')).toEqual(['admin', 'caixa']);
+    expect(routeRoles(nfeRouter, 'get', '/avulsa/preview')).toEqual(['admin', 'caixa']);
+    expect(routeRoles(nfeRouter, 'post', '/avulsa/preview')).toEqual(['admin', 'caixa']);
+    expect(routeRoles(nfeRouter, 'post', '/avulsa')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'get', '/integridade-financeira')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'get', '/integridade-financeira/:ordemId')).toEqual(['admin', 'caixa']);
     expect(routeRoles(nfeRouter, 'post', '/integridade-financeira/:ordemId/conciliar')).toEqual(['admin']);
@@ -403,11 +406,12 @@ describe('security configuration contracts', () => {
     expect(source).not.toMatch(/Ambiente atual: producao/);
   });
 
-  it('keeps fiscal event XML downloads scoped to active OS for non-admin users', () => {
+  it('keeps fiscal event XML downloads scoped to active canonical notes for non-admin users', () => {
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
 
-    expect(source).toMatch(/FROM nfe_eventos e[\s\S]+LEFT JOIN ordens o ON o\.id = e\.ordemid/);
-    expect(source).toMatch(/req\.user\.role !== 'admin'[\s\S]+evento\.deletedat/);
+    expect(source).toMatch(/FROM nfe_eventos e[\s\S]+LEFT JOIN nfe_notas n[\s\S]+n\.id = e\.nfeid/);
+    expect(source).toMatch(/LEFT JOIN ordens o ON o\.id = COALESCE\(e\.ordemid,\s*n\.ordemid\)/);
+    expect(source).toMatch(/req\.user\.role !== 'admin'[\s\S]+notaOculta[\s\S]+legadoOculto[\s\S]+semEscopoFiscal/);
   });
 
   it('does not log NF-e payloads or event payloads with fiscal PII', () => {
@@ -451,11 +455,15 @@ describe('security configuration contracts', () => {
 
   it('does not expose internal NF-e exception messages in fiscal event responses', () => {
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+    const emitirStart = source.indexOf("router.post('/emitir/:id'");
+    const cceStart = source.indexOf("router.post('/:chave/cce'");
+    const eventSource = source.slice(cceStart);
 
-    expect(source).not.toMatch(/detalhe:\s*(e|err)\.message/);
+    expect(source.slice(emitirStart, cceStart)).not.toMatch(/detalhe:\s*(e|err)\.message/);
+    expect(eventSource).not.toMatch(/detalhe:\s*(e|err)\.message/);
   });
 
-  it('delegates CC-e and cancellation to the idempotent fiscal event service', () => {
+  it('delegates OS CC-e and cancellation to the idempotent fiscal event service while preserving avulsa fallback', () => {
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
     const cceStart = source.indexOf("router.post('/:chave/cce'");
     const cancelarStart = source.indexOf("router.post('/:chave/cancelar'");
@@ -464,12 +472,14 @@ describe('security configuration contracts', () => {
 
     expect(source).toMatch(/createNfeEventoService/);
     expect(source).toMatch(/createNfeEventoAttemptRepository/);
-    expect(source).not.toMatch(/wizard\.NFE_CartaDeCorrecao/);
-    expect(source).not.toMatch(/wizard\.NFE_Cancelamento/);
+    expect(cceSource).toMatch(/if \(!nota\.ordemid\)[\s\S]+wizard\.NFE_CartaDeCorrecao/);
+    expect(cancelarSource).toMatch(/if \(!nota\.ordemid\)[\s\S]+wizard\.NFE_Cancelamento/);
     expect(cceSource).not.toMatch(/guardTimeout/);
     expect(cancelarSource).not.toMatch(/guardTimeout/);
     expect(cceSource).toMatch(/service\.executar/);
     expect(cancelarSource).toMatch(/service\.executar/);
+    expect(cceSource).toMatch(/ordemId:\s*nota\.ordemid/);
+    expect(cancelarSource).toMatch(/ordemId:\s*nota\.ordemid/);
   });
 
   it('blocks new NF-e emission when the local note is cancelled', () => {
@@ -532,14 +542,14 @@ describe('security configuration contracts', () => {
   it('exposes fiscal-financial integrity audit without SEFAZ calls', async () => {
     const nfeRouter = await loadRouter('../routes/nfe.js');
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
-    const routeStart = source.indexOf("router.get('/integridade-financeira'");
-    const chaveEventosStart = source.indexOf("router.get('/:chave/eventos'");
-    const routeSource = source.slice(routeStart, chaveEventosStart);
+    const routeStart = source.indexOf("router.get('/integridade-financeira',");
+    const pendenciasStart = source.indexOf("router.get('/pendencias'", routeStart);
+    const routeSource = source.slice(routeStart, pendenciasStart);
 
     expect(routeRoles(nfeRouter, 'get', '/integridade-financeira')).toEqual(['admin', 'caixa']);
     expect(source).toMatch(/auditarIntegridadeFiscalFinanceiraNFe/);
     expect(routeStart).toBeGreaterThan(-1);
-    expect(routeStart).toBeLessThan(chaveEventosStart);
+    expect(routeStart).toBeLessThan(pendenciasStart);
     expect(routeSource).not.toMatch(/getNFEWizard|callSEFAZ|NFE_|service\.executar|wizard\./);
     expect(routeSource).not.toMatch(/nfe_xml[:,]|xml:/);
   });
@@ -729,25 +739,116 @@ describe('security configuration contracts', () => {
       .toBeLessThan(persistenceSource.indexOf('UPDATE clientes'));
   });
 
+  it('hydrates OS NF-e summary from nfe_notas without selecting canonical XML', () => {
+    const source = fs.readFileSync(new URL('../routes/ordens.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/LEFT JOIN nfe_notas nn/);
+    expect(source).toMatch(/nn\.status AS nfe_status/);
+    expect(source).toMatch(/nn\.chave AS nfe_chave/);
+    expect(source).toMatch(/nn\.createdat AS nfe_emitida_em/);
+    expect(source).toMatch(/NULL AS nfe_xml/);
+    expect(source).not.toMatch(/nn\.xml/);
+  });
+
+  it('emits OS NF-e through nfe_notas without writing active legacy ordem fields', () => {
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/buscarNotaAtivaParaOrdem/);
+    expect(source).toMatch(/criarNotaEmitindo/);
+    expect(source).toMatch(/marcarNotaAutorizada/);
+    expect(source).toMatch(/marcarNotaRejeitada/);
+    expect(source).toMatch(/substituirItensNota/);
+    expect(source).not.toMatch(/UPDATE ordens\s+SET\s+nfe_status = 'emitindo'/);
+    expect(source).not.toMatch(/UPDATE ordens SET nfe_status='rejeitado'/);
+    expect(source).not.toMatch(/nfe_xml\s+=\s+\?/);
+  });
+
+  it('keeps avulsa NF-e emission independent from OS and caixa writes', () => {
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+    const start = source.indexOf("router.post('/avulsa'");
+    const end = source.indexOf("router.get('/:chave/eventos'", start);
+    const avulsaRoute = source.slice(start, end);
+
+    expect(start).toBeGreaterThan(-1);
+    expect(avulsaRoute).toMatch(/origem:\s*'avulsa'/);
+    expect(avulsaRoute).toMatch(/ordemid:\s*null/);
+    expect(avulsaRoute).toMatch(/validarClienteFiscalNFe\(clienteNormalizado\.cliente\)/);
+    expect(avulsaRoute).not.toMatch(/INSERT INTO ordens/);
+    expect(avulsaRoute).not.toMatch(/INSERT INTO lancamentos/);
+    expect(avulsaRoute).not.toMatch(/INSERT INTO lancamento_itens/);
+    expect(avulsaRoute).not.toMatch(/salvarClienteCadastroAposEmissao/);
+    expect(avulsaRoute).not.toMatch(/detalhe:\s*(e|err|sefazErr)\.message/);
+  });
+
+  it('routes complementary NF-e information into note storage and SEFAZ payload', () => {
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/normalizarInformacoesComplementares/);
+    expect(source).toMatch(/informacoes_complementares:\s*informacoesComplementares/);
+    expect(source).toMatch(/montarNFe\(\{[\s\S]+informacoes_complementares:\s*informacoesComplementares/);
+  });
+
+  it('routes NF-e list and fiscal document reads through nfe_notas', () => {
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/listarNotasFiscais/);
+    expect(source).toMatch(/resolverNotaPorChave/);
+    expect(source).toMatch(/nfe_notas/);
+    expect(source).toMatch(/router\.get\(['"]\/:chave\/xml\/autorizacao['"]/);
+    expect(source).toMatch(/renderDanfeHtml\(xml\)/);
+  });
+
+  it('resolves CC-e and cancellation through nfe_notas instead of legacy ordem fiscal columns', () => {
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/marcarNotaCancelada/);
+    expect(source).toMatch(/const nota = resolverNotaPorChave\(db,\s*chave\)/);
+    expect(source).toMatch(/nota\.status/);
+    expect(source).toMatch(/nota\.protocolo/);
+    expect(source).toMatch(/nfeid:\s*nota\.id/);
+    expect(source).not.toMatch(/SELECT \* FROM ordens WHERE nfe_chave = \?/);
+    expect(source).not.toMatch(/UPDATE ordens SET nfe_status='cancelado'/);
+  });
+
+  it('links NF-e authorization and rejection events to the canonical note id', () => {
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/INSERT INTO nfe_eventos[\s\S]+\(nfeid, ordemid, chave/);
+    expect(source).toMatch(/nfeid:\s*notaEmitindo\.id/);
+  });
+
+  it('documents phase 2 cleanup by keeping legacy ordem NF-e columns out of active fiscal routes', () => {
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/nfe_notas/);
+    expect(source).not.toMatch(/SELECT \* FROM ordens WHERE nfe_chave/);
+    expect(source).not.toMatch(/UPDATE ordens SET[\s\S]+nfe_status/);
+    expect(source).not.toMatch(/nfe_xml\s+=\s+\?/);
+  });
+
   it('keeps NF-e trash as a soft delete that is hidden from the main list', () => {
     const databaseSource = fs.readFileSync(new URL('../database.js', import.meta.url), 'utf8');
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+    const serviceSource = fs.readFileSync(new URL('../services/nfeNotasService.js', import.meta.url), 'utf8');
 
     expect(databaseSource).toMatch(/ALTER TABLE ordens ADD COLUMN nfe_deletedat TEXT/);
     expect(databaseSource).toMatch(/ALTER TABLE ordens ADD COLUMN nfe_deletedpor INTEGER/);
     expect(databaseSource).toMatch(/ALTER TABLE ordens ADD COLUMN nfe_deletedreason TEXT/);
-    expect(source).toMatch(/WHERE o\.nfe_status IS NOT NULL AND o\.deletedat IS NULL AND o\.nfe_deletedat IS NULL/);
+    expect(source).toMatch(/listarNotasFiscais\(getDB\(\),\s*\{\s*lixeira:\s*false\s*\}\)/);
     expect(source).toMatch(/router\.get\(['"]\/lixeira['"],\s*auth\(\['admin'\]\)/);
-    expect(source).toMatch(/o\.nfe_deletedat IS NOT NULL/);
-    expect(source).toMatch(/UPDATE ordens SET nfe_deletedat=datetime\('now','localtime'\), nfe_deletedpor=\?, nfe_deletedreason=\?/);
-    expect(source).toMatch(/UPDATE ordens SET nfe_deletedat=NULL, nfe_deletedpor=NULL, nfe_deletedreason=NULL/);
+    expect(source).toMatch(/listarNotasFiscais\(getDB\(\),\s*\{\s*lixeira:\s*true\s*\}\)/);
+    expect(source).toMatch(/moverNotaParaLixeira/);
+    expect(source).toMatch(/restaurarNotaDaLixeira/);
+    expect(serviceSource).toMatch(/UPDATE nfe_notas\s+SET deletedat=datetime\('now','localtime'\)/);
+    expect(serviceSource).toMatch(/UPDATE nfe_notas\s+SET deletedat=NULL/);
+    expect(source).not.toMatch(/UPDATE ordens SET nfe_deletedat/);
   });
 
   it('blocks moving authorized or cancelled NF-e records to fiscal trash', () => {
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
 
     expect(source).toMatch(/const STATUS_NFE_LIXEIRA = \['rejeitado'\]/);
-    expect(source).toMatch(/!STATUS_NFE_LIXEIRA\.includes\(nota\.nfe_status\)/);
+    expect(source).toMatch(/!STATUS_NFE_LIXEIRA\.includes\(nota\.status\)/);
     expect(source).toMatch(/NF-e autorizada ou cancelada nao pode ser movida para a lixeira/);
   });
 });

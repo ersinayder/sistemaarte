@@ -20,6 +20,7 @@ function createDb() {
     );
     CREATE TABLE nfe_eventos (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nfeid INTEGER,
       ordemid INTEGER,
       chave TEXT NOT NULL,
       tipo TEXT NOT NULL,
@@ -129,6 +130,23 @@ describe('nfeEventoService', () => {
     expect(h.db.prepare('SELECT tipo, cstat FROM nfe_eventos').get())
       .toMatchObject({ tipo: 'cce', cstat: '135' });
     expect(h.db.prepare('SELECT status FROM nfe_evento_tentativas').get().status).toBe('autorizado');
+  });
+
+  it('vincula evento autorizado ao nfeid canonico quando informado', async () => {
+    const h = makeService();
+
+    await h.service.executar({
+      ordemId: 7,
+      nfeid: 55,
+      chave: CHAVE,
+      tipo: 'cce',
+      nSeqEvento: 1,
+      texto: 'Correcao fiscal permitida',
+      payload: { evento: [] },
+    });
+
+    expect(h.db.prepare('SELECT nfeid, tipo FROM nfe_eventos').get())
+      .toEqual({ nfeid: 55, tipo: 'cce' });
   });
 
   it('autoriza cancelamento atomico com OS e evento', async () => {

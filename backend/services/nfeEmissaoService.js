@@ -129,6 +129,7 @@ function createNfeEmissaoService({
   clearTimeoutFn = clearTimeout,
   logger = console,
   agora = () => new Date().toISOString(),
+  canonicalNotes,
 }) {
   if (!attemptRepository || !persistenceService || !transmitir || !montarPayload) {
     throw new TypeError('attemptRepository, persistenceService, transmitir e montarPayload sao obrigatorios.');
@@ -167,9 +168,10 @@ function createNfeEmissaoService({
     if (!db) return;
     db.prepare(`
       INSERT INTO nfe_eventos
-        (ordemid, chave, tipo, nseqevento, protocolo, cstat, motivo, texto, xml, createdat)
-      VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
+        (nfeid, ordemid, chave, tipo, nseqevento, protocolo, cstat, motivo, texto, xml, createdat)
+      VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
     `).run(
+      dados.nfeid || null,
       tentativa.ordemid,
       chaveEvento(tentativa, dados),
       tipo,
@@ -180,6 +182,12 @@ function createNfeEmissaoService({
       dados.xmlRetorno || null,
       agora()
     );
+  }
+
+  function executarHook(nome, tentativa, input, dados = {}) {
+    const hook = canonicalNotes?.[nome];
+    if (typeof hook !== 'function') return null;
+    return hook(tentativa, input, dados);
   }
 
   function devolverNumeroNaTransacao(tentativa) {
@@ -223,10 +231,14 @@ function createNfeEmissaoService({
     }
   }
 
-  function marcarIncerto(tentativa, dados = {}) {
+  function marcarIncerto(tentativa, input = {}, dados = {}) {
     const atualizada = runFiscalTransaction(() => {
       projetarStatusOrdem(tentativa, 'incerto', dados);
-      registrarEventoOperacional(tentativa, 'incerto', dados);
+      executarHook('marcarNotaIncerta', tentativa, input, dados);
+      registrarEventoOperacional(tentativa, 'incerto', {
+        ...dados,
+        nfeid: input.nfeNotaId,
+      });
       if (db) return attemptRepository.transicionarNaTransacao(tentativa.id, 'incerto', dados);
       return transicionar(tentativa, 'incerto', dados);
     });
@@ -241,7 +253,7 @@ function createNfeEmissaoService({
     });
   }
 
-  function finalizarRejeicao(tentativa, resposta) {
+  function finalizarRejeicao(tentativa, input = {}, resposta) {
     const rejeicao = formatarRejeicao
       ? formatarRejeicao({ cStat: resposta.cStat, xMotivo: resposta.motivo, contexto: 'autorizacao' })
       : {
@@ -259,8 +271,15 @@ function createNfeEmissaoService({
     };
     const atualizada = runFiscalTransaction(() => {
       projetarStatusOrdem(tentativa, 'rejeitado', dadosTransicao);
+      executarHook('marcarNotaRejeitada', tentativa, input, {
+        ...dadosTransicao,
+        cstat: dadosTransicao.cStat,
+        chave: rejeicaoPermiteDevolverNumero(resposta.cStat) ? null : dadosTransicao.chave,
+        xml: resposta.xml || null,
+      });
       registrarEventoOperacional(tentativa, 'rejeicao', {
         ...dadosTransicao,
+        nfeid: input.nfeNotaId,
         texto: `Rejeicao de autorizacao NF-e. Retorno original: ${rejeicao.motivoOriginal || rejeicao.mensagem}`,
       });
       const row = db
@@ -283,8 +302,13 @@ function createNfeEmissaoService({
     });
   }
 
-  function finalizarFalhaLocal(tentativa, dados = {}) {
+  function finalizarFalhaLocal(tentativa, input = {}, dados = {}) {
     const atualizada = runFiscalTransaction(() => {
+      executarHook('marcarNotaFalhaLocal', tentativa, input, {
+        cstat: dados.cStat ?? dados.cstat ?? null,
+        motivo: dados.motivo || 'Falha local antes de transmitir NF-e.',
+        xml: dados.xmlRetorno || null,
+      });
       const row = db
         ? attemptRepository.transicionarNaTransacao(tentativa.id, 'falha_local', dados)
         : transicionar(tentativa, 'falha_local', dados);
@@ -300,17 +324,17 @@ function createNfeEmissaoService({
     });
   }
 
-  function processarErroTransmissao(error, tentativa) {
+  function processarErroTransmissao(error, tentativa, input) {
     const info = typeof classificarErro === 'function' ? classificarErro(error) : null;
     if (info?.tipo === 'validacao_xml') {
-      return finalizarFalhaLocal(tentativa, {
+      return finalizarFalhaLocal(tentativa, input, {
         cStat: info.cStat ?? info.cstat ?? null,
         motivo: info.mensagem || 'XML invalido antes da transmissao.',
         erroLocal: onlyMessage(error),
       });
     }
     if (info?.tipo === 'rejeicao') {
-      return finalizarRejeicao(tentativa, {
+      return finalizarRejeicao(tentativa, input, {
         cStat: String(info.cStat ?? info.cstat ?? '').trim(),
         motivo: info.mensagem || onlyMessage(error),
         chave: info.chave || null,
@@ -318,7 +342,7 @@ function createNfeEmissaoService({
         xml: info.xml || null,
       });
     }
-    return marcarIncerto(tentativa, {
+    return marcarIncerto(tentativa, input, {
       cStat: info?.cStat ?? info?.cstat ?? 'comunicacao',
       motivo: info?.mensagem || 'Falha de comunicacao com a SEFAZ apos reservar a numeracao.',
       erroLocal: onlyMessage(error),
@@ -331,7 +355,7 @@ function createNfeEmissaoService({
       || !resposta.protocolo
       || !validarXmlAutorizacao(resposta.xml, resposta.chave)
     ) {
-      return marcarIncerto(tentativa, {
+      return marcarIncerto(tentativa, input, {
         cStat: resposta.cStat,
         motivo: 'Autorizacao sem XML legal valido ou chave/protocolo divergente.',
         chave: resposta.chave || null,
@@ -351,6 +375,9 @@ function createNfeEmissaoService({
       motivo: resposta.motivo,
       xml: resposta.xml,
       cliente: input.cliente,
+      itens: input.itens,
+      nfeNotaId: input.nfeNotaId,
+      emitidaEm: resposta.recebidoEm,
     });
 
     const alertas = [];
@@ -389,7 +416,7 @@ function createNfeEmissaoService({
         return autorizar(tentativa, input, resposta);
       } catch (error) {
         logger.error?.('[NF-e] Autorizacao recebida mas nao persistida:', onlyMessage(error));
-        return marcarIncerto(tentativa, {
+        return marcarIncerto(tentativa, input, {
           cStat: resposta.cStat,
           motivo: 'Autorizacao recebida, mas persistencia local ficou incerta.',
           chave: resposta.chave || null,
@@ -401,10 +428,10 @@ function createNfeEmissaoService({
     }
 
     if (classificacao === 'rejeitado') {
-      return finalizarRejeicao(tentativa, resposta);
+      return finalizarRejeicao(tentativa, input, resposta);
     }
 
-    return marcarIncerto(tentativa, {
+    return marcarIncerto(tentativa, input, {
       cStat: resposta.cStat || null,
       motivo: resposta.motivo || 'Resposta fiscal vazia, desconhecida ou nao conclusiva.',
       chave: resposta.chave || null,
@@ -426,15 +453,29 @@ function createNfeEmissaoService({
       throw error;
     }
 
+    let executionInput = input;
+    try {
+      const nota = executarHook('criarNotaEmitindo', tentativa, input) || null;
+      if (nota?.id) {
+        executionInput = { ...input, nfeNotaId: nota.id };
+      }
+    } catch (error) {
+      return finalizarFalhaLocal(tentativa, input, {
+        httpStatus: 500,
+        motivo: 'Falha local antes da transmissao.',
+        erroLocal: onlyMessage(error),
+      });
+    }
+
     let payload;
     try {
       payload = await montarPayload({
-        ...input,
+        ...executionInput,
         numero: tentativa.numero,
         serie: tentativa.serie,
       });
     } catch (error) {
-      return finalizarFalhaLocal(tentativa, {
+      return finalizarFalhaLocal(tentativa, executionInput, {
         httpStatus: 500,
         motivo: 'Falha local antes da transmissao.',
         erroLocal: onlyMessage(error),
@@ -444,8 +485,8 @@ function createNfeEmissaoService({
     let timeoutId;
     const transmissao = Promise.resolve()
       .then(() => transmitir(payload, tentativa))
-      .then((raw) => processarResposta(raw, tentativa, input))
-      .catch((error) => processarErroTransmissao(error, tentativa));
+      .then((raw) => processarResposta(raw, tentativa, executionInput))
+      .catch((error) => processarErroTransmissao(error, tentativa, executionInput));
 
     transmissao.catch((error) => {
       logger.error?.('[NF-e] Erro tardio na emissao:', onlyMessage(error));
@@ -455,7 +496,7 @@ function createNfeEmissaoService({
       timeoutId = setTimeoutFn(() => {
         resolve({
           __timeout: true,
-          ...marcarIncerto(tentativa, {
+          ...marcarIncerto(tentativa, executionInput, {
             cStat: 'timeout',
             motivo: 'Tempo esgotado aguardando resposta da SEFAZ.',
           }),

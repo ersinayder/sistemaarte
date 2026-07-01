@@ -50,7 +50,27 @@ function normalizarNumeroNFeParaComparacao(value) {
   return Number.isInteger(numero) ? numero : null;
 }
 
+function tabelaExiste(db, table) {
+  return Boolean(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(table));
+}
+
 function buscarNumeroUtilizado(db, serie, inicio, fim) {
+  if (tabelaExiste(db, 'nfe_notas')) {
+    const rowsNotas = db.prepare(`
+      SELECT id, numero AS nfe_numero, serie AS nfe_serie
+      FROM nfe_notas
+      WHERE numero IS NOT NULL
+        AND COALESCE(serie, '1') = ?
+        AND status IN ('emitindo', 'autorizado', 'cancelado')
+    `).all(String(serie));
+
+    const notaUsada = rowsNotas.find((row) => {
+      const numero = normalizarNumeroNFeParaComparacao(row.nfe_numero);
+      return numero >= inicio && numero <= fim;
+    });
+    if (notaUsada) return notaUsada;
+  }
+
   const rows = db.prepare(`
     SELECT id, nfe_numero, nfe_serie
     FROM ordens

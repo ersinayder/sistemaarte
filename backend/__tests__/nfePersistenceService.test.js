@@ -47,6 +47,7 @@ function createDb(options) {
     );
     CREATE TABLE nfe_eventos (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nfeid INTEGER,
       ordemid INTEGER,
       chave TEXT NOT NULL,
       tipo TEXT NOT NULL,

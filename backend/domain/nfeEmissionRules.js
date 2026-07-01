@@ -112,6 +112,38 @@ function serializarItemPreviaNFe(item) {
   };
 }
 
+function normalizarItensAvulsosNFe(rawItens = []) {
+  if (!Array.isArray(rawItens) || rawItens.length === 0) {
+    return { ok: false, erro: 'NF-e precisa de pelo menos um item.' };
+  }
+
+  const itens = rawItens.map((raw, index) => {
+    const produtoId = raw?.produto_id ?? raw?.produtoId ?? null;
+    const quantidade = moeda(raw?.quantidade || 1);
+    const precoUnitario = moeda(raw?.preco_unitario ?? raw?.preco ?? 0);
+
+    return {
+      id: raw?.id ?? index + 1,
+      produto_id: produtoId ? Number(produtoId) : null,
+      nome: normalizarTexto(raw?.nome ?? raw?.produto_nome, 120),
+      quantidade,
+      preco_unitario: precoUnitario,
+      subtotal: moeda(quantidade * precoUnitario),
+      avulso: Boolean(raw?.avulso || !produtoId),
+      ncm: onlyDigits(valorFiscal(raw, 'ncm', '')).padStart(8, '0').slice(-8),
+      cfop: onlyDigits(valorFiscal(raw, 'cfop', '')).slice(0, 4),
+      csosn: onlyDigits(valorFiscal(raw, 'csosn', '')).padStart(3, '0').slice(-3),
+      origem_fiscal: onlyDigits(valorFiscal(raw, 'origem_fiscal', '')).slice(0, 1),
+      unidade: valorFiscal(raw, 'unidade', '').trim().toUpperCase().slice(0, 6),
+    };
+  });
+
+  const validacao = validarItensFiscaisNFe(itens);
+  if (!validacao.ok) return validacao;
+
+  return { ok: true, itens };
+}
+
 function normalizarTexto(value, max = 120) {
   return String(value ?? '').trim().slice(0, max);
 }
@@ -382,6 +414,7 @@ module.exports = {
   aplicarOverrideClienteNFe,
   classificarResultadoEmissao,
   estadoEmissaoBloqueiaReenvio,
+  normalizarItensAvulsosNFe,
   normalizarItemFiscalOverride,
   normalizarClienteOverride,
   rejeicaoPermiteDevolverNumero,

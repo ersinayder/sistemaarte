@@ -453,9 +453,67 @@ CREATE TABLE IF NOT EXISTS nfe_autxml (
 );
 CREATE INDEX IF NOT EXISTS idx_nfe_autxml_documento ON nfe_autxml(documento);
 CREATE INDEX IF NOT EXISTS idx_nfe_autxml_ativo ON nfe_autxml(ativo);
+CREATE TABLE IF NOT EXISTS nfe_notas (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  origem            TEXT NOT NULL,
+  ordemid           INTEGER DEFAULT NULL,
+  clienteid         INTEGER DEFAULT NULL,
+  cliente_snapshot  TEXT NOT NULL DEFAULT '{}',
+  emitente_snapshot TEXT NOT NULL DEFAULT '{}',
+  valortotal        REAL NOT NULL DEFAULT 0,
+  descontovalor     REAL NOT NULL DEFAULT 0,
+  pagamento         TEXT DEFAULT 'Pix',
+  informacoes_complementares TEXT,
+  ambiente          INTEGER NOT NULL DEFAULT 2,
+  numero            TEXT,
+  serie             TEXT NOT NULL DEFAULT '1',
+  chave             TEXT,
+  protocolo         TEXT,
+  status            TEXT NOT NULL,
+  xml               TEXT,
+  rejeicao_cstat    TEXT,
+  rejeicao_motivo   TEXT,
+  cancelado_em      TEXT,
+  cancel_protocolo  TEXT,
+  cancel_motivo     TEXT,
+  deletedat         TEXT DEFAULT NULL,
+  deletedpor        INTEGER DEFAULT NULL,
+  deletedreason     TEXT DEFAULT NULL,
+  criadopor         INTEGER DEFAULT NULL,
+  imported_legacy   INTEGER NOT NULL DEFAULT 0,
+  createdat         TEXT DEFAULT (datetime('now','localtime')),
+  updatedat         TEXT DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS nfe_itens (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  nfeid           INTEGER NOT NULL,
+  ordem_item_id   INTEGER DEFAULT NULL,
+  produto_id      INTEGER DEFAULT NULL,
+  nome            TEXT NOT NULL,
+  quantidade      REAL NOT NULL DEFAULT 1,
+  preco_unitario  REAL NOT NULL DEFAULT 0,
+  subtotal        REAL GENERATED ALWAYS AS (quantidade * preco_unitario) STORED,
+  avulso          INTEGER DEFAULT 0,
+  ncm             TEXT NOT NULL,
+  cfop            TEXT NOT NULL,
+  csosn           TEXT NOT NULL,
+  origem_fiscal   TEXT NOT NULL DEFAULT '0',
+  unidade         TEXT NOT NULL DEFAULT 'UN',
+  createdat       TEXT DEFAULT (datetime('now','localtime'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_nfe_notas_chave
+  ON nfe_notas(chave)
+  WHERE chave IS NOT NULL AND chave <> '' AND status IN ('autorizado','cancelado');
+CREATE INDEX IF NOT EXISTS idx_nfe_notas_origem_ordemid ON nfe_notas(origem, ordemid);
+CREATE INDEX IF NOT EXISTS idx_nfe_notas_status ON nfe_notas(status);
+CREATE INDEX IF NOT EXISTS idx_nfe_notas_deletedat ON nfe_notas(deletedat);
+CREATE INDEX IF NOT EXISTS idx_nfe_notas_numero_serie_ambiente ON nfe_notas(ambiente, serie, numero);
+CREATE INDEX IF NOT EXISTS idx_nfe_notas_legacy_ordemid ON nfe_notas(imported_legacy, ordemid);
+CREATE INDEX IF NOT EXISTS idx_nfe_itens_nfeid ON nfe_itens(nfeid);
 CREATE TABLE IF NOT EXISTS nfe_eventos (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   ordemid     INTEGER,
+  nfeid       INTEGER DEFAULT NULL,
   chave       TEXT NOT NULL,
   tipo        TEXT NOT NULL,
   nseqevento  INTEGER NOT NULL DEFAULT 1,
@@ -753,9 +811,78 @@ function initDB() {
     ...NFE_EVENTO_SCHEMA_STATEMENTS,
     // v21 - conciliacao local auditavel de apontamentos fiscal-financeiros
     ...NFE_INTEGRIDADE_CONCILIACOES_SCHEMA_STATEMENTS,
+    // v22 - entidade canonica de NF-e e vinculo de eventos
+    `CREATE TABLE IF NOT EXISTS nfe_notas (
+      id                INTEGER PRIMARY KEY AUTOINCREMENT,
+      origem            TEXT NOT NULL,
+      ordemid           INTEGER DEFAULT NULL,
+      clienteid         INTEGER DEFAULT NULL,
+      cliente_snapshot  TEXT NOT NULL DEFAULT '{}',
+      emitente_snapshot TEXT NOT NULL DEFAULT '{}',
+      valortotal        REAL NOT NULL DEFAULT 0,
+      descontovalor     REAL NOT NULL DEFAULT 0,
+      pagamento         TEXT DEFAULT 'Pix',
+      informacoes_complementares TEXT,
+      ambiente          INTEGER NOT NULL DEFAULT 2,
+      numero            TEXT,
+      serie             TEXT NOT NULL DEFAULT '1',
+      chave             TEXT,
+      protocolo         TEXT,
+      status            TEXT NOT NULL,
+      xml               TEXT,
+      rejeicao_cstat    TEXT,
+      rejeicao_motivo   TEXT,
+      cancelado_em      TEXT,
+      cancel_protocolo  TEXT,
+      cancel_motivo     TEXT,
+      deletedat         TEXT DEFAULT NULL,
+      deletedpor        INTEGER DEFAULT NULL,
+      deletedreason     TEXT DEFAULT NULL,
+      criadopor         INTEGER DEFAULT NULL,
+      imported_legacy   INTEGER NOT NULL DEFAULT 0,
+      createdat         TEXT DEFAULT (datetime('now','localtime')),
+      updatedat         TEXT DEFAULT (datetime('now','localtime'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS nfe_itens (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      nfeid           INTEGER NOT NULL,
+      ordem_item_id   INTEGER DEFAULT NULL,
+      produto_id      INTEGER DEFAULT NULL,
+      nome            TEXT NOT NULL,
+      quantidade      REAL NOT NULL DEFAULT 1,
+      preco_unitario  REAL NOT NULL DEFAULT 0,
+      subtotal        REAL GENERATED ALWAYS AS (quantidade * preco_unitario) STORED,
+      avulso          INTEGER DEFAULT 0,
+      ncm             TEXT NOT NULL,
+      cfop            TEXT NOT NULL,
+      csosn           TEXT NOT NULL,
+      origem_fiscal   TEXT NOT NULL DEFAULT '0',
+      unidade         TEXT NOT NULL DEFAULT 'UN',
+      createdat       TEXT DEFAULT (datetime('now','localtime'))
+    )`,
+    "ALTER TABLE nfe_eventos ADD COLUMN nfeid INTEGER DEFAULT NULL",
+    "ALTER TABLE nfe_notas ADD COLUMN informacoes_complementares TEXT",
+    "DROP INDEX IF EXISTS idx_nfe_notas_chave",
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_nfe_notas_chave
+      ON nfe_notas(chave)
+      WHERE chave IS NOT NULL AND chave <> '' AND status IN ('autorizado','cancelado')`,
+    "CREATE INDEX IF NOT EXISTS idx_nfe_notas_origem_ordemid ON nfe_notas(origem, ordemid)",
+    "CREATE INDEX IF NOT EXISTS idx_nfe_notas_status ON nfe_notas(status)",
+    "CREATE INDEX IF NOT EXISTS idx_nfe_notas_deletedat ON nfe_notas(deletedat)",
+    "CREATE INDEX IF NOT EXISTS idx_nfe_notas_numero_serie_ambiente ON nfe_notas(ambiente, serie, numero)",
+    "CREATE INDEX IF NOT EXISTS idx_nfe_notas_legacy_ordemid ON nfe_notas(imported_legacy, ordemid)",
+    "CREATE INDEX IF NOT EXISTS idx_nfe_itens_nfeid ON nfe_itens(nfeid)",
+    "CREATE INDEX IF NOT EXISTS idx_nfe_eventos_nfeid ON nfe_eventos(nfeid)",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {}
+  }
+
+  try {
+    const { backfillNfeNotasFromOrdens } = require("./services/nfeNotasService");
+    backfillNfeNotasFromOrdens(db, { ambiente: 2, emitente: {} });
+  } catch (error) {
+    console.warn("[database] Falha ao executar backfill inicial de NF-e:", String(error?.message || error));
   }
 
   // ── Tabela de sequências NF-e ────────────────────────────────────────────────
