@@ -556,6 +556,15 @@ describe('security configuration contracts', () => {
     expect(source).toMatch(/nfeid:\s*notaEmitindo\.id/);
   });
 
+  it('documents phase 2 cleanup by keeping legacy ordem NF-e columns out of active fiscal routes', () => {
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/nfe_notas/);
+    expect(source).not.toMatch(/SELECT \* FROM ordens WHERE nfe_chave/);
+    expect(source).not.toMatch(/UPDATE ordens SET[\s\S]+nfe_status/);
+    expect(source).not.toMatch(/nfe_xml\s+=\s+\?/);
+  });
+
   it('keeps NF-e trash as a soft delete that is hidden from the main list', () => {
     const databaseSource = fs.readFileSync(new URL('../database.js', import.meta.url), 'utf8');
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
