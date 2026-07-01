@@ -4,6 +4,21 @@ const {
   buildNfeListRow,
   isNotaAtivaParaOrdem,
 } = require('../domain/nfeNotasRules');
+const { extrairXmlFiscal } = require('./nfeEmissaoService');
+
+function roundMoney(value) {
+  const number = Number(value || 0);
+  return Math.round(number * 100) / 100;
+}
+
+function extrairValorTotalNFeXml(value) {
+  const xml = extrairXmlFiscal(value);
+  if (!xml) return null;
+  const match = String(xml).match(/<vNF>([^<]+)<\/vNF>/i);
+  if (!match) return null;
+  const number = Number(String(match[1]).replace(',', '.'));
+  return Number.isFinite(number) && number >= 0 ? roundMoney(number) : null;
+}
 
 function json(value) {
   if (typeof value === 'string') return value;
@@ -144,11 +159,12 @@ function backfillNfeNotasFromOrdens(db) {
         continue;
       }
 
+      const valorNFe = extrairValorTotalNFeXml(row.nfe_xml);
       const info = insert.run(
         row.id,
         row.clienteid || null,
         json(buildClienteSnapshot(row)),
-        Number(row.valortotal || 0),
+        valorNFe ?? Number(row.valortotal || 0),
         Number(row.descontovalor || 0),
         row.pagamento || 'Pix',
         row.nfe_numero || null,
@@ -205,6 +221,36 @@ function aplicarLixeiraResidualNFeLegado(db, options = {}) {
        AND TRIM(numero) NOT GLOB '*[^0-9]*'
        AND CAST(TRIM(numero) AS INTEGER) < ?
   `).run(MOTIVO_LIXEIRA_RESIDUAL_NFE, primeiroNumeroReal);
+}
+
+function sincronizarValoresNFePeloXml(db) {
+  if (!hasTable(db, 'nfe_notas')) return { changes: 0 };
+
+  const rows = db.prepare(`
+    SELECT id, valortotal, xml
+    FROM nfe_notas
+    WHERE status IN ('autorizado', 'cancelado')
+      AND xml IS NOT NULL
+      AND TRIM(xml) <> ''
+  `).all();
+  const update = db.prepare(`
+    UPDATE nfe_notas
+       SET valortotal = ?,
+           updatedat = datetime('now','localtime')
+     WHERE id = ?
+  `);
+
+  let changes = 0;
+  db.transaction(() => {
+    for (const row of rows) {
+      const valorNFe = extrairValorTotalNFeXml(row.xml);
+      if (valorNFe === null) continue;
+      if (Math.abs(roundMoney(row.valortotal) - valorNFe) <= 0.01) continue;
+      changes += update.run(valorNFe, row.id).changes;
+    }
+  })();
+
+  return { changes };
 }
 
 function listarNotasFiscais(db, options = {}) {
@@ -379,9 +425,11 @@ function substituirItensNota(db, nfeid, itens = []) {
 }
 
 function marcarNotaAutorizada(db, id, data = {}) {
+  const valorNFe = extrairValorTotalNFeXml(data.xml);
   return db.prepare(`
     UPDATE nfe_notas
     SET status='autorizado',
+        valortotal=COALESCE(?, valortotal),
         chave=?,
         protocolo=?,
         xml=?,
@@ -397,6 +445,7 @@ function marcarNotaAutorizada(db, id, data = {}) {
         updatedat=datetime('now','localtime')
     WHERE id=?
   `).run(
+    valorNFe,
     data.chave || null,
     data.protocolo || null,
     data.xml || null,
@@ -491,6 +540,7 @@ module.exports = {
   backfillNfeNotasFromOrdens,
   buscarNotaAtivaParaOrdem,
   criarNotaEmitindo,
+  extrairValorTotalNFeXml,
   listarEventosNota,
   listarNotasFiscais,
   marcarNotaAutorizada,
@@ -502,5 +552,6 @@ module.exports = {
   resolverNotaPorChave,
   resolverNotaPorId,
   restaurarNotaDaLixeira,
+  sincronizarValoresNFePeloXml,
   substituirItensNota,
 };

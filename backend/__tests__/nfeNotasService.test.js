@@ -15,6 +15,7 @@ import {
   resolverNotaPorChave,
   resolverNotaPorId,
   restaurarNotaDaLixeira,
+  sincronizarValoresNFePeloXml,
   substituirItensNota,
 } from '../services/nfeNotasService.js';
 
@@ -282,6 +283,53 @@ describe('nfeNotasService', () => {
       }),
     ]);
     expect(aplicarLixeiraResidualNFeLegado(db).changes).toBe(0);
+  });
+
+  it('uses the authorized NF-e XML total as the fiscal value for legacy backfill', () => {
+    const db = makeDb();
+    db.prepare(`
+      INSERT INTO ordens
+        (id, numero, clientenome, servico, status, valortotal, nfe_status, nfe_numero, nfe_serie, nfe_chave, nfe_xml)
+      VALUES
+        (14, 'OS-14', 'Cliente Fiscal', 'Corte a Laser', 'Entregue', 1, 'autorizado', '000000293', '1',
+         '31260600000000000000550010000002931000000010',
+         '<nfeProc><NFe><infNFe><total><ICMSTot><vNF>1500.00</vNF></ICMSTot></total></infNFe></NFe></nfeProc>')
+    `).run();
+
+    backfillNfeNotasFromOrdens(db);
+
+    expect(listarNotasFiscais(db)).toEqual([
+      expect.objectContaining({
+        ordemid: 14,
+        nfe_numero: '000000293',
+        valortotal: 1500,
+      }),
+    ]);
+  });
+
+  it('repairs already imported canonical note values from the authorized XML total', () => {
+    const db = makeDb();
+    db.prepare(`
+      INSERT INTO ordens
+        (id, numero, clientenome, servico, status, valortotal, nfe_status)
+      VALUES
+        (15, 'OS-15', 'Cliente Fiscal', 'Corte a Laser', 'Entregue', 1, 'autorizado')
+    `).run();
+    db.prepare(`
+      INSERT INTO nfe_notas
+        (origem, ordemid, cliente_snapshot, emitente_snapshot, valortotal, ambiente, numero, serie, chave, status, xml, imported_legacy)
+      VALUES
+        ('ordem', 15, '{}', '{}', 1, 2, '000000293', '1',
+         '31260600000000000000550010000002931000000010', 'autorizado',
+         '<nfeProc><NFe><infNFe><total><ICMSTot><vNF>1500.00</vNF></ICMSTot></total></infNFe></NFe></nfeProc>', 1)
+    `).run();
+
+    expect(sincronizarValoresNFePeloXml(db).changes).toBe(1);
+    expect(listarNotasFiscais(db)[0]).toMatchObject({
+      ordemid: 15,
+      valortotal: 1500,
+    });
+    expect(sincronizarValoresNFePeloXml(db).changes).toBe(0);
   });
 
   it('resolves a canonical note by its access key', () => {
