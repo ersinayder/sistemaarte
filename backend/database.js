@@ -879,8 +879,12 @@ function initDB() {
   }
 
   try {
-    const { backfillNfeNotasFromOrdens } = require("./services/nfeNotasService");
+    const {
+      aplicarLixeiraResidualNFeLegado,
+      backfillNfeNotasFromOrdens,
+    } = require("./services/nfeNotasService");
     backfillNfeNotasFromOrdens(db, { ambiente: 2, emitente: {} });
+    aplicarLixeiraResidualNFeLegado(db);
   } catch (error) {
     console.warn("[database] Falha ao executar backfill inicial de NF-e:", String(error?.message || error));
   }

@@ -181,6 +181,32 @@ function backfillNfeNotasFromOrdens(db) {
   return { inserted, skipped };
 }
 
+const PRIMEIRO_NUMERO_NFE_REAL = 278;
+const MOTIVO_LIXEIRA_RESIDUAL_NFE =
+  'Ocultada automaticamente: numeracao de homologacao residual anterior a 278';
+
+function aplicarLixeiraResidualNFeLegado(db, options = {}) {
+  if (!hasTable(db, 'nfe_notas')) return { changes: 0 };
+
+  const primeiroNumeroReal = Number(options.primeiroNumeroReal || PRIMEIRO_NUMERO_NFE_REAL);
+  if (!Number.isInteger(primeiroNumeroReal) || primeiroNumeroReal <= 1) {
+    throw new Error('Primeiro numero real de NF-e invalido.');
+  }
+
+  return db.prepare(`
+    UPDATE nfe_notas
+       SET deletedat = COALESCE(deletedat, datetime('now','localtime')),
+           deletedreason = COALESCE(deletedreason, ?),
+           updatedat = datetime('now','localtime')
+     WHERE origem = 'ordem'
+       AND imported_legacy = 1
+       AND deletedat IS NULL
+       AND TRIM(COALESCE(numero, '')) <> ''
+       AND TRIM(numero) NOT GLOB '*[^0-9]*'
+       AND CAST(TRIM(numero) AS INTEGER) < ?
+  `).run(MOTIVO_LIXEIRA_RESIDUAL_NFE, primeiroNumeroReal);
+}
+
 function listarNotasFiscais(db, options = {}) {
   if (!hasTable(db, 'nfe_notas')) return [];
   const lixeira = Boolean(options.lixeira);
@@ -461,6 +487,7 @@ function buscarNotaAtivaParaOrdem(db, ordemid) {
 }
 
 module.exports = {
+  aplicarLixeiraResidualNFeLegado,
   backfillNfeNotasFromOrdens,
   buscarNotaAtivaParaOrdem,
   criarNotaEmitindo,
