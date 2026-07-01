@@ -882,8 +882,10 @@ function initDB() {
     const {
       aplicarLixeiraResidualNFeLegado,
       backfillNfeNotasFromOrdens,
+      sincronizarValoresNFePeloXml,
     } = require("./services/nfeNotasService");
     backfillNfeNotasFromOrdens(db, { ambiente: 2, emitente: {} });
+    sincronizarValoresNFePeloXml(db);
     aplicarLixeiraResidualNFeLegado(db);
   } catch (error) {
     console.warn("[database] Falha ao executar backfill inicial de NF-e:", String(error?.message || error));
