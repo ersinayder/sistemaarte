@@ -38,7 +38,13 @@ const {
   transmitirCancelamentoPayload,
 } = require('../utils/nfeEventos');
 const { renderDanfeHtml } = require('../utils/danfe');
-const { sendPrintHtml } = require('../utils/print/base');
+const { renderDanfePdf } = require('../utils/pdf/danfePdf');
+const { gerarExportacaoNFe } = require('../services/nfeExportService');
+const {
+  extrairXmlFiscal,
+  filenameSeguro,
+  serializarXmlFiscal,
+} = require('../utils/nfeXml');
 const {
   tpAmbAtual,
   getCertificadoConfig,
@@ -152,48 +158,6 @@ function parseRetEvento(resultado, fallbackDhEvento) {
     dhEvento: retEvento?.dhRegEvento || fallbackDhEvento,
     xMotivo: retEvento?.xMotivo || '',
   };
-}
-
-function extrairXmlFiscal(valor, depth = 0) {
-  if (!valor || depth > 5) return null;
-
-  if (typeof valor === 'string') {
-    const texto = valor.trim();
-    if (texto.startsWith('<')) return texto;
-    if (texto.startsWith('{') || texto.startsWith('[')) {
-      try {
-        return extrairXmlFiscal(JSON.parse(texto), depth + 1);
-      } catch (_) {
-        return null;
-      }
-    }
-    return null;
-  }
-
-  if (Array.isArray(valor)) {
-    for (const item of valor) {
-      const xml = extrairXmlFiscal(item, depth + 1);
-      if (xml) return xml;
-    }
-    return null;
-  }
-
-  if (typeof valor === 'object') {
-    for (const key of ['xml', 'xmlAssinado', 'xmlProc', 'nfeProc', 'procNFe']) {
-      const xml = extrairXmlFiscal(valor[key], depth + 1);
-      if (xml) return xml;
-    }
-    for (const item of Object.values(valor)) {
-      const xml = extrairXmlFiscal(item, depth + 1);
-      if (xml) return xml;
-    }
-  }
-
-  return null;
-}
-
-function serializarXmlFiscal(resultado) {
-  return extrairXmlFiscal(resultado);
 }
 
 function buscarOrdemParaNFe(db, osId) {
@@ -411,10 +375,6 @@ function registrarEventoFiscal(db, evento) {
   } catch (err) {
     console.error(`[NF-e] Falha ao registrar evento fiscal (${evento.tipo}):`, err.message);
   }
-}
-
-function filenameSeguro(value) {
-  return String(value || 'nfe').replace(/[^a-zA-Z0-9._-]/g, '_');
 }
 
 function resumirStatusServico(resultado) {
@@ -968,6 +928,31 @@ router.post('/avulsa', auth(['admin', 'caixa']), async (req, res) => {
   }
 });
 
+// GET /api/nfe/exportar?tipo=xml|danfe&inicio=YYYY-MM-DD&fim=YYYY-MM-DD
+router.get('/exportar', auth(['admin', 'caixa']), async (req, res) => {
+  try {
+    const result = await gerarExportacaoNFe({
+      db: getDB(),
+      tipo: req.query.tipo,
+      inicio: req.query.inicio,
+      fim: req.query.fim,
+    });
+
+    res.setHeader('Content-Type', result.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+    res.send(result.buffer);
+  } catch (e) {
+    const status = e.status || 500;
+    if (status >= 500) {
+      console.error('[NF-e] GET /exportar:', e.message);
+    }
+    res.status(status).json({
+      erro: e.status ? e.message : 'Erro ao exportar NF-e',
+      code: e.code || 'erro_exportacao_nfe',
+    });
+  }
+});
+
 // GET /api/nfe/:chave/eventos
 router.get('/:chave/eventos', auth(['admin', 'caixa']), (req, res) => {
   const { chave } = req.params;
@@ -1051,7 +1036,7 @@ router.get('/:chave/xml/autorizacao', auth(['admin', 'caixa']), (req, res) => {
 });
 
 // GET /api/nfe/:chave/danfe
-router.get('/:chave/danfe', auth(['admin', 'caixa']), (req, res) => {
+router.get('/:chave/danfe', auth(['admin', 'caixa']), async (req, res) => {
   const { chave } = req.params;
   if (!chave || !/^\d{44}$/.test(chave)) {
     return res.status(400).json({ erro: 'Chave NF-e invalida. Deve conter exatamente 44 digitos.' });
@@ -1072,7 +1057,10 @@ router.get('/:chave/danfe', auth(['admin', 'caixa']), (req, res) => {
     }
 
     const html = renderDanfeHtml(xml);
-    sendPrintHtml(res, `danfe-${filenameSeguro(chave)}.html`, html);
+    const pdf = await renderDanfePdf(html);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="danfe-${filenameSeguro(chave)}.pdf"`);
+    res.send(pdf);
   } catch (e) {
     console.error('[NF-e] GET /:chave/danfe:', e.message);
     res.status(e.statusCode || 500).json({ erro: e.statusCode ? e.message : 'Erro ao gerar DANFE' });
