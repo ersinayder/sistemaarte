@@ -307,6 +307,26 @@ describe('nfeNotasService', () => {
     ]);
   });
 
+  it('lists visible notes ordered by the NF-e number, not by the local row id', () => {
+    const db = makeDb();
+    const insert = db.prepare(`
+      INSERT INTO nfe_notas
+        (origem, cliente_snapshot, emitente_snapshot, valortotal, ambiente, numero, serie, chave, status)
+      VALUES
+        ('avulsa', '{}', '{}', ?, 2, ?, '1', ?, 'autorizado')
+    `);
+
+    insert.run(285, '000000285', '31260600000000000000550010000002851000000010');
+    insert.run(288, '000000288', '31260600000000000000550010000002881000000010');
+    insert.run(286, '000000286', '31260600000000000000550010000002861000000010');
+
+    expect(listarNotasFiscais(db).map((nota) => nota.nfe_numero)).toEqual([
+      '000000288',
+      '000000286',
+      '000000285',
+    ]);
+  });
+
   it('repairs already imported canonical note values from the authorized XML total', () => {
     const db = makeDb();
     db.prepare(`

@@ -311,7 +311,20 @@ function listarNotasFiscais(db, options = {}) {
     WHERE ${lixeira
       ? "COALESCE(n.deletedat, CASE WHEN n.origem = 'ordem' THEN o.nfe_deletedat ELSE NULL END) IS NOT NULL"
       : "COALESCE(n.deletedat, CASE WHEN n.origem = 'ordem' THEN o.nfe_deletedat ELSE NULL END) IS NULL"}
-    ORDER BY n.id DESC
+    ORDER BY
+      CASE
+        WHEN TRIM(COALESCE(n.numero, '')) <> ''
+         AND TRIM(n.numero) NOT GLOB '*[^0-9]*'
+        THEN CAST(TRIM(n.numero) AS INTEGER)
+        ELSE -1
+      END DESC,
+      CASE
+        WHEN TRIM(COALESCE(n.serie, '')) <> ''
+         AND TRIM(n.serie) NOT GLOB '*[^0-9]*'
+        THEN CAST(TRIM(n.serie) AS INTEGER)
+        ELSE -1
+      END DESC,
+      n.id DESC
   `).all();
 
   return rows.map(buildNfeListRow);
