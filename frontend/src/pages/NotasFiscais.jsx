@@ -33,6 +33,7 @@ const EVENTO_LABEL = {
 const HOMOLOGACAO_ALVO = 10
 const STATUS_NFE_EMISSAO = ['Aguardando', 'Em Produção', 'Pronto', 'Entregue']
 const STATUS_NFE_EMISSAO_LABEL = 'Aguardando, Em Produção, Pronto ou Entregue'
+const MAX_INFORMACOES_COMPLEMENTARES_NFE = 5000
 const NCM_SUGESTOES_NFE = [
   { label: 'MDF', value: '44151000' },
   { label: 'Acrilico', value: '39269090' },
@@ -404,6 +405,7 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
         cliente: previa.cliente,
         itens: previa.itens,
         pagamento: previa.ordem?.pagamento || 'Pix',
+        informacoes_complementares: previa.informacoes_complementares || '',
       }, { skipGlobalErrorToast: true })
       setPrevia(r.data)
       setEtapa('revisar')
@@ -476,6 +478,16 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
     if (field === 'cep') buscarCepCliente(normalizado)
   }
 
+  const atualizarInformacoesComplementares = (value) => {
+    setPrevia(prev => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        informacoes_complementares: String(value || '').slice(0, MAX_INFORMACOES_COMPLEMENTARES_NFE),
+      }
+    })
+  }
+
   const validarItens = () => {
     const cliente = previa?.cliente || {}
     const documento = String(cliente.documento || '').replace(/\D/g, '')
@@ -542,6 +554,7 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
           cliente: previa.cliente,
           itens: previa.itens,
           pagamento: previa.ordem?.pagamento || 'Pix',
+          informacoes_complementares: previa.informacoes_complementares || '',
         }, { timeout: 80000, skipGlobalErrorToast: true })
         toast.success('NF-e avulsa emitida com sucesso!')
       } else {
@@ -554,7 +567,11 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
           origem_fiscal: item.origem_fiscal,
           unidade: item.unidade,
         }))
-        await api.post(`/nfe/emitir/${ordemSel.id}`, { cliente: previa.cliente, itens }, { timeout: 80000, skipGlobalErrorToast: true })
+        await api.post(`/nfe/emitir/${ordemSel.id}`, {
+          cliente: previa.cliente,
+          itens,
+          informacoes_complementares: previa.informacoes_complementares || '',
+        }, { timeout: 80000, skipGlobalErrorToast: true })
         toast.success(`NF-e emitida com sucesso para ${ordemSel.numero || previa.ordem?.numero}!`)
       }
       onSuccess()
@@ -882,6 +899,24 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
                       ))}
                     </div>
                   ))}
+                </div>
+
+                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-3)', display: 'grid', gap: 'var(--space-2)' }}>
+                  <label style={{ display: 'grid', gap: 6 }}>
+                    <span style={{ fontSize: 'var(--text-sm)', fontWeight: 800 }}>Informacoes complementares</span>
+                    <textarea
+                      className="form-input"
+                      aria-label="Informacoes complementares"
+                      value={previa.informacoes_complementares || ''}
+                      onChange={e => atualizarInformacoesComplementares(e.target.value)}
+                      maxLength={MAX_INFORMACOES_COMPLEMENTARES_NFE}
+                      rows={3}
+                      style={{ width: '100%', minHeight: 78, resize: 'vertical', padding: '8px 10px', fontSize: 'var(--text-sm)', lineHeight: 1.4 }}
+                    />
+                  </label>
+                  <div style={{ textAlign: 'right', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                    {String(previa.informacoes_complementares || '').length}/{MAX_INFORMACOES_COMPLEMENTARES_NFE}
+                  </div>
                 </div>
 
                 <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>

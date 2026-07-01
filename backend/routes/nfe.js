@@ -12,7 +12,10 @@ const {
   deveDevolverNumeroNFeAposFalhaAutorizacao,
   formatarRejeicaoSefaz,
 } = require('../utils/nfe');
-const { montarNFe } = require('../domain/nfeRules');
+const {
+  montarNFe,
+  normalizarInformacoesComplementares,
+} = require('../domain/nfeRules');
 const { createNfeInutilizacaoService } = require('../services/nfeInutilizacaoService');
 const { transmitirInutilizacaoNFe } = require('../utils/nfeInutilizacao');
 const { renderDanfeHtml } = require('../utils/danfe');
@@ -273,6 +276,7 @@ function serializarPreviaEmissaoNFe({ os, itens, ambiente, serie }) {
       serie,
       autXML: getAutXmlParaNFe(os.cpf),
     },
+    informacoes_complementares: normalizarInformacoesComplementares(os.informacoes_complementares || ''),
     itens: itens.map(serializarItemPreviaNFe),
   };
 }
@@ -348,6 +352,7 @@ function serializarPreviaAvulsa({ documento, cliente, itens }) {
       serie: getSerieNFe(),
       autXML: cliente?.cpf ? getAutXmlParaNFe(cliente.cpf) : [],
     },
+    informacoes_complementares: normalizarInformacoesComplementares(documento.informacoes_complementares || ''),
     itens: itens || [],
   };
 }
@@ -575,6 +580,9 @@ router.get('/avulsa/preview', auth(['admin', 'caixa']), (req, res) => {
 // POST /api/nfe/avulsa/preview
 router.post('/avulsa/preview', auth(['admin', 'caixa']), (req, res) => {
   try {
+    const informacoesComplementares = normalizarInformacoesComplementares(
+      req.body?.informacoes_complementares ?? req.body?.informacoesComplementares
+    );
     const itensNormalizados = normalizarItensAvulsosNFe(req.body?.itens || []);
     if (!itensNormalizados.ok) {
       return res.status(400).json({ erro: itensNormalizados.erro });
@@ -590,6 +598,7 @@ router.post('/avulsa/preview', auth(['admin', 'caixa']), (req, res) => {
       itens: itensNormalizados.itens,
       pagamento: req.body?.pagamento || 'Pix',
     });
+    documento.informacoes_complementares = informacoesComplementares;
 
     res.json(serializarPreviaAvulsa({
       documento,
@@ -661,6 +670,10 @@ router.post('/avulsa', auth(['admin', 'caixa']), async (req, res) => {
       itens: itensNormalizados.itens,
       pagamento: req.body?.pagamento || 'Pix',
     });
+    const informacoesComplementares = normalizarInformacoesComplementares(
+      req.body?.informacoes_complementares ?? req.body?.informacoesComplementares
+    );
+    documento.informacoes_complementares = informacoesComplementares;
     serie = getSerieNFe();
     numero = proximoNumero(db, serie);
     const ambiente = tpAmbAtual();
@@ -674,6 +687,7 @@ router.post('/avulsa', auth(['admin', 'caixa']), async (req, res) => {
       valortotal: documento.valortotal,
       descontovalor: documento.descontovalor,
       pagamento: documento.pagamento,
+      informacoes_complementares: informacoesComplementares,
       ambiente,
       numero,
       serie,
@@ -685,6 +699,7 @@ router.post('/avulsa', auth(['admin', 'caixa']), async (req, res) => {
         valortotal: documento.valortotal,
         descontovalor: documento.descontovalor,
         pagamento: documento.pagamento,
+        informacoes_complementares: informacoesComplementares,
       },
       itens: documento.itens,
       cliente: clienteNormalizado.cliente,
@@ -1143,6 +1158,9 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
     serie = getSerieNFe();
     numero = proximoNumero(db, serie);
     const ambiente = tpAmbAtual();
+    const informacoesComplementares = normalizarInformacoesComplementares(
+      req.body?.informacoes_complementares ?? req.body?.informacoesComplementares
+    );
     notaEmitindo = criarNotaEmitindo(db, {
       origem: 'ordem',
       ordemid: os.id,
@@ -1152,6 +1170,7 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
       valortotal: Number(os.valortotal || 0),
       descontovalor: Number(os.descontovalor || 0),
       pagamento: os.pagamento || 'Pix',
+      informacoes_complementares: informacoesComplementares,
       ambiente,
       numero,
       serie,
@@ -1159,7 +1178,7 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
     });
 
     const payload = montarNFe({
-      ordem:    os,
+      ordem:    { ...os, informacoes_complementares: informacoesComplementares },
       itens:    itensComOverrides.itens,
       cliente:  clienteComOverrides.cliente,
       emitente,

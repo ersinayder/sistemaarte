@@ -277,8 +277,8 @@ function criarNotaEmitindo(db, data = {}) {
   const info = db.prepare(`
     INSERT INTO nfe_notas
       (origem, ordemid, clienteid, cliente_snapshot, emitente_snapshot, valortotal,
-       descontovalor, pagamento, ambiente, numero, serie, status, criadopor)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'emitindo', ?)
+       descontovalor, pagamento, informacoes_complementares, ambiente, numero, serie, status, criadopor)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'emitindo', ?)
   `).run(
     data.origem,
     data.ordemid || null,
@@ -288,6 +288,7 @@ function criarNotaEmitindo(db, data = {}) {
     Number(data.valortotal || 0),
     Number(data.descontovalor || 0),
     data.pagamento || 'Pix',
+    data.informacoes_complementares || null,
     Number(data.ambiente || 2),
     data.numero || null,
     data.serie || '1',

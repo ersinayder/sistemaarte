@@ -86,6 +86,7 @@ function makeDb() {
       valortotal REAL NOT NULL DEFAULT 0,
       descontovalor REAL NOT NULL DEFAULT 0,
       pagamento TEXT DEFAULT 'Pix',
+      informacoes_complementares TEXT,
       ambiente INTEGER NOT NULL DEFAULT 2,
       numero TEXT,
       serie TEXT NOT NULL DEFAULT '1',
@@ -335,6 +336,7 @@ describe('nfeNotasService', () => {
       valortotal: 91,
       descontovalor: 0,
       pagamento: 'Pix',
+      informacoes_complementares: 'Entrega combinada com cliente.',
       ambiente: 2,
       numero: '309',
       serie: '1',
@@ -362,6 +364,7 @@ describe('nfeNotasService', () => {
       status: 'emitindo',
       numero: '309',
       criadopor: 7,
+      informacoes_complementares: 'Entrega combinada com cliente.',
     });
     expect(JSON.parse(nota.cliente_snapshot)).toMatchObject({ nome: 'Cliente OS' });
     expect(db.prepare('SELECT * FROM nfe_itens WHERE nfeid=?').get(nota.id)).toMatchObject({

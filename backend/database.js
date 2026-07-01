@@ -311,6 +311,7 @@ CREATE TABLE IF NOT EXISTS nfe_notas (
   valortotal        REAL NOT NULL DEFAULT 0,
   descontovalor     REAL NOT NULL DEFAULT 0,
   pagamento         TEXT DEFAULT 'Pix',
+  informacoes_complementares TEXT,
   ambiente          INTEGER NOT NULL DEFAULT 2,
   numero            TEXT,
   serie             TEXT NOT NULL DEFAULT '1',
@@ -661,6 +662,7 @@ function initDB() {
       valortotal        REAL NOT NULL DEFAULT 0,
       descontovalor     REAL NOT NULL DEFAULT 0,
       pagamento         TEXT DEFAULT 'Pix',
+      informacoes_complementares TEXT,
       ambiente          INTEGER NOT NULL DEFAULT 2,
       numero            TEXT,
       serie             TEXT NOT NULL DEFAULT '1',
@@ -699,6 +701,7 @@ function initDB() {
       createdat       TEXT DEFAULT (datetime('now','localtime'))
     )`,
     "ALTER TABLE nfe_eventos ADD COLUMN nfeid INTEGER DEFAULT NULL",
+    "ALTER TABLE nfe_notas ADD COLUMN informacoes_complementares TEXT",
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_nfe_notas_chave
       ON nfe_notas(chave)
       WHERE chave IS NOT NULL AND chave <> ''`,

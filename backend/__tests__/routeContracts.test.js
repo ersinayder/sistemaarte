@@ -527,6 +527,14 @@ describe('security configuration contracts', () => {
     expect(avulsaRoute).not.toMatch(/salvarClienteCadastroAposEmissao/);
   });
 
+  it('routes complementary NF-e information into note storage and SEFAZ payload', () => {
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/normalizarInformacoesComplementares/);
+    expect(source).toMatch(/informacoes_complementares:\s*informacoesComplementares/);
+    expect(source).toMatch(/montarNFe\(\{[\s\S]+informacoes_complementares:\s*informacoesComplementares/);
+  });
+
   it('routes NF-e list and fiscal document reads through nfe_notas', () => {
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
 

@@ -57,6 +57,24 @@ describe('montarNFe', () => {
     expect(infNFe.autXML).toEqual(autXML);
   });
 
+  it('inclui informacoes complementares em infAdic.infCpl quando informado', () => {
+    const { infNFe } = montarNFe({
+      ordem: {
+        ...ordem,
+        informacoes_complementares: 'Entrega combinada com cliente.\nPedido interno 123.',
+      },
+      itens,
+      cliente,
+      emitente,
+      numero: 8,
+      serie: '1',
+    });
+
+    expect(infNFe.infAdic).toEqual({
+      infCpl: 'Entrega combinada com cliente.\nPedido interno 123.',
+    });
+  });
+
   it('dest sem CPF quando cliente nao tem CPF valido', () => {
     const { infNFe } = montarNFe({ ordem, itens, cliente: { name: 'Consumidor' }, emitente, numero: 2, serie: '1' });
     // Consumidor final sem CPF usa CNPJCPF='11111111111' (CPF generico)

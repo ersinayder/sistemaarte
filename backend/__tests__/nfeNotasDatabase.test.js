@@ -10,6 +10,7 @@ describe('nfe_notas database schema', () => {
     expect(databaseSource).toMatch(/ordemid\s+INTEGER DEFAULT NULL/);
     expect(databaseSource).toMatch(/cliente_snapshot\s+TEXT NOT NULL/);
     expect(databaseSource).toMatch(/emitente_snapshot\s+TEXT NOT NULL/);
+    expect(databaseSource).toMatch(/informacoes_complementares\s+TEXT/);
     expect(databaseSource).toMatch(/CREATE TABLE IF NOT EXISTS nfe_itens/);
     expect(databaseSource).toMatch(/nfeid\s+INTEGER NOT NULL/);
     expect(databaseSource).toMatch(/origem_fiscal\s+TEXT NOT NULL DEFAULT '0'/);
@@ -28,6 +29,7 @@ describe('nfe_notas database schema', () => {
   it('keeps legacy ordem NF-e columns in phase 1', () => {
     expect(databaseSource).toMatch(/ALTER TABLE ordens ADD COLUMN nfe_numero TEXT/);
     expect(databaseSource).toMatch(/ALTER TABLE ordens ADD COLUMN nfe_xml TEXT/);
+    expect(databaseSource).toMatch(/ALTER TABLE nfe_notas ADD COLUMN informacoes_complementares TEXT/);
     expect(databaseSource).not.toMatch(/DROP COLUMN nfe_/);
   });
 

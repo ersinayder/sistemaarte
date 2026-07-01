@@ -10,6 +10,10 @@ function esc(value) {
     .replace(/'/g, '&#39;');
 }
 
+function escMultiline(value) {
+  return esc(value).replace(/\r?\n/g, '<br>');
+}
+
 let logoDataUriCache = null;
 function logoDataUri() {
   if (logoDataUriCache !== null) return logoDataUriCache;
@@ -230,6 +234,7 @@ function extractDanfeData(xml) {
   const transporta = firstBlock(transp, 'transporta');
   const vol = firstBlock(transp, 'vol');
   const pag = firstBlock(infNFe, 'pag');
+  const infAdic = firstBlock(infNFe, 'infAdic');
   const prot = firstBlock(xml, 'infProt');
   const chave = firstTag(prot, 'chNFe') || firstAttr(xml, 'infNFe', 'Id').replace(/^NFe/i, '');
 
@@ -342,6 +347,7 @@ function extractDanfeData(xml) {
       vPag: firstTag(pag, 'vPag'),
       tPag: firstTag(pag, 'tPag'),
     },
+    infCpl: firstTag(infAdic, 'infCpl'),
     prot: {
       nProt: firstTag(prot, 'nProt'),
       dhRecbto: firstTag(prot, 'dhRecbto'),
@@ -364,6 +370,7 @@ function renderDanfeHtml(xml) {
   const logo = logoDataUri();
   const dataSaida = dateOnly(d.ide.dhSaiEnt || d.ide.dhEmi);
   const horaSaida = dateTime(d.ide.dhSaiEnt || d.ide.dhEmi).split(' ')[1] || '';
+  const infCplHtml = d.infCpl ? `${escMultiline(d.infCpl)}<br>` : '';
 
   const itensRows = d.itens.map(item => `
     <tr>
@@ -595,7 +602,7 @@ function renderDanfeHtml(xml) {
       <div class="additional">
         <div>
           <strong>INFORMAÇÕES COMPLEMENTARES</strong><br>
-          Documento gerado a partir do XML autorizado armazenado no Sistema Arte e Molduras.<br>
+          ${infCplHtml}Documento gerado a partir do XML autorizado armazenado no Sistema Arte e Molduras.<br>
           Forma de pagamento: ${esc(pagamentoLabel(d.pag.tPag))} - Valor pago: ${moneyDanfe(d.pag.vPag || d.total.vNF)}<br>
           Chave de acesso: ${esc(formatChave(d.chave))}
         </div>
