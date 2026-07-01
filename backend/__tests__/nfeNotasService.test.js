@@ -228,6 +228,35 @@ describe('nfeNotasService', () => {
     ]);
   });
 
+  it('keeps OS notes hidden when they were already moved to the legacy fiscal trash', () => {
+    const db = makeDb();
+    db.prepare(`
+      INSERT INTO ordens
+        (id, numero, clientenome, servico, status, valortotal, nfe_status, nfe_deletedat, nfe_deletedpor, nfe_deletedreason)
+      VALUES
+        (11, 'OS-11', 'Cliente Homologacao', 'Servico antigo', 'Pronto', 80, 'autorizado',
+         '2026-06-30 10:00:00', 4, 'Ocultada antes da entidade canonica')
+    `).run();
+    db.prepare(`
+      INSERT INTO nfe_notas
+        (origem, ordemid, cliente_snapshot, emitente_snapshot, valortotal, ambiente, numero, serie, chave, status)
+      VALUES
+        ('ordem', 11, '{}', '{}', 80, 2, '309', '1',
+         '31260600000000000000550010000003091000000010', 'autorizado')
+    `).run();
+
+    expect(listarNotasFiscais(db)).toEqual([]);
+    expect(listarNotasFiscais(db, { lixeira: true })).toEqual([
+      expect.objectContaining({
+        ordemid: 11,
+        nfe_status: 'autorizado',
+        nfe_deletedat: '2026-06-30 10:00:00',
+        nfe_deletedpor: 4,
+        nfe_deletedreason: 'Ocultada antes da entidade canonica',
+      }),
+    ]);
+  });
+
   it('resolves a canonical note by its access key', () => {
     const db = makeDb();
     const chave = '31260600000000000000550010000003021000000010';
