@@ -1,5 +1,7 @@
 'use strict';
 
+const libxml = require('libxmljs2');
+
 function onlyDigits(value) {
   return String(value ?? '').replace(/\D/g, '');
 }
@@ -147,6 +149,53 @@ function normalizarTexto(value, max = 120) {
 }
 
 const CSOSN_VALIDOS_NFE = new Set(['101', '102', '103', '300', '400', '500', '900']);
+const CSTAT_AUTORIZADO = '100';
+const CSTATS_REJEICAO_CONHECIDA = new Set([
+  '205',
+  '206',
+  '207',
+  '208',
+  '209',
+  '210',
+  '215',
+  '217',
+  '218',
+  '220',
+  '225',
+  '226',
+  '232',
+  '233',
+  '234',
+  '237',
+  '245',
+  '302',
+  '303',
+  '327',
+  '328',
+  '386',
+  '387',
+  '388',
+  '471',
+  '531',
+  '532',
+  '533',
+  '564',
+  '573',
+  '591',
+  '602',
+  '603',
+  '610',
+  '703',
+  '704',
+  '725',
+  '777',
+  '778',
+  '806',
+]);
+const CSTATS_REJEICAO_DEVOLVE_NUMERO = new Set([
+  '386',
+]);
+const ESTADOS_EMISSAO_BLOQUEANTES = new Set(['processando', 'incerto']);
 
 function hasOwn(obj, field) {
   return Object.prototype.hasOwnProperty.call(obj, field);
@@ -302,14 +351,76 @@ function validarEmitenteFiscalNFe(emitente = {}) {
   return { ok: true };
 }
 
+function normalizarCStat(value) {
+  return String(value ?? '').trim();
+}
+
+function classificarResultadoEmissao(resultado) {
+  if (!resultado || resultado.timeout === true) return 'incerto';
+
+  const cStat = normalizarCStat(resultado.cStat ?? resultado.cstat);
+  if (cStat === CSTAT_AUTORIZADO) return 'autorizado';
+  if (CSTATS_REJEICAO_CONHECIDA.has(cStat)) return 'rejeitado';
+  return 'incerto';
+}
+
+function estadoEmissaoBloqueiaReenvio(status) {
+  return ESTADOS_EMISSAO_BLOQUEANTES.has(String(status ?? '').trim().toLowerCase());
+}
+
+function rejeicaoPermiteDevolverNumero(cStat) {
+  return CSTATS_REJEICAO_DEVOLVE_NUMERO.has(normalizarCStat(cStat));
+}
+
+function validarXmlAutorizacao(value, chaveEsperada) {
+  if (typeof value !== 'string') return false;
+
+  const xml = value.trim();
+  const chave = String(chaveEsperada ?? '').trim();
+  if (!xml.startsWith('<') || !/^\d{44}$/.test(chave)) return false;
+
+  try {
+    const doc = libxml.parseXml(xml, {
+      nonet: true,
+      recover: false,
+    });
+    const root = doc.root();
+    if (!root || root.name() !== 'nfeProc') return false;
+
+    const infNFeNodes = root.find('./*[local-name()="NFe"]/*[local-name()="infNFe"]');
+    const infProtNodes = root.find('./*[local-name()="protNFe"]/*[local-name()="infProt"]');
+    if (infNFeNodes.length !== 1 || infProtNodes.length !== 1) return false;
+
+    const id = infNFeNodes[0].attr('Id')?.value() || '';
+    const chNFeNodes = infProtNodes[0].find('./*[local-name()="chNFe"]');
+    const cStatNodes = infProtNodes[0].find('./*[local-name()="cStat"]');
+    if (chNFeNodes.length !== 1 || cStatNodes.length !== 1) return false;
+
+    const chaveInfNFe = id.startsWith('NFe') ? id.slice(3) : '';
+    const chaveProtocolo = chNFeNodes[0].text().trim();
+    const cStat = cStatNodes[0].text().trim();
+
+    return cStat === CSTAT_AUTORIZADO
+      && chaveInfNFe === chave
+      && chaveProtocolo === chave
+      && chaveInfNFe === chaveProtocolo;
+  } catch (_) {
+    return false;
+  }
+}
+
 module.exports = {
   aplicarOverridesItensNFe,
   aplicarOverrideClienteNFe,
+  classificarResultadoEmissao,
+  estadoEmissaoBloqueiaReenvio,
   normalizarItensAvulsosNFe,
   normalizarItemFiscalOverride,
   normalizarClienteOverride,
+  rejeicaoPermiteDevolverNumero,
   validarClienteFiscalNFe,
   validarEmitenteFiscalNFe,
   validarItensFiscaisNFe,
+  validarXmlAutorizacao,
   serializarItemPreviaNFe,
 };

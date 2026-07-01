@@ -20,6 +20,7 @@
     "express-rate-limit": "^7.4.1",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.0",
+    "libxmljs2": "0.37.0",
     "multer": "^1.4.5-lts.1",
     "nfewizard-io": "1.1.0"
   },

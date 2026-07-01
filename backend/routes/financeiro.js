@@ -8,6 +8,12 @@ const {
   normalizarStatusContaPagar,
   validarContaPagar,
 } = require("../domain/financeiroAdminRules");
+const { getResumoFinanceiroOS } = require("../domain/financeiroRules");
+const {
+  auditarIntegridadeFinanceiraOS,
+  montarDetalheIntegridadeFinanceiraOS,
+} = require("../services/financeiroIntegridadeService");
+const { getContasReceberPayload } = require("../services/financeiroReceberService");
 const {
   renderContasPagarHtml,
   renderContasReceberHtml,
@@ -92,22 +98,6 @@ function getResumoFinanceiroPayload(mesInput) {
 function getContasPagarPayload(query = {}) {
   const { where, params } = filtrosContaPagar(query);
   return getAll(`SELECT * FROM contas_pagar WHERE ${where} ORDER BY vencimento ASC, id ASC`, params);
-}
-
-function getContasReceberPayload() {
-  return getAll(
-    `SELECT * FROM (
-      SELECT o.id, o.numero, o.clientenome, o.status, o.prazoentrega, o.valortotal,
-        COALESCE((SELECT SUM(l.valor) FROM lancamentos l WHERE l.ordemid=o.id AND l.pago=1 AND l.deletedat IS NULL),0) AS recebido,
-        CASE
-          WHEN (o.valortotal - COALESCE((SELECT SUM(l.valor) FROM lancamentos l WHERE l.ordemid=o.id AND l.pago=1 AND l.deletedat IS NULL),0)) < 0
-          THEN 0
-          ELSE CAST(o.valortotal - COALESCE((SELECT SUM(l.valor) FROM lancamentos l WHERE l.ordemid=o.id AND l.pago=1 AND l.deletedat IS NULL),0) AS REAL)
-        END AS saldo
-      FROM ordens o
-      WHERE o.deletedat IS NULL AND o.status NOT IN ('Entregue','Cancelado')
-    ) WHERE saldo > 0.009 ORDER BY prazoentrega ASC, id ASC`
-  );
 }
 
 function getDrePayload(mesInput) {
@@ -273,6 +263,46 @@ router.delete("/contas-pagar/:id", auth(["admin"]), (req, res, next) => {
 router.get("/contas-receber", auth(["admin"]), (_req, res, next) => {
   try {
     res.json(getContasReceberPayload());
+  } catch (e) { next(e); }
+});
+
+router.get("/integridade-os/:ordemId", auth(["admin"]), (req, res, next) => {
+  try {
+    const ordem = getOne(
+      "SELECT id, numero, clientenome, status, valortotal FROM ordens WHERE id=? AND deletedat IS NULL",
+      [req.params.ordemId]
+    );
+    if (!ordem) return res.status(404).json({ error: "OS nao encontrada" });
+
+    const receberGerencial = getContasReceberPayload()
+      .find((row) => Number(row.id) === Number(req.params.ordemId)) || null;
+    const lancamentos = getAll(
+      `SELECT id, data, tipo, categoria, descricao, pagamento, valor, pago, origem, deletedat
+       FROM lancamentos
+       WHERE ordemid=?
+       ORDER BY data ASC, id ASC`,
+      [req.params.ordemId]
+    );
+
+    res.json(montarDetalheIntegridadeFinanceiraOS({
+      ordem,
+      receberGerencial,
+      lancamentos,
+      getResumoFinanceiroOS,
+    }));
+  } catch (e) { next(e); }
+});
+
+router.get("/integridade-os", auth(["admin"]), (_req, res, next) => {
+  try {
+    const ordens = getAll(
+      "SELECT id, numero, clientenome, status, valortotal FROM ordens WHERE deletedat IS NULL ORDER BY id DESC"
+    );
+    res.json(auditarIntegridadeFinanceiraOS({
+      ordens,
+      receberGerencial: getContasReceberPayload(),
+      getResumoFinanceiroOS,
+    }));
   } catch (e) { next(e); }
 });
 

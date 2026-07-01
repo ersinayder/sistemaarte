@@ -1,7 +1,7 @@
 'use strict';
 
 const ORIGENS_NFE = new Set(['ordem', 'avulsa']);
-const STATUS_ATIVOS_ORDEM = new Set(['emitindo', 'autorizado']);
+const STATUS_ATIVOS_ORDEM = new Set(['emitindo', 'incerto', 'autorizado']);
 
 function parseJsonSnapshot(value) {
   if (!value) return {};

@@ -187,7 +187,34 @@ function listarNotasFiscais(db, options = {}) {
 
   const rows = db.prepare(`
     SELECT
-      n.*,
+      n.id,
+      n.origem,
+      n.ordemid,
+      n.clienteid,
+      n.cliente_snapshot,
+      n.emitente_snapshot,
+      n.valortotal,
+      n.descontovalor,
+      n.pagamento,
+      n.informacoes_complementares,
+      n.ambiente,
+      n.numero,
+      n.serie,
+      n.chave,
+      n.protocolo,
+      n.status,
+      n.rejeicao_cstat,
+      n.rejeicao_motivo,
+      n.cancelado_em,
+      n.cancel_protocolo,
+      n.cancel_motivo,
+      n.deletedat,
+      n.deletedpor,
+      n.deletedreason,
+      n.criadopor,
+      n.imported_legacy,
+      n.createdat,
+      n.updatedat,
       n.numero AS numero_nfe,
       o.numero AS numero_os,
       o.servico,
@@ -369,6 +396,25 @@ function marcarNotaRejeitada(db, id, data = {}) {
   );
 }
 
+function marcarNotaIncerta(db, id, data = {}) {
+  return db.prepare(`
+    UPDATE nfe_notas
+    SET status='incerto',
+        chave=COALESCE(?, chave),
+        rejeicao_cstat=?,
+        rejeicao_motivo=?,
+        xml=COALESCE(?, xml),
+        updatedat=datetime('now','localtime')
+    WHERE id=?
+  `).run(
+    data.chave || null,
+    data.cstat ?? data.cStat ?? null,
+    data.motivo || null,
+    data.xml || data.xmlRetorno || null,
+    id
+  );
+}
+
 function marcarNotaCancelada(db, id, data = {}) {
   return db.prepare(`
     UPDATE nfe_notas
@@ -420,6 +466,7 @@ module.exports = {
   listarNotasFiscais,
   marcarNotaAutorizada,
   marcarNotaCancelada,
+  marcarNotaIncerta,
   marcarNotaRejeitada,
   montarDocumentoFiscalAvulso,
   moverNotaParaLixeira,
