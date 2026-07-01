@@ -10,7 +10,7 @@ import {
   validarItensFiscaisNFe,
   classificarResultadoEmissao,
   estadoEmissaoBloqueiaReenvio,
-  rejeicaoPermiteDevolverNumero,
+  rejeicaoPermiteReutilizarNumero,
   validarXmlAutorizacao,
 } from '../domain/nfeEmissionRules.js';
 
@@ -30,11 +30,12 @@ describe('nfeEmissionRules', () => {
       expect(classificarResultadoEmissao(resultado)).toBe(estadoEsperado);
     });
 
-    it('usa allowlist estrita para devolver a numeracao', () => {
-      expect(rejeicaoPermiteDevolverNumero('386')).toBe(true);
+    it('usa allowlist estrita para reutilizar a numeracao na mesma OS', () => {
+      expect(rejeicaoPermiteReutilizarNumero('232')).toBe(true);
+      expect(rejeicaoPermiteReutilizarNumero('386')).toBe(true);
 
       for (const cStat of [null, '', '999', '204', '205', '206', '302', '303', '539']) {
-        expect(rejeicaoPermiteDevolverNumero(cStat)).toBe(false);
+        expect(rejeicaoPermiteReutilizarNumero(cStat)).toBe(false);
       }
     });
 

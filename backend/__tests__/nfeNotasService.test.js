@@ -501,6 +501,61 @@ describe('nfeNotasService', () => {
     });
   });
 
+  it('reuses rejected canonical order note when reissuing the same fiscal number', () => {
+    const db = makeDb();
+    const primeira = criarNotaEmitindo(db, {
+      origem: 'ordem',
+      ordemid: 40,
+      clienteid: 5,
+      cliente_snapshot: { nome: 'Cliente antes' },
+      emitente_snapshot: { xNome: 'Arte' },
+      valortotal: 91,
+      pagamento: 'Pix',
+      ambiente: 2,
+      numero: '000000309',
+      serie: '1',
+      criadopor: 7,
+    });
+    marcarNotaRejeitada(db, primeira.id, {
+      cstat: '232',
+      motivo: 'IE do destinatario nao informada',
+      xml: '<retEnviNFe />',
+      chave: '31260600000000000000550010000003091000000010',
+    });
+
+    const segunda = criarNotaEmitindo(db, {
+      origem: 'ordem',
+      ordemid: 40,
+      clienteid: 5,
+      cliente_snapshot: { nome: 'Cliente corrigido', ie: 'ISENTO' },
+      emitente_snapshot: { xNome: 'Arte' },
+      valortotal: 150,
+      pagamento: 'Pix',
+      ambiente: 2,
+      numero: '000000309',
+      serie: '1',
+      criadopor: 9,
+    });
+
+    expect(segunda.id).toBe(primeira.id);
+    expect(resolverNotaPorId(db, primeira.id)).toMatchObject({
+      status: 'emitindo',
+      valortotal: 150,
+      chave: null,
+      protocolo: null,
+      xml: null,
+      rejeicao_cstat: null,
+      rejeicao_motivo: null,
+      criadopor: 9,
+    });
+    expect(JSON.parse(segunda.cliente_snapshot)).toMatchObject({
+      nome: 'Cliente corrigido',
+      ie: 'ISENTO',
+    });
+    expect(db.prepare('SELECT COUNT(*) AS total FROM nfe_notas WHERE ordemid=40').get())
+      .toEqual({ total: 1 });
+  });
+
   it('marks canonical notes as authorized or rejected', () => {
     const db = makeDb();
     const autorizada = criarNotaEmitindo(db, {

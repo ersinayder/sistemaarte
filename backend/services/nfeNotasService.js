@@ -387,7 +387,65 @@ function restaurarNotaDaLixeira(db, id) {
   `).run(id);
 }
 
+function buscarNotaRejeitadaReutilizavel(db, data = {}) {
+  if (data.origem !== 'ordem' || !data.ordemid || !data.numero) return null;
+  return db.prepare(`
+    SELECT *
+    FROM nfe_notas
+    WHERE origem = 'ordem'
+      AND ordemid = ?
+      AND numero = ?
+      AND serie = ?
+      AND status = 'rejeitado'
+      AND deletedat IS NULL
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(data.ordemid, data.numero, data.serie || '1') || null;
+}
+
 function criarNotaEmitindo(db, data = {}) {
+  const reutilizavel = buscarNotaRejeitadaReutilizavel(db, data);
+  if (reutilizavel) {
+    db.prepare(`
+      UPDATE nfe_notas
+         SET clienteid=?,
+             cliente_snapshot=?,
+             emitente_snapshot=?,
+             valortotal=?,
+             descontovalor=?,
+             pagamento=?,
+             informacoes_complementares=?,
+             ambiente=?,
+             status='emitindo',
+             chave=NULL,
+             protocolo=NULL,
+             xml=NULL,
+             rejeicao_cstat=NULL,
+             rejeicao_motivo=NULL,
+             cancelado_em=NULL,
+             cancel_protocolo=NULL,
+             cancel_motivo=NULL,
+             deletedat=NULL,
+             deletedpor=NULL,
+             deletedreason=NULL,
+             criadopor=COALESCE(?, criadopor),
+             updatedat=datetime('now','localtime')
+       WHERE id=?
+    `).run(
+      data.clienteid || null,
+      json(data.cliente_snapshot || {}),
+      json(data.emitente_snapshot || {}),
+      Number(data.valortotal || 0),
+      Number(data.descontovalor || 0),
+      data.pagamento || 'Pix',
+      data.informacoes_complementares || null,
+      Number(data.ambiente || 2),
+      data.criadopor || null,
+      reutilizavel.id
+    );
+    return resolverNotaPorId(db, reutilizavel.id, { includeDeleted: true });
+  }
+
   const info = db.prepare(`
     INSERT INTO nfe_notas
       (origem, ordemid, clienteid, cliente_snapshot, emitente_snapshot, valortotal,

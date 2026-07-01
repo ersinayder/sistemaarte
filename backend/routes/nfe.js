@@ -9,7 +9,6 @@ const {
   getNFEWizard,
   callSEFAZ,
   getSefazErrorInfo,
-  deveDevolverNumeroNFeAposFalhaAutorizacao,
   formatarRejeicaoSefaz,
 } = require('../utils/nfe');
 const {
@@ -88,6 +87,35 @@ const CODIGO_UF = {
 };
 
 function pad(n, len) { return String(n).padStart(len, '0'); }
+
+function reservarProximoNumeroNFe(db, serie) {
+  const serieNormalizada = String(serie);
+  return db.transaction(() => {
+    db.prepare(`
+      INSERT OR IGNORE INTO nfe_sequencias (serie, ultimo_numero)
+      VALUES (?, 0)
+    `).run(serieNormalizada);
+    const sequencia = db.prepare(`
+      UPDATE nfe_sequencias
+         SET ultimo_numero = ultimo_numero + 1
+       WHERE serie = ?
+      RETURNING ultimo_numero
+    `).get(serieNormalizada);
+    return pad(sequencia.ultimo_numero, 9);
+  }).immediate();
+}
+
+function devolverNumeroNFeFalhaLocal(db, serie, numero) {
+  const numeroNormalizado = Number(String(numero || '').replace(/\D/g, ''));
+  if (!Number.isInteger(numeroNormalizado) || numeroNormalizado <= 0) return false;
+  const result = db.prepare(`
+    UPDATE nfe_sequencias
+       SET ultimo_numero = ultimo_numero - 1
+     WHERE serie = ?
+       AND ultimo_numero = ?
+  `).run(String(serie), numeroNormalizado);
+  return result.changes === 1;
+}
 
 function maskCnpj(cnpj) {
   const digits = String(cnpj || '').replace(/\D/g, '');
@@ -792,7 +820,7 @@ router.post('/avulsa', auth(['admin', 'caixa']), async (req, res) => {
     );
     documento.informacoes_complementares = informacoesComplementares;
     serie = getSerieNFe();
-    numero = proximoNumero(db, serie);
+    numero = reservarProximoNumeroNFe(db, serie);
     const ambiente = tpAmbAtual();
 
     notaEmitindo = criarNotaEmitindo(db, {
@@ -842,8 +870,8 @@ router.post('/avulsa', auth(['admin', 'caixa']), async (req, res) => {
         cstat: sefazInfo.cstat,
         motivo: sefazInfo.mensagem,
       });
-      if (deveDevolverNumeroNFeAposFalhaAutorizacao(sefazInfo) && rejeicaoPermiteDevolverNumeroNFe(sefazInfo.cstat)) {
-        devolverNumeroNFeRejeitada(db, serie, numero);
+      if (sefazInfo.tipo === 'validacao_xml') {
+        devolverNumeroNFeFalhaLocal(db, serie, numero);
       }
       registrarEventoFiscal(db, {
         nfeid: notaEmitindo.id,
@@ -886,9 +914,6 @@ router.post('/avulsa', auth(['admin', 'caixa']), async (req, res) => {
         || resultado?.retEnviNFe?.protNFe?.infProt?.xMotivo
         || `cStat ${cStat || 'desconhecido'}`;
       const rejeicao = formatarRejeicaoSefaz({ cStat, xMotivo: motivo, contexto: 'autorizacao' });
-      if (rejeicaoPermiteDevolverNumeroNFe(cStat)) {
-        devolverNumeroNFeRejeitada(db, serie, numero);
-      }
       const xmlRejeicao = serializarXmlFiscal(resultado);
       marcarNotaRejeitada(db, notaEmitindo.id, {
         cstat: cStat || null,

@@ -2,7 +2,8 @@
 
 const {
   classificarResultadoEmissao,
-  rejeicaoPermiteDevolverNumero,
+  listarCStatsRejeicaoReutilizavel,
+  rejeicaoPermiteReutilizarNumero,
   validarXmlAutorizacao,
 } = require('../domain/nfeEmissionRules');
 
@@ -274,7 +275,7 @@ function createNfeEmissaoService({
       executarHook('marcarNotaRejeitada', tentativa, input, {
         ...dadosTransicao,
         cstat: dadosTransicao.cStat,
-        chave: rejeicaoPermiteDevolverNumero(resposta.cStat) ? null : dadosTransicao.chave,
+        chave: rejeicaoPermiteReutilizarNumero(resposta.cStat) ? null : dadosTransicao.chave,
         xml: resposta.xml || null,
       });
       registrarEventoOperacional(tentativa, 'rejeicao', {
@@ -285,9 +286,6 @@ function createNfeEmissaoService({
       const row = db
         ? attemptRepository.transicionarNaTransacao(tentativa.id, 'rejeitado', dadosTransicao)
         : transicionar(tentativa, 'rejeitado', dadosTransicao);
-      if (rejeicaoPermiteDevolverNumero(resposta.cStat)) {
-        devolverNumeroNaTransacao(tentativa);
-      }
       return row;
     });
     return responseBase(atualizada, {
@@ -447,6 +445,7 @@ function createNfeEmissaoService({
         ordemId: input.ordemId,
         serie: input.serie,
         usuarioId: input.usuarioId,
+        cstatsReutilizaveis: listarCStatsRejeicaoReutilizavel(),
       });
     } catch (error) {
       if (error.status === 409) return reservaAtivaResponse(input, error);
