@@ -40,6 +40,7 @@ const {
   listarEventosNota,
   listarNotasFiscais,
   marcarNotaAutorizada,
+  marcarNotaCancelada,
   marcarNotaRejeitada,
   montarDocumentoFiscalAvulso,
   moverNotaParaLixeira,
@@ -401,10 +402,11 @@ function registrarEventoFiscal(db, evento) {
   try {
     db.prepare(`
       INSERT INTO nfe_eventos
-        (ordemid, chave, tipo, nseqevento, protocolo, cstat, motivo, texto, xml, createdat)
+        (nfeid, ordemid, chave, tipo, nseqevento, protocolo, cstat, motivo, texto, xml, createdat)
       VALUES
-        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
+      evento.nfeid || null,
       evento.ordemid || null,
       evento.chave || '',
       evento.tipo,
@@ -712,6 +714,7 @@ router.post('/avulsa', auth(['admin', 'caixa']), async (req, res) => {
         devolverNumeroNFeRejeitada(db, serie, numero);
       }
       registrarEventoFiscal(db, {
+        nfeid: notaEmitindo.id,
         ordemid: null,
         chave: notaEmitindo.chave || `NFE-${notaEmitindo.id}`,
         tipo: 'rejeicao',
@@ -763,6 +766,7 @@ router.post('/avulsa', auth(['admin', 'caixa']), async (req, res) => {
         chave: chave || null,
       });
       registrarEventoFiscal(db, {
+        nfeid: notaEmitindo.id,
         ordemid: null,
         chave: chave || notaEmitindo.chave || `NFE-${notaEmitindo.id}`,
         tipo: 'rejeicao',
@@ -802,6 +806,7 @@ router.post('/avulsa', auth(['admin', 'caixa']), async (req, res) => {
     }
 
     registrarEventoFiscal(db, {
+      nfeid: notaEmitindo.id,
       ordemid: null,
       chave,
       tipo: 'autorizacao',
@@ -1188,6 +1193,7 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
         devolverNumeroNFeRejeitada(db, serie, numero);
       }
       registrarEventoFiscal(db, {
+        nfeid: notaEmitindo.id,
         ordemid: os.id,
         chave: notaEmitindo.chave || `NFE-${notaEmitindo.id}`,
         tipo: 'rejeicao',
@@ -1244,6 +1250,7 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
         chave: chave || null,
       });
       registrarEventoFiscal(db, {
+        nfeid: notaEmitindo.id,
         ordemid: os.id,
         chave: chave || notaEmitindo.chave || `NFE-${notaEmitindo.id}`,
         tipo: 'rejeicao',
@@ -1287,6 +1294,7 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
     }
 
     registrarEventoFiscal(db, {
+      nfeid: notaEmitindo.id,
       ordemid: os.id,
       chave,
       tipo: 'autorizacao',
@@ -1340,19 +1348,19 @@ router.post('/:chave/cce', auth(['admin', 'caixa']), async (req, res) => {
   }
 
   const db = getDB();
-  const os = db.prepare(`SELECT * FROM ordens WHERE nfe_chave = ? AND deletedat IS NULL`).get(chave);
+  const nota = resolverNotaPorChave(db, chave);
 
-  if (!os) {
+  if (!nota) {
     return res.status(404).json({ erro: 'NF-e nao encontrada para esta chave' });
   }
-  if (os.nfe_status === 'cancelado') {
+  if (nota.status === 'cancelado') {
     return res.status(409).json({ erro: 'NF-e cancelada nao pode receber Carta de Correcao.' });
   }
-  if (os.nfe_status !== 'autorizado') {
-    return res.status(422).json({ erro: `Carta de Correcao impossivel: nfe_status atual e '${os.nfe_status}'` });
+  if (nota.status !== 'autorizado') {
+    return res.status(422).json({ erro: `Carta de Correcao impossivel: nfe_status atual e '${nota.status}'` });
   }
-  if (os.nfe_emitida_em) {
-    const emitidaEm = new Date(os.nfe_emitida_em);
+  if (nota.createdat) {
+    const emitidaEm = new Date(nota.createdat);
     const diffHoras = (Date.now() - emitidaEm.getTime()) / (1000 * 60 * 60);
     if (diffHoras > 720) {
       return res.status(422).json({
@@ -1447,7 +1455,8 @@ router.post('/:chave/cce', auth(['admin', 'caixa']), async (req, res) => {
     const xmlEvento = serializarXmlFiscal(resultado);
 
     registrarEventoFiscal(db, {
-      ordemid: os.id,
+      nfeid: nota.id,
+      ordemid: nota.ordemid,
       chave,
       tipo: 'cce',
       nseqevento: nSeqEvento,
@@ -1505,23 +1514,23 @@ router.post('/:chave/cancelar', auth(['admin', 'caixa']), async (req, res) => {
 
   const db = getDB();
 
-  const os = db.prepare(`SELECT * FROM ordens WHERE nfe_chave = ? AND deletedat IS NULL`).get(chave);
+  const nota = resolverNotaPorChave(db, chave);
 
-  if (!os) {
+  if (!nota) {
     return res.status(404).json({ erro: 'NF-e nao encontrada para esta chave' });
   }
-  if (os.nfe_status === 'cancelado') {
+  if (nota.status === 'cancelado') {
     return res.status(409).json({ erro: 'NF-e ja cancelada' });
   }
-  if (os.nfe_status !== 'autorizado') {
-    return res.status(422).json({ erro: `Cancelamento impossivel: nfe_status atual e '${os.nfe_status}'` });
+  if (nota.status !== 'autorizado') {
+    return res.status(422).json({ erro: `Cancelamento impossivel: nfe_status atual e '${nota.status}'` });
   }
-  if (!os.nfe_protocolo) {
+  if (!nota.protocolo) {
     return res.status(422).json({ erro: 'Protocolo de autorizacao ausente no banco — nao e possivel cancelar' });
   }
 
-  if (tpAmbAtual() === 1 && os.nfe_emitida_em) {
-    const emitidaEm = new Date(os.nfe_emitida_em);
+  if (tpAmbAtual() === 1 && nota.createdat) {
+    const emitidaEm = new Date(nota.createdat);
     const diffHoras = (Date.now() - emitidaEm.getTime()) / (1000 * 60 * 60);
     if (diffHoras > 24) {
       return res.status(422).json({
@@ -1559,14 +1568,14 @@ router.post('/:chave/cancelar', auth(['admin', 'caixa']), async (req, res) => {
           verEvento:  '1.00',
           detEvento: {
             descEvento: 'Cancelamento',
-            nProt:      os.nfe_protocolo,
+            nProt:      nota.protocolo,
             xJust:      motivoStr,
           },
         },
       ],
     };
 
-    console.log(`[NF-e] Iniciando cancelamento chave=${chave} protocolo=${os.nfe_protocolo}`);
+    console.log(`[NF-e] Iniciando cancelamento chave=${chave} protocolo=${nota.protocolo}`);
 
     const wizard = await getNFEWizard();
     let resultado;
@@ -1607,19 +1616,17 @@ router.post('/:chave/cancelar', auth(['admin', 'caixa']), async (req, res) => {
       return;
     }
 
-    db.prepare(`
-      UPDATE ordens SET
-        nfe_status           = 'cancelado',
-        nfe_cancelado_em     = ?,
-        nfe_cancel_protocolo = ?,
-        nfe_cancel_motivo    = ?
-      WHERE nfe_chave = ?
-    `).run(dhEventoResp, nProtResp, motivoStr, chave);
+    marcarNotaCancelada(db, nota.id, {
+      cancelado_em: dhEventoResp,
+      protocolo: nProtResp,
+      motivo: motivoStr,
+    });
 
     const xmlEvento = serializarXmlFiscal(resultado);
 
     registrarEventoFiscal(db, {
-      ordemid: os.id,
+      nfeid: nota.id,
+      ordemid: nota.ordemid,
       chave,
       tipo: 'cancelamento',
       protocolo: nProtResp,

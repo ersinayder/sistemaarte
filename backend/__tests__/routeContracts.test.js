@@ -526,6 +526,25 @@ describe('security configuration contracts', () => {
     expect(source).toMatch(/renderDanfeHtml\(xml\)/);
   });
 
+  it('resolves CC-e and cancellation through nfe_notas instead of legacy ordem fiscal columns', () => {
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/marcarNotaCancelada/);
+    expect(source).toMatch(/const nota = resolverNotaPorChave\(db,\s*chave\)/);
+    expect(source).toMatch(/nota\.status/);
+    expect(source).toMatch(/nota\.protocolo/);
+    expect(source).toMatch(/nfeid:\s*nota\.id/);
+    expect(source).not.toMatch(/SELECT \* FROM ordens WHERE nfe_chave = \?/);
+    expect(source).not.toMatch(/UPDATE ordens SET nfe_status='cancelado'/);
+  });
+
+  it('links NF-e authorization and rejection events to the canonical note id', () => {
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/INSERT INTO nfe_eventos[\s\S]+\(nfeid, ordemid, chave/);
+    expect(source).toMatch(/nfeid:\s*notaEmitindo\.id/);
+  });
+
   it('keeps NF-e trash as a soft delete that is hidden from the main list', () => {
     const databaseSource = fs.readFileSync(new URL('../database.js', import.meta.url), 'utf8');
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');

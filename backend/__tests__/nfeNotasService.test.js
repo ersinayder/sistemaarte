@@ -7,6 +7,7 @@ import {
   listarEventosNota,
   listarNotasFiscais,
   marcarNotaAutorizada,
+  marcarNotaCancelada,
   marcarNotaRejeitada,
   montarDocumentoFiscalAvulso,
   moverNotaParaLixeira,
@@ -420,6 +421,38 @@ describe('nfeNotasService', () => {
       rejeicao_motivo: 'Duplicidade de NF-e',
       xml: '<retEnviNFe />',
       chave: '31260600000000000000550010000003111000000010',
+    });
+  });
+
+  it('marks canonical notes as cancelled with cancellation metadata', () => {
+    const db = makeDb();
+    const nota = criarNotaEmitindo(db, {
+      origem: 'avulsa',
+      cliente_snapshot: {},
+      emitente_snapshot: {},
+      valortotal: 80,
+      ambiente: 2,
+      numero: '313',
+      serie: '1',
+    });
+
+    marcarNotaAutorizada(db, nota.id, {
+      chave: '31260600000000000000550010000003131000000010',
+      protocolo: '131260000313',
+      xml: '<nfeProc />',
+      emitida_em: '2026-07-01T10:00:00-03:00',
+    });
+    marcarNotaCancelada(db, nota.id, {
+      cancelado_em: '2026-07-01T11:00:00-03:00',
+      protocolo: '135260000313',
+      motivo: 'Cancelamento solicitado pelo cliente',
+    });
+
+    expect(resolverNotaPorId(db, nota.id)).toMatchObject({
+      status: 'cancelado',
+      cancelado_em: '2026-07-01T11:00:00-03:00',
+      cancel_protocolo: '135260000313',
+      cancel_motivo: 'Cancelamento solicitado pelo cliente',
     });
   });
 

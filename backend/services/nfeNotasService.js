@@ -368,6 +368,23 @@ function marcarNotaRejeitada(db, id, data = {}) {
   );
 }
 
+function marcarNotaCancelada(db, id, data = {}) {
+  return db.prepare(`
+    UPDATE nfe_notas
+    SET status='cancelado',
+        cancelado_em=?,
+        cancel_protocolo=?,
+        cancel_motivo=?,
+        updatedat=datetime('now','localtime')
+    WHERE id=?
+  `).run(
+    data.cancelado_em || null,
+    data.protocolo || null,
+    data.motivo || null,
+    id
+  );
+}
+
 function montarDocumentoFiscalAvulso({ cliente, itens, pagamento = 'Pix' } = {}) {
   const total = (itens || []).reduce((acc, item) => (
     acc + Number(item.quantidade || 1) * Number(item.preco_unitario || 0)
@@ -401,6 +418,7 @@ module.exports = {
   listarEventosNota,
   listarNotasFiscais,
   marcarNotaAutorizada,
+  marcarNotaCancelada,
   marcarNotaRejeitada,
   montarDocumentoFiscalAvulso,
   moverNotaParaLixeira,
