@@ -269,4 +269,63 @@ describe('NotasFiscais inutilizacao manual', () => {
       )
     })
   }, 15000)
+
+  it('posiciona informacoes complementares depois dos itens com campo compacto', async () => {
+    const previaComItem = {
+      origem: 'avulsa',
+      ordem: { numero: 'Avulsa', servico: 'NF-e avulsa', pagamento: 'Pix', valortotal: 80 },
+      cliente: { nome: '', documento: '', ie: '', logradouro: '', numero: '', bairro: '', cidade: '', uf: '', cep: '' },
+      emitente: { xNome: 'Arte' },
+      fiscal: { ambiente: 1, serie: '1' },
+      itens: [{
+        id: 'produto-1',
+        nome: 'Moldura cadastrada',
+        quantidade: 1,
+        preco_unitario: 80,
+        subtotal: 80,
+        ncm: '44151000',
+        cfop: '5102',
+        csosn: '400',
+        origem_fiscal: '0',
+        unidade: 'UN',
+      }],
+      informacoes_complementares: '',
+    }
+
+    api.get.mockImplementation((url) => {
+      if (url === '/nfe') {
+        return Promise.resolve({ data: { notas: [], meta: { ambiente: 1 } } })
+      }
+      if (url === '/ordens') {
+        return Promise.resolve({ data: [] })
+      }
+      if (url === '/produtos') {
+        return Promise.resolve({ data: [{ id: 1, nome: 'Moldura cadastrada', preco: 80, ncm: '44151000', cfop: '5102', csosn: '400', origem_fiscal: 0, unidade: 'UN' }] })
+      }
+      if (url === '/clientes') {
+        return Promise.resolve({ data: { clientes: [] } })
+      }
+      if (url === '/nfe/avulsa/preview') {
+        return Promise.resolve({ data: { ...previaComItem, itens: [] } })
+      }
+      return Promise.resolve({ data: {} })
+    })
+    api.post.mockResolvedValue({ data: previaComItem })
+
+    render(<NotasFiscais />)
+
+    await userEvent.click(await screen.findByRole('button', { name: /emitir nf-e/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /avulsa/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /moldura cadastrada/i }))
+    const revisar = await screen.findByRole('button', { name: /revisar dados/i })
+    await waitFor(() => expect(revisar).not.toBeDisabled())
+    await userEvent.click(revisar)
+
+    const itensTitulo = await screen.findByText('Itens da NF-e')
+    const campo = screen.getByRole('textbox', { name: /informacoes complementares/i })
+
+    expect(Boolean(itensTitulo.compareDocumentPosition(campo) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true)
+    expect(campo).toHaveAttribute('rows', '2')
+    expect(campo).toHaveStyle({ minHeight: '52px' })
+  })
 })

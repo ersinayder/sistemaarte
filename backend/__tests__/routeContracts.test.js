@@ -781,6 +781,19 @@ describe('security configuration contracts', () => {
     expect(avulsaRoute).not.toMatch(/detalhe:\s*(e|err|sefazErr)\.message/);
   });
 
+  it('keeps avulsa NF-e emission conservative for non-conclusive SEFAZ responses', () => {
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+    const start = source.indexOf("router.post('/avulsa'");
+    const end = source.indexOf("router.get('/exportar'", start);
+    const avulsaRoute = source.slice(start, end);
+
+    expect(start).toBeGreaterThan(-1);
+    expect(avulsaRoute).toMatch(/classificarResultadoEmissao/);
+    expect(avulsaRoute).toMatch(/marcarNotaIncerta/);
+    expect(avulsaRoute).toMatch(/tipo:\s*'incerto'/);
+    expect(avulsaRoute).toMatch(/validarXmlAutorizacao\(xmlAutorizacao,\s*chave\)/);
+  });
+
   it('routes complementary NF-e information into note storage and SEFAZ payload', () => {
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
 
@@ -799,6 +812,22 @@ describe('security configuration contracts', () => {
     expect(source).toMatch(/renderDanfePdf\(html\)/);
     expect(source).toMatch(/Content-Type['"],\s*['"]application\/pdf/);
     expect(source).toMatch(/attachment; filename="danfe-\$\{filenameSeguro\(chave\)\}\.pdf"/);
+  });
+
+  it('only serves authorization XML and DANFE for authorized fiscal notes with valid legal XML', () => {
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
+    const xmlRouteStart = source.indexOf("router.get('/:chave/xml/autorizacao'");
+    const danfeRouteStart = source.indexOf("router.get('/:chave/danfe'");
+    const eventosRouteStart = source.indexOf("router.get('/eventos/:eventoId/xml'");
+    const xmlRoute = source.slice(xmlRouteStart, danfeRouteStart);
+    const danfeRoute = source.slice(danfeRouteStart, eventosRouteStart);
+
+    expect(xmlRouteStart).toBeGreaterThan(-1);
+    expect(danfeRouteStart).toBeGreaterThan(-1);
+    expect(xmlRoute).toMatch(/notaPermiteDocumentoAutorizacao\(nota\)/);
+    expect(xmlRoute).toMatch(/validarXmlAutorizacao\(xml,\s*chave\)/);
+    expect(danfeRoute).toMatch(/notaPermiteDocumentoAutorizacao\(nota\)/);
+    expect(danfeRoute).toMatch(/validarXmlAutorizacao\(xml,\s*chave\)/);
   });
 
   it('wires NF-e ZIP export before dynamic fiscal routes', () => {

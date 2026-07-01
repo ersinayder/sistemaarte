@@ -319,6 +319,33 @@ Regras de migration:
 - Para tabelas novas, usar `CREATE TABLE IF NOT EXISTS`.
 - Banco real (`backend/data/oficina.db`) e XMLs fiscais nunca entram no git.
 
+### NF-e - rejeicao e sequencia
+
+Rejeicao corrigivel da SEFAZ nao deve fazer a mesma OS pular numeracao.
+
+Regra obrigatoria:
+
+- Reemissao da mesma OS apos rejeicao corrigivel reutiliza o mesmo `numero` e `serie`.
+- Isso vale mesmo que outra OS tenha emitido NF-e autorizada no intervalo.
+- Nunca reutilizar se outra OS/nota canonica ja ocupa a mesma `serie` e `numero`.
+- `falha_local` posterior do mesmo numero nao cancela o reaproveitamento da rejeicao corrigivel original.
+- Rejeicao da SEFAZ nao chama devolucao global de `nfe_sequencias`.
+- `devolverNumero()` e somente para `falha_local` comprovadamente antes da transmissao.
+- A linha canonica em `nfe_notas` rejeitada da mesma OS/numero/serie deve voltar para `emitindo` na reemissao, sem criar duplicata.
+- Nao incluir duplicidade/denegacao nessa regra: `204`, `205`, `206`, `302`, `303`, `539` continuam bloqueantes/incertos.
+- Rejeicao textual sem cStat reconhecido fica `incerto`, nunca terminal.
+- XML autorizado e DANFE so saem de nota `autorizado`/`cancelado` com `nfeProc` valido para a chave.
+- NF-e avulsa e exportacao em lote seguem a mesma regra conservadora: nada de documento fiscal ou nova emissao "limpa" a partir de retorno nao conclusivo.
+
+Arquivo operacional: `docs/nfe-reemissao-rejeicao-sequencia.md`.
+
+Testes obrigatorios ao mexer nessa area:
+
+```powershell
+cd backend
+npm.cmd test -- nfeEmissionRules.test.js nfeAttemptRepository.test.js nfeEmissaoService.test.js nfeNotasService.test.js routeContracts.test.js
+```
+
 ### NF-e - inutilizacao manual segura
 
 Implementada para uso administrativo quando houver quebra de numeracao de NF-e sem nota autorizada naquele numero.
@@ -340,7 +367,7 @@ Implementada para uso administrativo quando houver quebra de numeracao de NF-e s
 - Nao confundir:
   - Inutilizacao: numero nunca usado e nao sera usado.
   - Cancelamento: desfaz NF-e autorizada dentro do prazo legal.
-  - Rejeicao: tentativa nao autorizada; pode ou nao ter consumido sequencia local conforme o fluxo.
+  - Rejeicao corrigivel: tentativa nao autorizada; reemitir a mesma OS reaproveita o numero rejeitado.
 - XML de envio e retorno fica em banco e disco (`backend/data/nfe_xmls/inut-...xml`).
 - Nunca transmitir em producao por script automatizado. Validar primeiro em homologacao e fazer a producao pela UI com confirmacao explicita.
 
@@ -970,7 +997,7 @@ Conferência do estado atual do código:
 - `POST /api/backup` grava `backend/data/backups/backup-status.json`; `GET /api/backup/status` retorna o último snapshot ou calcula o estado local se o JSON ainda não existir. O snapshot também inclui `alertas` legíveis para backup local ausente/atrasado, retenção fora do esperado e offsite pendente.
 - `resolveClienteData()` preserva lookup por `clientenome`, agora normalizado com `trim().slice(0, 200)`.
 - `GET /api/caixa` já filtra lançamentos deletados e OS deletadas com `(l.ordemid IS NULL OR o.deletedat IS NULL)`; manter item apenas para teste/regressão.
-- A numeração da NF-e (`nfe_sequencias`) é incrementada antes da autorização; rejeições da SEFAZ hoje consomem número. Reversão só deve ser implementada após validar regra fiscal/operacional, pois em NF-e real número inutilizado/rejeitado pode exigir tratamento cuidadoso.
+- A numeracao da NF-e por OS preserva rejeicoes corrigiveis para a mesma OS: a reemissao reutiliza o numero rejeitado, sem devolver esse numero para outra OS e sem incrementar novo numero.
 - Cloudflare Free já oferece um conjunto gerenciado básico de WAF, mas plano Pro ou superior libera WAF gerenciado mais completo. Para produção comercial, manter como recomendação avaliar/ativar Pro.
 
 #### Fase 1: Segurança básica — ação imediata
@@ -1008,7 +1035,7 @@ Performance:
 
 Regras de negócio e integrações:
 
-- Avaliar regra fiscal correta para numeração de NF-e rejeitada. Se aplicável ao ambiente atual, implementar transação/reversão de `nfe_sequencias` em rejeições antes de autorização; se não for seguro reverter, registrar explicitamente como número consumido/inutilizável.
+- Manter regressao da numeracao de NF-e rejeitada: rejeicao corrigivel por OS deve reemitir com o mesmo numero mesmo se outra OS autorizou uma NF-e no intervalo.
 - Alinhar variáveis do WhatsApp no `.env` com a integração definitiva escolhida: Evolution API ou Meta Cloud API.
 - Cobrir `GET /api/caixa` com teste de regressão para garantir que OS deletadas/lixeira não apareçam no caixa nem nos saldos.
 

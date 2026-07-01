@@ -57,6 +57,10 @@ function insertNota(db, data = {}) {
   );
 }
 
+function xmlAutorizado(chave) {
+  return `<nfeProc><NFe><infNFe Id="NFe${chave}"><ide><nNF>${Number(chave.slice(25, 34))}</nNF><serie>1</serie></ide><emit><xNome>Arte</xNome></emit><dest><xNome>Cliente</xNome></dest><total><ICMSTot><vNF>10.00</vNF></ICMSTot></total></infNFe></NFe><protNFe><infProt><chNFe>${chave}</chNFe><cStat>100</cStat><nProt>123</nProt></infProt></protNFe></nfeProc>`;
+}
+
 describe('nfeExportService', () => {
   it('queries canonical nfe_notas, includes avulsa, and preserves OS-deleted fiscal notes', () => {
     const db = makeDb();
@@ -68,14 +72,14 @@ describe('nfeExportService', () => {
       ordemid: 10,
       numero: '000000285',
       chave: '31260507500718000196550010000002851000000285',
-      xml: '<nfeProc><NFe /></nfeProc>',
+      xml: xmlAutorizado('31260507500718000196550010000002851000000285'),
       createdat: '2026-06-10 08:00:00',
     });
     insertNota(db, {
       origem: 'avulsa',
       numero: '000000286',
       chave: '31260507500718000196550010000002861000000286',
-      xml: '<nfeProc><NFe /></nfeProc>',
+      xml: xmlAutorizado('31260507500718000196550010000002861000000286'),
       createdat: '2026-06-11 08:00:00',
     });
     insertNota(db, {
@@ -83,7 +87,7 @@ describe('nfeExportService', () => {
       ordemid: 11,
       numero: '000000287',
       chave: '31260507500718000196550010000002871000000287',
-      xml: '<nfeProc><NFe /></nfeProc>',
+      xml: xmlAutorizado('31260507500718000196550010000002871000000287'),
       createdat: '2026-06-12 08:00:00',
     });
     insertNota(db, {
@@ -91,7 +95,7 @@ describe('nfeExportService', () => {
       numero: '000000288',
       chave: '31260507500718000196550010000002881000000288',
       status: 'rejeitado',
-      xml: '<nfeProc><NFe /></nfeProc>',
+      xml: xmlAutorizado('31260507500718000196550010000002881000000288'),
       createdat: '2026-06-13 08:00:00',
     });
     insertNota(db, {
@@ -99,7 +103,7 @@ describe('nfeExportService', () => {
       numero: '000000289',
       chave: '31260507500718000196550010000002891000000289',
       deletedat: '2026-06-13 09:00:00',
-      xml: '<nfeProc><NFe /></nfeProc>',
+      xml: xmlAutorizado('31260507500718000196550010000002891000000289'),
       createdat: '2026-06-13 08:00:00',
     });
 
@@ -122,12 +126,18 @@ describe('nfeExportService', () => {
           id: 1,
           numero: '000000285',
           chave: '31260507500718000196550010000002851000000285',
-          xml: '<nfeProc><NFe /></nfeProc>',
+          xml: xmlAutorizado('31260507500718000196550010000002851000000285'),
         },
         {
           id: 2,
           numero: '000000286',
           chave: '31260507500718000196550010000002861000000286',
+          xml: '<nfeProc><NFe /></nfeProc>',
+        },
+        {
+          id: 3,
+          numero: '000000287',
+          chave: '31260507500718000196550010000002871000000287',
           xml: 'sem xml',
         },
       ],
@@ -137,12 +147,13 @@ describe('nfeExportService', () => {
     expect(result.entries).toEqual([
       {
         name: 'xml/000000285-31260507500718000196550010000002851000000285.xml',
-        content: '<nfeProc><NFe /></nfeProc>',
+        content: xmlAutorizado('31260507500718000196550010000002851000000285'),
       },
       expect.objectContaining({ name: 'manifesto.txt' }),
     ]);
     expect(result.puladas).toEqual([
       expect.objectContaining({ numero: '000000286', motivo: 'XML autorizado ausente ou invalido' }),
+      expect.objectContaining({ numero: '000000287', motivo: 'XML autorizado ausente ou invalido' }),
     ]);
     expect(String(result.entries[1].content)).toContain('Arquivos exportados: 1');
   });
@@ -156,7 +167,7 @@ describe('nfeExportService', () => {
         id: 1,
         numero: '000000285',
         chave: '31260507500718000196550010000002851000000285',
-        xml: '<nfeProc><NFe><infNFe Id="NFe31260507500718000196550010000002851000000285"><ide><nNF>285</nNF><serie>1</serie></ide><emit><xNome>Arte</xNome></emit><dest><xNome>Cliente</xNome></dest><total><ICMSTot><vNF>10.00</vNF></ICMSTot></total></infNFe></NFe><protNFe><infProt><nProt>123</nProt></infProt></protNFe></nfeProc>',
+        xml: xmlAutorizado('31260507500718000196550010000002851000000285'),
       }],
       renderPdf,
       now: new Date('2026-07-01T12:00:00.000Z'),
@@ -175,7 +186,7 @@ describe('nfeExportService', () => {
       origem: 'avulsa',
       numero: '000000285',
       chave: '31260507500718000196550010000002851000000285',
-      xml: '<nfeProc><NFe /></nfeProc>',
+      xml: xmlAutorizado('31260507500718000196550010000002851000000285'),
       createdat: '2026-06-15 10:00:00',
     });
 

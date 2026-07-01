@@ -4,6 +4,7 @@ const archiverModule = require('archiver');
 const { renderDanfeHtml } = require('../utils/danfe');
 const { renderDanfePdf } = require('../utils/pdf/danfePdf');
 const { extrairXmlFiscal } = require('../utils/nfeXml');
+const { validarXmlAutorizacao } = require('../domain/nfeEmissionRules');
 const {
   buildManifestoExportacaoNFe,
   buildNomeArquivoNFe,
@@ -57,11 +58,12 @@ async function montarEntradasExportacaoNFe({
   const puladas = [];
 
   for (const nota of notas) {
+    const chave = nota.chave || nota.nfe_chave;
     const xml = extrairXmlFiscal(nota.xml || nota.nfe_xml);
-    if (!xml) {
+    if (!xml || !validarXmlAutorizacao(xml, chave)) {
       puladas.push({
         numero: nota.numero || nota.nfe_numero,
-        chave: nota.chave || nota.nfe_chave,
+        chave,
         motivo: 'XML autorizado ausente ou invalido',
       });
       continue;

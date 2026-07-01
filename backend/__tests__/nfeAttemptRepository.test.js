@@ -351,28 +351,37 @@ describe('nfeAttemptRepository', () => {
     }
   });
 
-  it.each(['rejeitado', 'falha_local'])(
-    'devolve o ultimo numero em %s sem alterar status ou historico',
-    (estado) => {
-      const tentativa = repository.reservar({ ordemId: 17, serie: '1', usuarioId: 9 });
-      repository.transicionar(tentativa.id, estado, { cstat: '386' });
-      const transicoesAntes = db.prepare(`
-        SELECT COUNT(*) AS total
-        FROM nfe_emissao_transicoes
-        WHERE tentativaid = ?
-      `).get(tentativa.id).total;
+  it('devolve o ultimo numero apenas em falha_local sem alterar status ou historico', () => {
+    const tentativa = repository.reservar({ ordemId: 17, serie: '1', usuarioId: 9 });
+    repository.transicionar(tentativa.id, 'falha_local', { cstat: 'xml_schema' });
+    const transicoesAntes = db.prepare(`
+      SELECT COUNT(*) AS total
+      FROM nfe_emissao_transicoes
+      WHERE tentativaid = ?
+    `).get(tentativa.id).total;
 
-      expect(repository.devolverNumero(tentativa.id)).toBe(true);
-      expect(db.prepare('SELECT ultimo_numero FROM nfe_sequencias WHERE serie = ?').get('1'))
-        .toEqual({ ultimo_numero: 0 });
-      expect(repository.buscarPorId(tentativa.id).status).toBe(estado);
-      expect(db.prepare(`
-        SELECT COUNT(*) AS total
-        FROM nfe_emissao_transicoes
-        WHERE tentativaid = ?
-      `).get(tentativa.id)).toEqual({ total: transicoesAntes });
-    }
-  );
+    expect(repository.devolverNumero(tentativa.id)).toBe(true);
+    expect(db.prepare('SELECT ultimo_numero FROM nfe_sequencias WHERE serie = ?').get('1'))
+      .toEqual({ ultimo_numero: 0 });
+    expect(repository.buscarPorId(tentativa.id).status).toBe('falha_local');
+    expect(db.prepare(`
+      SELECT COUNT(*) AS total
+      FROM nfe_emissao_transicoes
+      WHERE tentativaid = ?
+    `).get(tentativa.id)).toEqual({ total: transicoesAntes });
+  });
+
+  it('nao devolve numero em rejeicao da SEFAZ', () => {
+    const tentativa = repository.reservar({ ordemId: 17, serie: '1', usuarioId: 9 });
+    repository.transicionar(tentativa.id, 'rejeitado', {
+      cStat: '232',
+      motivo: 'IE do destinatario nao informada',
+    });
+
+    expect(repository.devolverNumero(tentativa.id)).toBe(false);
+    expect(db.prepare('SELECT ultimo_numero FROM nfe_sequencias WHERE serie = ?').get('1'))
+      .toEqual({ ultimo_numero: 1 });
+  });
 
   it('nao devolve numero quando a sequencia da serie ja avancou', () => {
     const primeira = repository.reservar({ ordemId: 17, serie: '1', usuarioId: 9 });
@@ -382,6 +391,139 @@ describe('nfeAttemptRepository', () => {
     expect(repository.devolverNumero(primeira.id)).toBe(false);
     expect(db.prepare('SELECT ultimo_numero FROM nfe_sequencias WHERE serie = ?').get('1'))
       .toEqual({ ultimo_numero: 2 });
+  });
+
+  it('reutiliza rejeicao corrigivel da mesma OS sem voltar o numero para outra OS', () => {
+    const primeira = repository.reservar({
+      ordemId: 17,
+      serie: '1',
+      usuarioId: 9,
+      cstatsReutilizaveis: ['232'],
+    });
+    repository.transicionar(primeira.id, 'rejeitado', {
+      cStat: '232',
+      motivo: 'IE do destinatario nao informada',
+    });
+
+    const outraOs = repository.reservar({
+      ordemId: 18,
+      serie: '1',
+      usuarioId: 9,
+      cstatsReutilizaveis: ['232'],
+    });
+    repository.transicionar(outraOs.id, 'autorizado', { cStat: '100' });
+
+    const reemissao = repository.reservar({
+      ordemId: 17,
+      serie: '1',
+      usuarioId: 9,
+      cstatsReutilizaveis: ['232'],
+    });
+
+    expect(outraOs.numero).toBe(2);
+    expect(reemissao).toMatchObject({
+      ordemid: 17,
+      numero: 1,
+      lote: '000000001',
+      status: 'processando',
+      idempotency_key: 'emissao:17:1:1:a2',
+    });
+    expect(db.prepare('SELECT ultimo_numero FROM nfe_sequencias WHERE serie = ?').get('1'))
+      .toEqual({ ultimo_numero: 2 });
+    expect(db.prepare(`
+      SELECT ordemid, numero, status, cstat, idempotency_key
+      FROM nfe_emissao_tentativas
+      ORDER BY id
+    `).all()).toEqual([
+      {
+        ordemid: 17,
+        numero: 1,
+        status: 'rejeitado',
+        cstat: '232',
+        idempotency_key: 'emissao:17:1:1:a1',
+      },
+      {
+        ordemid: 18,
+        numero: 2,
+        status: 'autorizado',
+        cstat: '100',
+        idempotency_key: 'emissao:18:1:2:a1',
+      },
+      {
+        ordemid: 17,
+        numero: 1,
+        status: 'processando',
+        cstat: null,
+        idempotency_key: 'emissao:17:1:1:a2',
+      },
+    ]);
+  });
+
+  it('bloqueia reutilizacao quando outra OS ja ocupou a mesma serie e numero', () => {
+    const primeira = repository.reservar({
+      ordemId: 17,
+      serie: '1',
+      usuarioId: 9,
+      cstatsReutilizaveis: ['232'],
+    });
+    repository.transicionar(primeira.id, 'rejeitado', {
+      cStat: '232',
+      motivo: 'IE do destinatario nao informada',
+    });
+    db.prepare(`
+      INSERT INTO nfe_emissao_tentativas
+        (ordemid, operacao, idempotency_key, numero, serie, lote, status, cstat, createdat, updatedat)
+      VALUES
+        (18, 'emissao', 'emissao:18:1:1:a1', 1, '1', '000000001', 'autorizado', '100', 'agora', 'agora')
+    `).run();
+
+    expect(() => repository.reservar({
+      ordemId: 17,
+      serie: '1',
+      usuarioId: 9,
+      cstatsReutilizaveis: ['232'],
+    })).toThrow(expect.objectContaining({
+      status: 409,
+      code: 'nfe_numero_rejeitado_indisponivel',
+    }));
+  });
+
+  it('reutiliza rejeicao corrigivel apos falha_local posterior do mesmo numero', () => {
+    const primeira = repository.reservar({
+      ordemId: 17,
+      serie: '1',
+      usuarioId: 9,
+      cstatsReutilizaveis: ['232'],
+    });
+    repository.transicionar(primeira.id, 'rejeitado', {
+      cStat: '232',
+      motivo: 'IE do destinatario nao informada',
+    });
+    const tentativaLocal = repository.reservar({
+      ordemId: 17,
+      serie: '1',
+      usuarioId: 9,
+      cstatsReutilizaveis: ['232'],
+    });
+    repository.transicionar(tentativaLocal.id, 'falha_local', {
+      cStat: 'xml_schema',
+      motivo: 'XML invalido antes da transmissao',
+    });
+
+    const reemissao = repository.reservar({
+      ordemId: 17,
+      serie: '1',
+      usuarioId: 9,
+      cstatsReutilizaveis: ['232'],
+    });
+
+    expect(reemissao).toMatchObject({
+      numero: 1,
+      lote: '000000001',
+      idempotency_key: 'emissao:17:1:1:a3',
+    });
+    expect(db.prepare('SELECT ultimo_numero FROM nfe_sequencias WHERE serie = ?').get('1'))
+      .toEqual({ ultimo_numero: 1 });
   });
 
   it.each(['processando', 'incerto', 'autorizado'])(
@@ -398,9 +540,9 @@ describe('nfeAttemptRepository', () => {
 
   it('reutiliza numero devolvido com nova tentativa versionada sem alterar a anterior', () => {
     const primeira = repository.reservar({ ordemId: 17, serie: '1', usuarioId: 9 });
-    repository.transicionar(primeira.id, 'rejeitado', {
-      cStat: '386',
-      motivo: 'CFOP incompativel',
+    repository.transicionar(primeira.id, 'falha_local', {
+      cStat: 'xml_schema',
+      motivo: 'XML invalido antes da transmissao',
     });
     expect(repository.devolverNumero(primeira.id)).toBe(true);
 
@@ -413,23 +555,23 @@ describe('nfeAttemptRepository', () => {
       status: 'processando',
     });
     expect(repository.buscarPorId(primeira.id)).toMatchObject({
-      status: 'rejeitado',
-      cstat: '386',
-      motivo: 'CFOP incompativel',
+      status: 'falha_local',
+      cstat: 'xml_schema',
+      motivo: 'XML invalido antes da transmissao',
     });
     expect(db.prepare(`
       SELECT idempotency_key, status
       FROM nfe_emissao_tentativas
       ORDER BY id
     `).all()).toEqual([
-      { idempotency_key: 'emissao:17:1:1:a1', status: 'rejeitado' },
+      { idempotency_key: 'emissao:17:1:1:a1', status: 'falha_local' },
       { idempotency_key: 'emissao:17:1:1:a2', status: 'processando' },
     ]);
   });
 
   it('impede tentativa antiga de devolver numero reutilizado por tentativa posterior', () => {
     const primeira = repository.reservar({ ordemId: 17, serie: '1', usuarioId: 9 });
-    repository.transicionar(primeira.id, 'rejeitado', { cStat: '386' });
+    repository.transicionar(primeira.id, 'falha_local', { cStat: 'xml_schema' });
     expect(repository.devolverNumero(primeira.id)).toBe(true);
 
     const segunda = repository.reservar({ ordemId: 17, serie: '1', usuarioId: 9 });
@@ -443,21 +585,18 @@ describe('nfeAttemptRepository', () => {
       .toEqual({ ultimo_numero: 2 });
   });
 
-  it.each(['rejeitado', 'falha_local'])(
-    'permite que a tentativa mais recente em %s devolva o numero reutilizado',
-    (estado) => {
-      const primeira = repository.reservar({ ordemId: 17, serie: '1', usuarioId: 9 });
-      repository.transicionar(primeira.id, 'rejeitado', { cStat: '386' });
-      expect(repository.devolverNumero(primeira.id)).toBe(true);
+  it('permite que a tentativa mais recente em falha_local devolva o numero reutilizado', () => {
+    const primeira = repository.reservar({ ordemId: 17, serie: '1', usuarioId: 9 });
+    repository.transicionar(primeira.id, 'falha_local', { cStat: 'xml_schema' });
+    expect(repository.devolverNumero(primeira.id)).toBe(true);
 
-      const segunda = repository.reservar({ ordemId: 17, serie: '1', usuarioId: 9 });
-      repository.transicionar(segunda.id, estado);
+    const segunda = repository.reservar({ ordemId: 17, serie: '1', usuarioId: 9 });
+    repository.transicionar(segunda.id, 'falha_local');
 
-      expect(repository.devolverNumero(segunda.id)).toBe(true);
-      expect(db.prepare('SELECT ultimo_numero FROM nfe_sequencias WHERE serie = ?').get('1'))
-        .toEqual({ ultimo_numero: 0 });
-    }
-  );
+    expect(repository.devolverNumero(segunda.id)).toBe(true);
+    expect(db.prepare('SELECT ultimo_numero FROM nfe_sequencias WHERE serie = ?').get('1'))
+      .toEqual({ ultimo_numero: 0 });
+  });
 
   it('persiste todos os campos do contrato publico camelCase', () => {
     const tentativa = repository.reservar({ ordemId: 17, serie: '1', usuarioId: 9 });

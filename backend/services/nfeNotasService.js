@@ -4,6 +4,9 @@ const {
   buildNfeListRow,
   isNotaAtivaParaOrdem,
 } = require('../domain/nfeNotasRules');
+const {
+  rejeicaoPermiteReutilizarNumero,
+} = require('../domain/nfeEmissionRules');
 const { extrairXmlFiscal } = require('./nfeEmissaoService');
 
 function roundMoney(value) {
@@ -32,6 +35,39 @@ function hasTable(db, table) {
 function hasColumn(db, table, column) {
   if (!hasTable(db, table)) return false;
   return db.prepare(`PRAGMA table_info(${table})`).all().some((row) => row.name === column);
+}
+
+function numeroFiscalInteiro(value) {
+  const text = String(value ?? '').trim();
+  if (!/^\d+$/.test(text)) return null;
+  const numero = Number(text);
+  return Number.isSafeInteger(numero) && numero > 0 ? numero : null;
+}
+
+function deletedEfetivoSql() {
+  return "COALESCE(n.deletedat, CASE WHEN n.origem = 'ordem' THEN o.nfe_deletedat ELSE NULL END)";
+}
+
+function deletedPorEfetivoSql() {
+  return "COALESCE(n.deletedpor, CASE WHEN n.origem = 'ordem' THEN o.nfe_deletedpor ELSE NULL END)";
+}
+
+function deletedReasonEfetivoSql() {
+  return "COALESCE(n.deletedreason, CASE WHEN n.origem = 'ordem' THEN o.nfe_deletedreason ELSE NULL END)";
+}
+
+function normalizarLixeiraEfetiva(row) {
+  if (!row) return null;
+  const normalized = {
+    ...row,
+    deletedat: row.deletedat || row.effective_deletedat || null,
+    deletedpor: row.deletedpor ?? row.effective_deletedpor ?? null,
+    deletedreason: row.deletedreason || row.effective_deletedreason || null,
+  };
+  delete normalized.effective_deletedat;
+  delete normalized.effective_deletedpor;
+  delete normalized.effective_deletedreason;
+  return normalized;
 }
 
 function buildClienteSnapshot(row = {}) {
@@ -332,6 +368,16 @@ function listarNotasFiscais(db, options = {}) {
 
 function resolverNotaPorChave(db, chave) {
   if (!hasTable(db, 'nfe_notas')) return null;
+  if (hasTable(db, 'ordens')) {
+    return db.prepare(`
+      SELECT n.*
+      FROM nfe_notas n
+      LEFT JOIN ordens o ON o.id = n.ordemid
+      WHERE n.chave = ?
+        AND ${deletedEfetivoSql()} IS NULL
+      LIMIT 1
+    `).get(chave) || null;
+  }
   return db.prepare(`
     SELECT *
     FROM nfe_notas
@@ -343,6 +389,23 @@ function resolverNotaPorChave(db, chave) {
 function resolverNotaPorId(db, id, options = {}) {
   if (!hasTable(db, 'nfe_notas')) return null;
   const includeDeleted = Boolean(options.includeDeleted);
+  if (hasTable(db, 'ordens')) {
+    const clause = includeDeleted
+      ? 'n.id = ?'
+      : `n.id = ? AND ${deletedEfetivoSql()} IS NULL`;
+    const row = db.prepare(`
+      SELECT
+        n.*,
+        ${deletedEfetivoSql()} AS effective_deletedat,
+        ${deletedPorEfetivoSql()} AS effective_deletedpor,
+        ${deletedReasonEfetivoSql()} AS effective_deletedreason
+      FROM nfe_notas n
+      LEFT JOIN ordens o ON o.id = n.ordemid
+      WHERE ${clause}
+      LIMIT 1
+    `).get(id) || null;
+    return includeDeleted ? normalizarLixeiraEfetiva(row) : row;
+  }
   const clause = includeDeleted ? 'id = ?' : 'id = ? AND deletedat IS NULL';
   return db.prepare(`
     SELECT *
@@ -377,17 +440,125 @@ function moverNotaParaLixeira(db, id, userId, reason) {
 }
 
 function restaurarNotaDaLixeira(db, id) {
-  return db.prepare(`
-    UPDATE nfe_notas
-    SET deletedat=NULL,
-        deletedpor=NULL,
-        deletedreason=NULL,
-        updatedat=datetime('now','localtime')
-    WHERE id=?
-  `).run(id);
+  const run = db.transaction(() => {
+    const nota = resolverNotaPorId(db, id, { includeDeleted: true });
+    if (!nota) return { changes: 0 };
+
+    const notaResult = db.prepare(`
+      UPDATE nfe_notas
+      SET deletedat=NULL,
+          deletedpor=NULL,
+          deletedreason=NULL,
+          updatedat=datetime('now','localtime')
+      WHERE id=?
+    `).run(id);
+
+    let ordemChanges = 0;
+    if (
+      nota.origem === 'ordem'
+      && nota.ordemid
+      && hasTable(db, 'ordens')
+      && hasColumn(db, 'ordens', 'nfe_deletedat')
+    ) {
+      ordemChanges = db.prepare(`
+        UPDATE ordens
+        SET nfe_deletedat=NULL,
+            nfe_deletedpor=NULL,
+            nfe_deletedreason=NULL
+        WHERE id=?
+      `).run(nota.ordemid).changes;
+    }
+
+    return { changes: notaResult.changes || ordemChanges ? 1 : 0 };
+  });
+  return run();
+}
+
+function buscarNotaRejeitadaReutilizavel(db, data = {}) {
+  const numero = numeroFiscalInteiro(data.numero);
+  if (!numero) return null;
+
+  const origem = String(data.origem || '').trim();
+  const serie = String(data.serie || '1');
+  const hasOrdens = hasTable(db, 'ordens');
+  const joinOrdens = hasOrdens ? 'LEFT JOIN ordens o ON o.id = n.ordemid' : '';
+  const deletedClause = hasOrdens ? `${deletedEfetivoSql()} IS NULL` : 'n.deletedat IS NULL';
+  let scopeClause;
+  let scopeParams;
+
+  if (origem === 'ordem' && data.ordemid) {
+    scopeClause = "n.origem = 'ordem' AND n.ordemid = ?";
+    scopeParams = [data.ordemid];
+  } else if (origem === 'avulsa') {
+    scopeClause = "n.origem = 'avulsa' AND n.ordemid IS NULL";
+    scopeParams = [];
+  } else {
+    return null;
+  }
+
+  const rows = db.prepare(`
+    SELECT n.*
+    FROM nfe_notas n
+    ${joinOrdens}
+    WHERE ${scopeClause}
+      AND n.serie = ?
+      AND n.status = 'rejeitado'
+      AND ${deletedClause}
+      AND TRIM(COALESCE(n.numero, '')) <> ''
+      AND TRIM(n.numero) NOT GLOB '*[^0-9]*'
+      AND CAST(TRIM(n.numero) AS INTEGER) = ?
+    ORDER BY n.id DESC
+  `).all(...scopeParams, serie, numero);
+
+  return rows.find((row) => {
+    const cstat = String(row.rejeicao_cstat || '').trim();
+    return cstat === 'xml_schema' || rejeicaoPermiteReutilizarNumero(cstat);
+  }) || null;
 }
 
 function criarNotaEmitindo(db, data = {}) {
+  const reutilizavel = buscarNotaRejeitadaReutilizavel(db, data);
+  if (reutilizavel) {
+    db.prepare(`
+      UPDATE nfe_notas
+         SET clienteid=?,
+             cliente_snapshot=?,
+             emitente_snapshot=?,
+             valortotal=?,
+             descontovalor=?,
+             pagamento=?,
+             informacoes_complementares=?,
+             ambiente=?,
+             status='emitindo',
+             chave=NULL,
+             protocolo=NULL,
+             xml=NULL,
+             rejeicao_cstat=NULL,
+             rejeicao_motivo=NULL,
+             cancelado_em=NULL,
+             cancel_protocolo=NULL,
+             cancel_motivo=NULL,
+             deletedat=NULL,
+             deletedpor=NULL,
+             deletedreason=NULL,
+             criadopor=COALESCE(?, criadopor),
+             updatedat=datetime('now','localtime')
+       WHERE id=?
+    `).run(
+      data.clienteid || null,
+      json(data.cliente_snapshot || {}),
+      json(data.emitente_snapshot || {}),
+      Number(data.valortotal || 0),
+      Number(data.descontovalor || 0),
+      data.pagamento || 'Pix',
+      data.informacoes_complementares || null,
+      Number(data.ambiente || 2),
+      data.criadopor || null,
+      reutilizavel.id
+    );
+    return resolverNotaPorId(db, reutilizavel.id, { includeDeleted: true });
+  }
+
   const info = db.prepare(`
     INSERT INTO nfe_notas
       (origem, ordemid, clienteid, cliente_snapshot, emitente_snapshot, valortotal,
@@ -537,14 +708,25 @@ function montarDocumentoFiscalAvulso({ cliente, itens, pagamento = 'Pix' } = {})
 
 function buscarNotaAtivaParaOrdem(db, ordemid) {
   if (!hasTable(db, 'nfe_notas')) return null;
-  const rows = db.prepare(`
-    SELECT *
-    FROM nfe_notas
-    WHERE origem = 'ordem'
-      AND ordemid = ?
-      AND deletedat IS NULL
-    ORDER BY id DESC
-  `).all(ordemid);
+  const hasOrdens = hasTable(db, 'ordens');
+  const rows = hasOrdens
+    ? db.prepare(`
+      SELECT n.*
+      FROM nfe_notas n
+      LEFT JOIN ordens o ON o.id = n.ordemid
+      WHERE n.origem = 'ordem'
+        AND n.ordemid = ?
+        AND ${deletedEfetivoSql()} IS NULL
+      ORDER BY n.id DESC
+    `).all(ordemid)
+    : db.prepare(`
+      SELECT *
+      FROM nfe_notas
+      WHERE origem = 'ordem'
+        AND ordemid = ?
+        AND deletedat IS NULL
+      ORDER BY id DESC
+    `).all(ordemid);
   return rows.find(isNotaAtivaParaOrdem) || null;
 }
 

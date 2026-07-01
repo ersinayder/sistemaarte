@@ -10,7 +10,7 @@ import {
   validarItensFiscaisNFe,
   classificarResultadoEmissao,
   estadoEmissaoBloqueiaReenvio,
-  rejeicaoPermiteDevolverNumero,
+  rejeicaoPermiteReutilizarNumero,
   validarXmlAutorizacao,
 } from '../domain/nfeEmissionRules.js';
 
@@ -23,18 +23,23 @@ describe('nfeEmissionRules', () => {
       ['codigo desconhecido', { cStat: '999' }, 'incerto'],
       ['autorizacao', { cStat: 100 }, 'autorizado'],
       ['duplicidade potencialmente autorizada', { cStat: '204' }, 'incerto'],
+      ['numero inutilizado', { cStat: '205' }, 'incerto'],
+      ['NF-e denegada', { cStat: '206' }, 'incerto'],
       ['duplicidade com diferenca na chave', { cStat: '539' }, 'incerto'],
+      ['uso denegado destinatario', { cStat: '302' }, 'incerto'],
+      ['destinatario nao habilitado', { cStat: '303' }, 'incerto'],
       ['CFOP incompativel', { cStat: '386' }, 'rejeitado'],
       ['NCM inexistente', { cStat: '778' }, 'rejeitado'],
     ])('classifica %s', (_cenario, resultado, estadoEsperado) => {
       expect(classificarResultadoEmissao(resultado)).toBe(estadoEsperado);
     });
 
-    it('usa allowlist estrita para devolver a numeracao', () => {
-      expect(rejeicaoPermiteDevolverNumero('386')).toBe(true);
+    it('usa allowlist estrita para reutilizar a numeracao na mesma OS', () => {
+      expect(rejeicaoPermiteReutilizarNumero('232')).toBe(true);
+      expect(rejeicaoPermiteReutilizarNumero('386')).toBe(true);
 
       for (const cStat of [null, '', '999', '204', '205', '206', '302', '303', '539']) {
-        expect(rejeicaoPermiteDevolverNumero(cStat)).toBe(false);
+        expect(rejeicaoPermiteReutilizarNumero(cStat)).toBe(false);
       }
     });
 

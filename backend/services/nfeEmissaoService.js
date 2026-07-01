@@ -2,7 +2,8 @@
 
 const {
   classificarResultadoEmissao,
-  rejeicaoPermiteDevolverNumero,
+  listarCStatsRejeicaoReutilizavel,
+  rejeicaoPermiteReutilizarNumero,
   validarXmlAutorizacao,
 } = require('../domain/nfeEmissionRules');
 
@@ -274,7 +275,7 @@ function createNfeEmissaoService({
       executarHook('marcarNotaRejeitada', tentativa, input, {
         ...dadosTransicao,
         cstat: dadosTransicao.cStat,
-        chave: rejeicaoPermiteDevolverNumero(resposta.cStat) ? null : dadosTransicao.chave,
+        chave: rejeicaoPermiteReutilizarNumero(resposta.cStat) ? null : dadosTransicao.chave,
         xml: resposta.xml || null,
       });
       registrarEventoOperacional(tentativa, 'rejeicao', {
@@ -285,9 +286,6 @@ function createNfeEmissaoService({
       const row = db
         ? attemptRepository.transicionarNaTransacao(tentativa.id, 'rejeitado', dadosTransicao)
         : transicionar(tentativa, 'rejeitado', dadosTransicao);
-      if (rejeicaoPermiteDevolverNumero(resposta.cStat)) {
-        devolverNumeroNaTransacao(tentativa);
-      }
       return row;
     });
     return responseBase(atualizada, {
@@ -334,13 +332,23 @@ function createNfeEmissaoService({
       });
     }
     if (info?.tipo === 'rejeicao') {
-      return finalizarRejeicao(tentativa, input, {
+      const respostaRejeicao = {
         cStat: String(info.cStat ?? info.cstat ?? '').trim(),
         motivo: info.mensagem || onlyMessage(error),
         chave: info.chave || null,
         protocolo: info.protocolo || null,
         xml: info.xml || null,
-      });
+      };
+      if (classificarResultadoEmissao(respostaRejeicao) !== 'rejeitado') {
+        return marcarIncerto(tentativa, input, {
+          cStat: respostaRejeicao.cStat || 'rejeicao',
+          motivo: respostaRejeicao.motivo,
+          chave: respostaRejeicao.chave,
+          protocolo: respostaRejeicao.protocolo,
+          xmlRetorno: respostaRejeicao.xml,
+        });
+      }
+      return finalizarRejeicao(tentativa, input, respostaRejeicao);
     }
     return marcarIncerto(tentativa, input, {
       cStat: info?.cStat ?? info?.cstat ?? 'comunicacao',
@@ -447,6 +455,7 @@ function createNfeEmissaoService({
         ordemId: input.ordemId,
         serie: input.serie,
         usuarioId: input.usuarioId,
+        cstatsReutilizaveis: listarCStatsRejeicaoReutilizavel(),
       });
     } catch (error) {
       if (error.status === 409) return reservaAtivaResponse(input, error);

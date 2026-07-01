@@ -192,9 +192,22 @@ const CSTATS_REJEICAO_CONHECIDA = new Set([
   '778',
   '806',
 ]);
-const CSTATS_REJEICAO_DEVOLVE_NUMERO = new Set([
+const CSTATS_REJEICAO_REUTILIZA_NUMERO = new Set([
+  '208',
+  '210',
+  '220',
+  '232',
+  '233',
+  '234',
+  '237',
   '386',
+  '387',
+  '388',
+  '591',
+  '725',
+  '778',
 ]);
+const CSTATS_EMISSAO_NAO_CONCLUSIVA = new Set(['205', '206', '302', '303']);
 const ESTADOS_EMISSAO_BLOQUEANTES = new Set(['processando', 'incerto']);
 
 function hasOwn(obj, field) {
@@ -360,6 +373,7 @@ function classificarResultadoEmissao(resultado) {
 
   const cStat = normalizarCStat(resultado.cStat ?? resultado.cstat);
   if (cStat === CSTAT_AUTORIZADO) return 'autorizado';
+  if (CSTATS_EMISSAO_NAO_CONCLUSIVA.has(cStat)) return 'incerto';
   if (CSTATS_REJEICAO_CONHECIDA.has(cStat)) return 'rejeitado';
   return 'incerto';
 }
@@ -369,7 +383,15 @@ function estadoEmissaoBloqueiaReenvio(status) {
 }
 
 function rejeicaoPermiteDevolverNumero(cStat) {
-  return CSTATS_REJEICAO_DEVOLVE_NUMERO.has(normalizarCStat(cStat));
+  return rejeicaoPermiteReutilizarNumero(cStat);
+}
+
+function rejeicaoPermiteReutilizarNumero(cStat) {
+  return CSTATS_REJEICAO_REUTILIZA_NUMERO.has(normalizarCStat(cStat));
+}
+
+function listarCStatsRejeicaoReutilizavel() {
+  return Array.from(CSTATS_REJEICAO_REUTILIZA_NUMERO);
 }
 
 function validarXmlAutorizacao(value, chaveEsperada) {
@@ -414,10 +436,12 @@ module.exports = {
   aplicarOverrideClienteNFe,
   classificarResultadoEmissao,
   estadoEmissaoBloqueiaReenvio,
+  listarCStatsRejeicaoReutilizavel,
   normalizarItensAvulsosNFe,
   normalizarItemFiscalOverride,
   normalizarClienteOverride,
   rejeicaoPermiteDevolverNumero,
+  rejeicaoPermiteReutilizarNumero,
   validarClienteFiscalNFe,
   validarEmitenteFiscalNFe,
   validarItensFiscaisNFe,

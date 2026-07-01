@@ -14,7 +14,7 @@ import {
 const AGORA = '2026-06-21T10:00:00.000Z';
 const CHAVE = '31260607500718000196550010000000011000000019';
 const PROTOCOLO = '131260000000001';
-const XML = `<nfeProc><NFe><infNFe Id="NFe${CHAVE}" /></NFe><protNFe><infProt><chNFe>${CHAVE}</chNFe><cStat>100</cStat></infProt></protNFe></nfeProc>`;
+const XML = xmlAutorizado(CHAVE);
 
 function createDb() {
   const db = new Database(':memory:');
@@ -182,6 +182,20 @@ function authRaw(overrides = {}) {
     },
     xml,
   }];
+}
+
+function xmlAutorizado(chave) {
+  return `<nfeProc><NFe><infNFe Id="NFe${chave}" /></NFe><protNFe><infProt><chNFe>${chave}</chNFe><cStat>100</cStat></infProt></protNFe></nfeProc>`;
+}
+
+function authRawComChave(chave, protocolo = PROTOCOLO) {
+  return authRaw({
+    infProt: {
+      chNFe: chave,
+      nProt: protocolo,
+    },
+    xml: xmlAutorizado(chave),
+  });
 }
 
 function rejeicaoRaw(cStat, xMotivo = `Rejeicao ${cStat}`) {
@@ -368,7 +382,7 @@ describe('nfeEmissaoService', () => {
       .toEqual({ ultimo_numero: 1 });
   });
 
-  it('rejeicao allowlist marca rejeitado e devolve numero', async () => {
+  it('rejeicao allowlist marca rejeitado e preserva numero para reemissao da mesma OS', async () => {
     harness = createHarness({
       transmitir: vi.fn().mockResolvedValue(rejeicaoRaw('386', 'CFOP nao permitido')),
     });
@@ -402,11 +416,85 @@ describe('nfeEmissaoService', () => {
         xml: null,
       });
     expect(harness.db.prepare('SELECT ultimo_numero FROM nfe_sequencias WHERE serie = ?').get('1'))
-      .toEqual({ ultimo_numero: 0 });
+      .toEqual({ ultimo_numero: 1 });
+  });
+
+  it('rejeicao corrigivel de IE reemite a mesma OS com a mesma numeracao', async () => {
+    const chaveOutraOs = `${CHAVE.slice(0, -2)}20`;
+    const chaveFinal = `${CHAVE.slice(0, -2)}21`;
+    harness = createHarness({
+      withCanonicalNotes: true,
+      transmitir: vi.fn()
+        .mockResolvedValueOnce(rejeicaoRaw('232', 'IE do destinatario nao informada'))
+        .mockResolvedValueOnce(authRawComChave(chaveOutraOs, '131260000000002'))
+        .mockResolvedValueOnce(rejeicaoRaw('232', 'IE do destinatario nao vinculada ao CNPJ'))
+        .mockResolvedValueOnce(authRawComChave(chaveFinal, '131260000000003')),
+    });
+    harness.db.prepare(`
+      INSERT INTO ordens (id, numero, clienteid, nfe_status)
+      VALUES (18, 'OS-0018', 7, NULL)
+    `).run();
+
+    await expect(harness.service.emitir(baseInput())).resolves.toMatchObject({
+      httpStatus: 422,
+      status: 'rejeitado',
+      numero: 1,
+      cStat: '232',
+    });
+    await expect(harness.service.emitir(baseInput({
+      ordemId: 18,
+      ordem: { id: 18, numero: 'OS-0018' },
+    }))).resolves.toMatchObject({
+      httpStatus: 200,
+      status: 'autorizado',
+      numero: 2,
+      chave: chaveOutraOs,
+    });
+    await expect(harness.service.emitir(baseInput())).resolves.toMatchObject({
+      httpStatus: 422,
+      status: 'rejeitado',
+      numero: 1,
+      cStat: '232',
+    });
+    await expect(harness.service.emitir(baseInput())).resolves.toMatchObject({
+      httpStatus: 200,
+      status: 'autorizado',
+      numero: 1,
+      chave: chaveFinal,
+    });
+
+    expect(harness.montarPayload.mock.calls.map(([input]) => input.numero))
+      .toEqual([1, 2, 1, 1]);
+    expect(harness.db.prepare('SELECT ultimo_numero FROM nfe_sequencias WHERE serie = ?').get('1'))
+      .toEqual({ ultimo_numero: 2 });
+    expect(harness.db.prepare(`
+      SELECT ordemid, numero, status, rejeicao_cstat, chave
+      FROM nfe_notas
+      ORDER BY ordemid, id
+    `).all()).toEqual([
+      {
+        ordemid: 17,
+        numero: '000000001',
+        status: 'autorizado',
+        rejeicao_cstat: null,
+        chave: chaveFinal,
+      },
+      {
+        ordemid: 18,
+        numero: '000000002',
+        status: 'autorizado',
+        rejeicao_cstat: null,
+        chave: chaveOutraOs,
+      },
+    ]);
   });
 
   it.each([
     ['duplicidade 204', rejeicaoRaw('204', 'Duplicidade de NF-e')],
+    ['numero inutilizado 205', rejeicaoRaw('205', 'NF-e esta inutilizada na Base de dados da SEFAZ')],
+    ['NF-e denegada 206', rejeicaoRaw('206', 'NF-e ja esta denegada na Base de dados da SEFAZ')],
+    ['uso denegado 302', rejeicaoRaw('302', 'Uso Denegado: Irregularidade fiscal do destinatario')],
+    ['destinatario nao habilitado 303', rejeicaoRaw('303', 'Uso Denegado: Destinatario nao habilitado')],
     ['duplicidade 539', rejeicaoRaw('539', 'Duplicidade com diferenca')],
     ['cStat desconhecido', rejeicaoRaw('9999', 'Retorno desconhecido')],
     ['retorno vazio', null],
@@ -423,6 +511,29 @@ describe('nfeEmissaoService', () => {
     expect(harness.attemptRepository.buscarPorId(1).status).toBe('incerto');
     expect(harness.db.prepare('SELECT ultimo_numero FROM nfe_sequencias WHERE serie = ?').get('1'))
       .toEqual({ ultimo_numero: 1 });
+  });
+
+  it('erro textual de rejeicao sem cStat conhecido fica incerto para nao liberar reemissao', async () => {
+    harness = createHarness({
+      transmitir: vi.fn().mockRejectedValue(new Error('Rejeicao: retorno textual sem codigo')),
+      classificarErro: vi.fn(() => ({
+        tipo: 'rejeicao',
+        cstat: 'rejeicao',
+        mensagem: 'SEFAZ rejeitou a emissao, mas a biblioteca nao informou cStat.',
+      })),
+    });
+
+    await expect(harness.service.emitir(baseInput())).resolves.toMatchObject({
+      httpStatus: 409,
+      ok: false,
+      status: 'incerto',
+      cStat: 'rejeicao',
+    });
+    expect(harness.attemptRepository.buscarPorId(1)).toMatchObject({
+      status: 'incerto',
+      cstat: 'rejeicao',
+    });
+    expect(harness.transmitir).toHaveBeenCalledTimes(1);
   });
 
   it('falha ao salvar XML em disco preserva autorizacao no banco e retorna alerta', async () => {
@@ -517,7 +628,7 @@ describe('nfeEmissaoService', () => {
       .toEqual({ ultimo_numero: 0 });
   });
 
-  it('erro classificado como rejeicao conclusiva projeta rejeicao e devolve numero quando permitido', async () => {
+  it('erro classificado como rejeicao conclusiva projeta rejeicao e preserva numero fiscal', async () => {
     harness = createHarness({
       transmitir: vi.fn().mockRejectedValue(new Error('Rejeicao 386')),
       classificarErro: vi.fn(() => ({
@@ -538,7 +649,7 @@ describe('nfeEmissaoService', () => {
     expect(harness.db.prepare('SELECT tipo, cstat, motivo FROM nfe_eventos WHERE ordemid = 17').get())
       .toEqual({ tipo: 'rejeicao', cstat: '386', motivo: 'CFOP nao permitido' });
     expect(harness.db.prepare('SELECT ultimo_numero FROM nfe_sequencias WHERE serie = ?').get('1'))
-      .toEqual({ ultimo_numero: 0 });
+      .toEqual({ ultimo_numero: 1 });
   });
 
   it('erro pre-transmissao no montarPayload vira falha_local e devolve numero', async () => {
