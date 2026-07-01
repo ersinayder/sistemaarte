@@ -208,9 +208,9 @@ function listarNotasFiscais(db, options = {}) {
       n.cancelado_em,
       n.cancel_protocolo,
       n.cancel_motivo,
-      n.deletedat,
-      n.deletedpor,
-      n.deletedreason,
+      COALESCE(n.deletedat, CASE WHEN n.origem = 'ordem' THEN o.nfe_deletedat ELSE NULL END) AS deletedat,
+      COALESCE(n.deletedpor, CASE WHEN n.origem = 'ordem' THEN o.nfe_deletedpor ELSE NULL END) AS deletedpor,
+      COALESCE(n.deletedreason, CASE WHEN n.origem = 'ordem' THEN o.nfe_deletedreason ELSE NULL END) AS deletedreason,
       n.criadopor,
       n.imported_legacy,
       n.createdat,
@@ -236,7 +236,9 @@ function listarNotasFiscais(db, options = {}) {
       WHERE nfeid IS NOT NULL
       GROUP BY nfeid
     ) ev ON ev.nfeid = n.id
-    WHERE ${lixeira ? 'n.deletedat IS NOT NULL' : 'n.deletedat IS NULL'}
+    WHERE ${lixeira
+      ? "COALESCE(n.deletedat, CASE WHEN n.origem = 'ordem' THEN o.nfe_deletedat ELSE NULL END) IS NOT NULL"
+      : "COALESCE(n.deletedat, CASE WHEN n.origem = 'ordem' THEN o.nfe_deletedat ELSE NULL END) IS NULL"}
     ORDER BY n.id DESC
   `).all();
 
