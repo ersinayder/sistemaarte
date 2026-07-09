@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createRequire } from 'node:module';
 
 /**
  * auth.js usa require() (CJS) e lê JWT_SECRET no momento do require.
@@ -10,6 +11,7 @@ import jwt from 'jsonwebtoken';
 
 const TEST_SECRET = 'test-secret-fase2';
 process.env.JWT_SECRET = TEST_SECRET;
+const require = createRequire(import.meta.url);
 
 const dbMock = {
   getOne: vi.fn((_sql, params) => ({
@@ -20,9 +22,21 @@ const dbMock = {
 };
 vi.mock('../database', () => dbMock);
 vi.mock('../database.js', () => dbMock);
+const databasePath = require.resolve('../database.js');
+require.cache[databasePath] = {
+  id: databasePath,
+  filename: databasePath,
+  loaded: true,
+  exports: dbMock,
+};
 
 // Importa DEPOIS de setar o env
-const { auth, setSessionUserLookupForTests, normalizarUsuarioSessao } = await import('../middlewares/auth.js');
+const {
+  auth,
+  setSessionUserLookupForTests,
+  resetSessionUserLookupForTests,
+  normalizarUsuarioSessao,
+} = await import('../middlewares/auth.js');
 
 function makeRes() {
   const res = {};
@@ -44,6 +58,7 @@ describe('auth middleware', () => {
 
   beforeEach(() => {
     next = vi.fn();
+    dbMock.getOne.mockClear();
     setSessionUserLookupForTests((payload) => ({
       id: payload.id,
       name: 'Usuario Teste',
@@ -108,6 +123,19 @@ describe('auth middleware', () => {
       auth()(req, res, next);
       expect(res.status).toHaveBeenCalledWith(401);
       expect(next).not.toHaveBeenCalled();
+    });
+
+    it('encaminha erro operacional do lookup para o error handler', () => {
+      const token = makeToken({ id: 12, role: 'admin' });
+      const req = makeReq({ cookies: { token } });
+      const res = makeRes();
+      const error = new Error('db offline');
+      setSessionUserLookupForTests(() => { throw error; });
+
+      auth()(req, res, next);
+
+      expect(next).toHaveBeenCalledWith(error);
+      expect(res.status).not.toHaveBeenCalled();
     });
 
     it('seta req.user com dados atuais do banco', () => {
@@ -303,6 +331,44 @@ describe('auth middleware', () => {
       expect(res.status).toHaveBeenCalledWith(401);
       expect(res.json).toHaveBeenCalledWith({ error: 'Sessao desatualizada. Entre novamente.' });
       expect(next).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('lookup padrao', () => {
+    it('usa SELECT enriquecido e normaliza retorno sem expor password', () => {
+      resetSessionUserLookupForTests();
+      dbMock.getOne.mockReturnValueOnce({
+        id: 13,
+        name: 'Admin',
+        username: 'admin',
+        password: 'hash-nao-deve-sair',
+        role: 'admin',
+        profile_key: 'admin',
+        active: 1,
+        deletedat: null,
+        access_version: 1,
+        profile_name: 'Administrador',
+        profile_active: 1,
+        permissions_csv: 'usuarios.ver,usuarios.editar',
+      });
+      const token = makeToken({ id: 13, role: 'admin' });
+      const req = makeReq({ cookies: { token } });
+
+      auth(['admin'])(req, makeRes(), next);
+
+      expect(next).toHaveBeenCalledOnce();
+      const [sql, params] = dbMock.getOne.mock.calls[0];
+      expect(sql).toContain('COALESCE(u.profile_key, u.role) AS profile_key');
+      expect(sql).toContain('GROUP_CONCAT(pp.permission) AS permissions_csv');
+      expect(sql).toContain('LEFT JOIN permission_profiles p');
+      expect(params).toEqual([13]);
+      expect(req.user).toMatchObject({
+        id: 13,
+        role: 'admin',
+        profile_key: 'admin',
+        permissions: ['usuarios.ver', 'usuarios.editar'],
+      });
+      expect(req.user).not.toHaveProperty('password');
     });
   });
 

@@ -7,29 +7,37 @@ if (!JWT_SECRET) {
   throw new Error("FATAL: JWT_SECRET nao definido. Configure a variavel de ambiente.");
 }
 
-let lookupUsuarioAtual = (payload) => getOne(
-  `SELECT
-     u.id,
-     u.name,
-     u.username,
-     u.role,
-     COALESCE(u.profile_key, u.role) AS profile_key,
-     u.active,
-     u.deletedat,
-     u.access_version,
-     p.name AS profile_name,
-     p.active AS profile_active,
-     GROUP_CONCAT(pp.permission) AS permissions_csv
-   FROM users u
-   LEFT JOIN permission_profiles p ON p.key = COALESCE(u.profile_key, u.role)
-   LEFT JOIN profile_permissions pp ON pp.profile_id = p.id
-   WHERE u.id=?
-   GROUP BY u.id`,
-  [payload.id]
-);
+function lookupUsuarioAtualDefault(payload) {
+  return getOne(
+    `SELECT
+       u.id,
+       u.name,
+       u.username,
+       u.role,
+       COALESCE(u.profile_key, u.role) AS profile_key,
+       u.active,
+       u.deletedat,
+       u.access_version,
+       p.name AS profile_name,
+       p.active AS profile_active,
+       GROUP_CONCAT(pp.permission) AS permissions_csv
+     FROM users u
+     LEFT JOIN permission_profiles p ON p.key = COALESCE(u.profile_key, u.role)
+     LEFT JOIN profile_permissions pp ON pp.profile_id = p.id
+     WHERE u.id=?
+     GROUP BY u.id`,
+    [payload.id]
+  );
+}
+
+let lookupUsuarioAtual = lookupUsuarioAtualDefault;
 
 function setSessionUserLookupForTests(fn) {
   lookupUsuarioAtual = fn;
+}
+
+function resetSessionUserLookupForTests() {
+  lookupUsuarioAtual = lookupUsuarioAtualDefault;
 }
 
 function normalizarPermissoes(row) {
@@ -86,8 +94,14 @@ function auth(roles = []) {
 
     if (!token) return res.status(401).json({ error: "Token necessario" });
 
+    let payload;
     try {
-      const payload = jwt.verify(token, JWT_SECRET);
+      payload = jwt.verify(token, JWT_SECRET);
+    } catch {
+      return res.status(401).json({ error: "Token invalido ou expirado" });
+    }
+
+    try {
       const usuarioAtual = normalizarUsuarioSessao(lookupUsuarioAtual(payload));
       const sessao = validarSessaoUsuario(payload, usuarioAtual);
       if (!sessao.ok) {
@@ -99,8 +113,8 @@ function auth(roles = []) {
       }
       req.user = usuarioAtual;
       next();
-    } catch {
-      return res.status(401).json({ error: "Token invalido ou expirado" });
+    } catch (error) {
+      return next(error);
     }
   };
 
@@ -108,4 +122,10 @@ function auth(roles = []) {
   return middleware;
 }
 
-module.exports = { auth, JWT_SECRET, setSessionUserLookupForTests, normalizarUsuarioSessao };
+module.exports = {
+  auth,
+  JWT_SECRET,
+  setSessionUserLookupForTests,
+  resetSessionUserLookupForTests,
+  normalizarUsuarioSessao,
+};
