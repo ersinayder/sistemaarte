@@ -112,4 +112,33 @@ describe('database migrations', () => {
       db.close();
     }
   });
+
+  it('applies the users updatedat migration on populated SQLite tables', () => {
+    const db = new Database(':memory:');
+    db.exec(`
+      CREATE TABLE users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        username TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        role TEXT NOT NULL,
+        active INTEGER DEFAULT 1,
+        createdat TEXT DEFAULT (datetime('now','localtime'))
+      );
+      INSERT INTO users (name, username, password, role)
+      VALUES ('Administrador', 'admin', 'hash', 'admin');
+    `);
+
+    try {
+      database.applyMigrations(db, [
+        "ALTER TABLE users ADD COLUMN updatedat TEXT",
+        "UPDATE users SET updatedat=datetime('now','localtime') WHERE updatedat IS NULL",
+      ]);
+
+      const row = db.prepare("SELECT updatedat FROM users WHERE username='admin'").get();
+      expect(row.updatedat).toEqual(expect.any(String));
+    } finally {
+      db.close();
+    }
+  });
 });

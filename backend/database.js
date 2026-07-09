@@ -973,7 +973,8 @@ function initDB() {
     "ALTER TABLE users ADD COLUMN deletedat TEXT DEFAULT NULL",
     "ALTER TABLE users ADD COLUMN deletedpor INTEGER DEFAULT NULL",
     "ALTER TABLE users ADD COLUMN deletedreason TEXT",
-    "ALTER TABLE users ADD COLUMN updatedat TEXT DEFAULT (datetime('now','localtime'))",
+    "ALTER TABLE users ADD COLUMN updatedat TEXT",
+    "UPDATE users SET updatedat=datetime('now','localtime') WHERE updatedat IS NULL",
     "ALTER TABLE users ADD COLUMN access_version INTEGER NOT NULL DEFAULT 1",
     "UPDATE users SET profile_key=role WHERE profile_key IS NULL",
     `CREATE TABLE IF NOT EXISTS permission_profiles (
