@@ -26,7 +26,11 @@ const {
   normalizarWhatsappConfig,
   validarWhatsappConfig,
 } = require("../domain/whatsappConfigRules");
-const { getWhatsappPublicConfig, getWhatsappRuntimeConfig } = require("../utils/whatsappConfig");
+const {
+  getWhatsappPublicConfig,
+  getWhatsappRuntimeConfig,
+  prepararWhatsappSecretsParaPersistencia,
+} = require("../utils/whatsappConfig");
 const {
   normalizarImpressaoConfig,
   validarImpressaoConfig,
@@ -488,8 +492,7 @@ router.put("/whatsapp", auth(["admin"]), (req, res, next) => {
       });
     }
 
-    const token = config.token || atual.token || null;
-    const webApiKey = config.webApiKey || atual.web_api_key || null;
+    const { token, webApiKey } = prepararWhatsappSecretsParaPersistencia(config, atual);
     run(
       `INSERT INTO whatsapp_config
         (id, enabled, provider, phone_id, token, template_pronto, template_confirmacao,

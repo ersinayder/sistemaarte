@@ -2,6 +2,7 @@
 const router = require("express").Router();
 const https  = require("https");
 const { auth } = require("../middlewares/auth");
+const { normalizeCnpj, validaCNPJ } = require("../domain/cnpjRules");
 
 function fetchJson(url, ms = 7000) {
   return new Promise((resolve, reject) => {
@@ -17,11 +18,11 @@ function fetchJson(url, ms = 7000) {
 
 // GET /api/consulta/cnpj/:cnpj
 router.get("/cnpj/:cnpj", auth(["admin","caixa"]), async (req, res) => {
-  const digits = req.params.cnpj.replace(/\D/g, "");
-  if (digits.length !== 14) return res.status(400).json({ error: "CNPJ inválido" });
+  const cnpj = normalizeCnpj(req.params.cnpj);
+  if (cnpj.length !== 14 || !validaCNPJ(cnpj)) return res.status(400).json({ error: "CNPJ inválido" });
 
   try {
-    const d = await fetchJson(`https://brasilapi.com.br/api/cnpj/v1/${digits}`, 7000);
+    const d = await fetchJson(`https://brasilapi.com.br/api/cnpj/v1/${encodeURIComponent(cnpj)}`, 7000);
     if (d.razao_social) return res.json({
       fonte: "brasilapi",
       nome: d.razao_social, fantasia: d.nome_fantasia || d.razao_social,
@@ -33,7 +34,7 @@ router.get("/cnpj/:cnpj", auth(["admin","caixa"]), async (req, res) => {
     throw new Error("sem dados");
   } catch {
     try {
-      const d = await fetchJson(`https://receitaws.com.br/v1/cnpj/${digits}`, 6000);
+      const d = await fetchJson(`https://receitaws.com.br/v1/cnpj/${encodeURIComponent(cnpj)}`, 6000);
       if (d.status === "ERROR") throw new Error(d.message || "não encontrado");
       return res.json({ ...d, fonte: "receitaws" });
     } catch {

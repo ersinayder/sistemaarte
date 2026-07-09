@@ -592,6 +592,16 @@ describe('backup route contracts', () => {
   });
 });
 
+describe('configuration route contracts', () => {
+  it('protects WhatsApp secrets before database persistence', () => {
+    const source = fs.readFileSync(new URL('../routes/configuracoes.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/prepararWhatsappSecretsParaPersistencia/);
+    expect(source).not.toMatch(/const token = config\.token \|\| atual\.token \|\| null/);
+    expect(source).not.toMatch(/const webApiKey = config\.webApiKey \|\| atual\.web_api_key \|\| null/);
+  });
+});
+
 describe('propostas route contracts', () => {
   it('mounts propostas API and keeps it restricted to admin and caixa', async () => {
     const source = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');

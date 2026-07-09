@@ -19,65 +19,33 @@ import { emit } from '../services/eventBus'
 import { aplicarDescontoOS } from '../utils/descontoOS'
 import { buscarEnderecoPorCep, maskCep } from '../utils/cep'
 import { printOrdem } from '../utils/printOrdem'
+import {
+  getDocumentoInputState,
+  maskCNPJ,
+  maskCPF,
+  normalizeCnpj,
+  onlyDigits,
+  validaCNPJ,
+  validaCPF,
+} from '../utils/documentos'
 
 const PAGAMENTOS = ['Pix', 'Dinheiro', 'Cartão de Débito', 'Cartão de Crédito', 'Transferência', 'Outros']
 const SERVICOS = ['Quadro', 'Caixas', 'Corte a Laser', 'Sublimacao', 'Diversos']
 const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']
 
-const onlyDigits = v => String(v || '').replace(/\D/g, '')
-const maskCPF  = v => onlyDigits(v)
-  .replace(/(\d{3})(\d)/,'$1.$2')
-  .replace(/(\d{3})(\d)/,'$1.$2')
-  .replace(/(\d{3})(\d{1,2})$/,'$1-$2')
-  .slice(0,14)
-const maskCNPJ = v => onlyDigits(v)
-  .replace(/(\d{2})(\d)/,'$1.$2')
-  .replace(/(\d{3})(\d)/,'$1.$2')
-  .replace(/(\d{3})(\d)/,'$1/$2')
-  .replace(/(\d{4})(\d{1,2})$/,'$1-$2')
-  .slice(0,18)
-
-const validaCPF = cpf => {
-  const n = onlyDigits(cpf)
-  if (n.length !== 11 || /^(\d)\1{10}$/.test(n)) return false
-  let s = 0
-  for (let i = 0; i < 9; i++) s += parseInt(n[i]) * (10 - i)
-  let r = (s * 10) % 11
-  if (r === 10 || r === 11) r = 0
-  if (r !== parseInt(n[9])) return false
-  s = 0
-  for (let i = 0; i < 10; i++) s += parseInt(n[i]) * (11 - i)
-  r = (s * 10) % 11
-  if (r === 10 || r === 11) r = 0
-  return r === parseInt(n[10])
-}
-
-const validaCNPJ = cnpj => {
-  const n = onlyDigits(cnpj)
-  if (n.length !== 14 || /^(\d)\1{13}$/.test(n)) return false
-  const calc = s => {
-    let sum = 0
-    let pos = s - 7
-    for (let i = s; i >= 1; i--) {
-      sum += parseInt(n[s - i]) * pos--
-      if (pos < 2) pos = 9
-    }
-    return sum % 11 < 2 ? 0 : 11 - (sum % 11)
-  }
-  return calc(12) === parseInt(n[12]) && calc(13) === parseInt(n[13])
-}
-
 function documentoTipo(documento, ie = '') {
-  const digits = onlyDigits(documento)
-  if (digits.length > 11 || (!digits && ie)) return 'PJ'
+  const normalized = normalizeCnpj(documento)
+  if (/[A-Z]/.test(normalized) || normalized.length > 11 || (!normalized && ie)) return 'PJ'
   return 'PF'
 }
 
 function clienteFiscalCompleto(cliente) {
   if (!cliente) return false
+  const documento = normalizeCnpj(cliente.cpf)
+  const hasDocumento = onlyDigits(cliente.cpf).length >= 11 || (/[A-Z]/.test(documento) && validaCNPJ(documento))
   return Boolean(
     cliente.name &&
-    onlyDigits(cliente.cpf).length >= 11 &&
+    hasDocumento &&
     cliente.cep &&
     cliente.logradouro &&
     cliente.numero &&
@@ -430,7 +398,7 @@ function QuickClientModal({ open, cliente, initialName, onClose, onSaved }) {
   const set = (key, value) => setForm(f => ({ ...f, [key]: value }))
 
   const buscarCNPJ = async raw => {
-    const n = onlyDigits(raw)
+    const n = normalizeCnpj(raw)
     if (n.length !== 14) return
     if (!validaCNPJ(n)) {
       setCnpjError('CNPJ inválido')
@@ -439,7 +407,7 @@ function QuickClientModal({ open, cliente, initialName, onClose, onSaved }) {
     setCnpjError('')
     setCnpjLoading(true)
     try {
-      const { data: d } = await api.get(`/clientes/cnpj/${n}`)
+      const { data: d } = await api.get(`/clientes/cnpj/${encodeURIComponent(n)}`)
       setForm(f => ({
         ...f,
         nome: f.nome.trim() ? f.nome : (d.razao_social || d.nome_fantasia || f.nome),
@@ -453,8 +421,8 @@ function QuickClientModal({ open, cliente, initialName, onClose, onSaved }) {
         uf: f.uf.trim() ? f.uf : (d.uf || f.uf),
       }))
       toast.success('Dados do CNPJ carregados')
-    } catch {
-      setCnpjError('CNPJ não encontrado')
+    } catch(err) {
+      setCnpjError(err?.response?.data?.error || 'CNPJ não encontrado')
     } finally {
       setCnpjLoading(false)
     }
@@ -483,23 +451,20 @@ function QuickClientModal({ open, cliente, initialName, onClose, onSaved }) {
   }
 
   const handleDocumento = value => {
-    const digits = onlyDigits(value).slice(0, 14)
-    const tipo = digits.length > 11 ? 'PJ' : form.tipo
-    const nextTipo = tipo === 'PJ' ? 'PJ' : 'PF'
-    const masked = nextTipo === 'PJ' ? maskCNPJ(digits) : maskCPF(digits)
+    const state = getDocumentoInputState(value, form.tipo)
+    const normalized = normalizeCnpj(value)
 
     setForm(f => ({
       ...f,
-      tipo: nextTipo,
-      cpf: nextTipo === 'PF' ? masked : '',
-      cnpj: nextTipo === 'PJ' ? masked : '',
-      ie: nextTipo === 'PF' ? '' : f.ie,
+      tipo: state.tipo,
+      cpf: state.cpf,
+      cnpj: state.cnpj,
+      ie: state.tipo === 'PF' ? '' : f.ie,
     }))
 
-    setCpfError('')
-    setCnpjError('')
-    if (nextTipo === 'PF' && digits.length === 11) setCpfError(validaCPF(digits) ? '' : 'CPF inválido')
-    if (nextTipo === 'PJ' && digits.length === 14) buscarCNPJ(masked)
+    setCpfError(state.cpfError)
+    setCnpjError(state.cnpjError)
+    if (state.tipo === 'PJ' && normalized.length === 14 && !state.cnpjError) buscarCNPJ(state.cnpj)
   }
 
   const changeTipo = tipo => {
@@ -510,18 +475,18 @@ function QuickClientModal({ open, cliente, initialName, onClose, onSaved }) {
 
   const handleSave = async () => {
     const documento = form.tipo === 'PJ' ? form.cnpj : form.cpf
-    const documentoDigits = onlyDigits(documento)
+    const documentoNormalizado = form.tipo === 'PJ' ? normalizeCnpj(documento) : onlyDigits(documento)
     if (!form.nome.trim()) return toast.error('Nome é obrigatório.')
-    if (documentoDigits) {
-      if (form.tipo === 'PF' && (documentoDigits.length !== 11 || !validaCPF(documento))) return toast.error('CPF inválido')
-      if (form.tipo === 'PJ' && (documentoDigits.length !== 14 || !validaCNPJ(documento))) return toast.error('CNPJ inválido')
+    if (documentoNormalizado) {
+      if (form.tipo === 'PF' && (documentoNormalizado.length !== 11 || !validaCPF(documento))) return toast.error('CPF inválido')
+      if (form.tipo === 'PJ' && (documentoNormalizado.length !== 14 || !validaCNPJ(documento))) return toast.error('CNPJ inválido')
     }
 
     const payload = {
       name: form.nome.trim(),
       phone: form.contato.trim(),
       email: form.email.trim(),
-      cpf: documentoDigits ? documento : '',
+      cpf: documentoNormalizado ? documento : '',
       ie: form.ie.trim(),
       logradouro: form.logradouro.trim(),
       numero: form.numero.trim(),
@@ -594,7 +559,8 @@ function QuickClientModal({ open, cliente, initialName, onClose, onSaved }) {
                 value={form.tipo === 'PJ' ? form.cnpj : form.cpf}
                 onChange={e => handleDocumento(e.target.value)}
                 placeholder={form.tipo === 'PJ' ? '00.000.000/0000-00' : '000.000.000-00'}
-                inputMode="numeric"
+                inputMode="text"
+                autoCapitalize="characters"
               />
               {(cpfError || cnpjError) && <span className="form-error">{cpfError || cnpjError}</span>}
             </Campo>

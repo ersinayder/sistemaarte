@@ -10,7 +10,7 @@ const {
   statusWhatsappConfig,
 } = rules;
 
-const { resolverWhatsappRuntime } = utils;
+const { resolverWhatsappRuntime, prepararWhatsappSecretsParaPersistencia } = utils;
 
 describe('whatsappConfigRules', () => {
   it('normalizes provider, ids, templates, and token', () => {
@@ -222,5 +222,63 @@ describe('whatsappConfigRules', () => {
     expect(fromLegacyEvolutionEnv.webBaseUrl).toBe('http://127.0.0.1:8080');
     expect(fromLegacyEvolutionEnv.webInstance).toBe('loja-legacy');
     expect(fromLegacyEvolutionEnv.webApiKey).toBe('legacy-key');
+  });
+
+  it('decrypts protected DB token and local api key for runtime use', async () => {
+    process.env.CONFIG_SECRET_KEY = 'test-config-secret-key-with-enough-length';
+    try {
+      const { encryptSecret } = await import('../utils/secrets.js');
+
+      const runtime = resolverWhatsappRuntime({
+        row: {
+          enabled: 1,
+          provider: 'web_local',
+          phone_id: 'db-phone',
+          token: encryptSecret('db-token'),
+          web_base_url: 'http://127.0.0.1:8080',
+          web_instance: 'loja',
+          web_api_key: encryptSecret('db-key'),
+          configurado: 1,
+        },
+        env: {},
+      });
+
+      expect(runtime.token).toBe('db-token');
+      expect(runtime.webApiKey).toBe('db-key');
+    } finally {
+      delete process.env.CONFIG_SECRET_KEY;
+    }
+  });
+
+  it('encrypts WhatsApp secrets before persistence and migrates legacy plaintext on save', async () => {
+    process.env.CONFIG_SECRET_KEY = 'test-config-secret-key-with-enough-length';
+    try {
+      const { decryptSecret, isEncryptedSecret } = await import('../utils/secrets.js');
+
+      const created = prepararWhatsappSecretsParaPersistencia({
+        token: 'new-token',
+        webApiKey: 'new-key',
+      });
+
+      expect(isEncryptedSecret(created.token)).toBe(true);
+      expect(isEncryptedSecret(created.webApiKey)).toBe(true);
+      expect(decryptSecret(created.token)).toBe('new-token');
+      expect(decryptSecret(created.webApiKey)).toBe('new-key');
+
+      const migrated = prepararWhatsappSecretsParaPersistencia({
+        token: '',
+        webApiKey: '',
+      }, {
+        token: 'legacy-token',
+        web_api_key: 'legacy-key',
+      });
+
+      expect(isEncryptedSecret(migrated.token)).toBe(true);
+      expect(isEncryptedSecret(migrated.webApiKey)).toBe(true);
+      expect(decryptSecret(migrated.token)).toBe('legacy-token');
+      expect(decryptSecret(migrated.webApiKey)).toBe('legacy-key');
+    } finally {
+      delete process.env.CONFIG_SECRET_KEY;
+    }
   });
 });

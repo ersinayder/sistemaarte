@@ -347,6 +347,38 @@ CREATE INDEX IF NOT EXISTS idx_nfe_inutilizacoes_faixa
 
 let db;
 
+function summarizeMigration(sql) {
+  return String(sql || "").replace(/\s+/g, " ").trim().slice(0, 180);
+}
+
+function isExpectedMigrationError(sql, error) {
+  const message = String(error?.message || error || "");
+  if (/duplicate column name/i.test(message)) return true;
+
+  const statement = summarizeMigration(sql);
+  return /no such column:\s*address/i.test(message)
+    && /^UPDATE clientes SET logradouro = address WHERE logradouro IS NULL AND address IS NOT NULL$/i.test(statement);
+}
+
+function runMigrationStatement(targetDb, sql) {
+  try {
+    targetDb.exec(sql);
+    return { applied: true, ignored: false };
+  } catch (error) {
+    if (isExpectedMigrationError(sql, error)) {
+      return { applied: false, ignored: true };
+    }
+    const message = String(error?.message || error);
+    throw new Error(`Falha ao aplicar migration: ${summarizeMigration(sql)} - ${message}`, { cause: error });
+  }
+}
+
+function applyMigrations(targetDb, migrations) {
+  for (const sql of migrations) {
+    runMigrationStatement(targetDb, sql);
+  }
+}
+
 function initDB() {
   db = new Database(DB_FILE);
   db.pragma("journal_mode = WAL");
@@ -593,9 +625,7 @@ function initDB() {
     `CREATE INDEX IF NOT EXISTS idx_nfe_inutilizacoes_faixa
       ON nfe_inutilizacoes(numero_inicial, numero_final)`,
   ];
-  for (const sql of migrations) {
-    try { db.exec(sql); } catch (_) {}
-  }
+  applyMigrations(db, migrations);
 
   // ── Tabela de sequências NF-e ────────────────────────────────────────────────
   db.exec(`
@@ -809,4 +839,15 @@ function backup() {
   });
 }
 
-module.exports = { initDB, run, runInsert, getAll, getOne, transaction, backup, getDB: () => db };
+module.exports = {
+  initDB,
+  run,
+  runInsert,
+  getAll,
+  getOne,
+  transaction,
+  backup,
+  getDB: () => db,
+  runMigrationStatement,
+  applyMigrations,
+};
