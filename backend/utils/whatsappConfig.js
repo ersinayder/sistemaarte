@@ -1,5 +1,6 @@
 const { getOne } = require("../database");
 const { sanitizarWhatsappConfig } = require("../domain/whatsappConfigRules");
+const { decryptSecret, encryptSecretIfPossible } = require("./secrets");
 
 function envEnabled(env) {
   return env.WHATSAPP_ENABLED !== "false";
@@ -13,14 +14,14 @@ function resolverWhatsappRuntime({ row = null, env = process.env } = {}) {
       enabled: Number(row.enabled || 0) === 1,
       provider: row.provider || "meta",
       phoneId: row.phone_id || "",
-      token: row.token || "",
+      token: decryptSecret(row.token || ""),
       templatePronto: row.template_pronto || "os_pronta",
       templateConfirmacao: row.template_confirmacao || "confirmacao_pedido",
       mensagemPronto: row.mensagem_pronto || "",
       mensagemConfirmacao: row.mensagem_confirmacao || "",
       webBaseUrl: row.web_base_url || "",
       webInstance: row.web_instance || "",
-      webApiKey: row.web_api_key || "",
+      webApiKey: decryptSecret(row.web_api_key || ""),
       configurado: true,
       origem: "banco",
       updatedat: row.updatedat || null,
@@ -42,6 +43,25 @@ function resolverWhatsappRuntime({ row = null, env = process.env } = {}) {
     configurado: false,
     origem: "env",
     updatedat: null,
+  };
+}
+
+function pickStoredSecret(incoming, current) {
+  const value = String(incoming ?? "").trim();
+  if (value) return value;
+
+  const stored = String(current ?? "").trim();
+  return stored || null;
+}
+
+function protectStoredSecret(value) {
+  return value ? encryptSecretIfPossible(value) : null;
+}
+
+function prepararWhatsappSecretsParaPersistencia(config = {}, atual = {}) {
+  return {
+    token: protectStoredSecret(pickStoredSecret(config.token, atual.token)),
+    webApiKey: protectStoredSecret(pickStoredSecret(config.webApiKey, atual.web_api_key)),
   };
 }
 
@@ -86,6 +106,7 @@ function getWhatsappPublicConfig() {
 
 module.exports = {
   resolverWhatsappRuntime,
+  prepararWhatsappSecretsParaPersistencia,
   getWhatsappRuntimeConfig,
   getWhatsappPublicConfig,
 };

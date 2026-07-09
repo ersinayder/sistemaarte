@@ -1,8 +1,10 @@
-# Mini Servico WhatsApp Web
+# Mini Serviço WhatsApp Web
 
-Servico local em Node.js para enviar mensagens de baixo volume pelo WhatsApp Web usando Baileys. Ele expõe só o contrato HTTP necessário para o Sistema Arte consumir como provedor `web_local`, sem Docker, Postgres ou Redis.
+Serviço local em Node.js para enviar mensagens de baixo volume pelo WhatsApp Web usando Baileys. Ele expõe só o contrato HTTP necessário para o Sistema Arte consumir como provedor `web_local`, sem Docker, Postgres ou Redis.
 
-> Aviso: esta integracao usa WhatsApp Web nao oficial. Pode desconectar, exigir novo QR ou parar de funcionar se o WhatsApp mudar o protocolo. Use para mensagens transacionais de baixo volume e mantenha fallback manual.
+> Aviso: esta integração usa WhatsApp Web não oficial. Pode desconectar, exigir novo QR ou parar de funcionar se o WhatsApp mudar o protocolo. Use para mensagens transacionais de baixo volume e mantenha fallback manual.
+
+Em produção no Sistema Arte, a instância operacional atual é `ArteeMolduras`. Os exemplos abaixo usam `loja` quando forem genéricos; no servidor real, mantenha o nome da instância idêntico entre `.env`, tela de Configurações e pasta em `sessions/`.
 
 ## Contrato HTTP
 
@@ -60,7 +62,7 @@ No primeiro start, acompanhe os logs e escaneie o QR com o WhatsApp da loja:
 pm2 logs sistema-arte-whatsapp
 ```
 
-A sessao fica salva em `whatsapp-service/sessions/`. Nao apague essa pasta, a menos que queira forcar novo pareamento.
+A sessão fica salva em `whatsapp-service/sessions/`. Não apague essa pasta, a menos que queira forçar novo pareamento.
 
 ## Configurar o Backend
 
@@ -70,7 +72,7 @@ No `.env` do backend:
 WHATSAPP_PROVIDER=web_local
 WHATSAPP_WEB_ENABLED=true
 WHATSAPP_WEB_BASE_URL=http://127.0.0.1:8080
-WHATSAPP_WEB_INSTANCE=loja
+WHATSAPP_WEB_INSTANCE=ArteeMolduras
 WHATSAPP_WEB_API_KEY=troque-esta-chave
 ```
 
@@ -80,7 +82,7 @@ Depois reinicie os dois processos:
 
 ```powershell
 pm2 restart sistema-arte-whatsapp
-pm2 restart sistema-arte
+pm2 restart sistemaarte-backend
 ```
 
 ## Testar Localmente
@@ -94,19 +96,38 @@ npm.cmd start
 Status:
 
 ```powershell
-Invoke-RestMethod -Uri "http://127.0.0.1:8080/instance/connectionState/loja" -Headers @{ apikey = "troque-esta-chave" }
+Invoke-RestMethod -Uri "http://127.0.0.1:8080/instance/connectionState/ArteeMolduras" -Headers @{ apikey = "troque-esta-chave" }
 ```
 
 Envio:
 
 ```powershell
-Invoke-RestMethod -Uri "http://127.0.0.1:8080/message/sendText/loja" `
+Invoke-RestMethod -Uri "http://127.0.0.1:8080/message/sendText/ArteeMolduras" `
   -Method POST `
   -Headers @{ apikey = "troque-esta-chave" } `
   -ContentType "application/json" `
   -Body '{"number":"5531999990000","text":"Teste do Sistema Arte"}'
 ```
 
-## Extracao Futura Para Projeto Publico
+## Diagnóstico Rápido
 
-O servico foi mantido isolado de regras de OS, clientes, caixa e NF-e. Para publicar depois como projeto separado, os pontos especificos do Sistema Arte sao apenas nome de instancia default, exemplos de `.env` e README.
+Se a tela de Configurações não mostrar o QR Code:
+
+- confira se `WHATSAPP_WEB_INSTANCE` é exatamente `ArteeMolduras`;
+- confira se `WHATSAPP_WEB_API_KEY` no backend é igual a `WHATSAPP_SERVICE_API_KEY` no serviço;
+- confira `pm2 logs sistema-arte-whatsapp --lines 80`;
+- erros como `Bad MAC`, `Key used already or never filled` e `failed to decrypt message` indicam sessão local corrompida/desincronizada.
+
+Para recriar a sessão sem apagar histórico imediatamente:
+
+```powershell
+cd C:\sistemaarte\whatsapp-service
+pm2 stop sistema-arte-whatsapp
+Rename-Item ".\sessions\ArteeMolduras" ("ArteeMolduras-badmac-" + (Get-Date -Format "yyyyMMdd-HHmmss"))
+pm2 restart sistema-arte-whatsapp --update-env
+pm2 logs sistema-arte-whatsapp --lines 80
+```
+
+## Extração Futura Para Projeto Público
+
+O serviço foi mantido isolado de regras de OS, clientes, caixa e NF-e. Para publicar depois como projeto separado, os pontos específicos do Sistema Arte são apenas nome de instância default, exemplos de `.env` e README.
