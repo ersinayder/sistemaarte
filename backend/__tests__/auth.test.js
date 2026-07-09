@@ -125,7 +125,7 @@ describe('auth middleware', () => {
     });
 
     it('seta req.user com dados atuais do banco e permissoes efetivas', () => {
-      const token = makeToken({ id: 5, role: 'caixa' });
+      const token = makeToken({ id: 5, role: 'admin' });
       const req = makeReq({ cookies: { token } });
       setSessionUserLookupForTests(() => ({
         id: 5,
@@ -171,8 +171,8 @@ describe('auth middleware', () => {
       expect(next).not.toHaveBeenCalled();
     });
 
-    it('retorna 403 usando a role atual do banco, nao a role do token', () => {
-      const token = makeToken({ id: 6, role: 'admin' });
+    it('retorna 403 usando a role atual do banco quando token antigo nao tem role', () => {
+      const token = makeToken({ id: 6 });
       const req = makeReq({ cookies: { token } });
       const res = makeRes();
       setSessionUserLookupForTests(() => ({
@@ -283,6 +283,27 @@ describe('auth middleware', () => {
 
       expect(next).toHaveBeenCalledOnce();
     });
+
+    it('rejeita token antigo quando role do token diverge da role atual', () => {
+      const token = makeToken({ id: 11, role: 'admin' });
+      const req = makeReq({ cookies: { token } });
+      const res = makeRes();
+      setSessionUserLookupForTests(() => ({
+        id: 11,
+        role: 'caixa',
+        active: 1,
+        deletedat: null,
+        access_version: 1,
+        profile_active: 1,
+        permissions: [],
+      }));
+
+      auth()(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith({ error: 'Sessao desatualizada. Entre novamente.' });
+      expect(next).not.toHaveBeenCalled();
+    });
   });
 
   describe('normalizarUsuarioSessao', () => {
@@ -298,6 +319,20 @@ describe('auth middleware', () => {
       })).toMatchObject({
         permissions: ['usuarios.ver', 'usuarios.editar'],
         profile: { key: 'admin', name: 'Administrador', active: 1 },
+      });
+    });
+
+    it('usa defaults seguros quando perfil nao tem linha associada', () => {
+      expect(normalizarUsuarioSessao({
+        id: 2,
+        role: 'caixa',
+        active: 1,
+        permissions_csv: '',
+      })).toMatchObject({
+        profile_key: 'caixa',
+        profile: { key: 'caixa', name: 'caixa', active: 1 },
+        profile_active: 1,
+        permissions: [],
       });
     });
   });

@@ -49,6 +49,7 @@ function normalizarUsuarioSessao(row) {
   if (!row) return null;
 
   const profileKey = row.profile_key || row.role;
+  const profileActive = row.profile_active == null ? 1 : Number(row.profile_active);
 
   return {
     id: row.id,
@@ -58,13 +59,13 @@ function normalizarUsuarioSessao(row) {
     profile_key: profileKey,
     profile: {
       key: profileKey,
-      name: row.profile_name,
-      active: row.profile_active,
+      name: row.profile_name || row.role,
+      active: profileActive,
     },
     active: row.active,
     deletedat: row.deletedat,
     access_version: row.access_version,
-    profile_active: row.profile_active,
+    profile_active: profileActive,
     permissions: normalizarPermissoes(row),
   };
 }
@@ -88,10 +89,7 @@ function auth(roles = []) {
     try {
       const payload = jwt.verify(token, JWT_SECRET);
       const usuarioAtual = normalizarUsuarioSessao(lookupUsuarioAtual(payload));
-      const payloadSessao = usuarioAtual
-        ? { ...payload, role: usuarioAtual.role }
-        : payload;
-      const sessao = validarSessaoUsuario(payloadSessao, usuarioAtual);
+      const sessao = validarSessaoUsuario(payload, usuarioAtual);
       if (!sessao.ok) {
         return res.status(sessao.status || 401).json({ error: sessao.error });
       }
