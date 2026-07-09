@@ -11,6 +11,11 @@ const {
 } = require("./utils/backupStatus");
 const { runOffsiteBackup } = require("./utils/offsiteBackup");
 const { encryptSecretIfPossible, isEncryptedSecret } = require("./utils/secrets");
+const {
+  DEFAULT_PROFILES,
+  DEFAULT_PROFILE_PERMISSIONS,
+  assertKnownPermissions,
+} = require("./domain/permissionRules");
 
 const DATA_DIR = path.join(__dirname, "data");
 const DB_FILE  = path.join(DATA_DIR, "oficina.db");
@@ -170,14 +175,38 @@ function getNfeEmissaoMigrationStatements() {
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
-  id        INTEGER PRIMARY KEY AUTOINCREMENT,
-  name      TEXT    NOT NULL,
-  username  TEXT    UNIQUE NOT NULL,
-  password  TEXT    NOT NULL,
-  role      TEXT    NOT NULL,
-  active    INTEGER DEFAULT 1,
-  createdat TEXT    DEFAULT (datetime('now','localtime'))
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  name           TEXT    NOT NULL,
+  username       TEXT    UNIQUE NOT NULL,
+  password       TEXT    NOT NULL,
+  role           TEXT    NOT NULL,
+  active         INTEGER DEFAULT 1,
+  profile_key    TEXT,
+  deletedat      TEXT    DEFAULT NULL,
+  deletedpor     INTEGER DEFAULT NULL,
+  deletedreason  TEXT,
+  updatedat      TEXT    DEFAULT (datetime('now','localtime')),
+  access_version INTEGER NOT NULL DEFAULT 1,
+  createdat      TEXT    DEFAULT (datetime('now','localtime'))
 );
+CREATE TABLE IF NOT EXISTS permission_profiles (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  key         TEXT    UNIQUE NOT NULL,
+  name        TEXT    NOT NULL,
+  description TEXT,
+  system      INTEGER NOT NULL DEFAULT 0,
+  active      INTEGER NOT NULL DEFAULT 1,
+  createdat   TEXT    DEFAULT (datetime('now','localtime')),
+  updatedat   TEXT    DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS profile_permissions (
+  profile_id INTEGER NOT NULL,
+  permission TEXT    NOT NULL,
+  createdat  TEXT    DEFAULT (datetime('now','localtime')),
+  UNIQUE(profile_id, permission),
+  FOREIGN KEY(profile_id) REFERENCES permission_profiles(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_profile_permissions_permission ON profile_permissions(permission);
 CREATE TABLE IF NOT EXISTS clientes (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   name       TEXT NOT NULL,
@@ -592,6 +621,43 @@ function applyMigrations(targetDb, migrations) {
   }
 }
 
+function seedPermissionProfiles(targetDb) {
+  const insertProfile = targetDb.prepare(`
+    INSERT INTO permission_profiles (key, name, description, system, active, updatedat)
+    VALUES (?, ?, ?, ?, ?, datetime('now','localtime'))
+    ON CONFLICT(key) DO UPDATE SET
+      name=excluded.name,
+      description=excluded.description,
+      system=excluded.system,
+      active=excluded.active,
+      updatedat=datetime('now','localtime')
+  `);
+  const getProfile = targetDb.prepare("SELECT id FROM permission_profiles WHERE key=?");
+  const deletePermissions = targetDb.prepare(`
+    DELETE FROM profile_permissions
+    WHERE profile_id = ?
+  `);
+  const insertPermission = targetDb.prepare(`
+    INSERT OR IGNORE INTO profile_permissions (profile_id, permission)
+    VALUES (?, ?)
+  `);
+
+  const tx = targetDb.transaction(() => {
+    for (const profile of DEFAULT_PROFILES) {
+      const permissions = DEFAULT_PROFILE_PERMISSIONS[profile.key] || [];
+      assertKnownPermissions(permissions);
+      insertProfile.run(profile.key, profile.name, profile.description, profile.system, profile.active);
+      const row = getProfile.get(profile.key);
+      deletePermissions.run(row.id);
+      for (const permission of permissions) {
+        insertPermission.run(row.id, permission);
+      }
+    }
+  });
+
+  tx();
+}
+
 function initDB() {
   db = new Database(DB_FILE);
   db.pragma("journal_mode = WAL");
@@ -905,8 +971,36 @@ function initDB() {
     "CREATE INDEX IF NOT EXISTS idx_nfe_notas_legacy_ordemid ON nfe_notas(imported_legacy, ordemid)",
     "CREATE INDEX IF NOT EXISTS idx_nfe_itens_nfeid ON nfe_itens(nfeid)",
     "CREATE INDEX IF NOT EXISTS idx_nfe_eventos_nfeid ON nfe_eventos(nfeid)",
+    // v23 - fundacao RBAC de perfis e permissoes
+    "ALTER TABLE users ADD COLUMN profile_key TEXT",
+    "ALTER TABLE users ADD COLUMN deletedat TEXT DEFAULT NULL",
+    "ALTER TABLE users ADD COLUMN deletedpor INTEGER DEFAULT NULL",
+    "ALTER TABLE users ADD COLUMN deletedreason TEXT",
+    "ALTER TABLE users ADD COLUMN updatedat TEXT DEFAULT (datetime('now','localtime'))",
+    "ALTER TABLE users ADD COLUMN access_version INTEGER NOT NULL DEFAULT 1",
+    "UPDATE users SET profile_key=role WHERE profile_key IS NULL",
+    `CREATE TABLE IF NOT EXISTS permission_profiles (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      key         TEXT    UNIQUE NOT NULL,
+      name        TEXT    NOT NULL,
+      description TEXT,
+      system      INTEGER NOT NULL DEFAULT 0,
+      active      INTEGER NOT NULL DEFAULT 1,
+      createdat   TEXT    DEFAULT (datetime('now','localtime')),
+      updatedat   TEXT    DEFAULT (datetime('now','localtime'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS profile_permissions (
+      profile_id INTEGER NOT NULL,
+      permission TEXT    NOT NULL,
+      createdat  TEXT    DEFAULT (datetime('now','localtime')),
+      UNIQUE(profile_id, permission),
+      FOREIGN KEY(profile_id) REFERENCES permission_profiles(id) ON DELETE CASCADE
+    )`,
+    "CREATE INDEX IF NOT EXISTS idx_profile_permissions_permission ON profile_permissions(permission)",
   ];
   applyMigrations(db, migrations);
+  db.prepare("UPDATE users SET profile_key=role WHERE profile_key IS NULL").run();
+  seedPermissionProfiles(db);
 
   try {
     const {
@@ -1058,13 +1152,13 @@ function initDB() {
   if (isDevSeed) {
     const existing = db.prepare("SELECT id FROM users WHERE role=?").get("admin");
     if (!existing) {
-      const stmt = db.prepare("INSERT INTO users (name,username,password,role) VALUES (?,?,?,?)");
+      const stmt = db.prepare("INSERT INTO users (name,username,password,role,profile_key) VALUES (?,?,?,?,?)");
       const seed = [
         ["Administrador","admin","admin123","admin"],
         ["Caixa","caixa","caixa123","caixa"],
         ["Oficina","oficina","oficina123","oficina"],
       ];
-      for (const [name,username,pw,role] of seed) stmt.run(name, username, bcrypt.hashSync(pw,10), role);
+      for (const [name,username,pw,role] of seed) stmt.run(name, username, bcrypt.hashSync(pw,10), role, role);
       console.log("[DB] Usuarios padrao criados (somente dev)");
     }
   }
@@ -1144,6 +1238,7 @@ module.exports = {
   getDB: () => db,
   runMigrationStatement,
   applyMigrations,
+  seedPermissionProfiles,
   getNfeEmissaoSchemaStatements,
   getNfeEmissaoMigrationStatements,
 };
