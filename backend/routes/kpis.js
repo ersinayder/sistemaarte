@@ -1,8 +1,23 @@
 const router = require("express").Router();
-const { getOne } = require("../database");
+const { getAll, getOne, getDB } = require("../database");
 const { auth } = require("../middlewares/auth");
 const { hoje } = require("../utils/dates");
 const { criarSseConnectionTracker } = require("../domain/sseConnectionRules");
+const { getResumoFinanceiroOS } = require("../domain/financeiroRules");
+const { listarPendenciasFiscais } = require("../repositories/nfePendenciaRepository");
+const { auditarIntegridadeFinanceiraOS } = require("../services/financeiroIntegridadeService");
+const { getContasReceberPayload } = require("../services/financeiroReceberService");
+const { auditarIntegridadeFiscalFinanceiraNFe } = require("../services/nfeIntegridadeFinanceiraService");
+const { montarResumoIntegridade } = require("../services/integridadeResumoService");
+
+const SELECT_ULTIMA_CONCILIACAO_INTEGRIDADE_NFE = `
+  (SELECT ci.tipo FROM nfe_integridade_conciliacoes ci WHERE ci.ordemid = o.id ORDER BY ci.createdat DESC, ci.id DESC LIMIT 1) AS conciliacao_tipo,
+  (SELECT ci.valor_os FROM nfe_integridade_conciliacoes ci WHERE ci.ordemid = o.id ORDER BY ci.createdat DESC, ci.id DESC LIMIT 1) AS conciliacao_valor_os,
+  (SELECT ci.valor_nfe FROM nfe_integridade_conciliacoes ci WHERE ci.ordemid = o.id ORDER BY ci.createdat DESC, ci.id DESC LIMIT 1) AS conciliacao_valor_nfe,
+  (SELECT ci.motivo FROM nfe_integridade_conciliacoes ci WHERE ci.ordemid = o.id ORDER BY ci.createdat DESC, ci.id DESC LIMIT 1) AS conciliacao_motivo,
+  (SELECT ci.createdat FROM nfe_integridade_conciliacoes ci WHERE ci.ordemid = o.id ORDER BY ci.createdat DESC, ci.id DESC LIMIT 1) AS conciliacao_createdat,
+  (SELECT ci.createdby FROM nfe_integridade_conciliacoes ci WHERE ci.ordemid = o.id ORDER BY ci.createdat DESC, ci.id DESC LIMIT 1) AS conciliacao_createdby
+`;
 
 function calcKpis() {
   const hj = hoje();
@@ -64,6 +79,35 @@ function calcKpis() {
 router.get("/", auth(["admin","caixa"]), (_req, res, next) => {
   try {
     res.json(calcKpis());
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get("/integridade", auth(["admin"]), (_req, res, next) => {
+  try {
+    const ordens = getAll(
+      "SELECT id, numero, clientenome, status, valortotal FROM ordens WHERE deletedat IS NULL ORDER BY id DESC"
+    );
+    const db = getDB();
+    const notas = db.prepare(`
+      SELECT o.id, o.numero, o.clientenome, o.status, o.valortotal, o.nfe_status, o.nfe_chave,
+             ${SELECT_ULTIMA_CONCILIACAO_INTEGRIDADE_NFE},
+             o.nfe_xml
+      FROM ordens o
+      WHERE o.deletedat IS NULL AND o.nfe_status IS NOT NULL AND o.nfe_deletedat IS NULL
+      ORDER BY o.nfe_emitida_em DESC, o.id DESC
+    `).all();
+
+    res.json(montarResumoIntegridade({
+      pendenciasFiscais: listarPendenciasFiscais(db),
+      integridadeFinanceira: auditarIntegridadeFinanceiraOS({
+        ordens,
+        receberGerencial: getContasReceberPayload(),
+        getResumoFinanceiroOS,
+      }),
+      integridadeFiscalFinanceira: auditarIntegridadeFiscalFinanceiraNFe(notas),
+    }));
   } catch (e) {
     next(e);
   }

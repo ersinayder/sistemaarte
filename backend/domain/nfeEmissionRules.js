@@ -1,5 +1,7 @@
 'use strict';
 
+const libxml = require('libxmljs2');
+
 function onlyDigits(value) {
   return String(value ?? '').replace(/\D/g, '');
 }
@@ -110,11 +112,103 @@ function serializarItemPreviaNFe(item) {
   };
 }
 
+function normalizarItensAvulsosNFe(rawItens = []) {
+  if (!Array.isArray(rawItens) || rawItens.length === 0) {
+    return { ok: false, erro: 'NF-e precisa de pelo menos um item.' };
+  }
+
+  const itens = rawItens.map((raw, index) => {
+    const produtoId = raw?.produto_id ?? raw?.produtoId ?? null;
+    const quantidade = moeda(raw?.quantidade || 1);
+    const precoUnitario = moeda(raw?.preco_unitario ?? raw?.preco ?? 0);
+
+    return {
+      id: raw?.id ?? index + 1,
+      produto_id: produtoId ? Number(produtoId) : null,
+      nome: normalizarTexto(raw?.nome ?? raw?.produto_nome, 120),
+      quantidade,
+      preco_unitario: precoUnitario,
+      subtotal: moeda(quantidade * precoUnitario),
+      avulso: Boolean(raw?.avulso || !produtoId),
+      ncm: onlyDigits(valorFiscal(raw, 'ncm', '')).padStart(8, '0').slice(-8),
+      cfop: onlyDigits(valorFiscal(raw, 'cfop', '')).slice(0, 4),
+      csosn: onlyDigits(valorFiscal(raw, 'csosn', '')).padStart(3, '0').slice(-3),
+      origem_fiscal: onlyDigits(valorFiscal(raw, 'origem_fiscal', '')).slice(0, 1),
+      unidade: valorFiscal(raw, 'unidade', '').trim().toUpperCase().slice(0, 6),
+    };
+  });
+
+  const validacao = validarItensFiscaisNFe(itens);
+  if (!validacao.ok) return validacao;
+
+  return { ok: true, itens };
+}
+
 function normalizarTexto(value, max = 120) {
   return String(value ?? '').trim().slice(0, max);
 }
 
 const CSOSN_VALIDOS_NFE = new Set(['101', '102', '103', '300', '400', '500', '900']);
+const CSTAT_AUTORIZADO = '100';
+const CSTATS_REJEICAO_CONHECIDA = new Set([
+  '205',
+  '206',
+  '207',
+  '208',
+  '209',
+  '210',
+  '215',
+  '217',
+  '218',
+  '220',
+  '225',
+  '226',
+  '232',
+  '233',
+  '234',
+  '237',
+  '245',
+  '302',
+  '303',
+  '327',
+  '328',
+  '386',
+  '387',
+  '388',
+  '471',
+  '531',
+  '532',
+  '533',
+  '564',
+  '573',
+  '591',
+  '602',
+  '603',
+  '610',
+  '703',
+  '704',
+  '725',
+  '777',
+  '778',
+  '806',
+]);
+const CSTATS_REJEICAO_REUTILIZA_NUMERO = new Set([
+  '208',
+  '210',
+  '220',
+  '232',
+  '233',
+  '234',
+  '237',
+  '386',
+  '387',
+  '388',
+  '591',
+  '725',
+  '778',
+]);
+const CSTATS_EMISSAO_NAO_CONCLUSIVA = new Set(['205', '206', '302', '303']);
+const ESTADOS_EMISSAO_BLOQUEANTES = new Set(['processando', 'incerto']);
 
 function hasOwn(obj, field) {
   return Object.prototype.hasOwnProperty.call(obj, field);
@@ -270,13 +364,87 @@ function validarEmitenteFiscalNFe(emitente = {}) {
   return { ok: true };
 }
 
+function normalizarCStat(value) {
+  return String(value ?? '').trim();
+}
+
+function classificarResultadoEmissao(resultado) {
+  if (!resultado || resultado.timeout === true) return 'incerto';
+
+  const cStat = normalizarCStat(resultado.cStat ?? resultado.cstat);
+  if (cStat === CSTAT_AUTORIZADO) return 'autorizado';
+  if (CSTATS_EMISSAO_NAO_CONCLUSIVA.has(cStat)) return 'incerto';
+  if (CSTATS_REJEICAO_CONHECIDA.has(cStat)) return 'rejeitado';
+  return 'incerto';
+}
+
+function estadoEmissaoBloqueiaReenvio(status) {
+  return ESTADOS_EMISSAO_BLOQUEANTES.has(String(status ?? '').trim().toLowerCase());
+}
+
+function rejeicaoPermiteDevolverNumero(cStat) {
+  return rejeicaoPermiteReutilizarNumero(cStat);
+}
+
+function rejeicaoPermiteReutilizarNumero(cStat) {
+  return CSTATS_REJEICAO_REUTILIZA_NUMERO.has(normalizarCStat(cStat));
+}
+
+function listarCStatsRejeicaoReutilizavel() {
+  return Array.from(CSTATS_REJEICAO_REUTILIZA_NUMERO);
+}
+
+function validarXmlAutorizacao(value, chaveEsperada) {
+  if (typeof value !== 'string') return false;
+
+  const xml = value.trim();
+  const chave = String(chaveEsperada ?? '').trim();
+  if (!xml.startsWith('<') || !/^\d{44}$/.test(chave)) return false;
+
+  try {
+    const doc = libxml.parseXml(xml, {
+      nonet: true,
+      recover: false,
+    });
+    const root = doc.root();
+    if (!root || root.name() !== 'nfeProc') return false;
+
+    const infNFeNodes = root.find('./*[local-name()="NFe"]/*[local-name()="infNFe"]');
+    const infProtNodes = root.find('./*[local-name()="protNFe"]/*[local-name()="infProt"]');
+    if (infNFeNodes.length !== 1 || infProtNodes.length !== 1) return false;
+
+    const id = infNFeNodes[0].attr('Id')?.value() || '';
+    const chNFeNodes = infProtNodes[0].find('./*[local-name()="chNFe"]');
+    const cStatNodes = infProtNodes[0].find('./*[local-name()="cStat"]');
+    if (chNFeNodes.length !== 1 || cStatNodes.length !== 1) return false;
+
+    const chaveInfNFe = id.startsWith('NFe') ? id.slice(3) : '';
+    const chaveProtocolo = chNFeNodes[0].text().trim();
+    const cStat = cStatNodes[0].text().trim();
+
+    return cStat === CSTAT_AUTORIZADO
+      && chaveInfNFe === chave
+      && chaveProtocolo === chave
+      && chaveInfNFe === chaveProtocolo;
+  } catch (_) {
+    return false;
+  }
+}
+
 module.exports = {
   aplicarOverridesItensNFe,
   aplicarOverrideClienteNFe,
+  classificarResultadoEmissao,
+  estadoEmissaoBloqueiaReenvio,
+  listarCStatsRejeicaoReutilizavel,
+  normalizarItensAvulsosNFe,
   normalizarItemFiscalOverride,
   normalizarClienteOverride,
+  rejeicaoPermiteDevolverNumero,
+  rejeicaoPermiteReutilizarNumero,
   validarClienteFiscalNFe,
   validarEmitenteFiscalNFe,
   validarItensFiscaisNFe,
+  validarXmlAutorizacao,
   serializarItemPreviaNFe,
 };

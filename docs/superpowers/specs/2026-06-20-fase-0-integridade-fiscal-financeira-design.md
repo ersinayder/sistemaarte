@@ -235,6 +235,9 @@ A garantia principal será persistente no SQLite, não apenas baseada em
 - A unicidade da tentativa ativa resolve concorrência entre duas requisições no
   processo atual e prepara o sistema para workers futuros.
 - A chave idempotente identifica a combinação de OS, operação e tentativa.
+- A implementação versiona a chave como
+  `emissao:{ordem}:{serie}:{numero}:aN`; isso preserva auditoria quando uma
+  rejeição segura devolve a numeração e uma nova tentativa usa o mesmo número.
 - Atualizações finais devem conferir o identificador da tentativa.
 - PM2 permanece em modo `fork` com uma instância nesta fase.
 
@@ -261,9 +264,11 @@ Cada transição de tentativa deverá registrar:
 Não registrar senha de certificado, conteúdo de certificado, token, cookie ou
 chave de API.
 
-Estados `incerto` deverão ficar visíveis na consulta fiscal existente ou em
-resposta compatível com a tela atual. A Fase 0 não exige uma nova tela completa,
-mas não poderá esconder a incerteza como `rejeitado`.
+Estados `incerto` e rejeições conclusivas também são projetados em
+`ordens.nfe_status` e `nfe_eventos`, para ficarem visíveis na consulta fiscal
+existente. A Fase 0 não exige uma nova tela completa, mas não poderá esconder a
+incerteza como `rejeitado` nem esconder uma rejeição real apenas na tabela de
+tentativas.
 
 ## Testes
 

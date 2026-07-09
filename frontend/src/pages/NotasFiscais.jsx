@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import toast from 'react-hot-toast'
-import { FileWarning, Plus, RotateCcw, Trash2 } from 'lucide-react'
+import { Download, FileWarning, Plus, RotateCcw, Trash2, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import { buscarEnderecoPorCep, maskCep } from '../utils/cep'
@@ -28,11 +28,18 @@ const EVENTO_LABEL = {
   rejeicao: 'Rejeicao',
   cce: 'Carta de Correcao',
   cancelamento: 'Cancelamento',
+  emissao: 'Emissao',
+}
+
+const PENDENCIA_STATUS_LABEL = {
+  processando: 'Processando',
+  incerto: 'Incerto',
 }
 
 const HOMOLOGACAO_ALVO = 10
 const STATUS_NFE_EMISSAO = ['Aguardando', 'Em Produção', 'Pronto', 'Entregue']
 const STATUS_NFE_EMISSAO_LABEL = 'Aguardando, Em Produção, Pronto ou Entregue'
+const MAX_INFORMACOES_COMPLEMENTARES_NFE = 5000
 const NCM_SUGESTOES_NFE = [
   { label: 'MDF', value: '44151000' },
   { label: 'Acrilico', value: '39269090' },
@@ -40,8 +47,73 @@ const NCM_SUGESTOES_NFE = [
 ]
 const CSOSN_VALIDOS_NFE = new Set(['101', '102', '103', '300', '400', '500', '900'])
 
-async function baixarArquivo(url, nomeArquivo) {
-  const r = await api.get(url, { responseType: 'blob', timeout: 45000 })
+function normalizarNcm(value) {
+  return String(value || '44151000').replace(/\D/g, '').padStart(8, '0').slice(-8)
+}
+
+function normalizarCfop(value) {
+  return String(value || '5102').replace(/\D/g, '').slice(0, 4) || '5102'
+}
+
+function normalizarCsosn(value) {
+  return String(value || '400').replace(/\D/g, '').padStart(3, '0').slice(-3)
+}
+
+function normalizarOrigemFiscal(value) {
+  return String(value ?? '0').replace(/\D/g, '').slice(0, 1) || '0'
+}
+
+function normalizarUnidade(value) {
+  return String(value || 'UN').trim().toUpperCase().slice(0, 6) || 'UN'
+}
+
+function produtoParaItemNfe(produto) {
+  return {
+    id: `produto-${produto.id}-${Date.now()}`,
+    produto_id: produto.id,
+    nome: produto.nome || produto.name || 'Produto',
+    quantidade: 1,
+    preco_unitario: Number(produto.preco || produto.valor || produto.preco_unitario || 0),
+    avulso: false,
+    ncm: normalizarNcm(produto.ncm),
+    cfop: normalizarCfop(produto.cfop),
+    csosn: normalizarCsosn(produto.csosn),
+    origem_fiscal: normalizarOrigemFiscal(produto.origem_fiscal),
+    unidade: normalizarUnidade(produto.unidade),
+  }
+}
+
+function itemAvulsoParaNfe(data = {}) {
+  return {
+    id: `avulso-${Date.now()}`,
+    produto_id: null,
+    nome: String(data.nome || '').trim() || 'Item avulso',
+    quantidade: Math.max(1, Number(data.quantidade || 1)),
+    preco_unitario: Math.max(0, Number(data.preco_unitario || 0)),
+    avulso: true,
+    ncm: normalizarNcm(data.ncm),
+    cfop: normalizarCfop(data.cfop),
+    csosn: normalizarCsosn(data.csosn),
+    origem_fiscal: normalizarOrigemFiscal(data.origem_fiscal),
+    unidade: normalizarUnidade(data.unidade),
+  }
+}
+
+async function mensagemErroBlob(e, fallback) {
+  const data = e?.response?.data
+  if (data?.erro) return data.erro
+  if (data instanceof Blob && data.type?.includes('application/json')) {
+    try {
+      const parsed = JSON.parse(await data.text())
+      if (parsed?.erro) return parsed.erro
+      if (parsed?.error) return parsed.error
+    } catch (_) {}
+  }
+  return fallback
+}
+
+async function baixarArquivo(url, nomeArquivo, config = {}) {
+  const r = await api.get(url, { responseType: 'blob', timeout: 45000, ...config })
   const href = URL.createObjectURL(r.data)
   const a = document.createElement('a')
   a.href = href
@@ -52,12 +124,16 @@ async function baixarArquivo(url, nomeArquivo) {
   URL.revokeObjectURL(href)
 }
 
-function abrirDanfe(chave) {
+async function baixarDanfe(chave) {
   if (!chave) {
     toast.error('Chave da NF-e indisponivel')
     return
   }
-  window.open(`/api/nfe/${chave}/danfe`, '_blank', 'noopener,noreferrer')
+  try {
+    await baixarArquivo(`/nfe/${chave}/danfe`, `danfe-${chave}.pdf`)
+  } catch (e) {
+    toast.error(await mensagemErroBlob(e, 'DANFE indisponivel'))
+  }
 }
 
 function mensagemErroNfe(e, fallback = 'Erro ao emitir NF-e') {
@@ -81,6 +157,424 @@ function StatusBadge({ status }) {
       fontSize: 'var(--text-xs)', fontWeight: 700,
       background: cfg.bg, color: cfg.text,
     }}>{cfg.label}</span>
+  )
+}
+
+function PendenciasFiscaisPanel({ pendencias, onRefresh, onAudit }) {
+  const primeiras = pendencias.slice(0, 4)
+  const restantes = Math.max(0, pendencias.length - primeiras.length)
+
+  return (
+    <div style={{
+      background: 'var(--color-surface)',
+      border: '1px solid var(--color-gold)',
+      borderRadius: 'var(--radius-lg)',
+      padding: 'var(--space-3) var(--space-4)',
+      display: 'grid',
+      gap: 'var(--space-3)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', minWidth: 0 }}>
+          <FileWarning size={18} style={{ color: 'var(--color-gold)', flex: '0 0 auto' }} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800 }}>Pendencias fiscais em acompanhamento</div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+              {pendencias.length} tentativa{pendencias.length !== 1 ? 's' : ''} aguardando conclusao ou conciliacao
+            </div>
+          </div>
+        </div>
+        <button className="btn btn-ghost btn-sm" onClick={onRefresh} title="Atualizar pendencias fiscais">
+          Atualizar
+        </button>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 'var(--space-2)' }}>
+        {primeiras.map((p) => (
+          <div key={`${p.origem}-${p.id}`} style={{
+            border: '1px solid var(--color-border)',
+            borderRadius: 'var(--radius-md)',
+            padding: 'var(--space-2) var(--space-3)',
+            background: 'var(--color-surface-offset)',
+            minWidth: 0,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-2)', alignItems: 'center', marginBottom: 4 }}>
+              <span style={{ fontSize: 'var(--text-xs)', fontWeight: 800, color: 'var(--color-text)' }}>
+                {EVENTO_LABEL[p.tipo] || p.tipo}
+                {p.tipo === 'cce' && p.nseqevento ? ` #${p.nseqevento}` : ''}
+              </span>
+              <span style={{
+                fontSize: 'var(--text-xs)',
+                fontWeight: 800,
+                color: p.status === 'incerto' ? 'var(--color-error)' : 'var(--color-gold)',
+                whiteSpace: 'nowrap',
+              }}>
+                {PENDENCIA_STATUS_LABEL[p.status] || p.status}
+              </span>
+            </div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {p.numero_os || 'OS nao vinculada'} {p.cliente ? `- ${p.cliente}` : ''}
+            </div>
+            <div title={p.motivo || p.chave || ''} style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {p.motivo || p.chave || 'Sem motivo informado'}
+            </div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)', marginTop: 4 }}>
+              Atualizado em {fmtDate(p.updatedat)}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'var(--space-2)' }}>
+              <button className="btn btn-ghost btn-sm" onClick={() => onAudit(p)} title="Auditar transicoes da pendencia fiscal">
+                Auditar
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {restantes > 0 && (
+        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>
+          Mais {restantes} pendencia{restantes !== 1 ? 's' : ''} fiscal{restantes !== 1 ? 'is' : ''} fora da visualizacao compacta.
+        </div>
+      )}
+    </div>
+  )
+}
+
+function IntegridadeFiscalFinanceiraPanel({ itens, onRefresh, onAudit }) {
+  const primeiros = itens.slice(0, 4)
+  const restantes = Math.max(0, itens.length - primeiros.length)
+  const criticos = itens.filter(item => item.severidade === 'critico').length
+
+  return (
+    <div style={{
+      background: 'var(--color-surface)',
+      border: '1px solid var(--color-error)',
+      borderRadius: 'var(--radius-lg)',
+      padding: 'var(--space-3) var(--space-4)',
+      display: 'grid',
+      gap: 'var(--space-3)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', minWidth: 0 }}>
+          <FileWarning size={18} style={{ color: 'var(--color-error)', flex: '0 0 auto' }} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800 }}>Integridade fiscal-financeira</div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+              {itens.length} apontamento{itens.length !== 1 ? 's' : ''} local{itens.length !== 1 ? 'is' : ''} - {criticos} critico{criticos !== 1 ? 's' : ''}
+            </div>
+          </div>
+        </div>
+        <button className="btn btn-ghost btn-sm" onClick={onRefresh} title="Atualizar integridade fiscal-financeira">
+          Atualizar
+        </button>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 'var(--space-2)' }}>
+        {primeiros.map((item) => (
+          <div key={`${item.tipo}-${item.ordemId}`} style={{
+            border: '1px solid var(--color-border)',
+            borderRadius: 'var(--radius-md)',
+            padding: 'var(--space-2) var(--space-3)',
+            background: 'var(--color-surface-offset)',
+            minWidth: 0,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-2)', alignItems: 'center', marginBottom: 4 }}>
+              <span style={{ fontSize: 'var(--text-xs)', fontWeight: 800, color: 'var(--color-text)' }}>
+                {item.numero || `OS ${item.ordemId}`}
+              </span>
+              <span style={{ fontSize: 'var(--text-xs)', fontWeight: 800, color: item.severidade === 'critico' ? 'var(--color-error)' : 'var(--color-gold)' }}>
+                {item.nfeStatus || item.severidade}
+              </span>
+            </div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {item.clienteNome || 'Cliente nao informado'}
+            </div>
+            <div title={item.mensagem} style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {item.mensagem}
+            </div>
+            <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginTop: 6, fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+              {item.valorOS !== undefined && <span>OS {fmt(item.valorOS)}</span>}
+              {item.valorNFe !== undefined && <span>NF-e {fmt(item.valorNFe)}</span>}
+              {item.diferenca !== undefined && <span>Dif. {fmt(item.diferenca)}</span>}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'var(--space-2)' }}>
+              <button className="btn btn-ghost btn-sm" onClick={() => onAudit(item)} title="Auditar integridade fiscal-financeira">
+                Auditar
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {restantes > 0 && (
+        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>
+          Mais {restantes} apontamento{restantes !== 1 ? 's' : ''} fora da visualizacao compacta.
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ModalAuditoriaIntegridadeFiscalFinanceira({ apontamento, onClose, isAdmin, onConciliado }) {
+  const [detalhe, setDetalhe] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [motivoConciliacao, setMotivoConciliacao] = useState('NF-e emitida sem impacto no caixa da OS.')
+  const [conciliando, setConciliando] = useState(false)
+
+  const carregarAuditoria = useCallback(async () => {
+    if (!apontamento?.ordemId) return
+    setLoading(true)
+    try {
+      const r = await api.get(`/nfe/integridade-financeira/${apontamento.ordemId}`, { skipGlobalErrorToast: true })
+      setDetalhe(r.data)
+    } catch (e) {
+      toast.error(e.response?.data?.erro || 'Erro ao carregar auditoria fiscal-financeira')
+      setDetalhe(null)
+    } finally {
+      setLoading(false)
+    }
+  }, [apontamento?.ordemId])
+
+  useEffect(() => { carregarAuditoria() }, [carregarAuditoria])
+
+  const ordem = detalhe?.ordem || {}
+  const fiscal = detalhe?.fiscal || {}
+  const apontamentos = detalhe?.apontamentos || []
+  const podeConciliar = isAdmin && apontamentos.some(item => item.tipo === 'nfe_total_divergente')
+
+  const handleConciliar = async () => {
+    if (!podeConciliar) return
+    setConciliando(true)
+    try {
+      await api.post(`/nfe/integridade-financeira/${ordem.id || apontamento?.ordemId}/conciliar`, { motivo: motivoConciliacao }, { skipGlobalErrorToast: true })
+      toast.success('Apontamento conciliado localmente')
+      onConciliado?.()
+      onClose()
+    } catch (e) {
+      toast.error(e.response?.data?.erro || 'Nao foi possivel conciliar o apontamento')
+    } finally {
+      setConciliando(false)
+    }
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: 'oklch(from var(--color-text) l c h / 0.4)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 'var(--space-4)',
+      }}
+      onClick={e => e.target === e.currentTarget && onClose()}
+    >
+      <div style={{
+        width: '100%', maxWidth: 720,
+        background: 'var(--color-surface)',
+        borderRadius: 'var(--radius-xl)',
+        boxShadow: 'var(--shadow-lg)',
+        display: 'flex', flexDirection: 'column',
+        maxHeight: '86vh', overflow: 'hidden',
+      }}>
+        <div style={{ padding: 'var(--space-4) var(--space-5)', borderBottom: '1px solid var(--color-divider)', display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', alignItems: 'flex-start' }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 800 }}>Auditoria fiscal-financeira</h2>
+            <p style={{ margin: '2px 0 0', fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
+              {ordem.numero || apontamento?.numero || `OS ${apontamento?.ordemId}`}
+            </p>
+          </div>
+          <button className="btn btn-icon btn-ghost" onClick={onClose} aria-label="Fechar">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div style={{ padding: 'var(--space-4) var(--space-5)', overflow: 'auto', display: 'grid', gap: 'var(--space-4)' }}>
+          {loading ? (
+            <div style={{ padding: 'var(--space-6)', textAlign: 'center', color: 'var(--color-text-muted)' }}>
+              <div className="spinner" style={{ margin: '0 auto var(--space-3)' }} />Carregando auditoria...
+            </div>
+          ) : (
+            <>
+              <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-3)', background: 'var(--color-surface-offset)', display: 'grid', gap: 'var(--space-2)' }}>
+                <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800 }}>{ordem.clienteNome || 'Cliente nao informado'}</div>
+                <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                  <span>Status OS: {ordem.status || 'nao informado'}</span>
+                  <span>Status NF-e: {fiscal.status || 'nao informado'}</span>
+                  <span>XML local: {fiscal.xmlLocal || 'nao informado'}</span>
+                </div>
+                <div style={{ overflowWrap: 'anywhere', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                  Chave: {fiscal.chave || 'nao informada'}
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 'var(--space-2)' }}>
+                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3)', background: 'var(--color-surface-offset)' }}>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>Total OS</div>
+                  <strong>{fmt(ordem.valorTotal)}</strong>
+                </div>
+                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3)', background: 'var(--color-surface-offset)' }}>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>Total NF-e</div>
+                  <strong>{fiscal.valorNFe === undefined ? 'Indisponivel' : fmt(fiscal.valorNFe)}</strong>
+                </div>
+                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3)', background: 'var(--color-surface-offset)' }}>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>Apontamentos</div>
+                  <strong>{apontamentos.length}</strong>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
+                {apontamentos.map((item, index) => (
+                  <div key={`${item.tipo}-${index}`} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-3)' }}>
+                    <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800, color: item.severidade === 'critico' ? 'var(--color-error)' : 'var(--color-gold)' }}>
+                      {item.tipo}
+                    </div>
+                    <div style={{ marginTop: 4, fontSize: 'var(--text-sm)' }}>{item.mensagem}</div>
+                    <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginTop: 6, fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                      {item.valorOS !== undefined && <span>OS {fmt(item.valorOS)}</span>}
+                      {item.valorNFe !== undefined && <span>NF-e {fmt(item.valorNFe)}</span>}
+                      {item.diferenca !== undefined && <span>Dif. {fmt(item.diferenca)}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>
+                {detalhe?.orientacao || 'Conferencia manual necessaria. Esta auditoria nao altera OS, caixa ou NF-e.'}
+              </div>
+
+              {podeConciliar && (
+                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-3)', background: 'var(--color-surface-offset)', display: 'grid', gap: 'var(--space-2)' }}>
+                  <label style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)' }}>Motivo da conciliacao local</label>
+                  <textarea
+                    value={motivoConciliacao}
+                    onChange={e => setMotivoConciliacao(e.target.value)}
+                    rows={3}
+                    style={{ width: '100%', resize: 'vertical', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-surface)', color: 'var(--color-text)', padding: 'var(--space-3)', fontSize: 'var(--text-sm)' }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <button className="btn btn-primary btn-sm" onClick={handleConciliar} disabled={conciliando || motivoConciliacao.trim().length < 10}>
+                      {conciliando ? 'Conciliando...' : 'Conciliar localmente'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ModalAuditoriaPendenciaFiscal({ pendencia, onClose }) {
+  const [detalhe, setDetalhe] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  const carregarAuditoria = useCallback(async () => {
+    if (!pendencia?.origem || !pendencia?.id) return
+    setLoading(true)
+    try {
+      const r = await api.get(`/nfe/pendencias/${pendencia.origem}/${pendencia.id}/transicoes`, { skipGlobalErrorToast: true })
+      setDetalhe(r.data)
+    } catch (e) {
+      toast.error(e.response?.data?.erro || 'Erro ao carregar auditoria da pendencia fiscal')
+      setDetalhe(null)
+    } finally {
+      setLoading(false)
+    }
+  }, [pendencia?.id, pendencia?.origem])
+
+  useEffect(() => { carregarAuditoria() }, [carregarAuditoria])
+
+  const p = detalhe?.pendencia || pendencia
+  const transicoes = detalhe?.transicoes || []
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: 'oklch(from var(--color-text) l c h / 0.4)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 'var(--space-4)',
+      }}
+      onClick={e => e.target === e.currentTarget && onClose()}
+    >
+      <div style={{
+        width: '100%', maxWidth: 720,
+        background: 'var(--color-surface)',
+        borderRadius: 'var(--radius-xl)',
+        boxShadow: 'var(--shadow-lg)',
+        display: 'flex', flexDirection: 'column',
+        maxHeight: '86vh', overflow: 'hidden',
+      }}>
+        <div style={{ padding: 'var(--space-4) var(--space-5)', borderBottom: '1px solid var(--color-divider)', display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', alignItems: 'flex-start' }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 800 }}>Auditoria da pendencia fiscal</h2>
+            <p style={{ margin: '2px 0 0', fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
+              {EVENTO_LABEL[p?.tipo] || p?.tipo || 'Pendencia'} - {p?.numero_os || 'OS nao vinculada'}
+            </p>
+          </div>
+          <button className="btn btn-icon btn-ghost" onClick={onClose} aria-label="Fechar">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+
+        <div style={{ padding: 'var(--space-4) var(--space-5)', overflow: 'auto', display: 'grid', gap: 'var(--space-4)' }}>
+          <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-3)', background: 'var(--color-surface-offset)', display: 'grid', gap: 'var(--space-2)' }}>
+            <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{ fontSize: 'var(--text-xs)', fontWeight: 800, color: p?.status === 'incerto' ? 'var(--color-error)' : 'var(--color-gold)' }}>
+                {PENDENCIA_STATUS_LABEL[p?.status] || p?.status || 'Status pendente'}
+              </span>
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                Atualizado em {fmtDate(p?.updatedat)}
+              </span>
+            </div>
+            <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700 }}>
+              {p?.cliente || 'Cliente nao informado'} {p?.numero_nfe ? `- NF-e ${p.numero_nfe}/${p.serie}` : ''}
+            </div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', overflowWrap: 'anywhere' }}>
+              {p?.motivo || p?.chave || 'Sem motivo fiscal registrado.'}
+            </div>
+            {p?.status === 'incerto' && (
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-error)', fontWeight: 700 }}>
+                Nao reenviar cegamente. Use esta trilha para conferir o ultimo estado antes da conciliacao fiscal.
+              </div>
+            )}
+          </div>
+
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
+              <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800 }}>Linha do tempo</div>
+              <button className="btn btn-ghost btn-sm" onClick={carregarAuditoria} disabled={loading}>
+                Atualizar
+              </button>
+            </div>
+            {loading ? (
+              <div style={{ padding: 'var(--space-6)', textAlign: 'center', color: 'var(--color-text-muted)' }}>
+                <div className="spinner" style={{ margin: '0 auto var(--space-3)' }} />Carregando auditoria...
+              </div>
+            ) : transicoes.length === 0 ? (
+              <div style={{ padding: 'var(--space-4)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
+                Nenhuma transicao registrada para esta tentativa.
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
+                {transicoes.map((t) => (
+                  <div key={t.id} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3)', display: 'grid', gap: 4 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 'var(--text-sm)', fontWeight: 800 }}>{PENDENCIA_STATUS_LABEL[t.status] || t.status}</span>
+                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>{fmtDate(t.createdat)}</span>
+                    </div>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                      {t.estado_anterior || 'inicio'} {'->'} {t.estado_novo || t.status}
+                      {t.cstat ? ` - cStat ${t.cstat}` : ''}
+                    </div>
+                    {t.motivo && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text)', overflowWrap: 'anywhere' }}>{t.motivo}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -167,6 +661,7 @@ function erroItemFiscal(item) {
 }
 
 function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
+  const [modo, setModo]                       = useState(ordemInicial ? 'ordem' : 'ordem')
   const [ordens, setOrdens]               = useState([])
   const [loadingOS, setLoadingOS]         = useState(true)
   const [q, setQ]                         = useState('')
@@ -174,6 +669,11 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
   const [etapa, setEtapa]                 = useState(ordemInicial ? 'revisar' : 'selecionar')
   const [previa, setPrevia]               = useState(null)
   const [loadingPrevia, setLoadingPrevia] = useState(Boolean(ordemInicial))
+  const [produtos, setProdutos]             = useState([])
+  const [clientes, setClientes]             = useState([])
+  const [produtoBusca, setProdutoBusca]     = useState('')
+  const [itemManual, setItemManual]         = useState({ nome: '', quantidade: 1, preco_unitario: '' })
+  const [loadingCatalogo, setLoadingCatalogo] = useState(false)
   const [emitindo, setEmitindo]           = useState(false)
   const [erroFiscal, setErroFiscal]       = useState('')
   const [cepLoading, setCepLoading]       = useState(false)
@@ -195,6 +695,42 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
       setLoadingPrevia(false)
     }
   }, [ordemInicial])
+
+  const carregarCatalogoAvulso = useCallback(async () => {
+    setLoadingCatalogo(true)
+    try {
+      const [produtosResp, clientesResp, previaResp] = await Promise.all([
+        api.get('/produtos', { skipGlobalErrorToast: true }),
+        api.get('/clientes', { skipGlobalErrorToast: true }),
+        api.get('/nfe/avulsa/preview', { skipGlobalErrorToast: true }),
+      ])
+      setProdutos(produtosResp.data?.produtos || produtosResp.data?.data || produtosResp.data || [])
+      setClientes(clientesResp.data?.clientes || clientesResp.data?.data || clientesResp.data || [])
+      setPrevia(previaResp.data)
+    } catch (e) {
+      toast.error(e.response?.data?.erro || 'Erro ao carregar dados para NF-e avulsa')
+    } finally {
+      setLoadingCatalogo(false)
+      setLoadingPrevia(false)
+    }
+  }, [])
+
+  const entrarModoAvulsa = useCallback(() => {
+    setModo('avulsa')
+    setEtapa('avulsa')
+    setOrdemSel(null)
+    setErroFiscal('')
+    setLoadingPrevia(true)
+    carregarCatalogoAvulso()
+  }, [carregarCatalogoAvulso])
+
+  const entrarModoOrdem = useCallback(() => {
+    setModo('ordem')
+    setEtapa('selecionar')
+    setPrevia(null)
+    setErroFiscal('')
+    setLoadingPrevia(false)
+  }, [])
 
   useEffect(() => {
     inputRef.current?.focus()
@@ -218,6 +754,108 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
         o.servico?.toLowerCase().includes(q.toLowerCase())
       )
     : ordens
+
+  const produtosFiltrados = produtoBusca.trim()
+    ? produtos.filter(p => (p.nome || p.name || '').toLowerCase().includes(produtoBusca.toLowerCase()))
+    : produtos.slice(0, 8)
+
+  const atualizarItensAvulsos = (updater) => {
+    setPrevia(prev => {
+      if (!prev) return prev
+      const itens = updater(prev.itens || [])
+      const total = itens.reduce((acc, item) => acc + Number(item.quantidade || 1) * Number(item.preco_unitario || 0), 0)
+      return {
+        ...prev,
+        ordem: {
+          ...prev.ordem,
+          valortotal: Math.round(total * 100) / 100,
+        },
+        itens,
+      }
+    })
+  }
+
+  const selecionarClienteAvulsa = (clienteId) => {
+    const cliente = clientes.find(c => String(c.id) === String(clienteId))
+    setPrevia(prev => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        cliente: cliente
+          ? {
+              id: cliente.id,
+              nome: cliente.name || cliente.nome || '',
+              documento: cliente.cpf || '',
+              ie: cliente.ie || '',
+              logradouro: cliente.logradouro || '',
+              numero: cliente.numero || '',
+              bairro: cliente.bairro || '',
+              cidade: cliente.cidade || '',
+              uf: cliente.uf || '',
+              cep: cliente.cep || '',
+            }
+          : { nome: '', documento: '', ie: '', logradouro: '', numero: '', bairro: '', cidade: '', uf: '', cep: '' },
+      }
+    })
+  }
+
+  const adicionarProdutoAvulsa = (produto) => {
+    atualizarItensAvulsos(itens => [...itens, produtoParaItemNfe(produto)])
+    setProdutoBusca('')
+    setErroFiscal('')
+  }
+
+  const adicionarItemManual = () => {
+    if (!String(itemManual.nome || '').trim()) {
+      setErroFiscal('Informe o nome do item avulso.')
+      return
+    }
+    const item = itemAvulsoParaNfe(itemManual)
+    atualizarItensAvulsos(itens => [...itens, item])
+    setItemManual({ nome: '', quantidade: 1, preco_unitario: '' })
+    setErroFiscal('')
+  }
+
+  const atualizarItemAvulso = (index, field, value) => {
+    atualizarItensAvulsos(itens => itens.map((item, itemIndex) => {
+      if (itemIndex !== index) return item
+      if (field === 'quantidade') return { ...item, quantidade: Math.max(1, Number(value || 1)) }
+      if (field === 'preco_unitario') return { ...item, preco_unitario: Math.max(0, Number(value || 0)) }
+      return { ...item, [field]: value }
+    }))
+  }
+
+  const removerItemAvulso = (index) => {
+    atualizarItensAvulsos(itens => itens.filter((_, itemIndex) => itemIndex !== index))
+  }
+
+  const criarPreviaAvulsa = async () => {
+    if (!previa?.itens?.length) {
+      setErroFiscal('Adicione ao menos um item para revisar a NF-e avulsa.')
+      return
+    }
+    const erroItem = previa.itens.map(erroItemFiscal).find(Boolean)
+    if (erroItem) {
+      setErroFiscal(erroItem)
+      return
+    }
+    setLoadingPrevia(true)
+    setErroFiscal('')
+    try {
+      const r = await api.post('/nfe/avulsa/preview', {
+        cliente: previa.cliente,
+        itens: previa.itens,
+        pagamento: previa.ordem?.pagamento || 'Pix',
+        informacoes_complementares: previa.informacoes_complementares || '',
+      }, { skipGlobalErrorToast: true })
+      setPrevia(r.data)
+      setEtapa('revisar')
+    } catch (e) {
+      toast.error(e.response?.data?.erro || 'Erro ao montar previa da NF-e avulsa')
+    } finally {
+      setLoadingPrevia(false)
+    }
+  }
 
   const atualizarItemFiscal = (index, field, value) => {
     setPrevia(prev => {
@@ -281,39 +919,64 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
     if (field === 'cep') buscarCepCliente(normalizado)
   }
 
+  const atualizarInformacoesComplementares = (value) => {
+    setPrevia(prev => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        informacoes_complementares: String(value || '').slice(0, MAX_INFORMACOES_COMPLEMENTARES_NFE),
+      }
+    })
+  }
+
   const validarItens = () => {
     const cliente = previa?.cliente || {}
     const documento = String(cliente.documento || '').replace(/\D/g, '')
     const cep = String(cliente.cep || '').replace(/\D/g, '')
-    if (!String(cliente.nome || '').trim()) {
-      setErroFiscal('Informe o nome do cliente.')
-      return false
-    }
-    const camposFaltando = []
-    if (!documento) camposFaltando.push('CPF/CNPJ')
-    if (!String(cliente.logradouro || '').trim()) camposFaltando.push('logradouro')
-    if (!String(cliente.numero || '').trim()) camposFaltando.push('numero')
-    if (!String(cliente.bairro || '').trim()) camposFaltando.push('bairro')
-    if (!String(cliente.cidade || '').trim()) camposFaltando.push('cidade')
-    if (!String(cliente.uf || '').trim()) camposFaltando.push('UF')
-    if (!cep) camposFaltando.push('CEP')
-    if (camposFaltando.length) {
-      setErroFiscal(mensagemCamposFiscaisCliente(camposFaltando))
-      return false
-    }
-    if (documento.length !== 11 && documento.length !== 14) {
+    if (modo !== 'avulsa') {
+      if (!String(cliente.nome || '').trim()) {
+        setErroFiscal('Informe o nome do cliente.')
+        return false
+      }
+      const camposFaltando = []
+      if (!documento) camposFaltando.push('CPF/CNPJ')
+      if (!String(cliente.logradouro || '').trim()) camposFaltando.push('logradouro')
+      if (!String(cliente.numero || '').trim()) camposFaltando.push('numero')
+      if (!String(cliente.bairro || '').trim()) camposFaltando.push('bairro')
+      if (!String(cliente.cidade || '').trim()) camposFaltando.push('cidade')
+      if (!String(cliente.uf || '').trim()) camposFaltando.push('UF')
+      if (!cep) camposFaltando.push('CEP')
+      if (camposFaltando.length) {
+        setErroFiscal(mensagemCamposFiscaisCliente(camposFaltando))
+        return false
+      }
+      if (documento.length !== 11 && documento.length !== 14) {
+        setErroFiscal('CPF/CNPJ do cliente deve ter 11 ou 14 digitos.')
+        return false
+      }
+      if (cep.length !== 8) {
+        setErroFiscal('CEP do cliente deve ter 8 digitos.')
+        return false
+      }
+      if (!/^[A-Z]{2}$/.test(String(cliente.uf))) {
+        setErroFiscal('UF do cliente deve ter 2 letras.')
+        return false
+      }
+    } else if (documento && documento.length !== 11 && documento.length !== 14) {
       setErroFiscal('CPF/CNPJ do cliente deve ter 11 ou 14 digitos.')
       return false
-    }
-    if (cep.length !== 8) {
+    } else if (cep && cep.length !== 8) {
       setErroFiscal('CEP do cliente deve ter 8 digitos.')
       return false
-    }
-    if (!/^[A-Z]{2}$/.test(String(cliente.uf))) {
+    } else if (cliente.uf && !/^[A-Z]{2}$/.test(String(cliente.uf))) {
       setErroFiscal('UF do cliente deve ter 2 letras.')
       return false
     }
 
+    if (!(previa?.itens || []).length) {
+      setErroFiscal('Adicione ao menos um item para emitir a NF-e.')
+      return false
+    }
     const erroItem = (previa?.itens || []).map(erroItemFiscal).find(Boolean)
     if (erroItem) {
       setErroFiscal(erroItem)
@@ -324,20 +987,34 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
   }
 
   const handleEmitir = async () => {
-    if (!ordemSel || !previa || !validarItens()) return
+    if ((!ordemSel && modo !== 'avulsa') || !previa || !validarItens()) return
     setEmitindo(true)
     try {
-      const itens = previa.itens.map(item => ({
-        id: item.id,
-        produto_id: item.produto_id,
-        ncm: item.ncm,
-        cfop: item.cfop,
-        csosn: item.csosn,
-        origem_fiscal: item.origem_fiscal,
-        unidade: item.unidade,
-      }))
-      await api.post(`/nfe/emitir/${ordemSel.id}`, { cliente: previa.cliente, itens }, { timeout: 80000, skipGlobalErrorToast: true })
-      toast.success(`NF-e emitida com sucesso para ${ordemSel.numero || previa.ordem?.numero}!`)
+      if (modo === 'avulsa') {
+        await api.post('/nfe/avulsa', {
+          cliente: previa.cliente,
+          itens: previa.itens,
+          pagamento: previa.ordem?.pagamento || 'Pix',
+          informacoes_complementares: previa.informacoes_complementares || '',
+        }, { timeout: 80000, skipGlobalErrorToast: true })
+        toast.success('NF-e avulsa emitida com sucesso!')
+      } else {
+        const itens = previa.itens.map(item => ({
+          id: item.id,
+          produto_id: item.produto_id,
+          ncm: item.ncm,
+          cfop: item.cfop,
+          csosn: item.csosn,
+          origem_fiscal: item.origem_fiscal,
+          unidade: item.unidade,
+        }))
+        await api.post(`/nfe/emitir/${ordemSel.id}`, {
+          cliente: previa.cliente,
+          itens,
+          informacoes_complementares: previa.informacoes_complementares || '',
+        }, { timeout: 80000, skipGlobalErrorToast: true })
+        toast.success(`NF-e emitida com sucesso para ${ordemSel.numero || previa.ordem?.numero}!`)
+      }
       onSuccess()
       onClose()
     } catch (e) {
@@ -369,13 +1046,38 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
           <div>
             <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, margin: 0 }}>Emitir NF-e</h2>
             <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
-              {etapa === 'selecionar' ? `Selecione uma OS com status ${STATUS_NFE_EMISSAO_LABEL}` : 'Confira cliente, emitente e itens antes de enviar para a SEFAZ'}
+              {etapa === 'selecionar'
+                ? `Selecione uma OS com status ${STATUS_NFE_EMISSAO_LABEL}`
+                : etapa === 'avulsa'
+                  ? 'Monte uma NF-e avulsa sem OS e sem lancamento no caixa'
+                  : 'Confira cliente, emitente e itens antes de enviar para a SEFAZ'}
             </p>
           </div>
           <button className="btn btn-icon btn-ghost" onClick={onClose} aria-label="Fechar">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
         </div>
+
+        {!ordemInicial && (
+          <div style={{ padding: 'var(--space-3) var(--space-5)', borderBottom: '1px solid var(--color-divider)', display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className={`btn ${modo === 'ordem' ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={entrarModoOrdem}
+              disabled={emitindo || loadingPrevia}
+            >
+              Por OS
+            </button>
+            <button
+              type="button"
+              className={`btn ${modo === 'avulsa' ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={entrarModoAvulsa}
+              disabled={emitindo || loadingCatalogo}
+            >
+              Avulsa
+            </button>
+          </div>
+        )}
 
         {etapa === 'selecionar' && (
           <>
@@ -450,6 +1152,128 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
               </div>
             )}
           </>
+        )}
+
+        {etapa === 'avulsa' && (
+          <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--space-4) var(--space-5)', display: 'grid', gap: 'var(--space-3)' }}>
+            {loadingCatalogo || loadingPrevia ? (
+              <div style={{ minHeight: 260, display: 'grid', placeItems: 'center', color: 'var(--color-text-muted)' }}>
+                <div style={{ display: 'grid', justifyItems: 'center', gap: 'var(--space-3)' }}><div className="spinner"/>Carregando dados da NF-e avulsa...</div>
+              </div>
+            ) : previa && (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 0.8fr) minmax(0, 1.2fr)', gap: 'var(--space-3)' }}>
+                  <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-3)', display: 'grid', gap: 'var(--space-2)' }}>
+                    <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800 }}>NF-e avulsa</div>
+                    <label style={{ display: 'grid', gap: 4 }}>
+                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>Cliente cadastrado</span>
+                      <select
+                        className="form-input"
+                        aria-label="Cliente cadastrado"
+                        value={previa.cliente?.id || ''}
+                        onChange={e => selecionarClienteAvulsa(e.target.value)}
+                        style={{ height: 36, fontSize: 'var(--text-sm)' }}
+                      >
+                        <option value="">Consumidor final</option>
+                        {clientes.map(cliente => (
+                          <option key={cliente.id} value={cliente.id}>{cliente.name || cliente.nome}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 'var(--space-2)', alignItems: 'end' }}>
+                      <CampoClienteEmissao label="Nome no documento" field="nome" value={previa.cliente?.nome} onChange={atualizarCliente} />
+                      <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800, color: 'var(--color-primary)', paddingBottom: 8 }}>{fmt(previa.ordem?.valortotal)}</div>
+                    </div>
+                  </div>
+
+                  <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-3)', display: 'grid', gap: 'var(--space-2)' }}>
+                    <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800 }}>Produto cadastrado</div>
+                    <input
+                      className="form-input"
+                      value={produtoBusca}
+                      onChange={e => setProdutoBusca(e.target.value)}
+                      placeholder="Buscar produto cadastrado..."
+                      style={{ height: 36, fontSize: 'var(--text-sm)' }}
+                    />
+                    <div style={{ display: 'grid', gap: 'var(--space-2)', maxHeight: 170, overflowY: 'auto' }}>
+                      {produtosFiltrados.length === 0 ? (
+                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', padding: 'var(--space-2)' }}>Nenhum produto encontrado</div>
+                      ) : produtosFiltrados.map(produto => (
+                        <button
+                          key={produto.id}
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={() => adicionarProdutoAvulsa(produto)}
+                          style={{ justifyContent: 'space-between', fontSize: 'var(--text-sm)' }}
+                        >
+                          <span>{produto.nome || produto.name}</span>
+                          <span style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt(produto.preco || produto.valor || produto.preco_unitario)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-3)', display: 'grid', gap: 'var(--space-2)' }}>
+                  <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800 }}>Item avulso</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 1fr) 96px 120px auto', gap: 'var(--space-2)', alignItems: 'end' }}>
+                    <label style={{ display: 'grid', gap: 4 }}>
+                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>Descricao</span>
+                      <input className="form-input" value={itemManual.nome} onChange={e => setItemManual(prev => ({ ...prev, nome: e.target.value }))} style={{ height: 36 }} />
+                    </label>
+                    <label style={{ display: 'grid', gap: 4 }}>
+                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>Qtd.</span>
+                      <input className="form-input" type="number" min="1" value={itemManual.quantidade} onChange={e => setItemManual(prev => ({ ...prev, quantidade: e.target.value }))} style={{ height: 36 }} />
+                    </label>
+                    <label style={{ display: 'grid', gap: 4 }}>
+                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>Unit.</span>
+                      <input className="form-input" type="number" min="0" step="0.01" value={itemManual.preco_unitario} onChange={e => setItemManual(prev => ({ ...prev, preco_unitario: e.target.value }))} style={{ height: 36 }} />
+                    </label>
+                    <button type="button" className="btn btn-primary" onClick={adicionarItemManual}>Adicionar</button>
+                  </div>
+                </div>
+
+                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+                  <div style={{ padding: 'var(--space-2) var(--space-3)', borderBottom: '1px solid var(--color-divider)', display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800 }}>Itens selecionados</div>
+                    {erroFiscal && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-error)', fontWeight: 700 }}>{erroFiscal}</div>}
+                  </div>
+                  {(previa.itens || []).length === 0 ? (
+                    <div style={{ padding: 'var(--space-4)', color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>Nenhum item adicionado.</div>
+                  ) : (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', minWidth: 680, borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ background: 'var(--color-surface-offset)', borderBottom: '1px solid var(--color-divider)' }}>
+                            {['Produto', 'Qtd.', 'Unit.', 'Total', ''].map(h => (
+                              <th key={h} style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'left', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 800 }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {previa.itens.map((item, index) => (
+                            <tr key={item.id || index} style={{ borderBottom: '1px solid var(--color-divider)' }}>
+                              <td style={{ padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-sm)', fontWeight: 700 }}>{item.nome}</td>
+                              <td style={{ padding: 'var(--space-2) var(--space-3)' }}>
+                                <input className="form-input" type="number" min="1" value={item.quantidade} onChange={e => atualizarItemAvulso(index, 'quantidade', e.target.value)} style={{ width: 76, height: 34 }} />
+                              </td>
+                              <td style={{ padding: 'var(--space-2) var(--space-3)' }}>
+                                <input className="form-input" type="number" min="0" step="0.01" value={item.preco_unitario} onChange={e => atualizarItemAvulso(index, 'preco_unitario', e.target.value)} style={{ width: 110, height: 34 }} />
+                              </td>
+                              <td style={{ padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-sm)', fontWeight: 800, whiteSpace: 'nowrap' }}>{fmt(Number(item.quantidade || 1) * Number(item.preco_unitario || 0))}</td>
+                              <td style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'right' }}>
+                                <button type="button" className="btn btn-ghost btn-sm" onClick={() => removerItemAvulso(index)}>Remover</button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         )}
 
         {etapa === 'revisar' && (
@@ -553,17 +1377,45 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
                     </table>
                   </div>
                 </div>
+
+                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-2) var(--space-3)', display: 'grid', gap: 6 }}>
+                  <label style={{ display: 'grid', gap: 6 }}>
+                    <span style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', alignItems: 'center', fontSize: 'var(--text-sm)', fontWeight: 800 }}>
+                      <span>Informacoes complementares</span>
+                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                        {String(previa.informacoes_complementares || '').length}/{MAX_INFORMACOES_COMPLEMENTARES_NFE}
+                      </span>
+                    </span>
+                    <textarea
+                      className="form-input"
+                      aria-label="Informacoes complementares"
+                      value={previa.informacoes_complementares || ''}
+                      onChange={e => atualizarInformacoesComplementares(e.target.value)}
+                      maxLength={MAX_INFORMACOES_COMPLEMENTARES_NFE}
+                      rows={2}
+                      style={{ width: '100%', minHeight: 52, maxHeight: 110, resize: 'vertical', padding: '7px 10px', fontSize: 'var(--text-sm)', lineHeight: 1.35 }}
+                    />
+                  </label>
+                </div>
               </>
             )}
           </div>
         )}
 
         <div style={{ padding: 'var(--space-3) var(--space-5)', borderTop: '1px solid var(--color-divider)', display: 'flex', gap: 'var(--space-3)', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
-          <button className="btn btn-ghost" onClick={etapa === 'revisar' && !ordemInicial ? () => setEtapa('selecionar') : onClose} disabled={emitindo || loadingPrevia}>
+          <button
+            className="btn btn-ghost"
+            onClick={etapa === 'revisar' && !ordemInicial ? () => setEtapa(modo === 'avulsa' ? 'avulsa' : 'selecionar') : onClose}
+            disabled={emitindo || loadingPrevia}
+          >
             {etapa === 'revisar' && !ordemInicial ? 'Voltar' : 'Cancelar'}
           </button>
           {etapa === 'selecionar' ? (
             <button className="btn btn-primary" onClick={() => carregarPrevia(ordemSel)} disabled={!ordemSel || loadingPrevia} style={{ minWidth: 170 }}>
+              {loadingPrevia ? <><div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }}/> Carregando...</> : 'Revisar dados'}
+            </button>
+          ) : etapa === 'avulsa' ? (
+            <button className="btn btn-primary" onClick={criarPreviaAvulsa} disabled={!previa?.itens?.length || loadingPrevia || loadingCatalogo} style={{ minWidth: 170 }}>
               {loadingPrevia ? <><div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }}/> Carregando...</> : 'Revisar dados'}
             </button>
           ) : (
@@ -828,7 +1680,7 @@ function ModalDetalhe({ nfe, onClose }) {
                     <button className="btn btn-ghost btn-sm" onClick={baixarXmlAutorizacao}>XML autorizacao</button>
                   )}
                   {['autorizado', 'cancelado'].includes(nfe.nfe_status) && nfe.nfe_chave && (
-                    <button className="btn btn-ghost btn-sm" onClick={() => abrirDanfe(nfe.nfe_chave)} title="Abrir DANFE para impressao">DANFE</button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => baixarDanfe(nfe.nfe_chave)} title="Baixar DANFE em PDF">DANFE</button>
                   )}
                 </div>
               </div>
@@ -1002,6 +1854,89 @@ function ModalCCE({ nfe, onClose, onSuccess }) {
   )
 }
 
+function ModalExportacaoNFe({ onClose }) {
+  const hoje = new Date().toISOString().slice(0, 10)
+  const primeiroDiaMes = `${hoje.slice(0, 8)}01`
+  const [tipo, setTipo] = useState('xml')
+  const [inicio, setInicio] = useState(primeiroDiaMes)
+  const [fim, setFim] = useState(hoje)
+  const [baixando, setBaixando] = useState(false)
+
+  const handleSubmit = async () => {
+    if (!inicio || !fim) {
+      toast.error('Informe data inicial e data final')
+      return
+    }
+    if (inicio > fim) {
+      toast.error('Data inicial nao pode ser maior que data final')
+      return
+    }
+
+    setBaixando(true)
+    try {
+      await baixarArquivo('/nfe/exportar', `nfe-${tipo}-${inicio}-a-${fim}.zip`, {
+        params: { tipo, inicio, fim },
+        responseType: 'blob',
+        timeout: 120000,
+        skipGlobalErrorToast: true,
+      })
+      toast.success('Exportacao gerada')
+      onClose()
+    } catch (e) {
+      toast.error(await mensagemErroBlob(e, 'Nao foi possivel exportar NF-e'))
+    } finally {
+      setBaixando(false)
+    }
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="exportar-nfe-title"
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'oklch(from var(--color-text) l c h / 0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-4)' }}
+      onClick={e => e.target === e.currentTarget && !baixando && onClose()}
+    >
+      <div style={{ width: 'min(460px, calc(100vw - 32px))', background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }}>
+        <div style={{ padding: 'var(--space-4) var(--space-5)', borderBottom: '1px solid var(--color-divider)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-4)' }}>
+          <div>
+            <h2 id="exportar-nfe-title" style={{ fontSize: 'var(--text-lg)', fontWeight: 700, margin: 0 }}>Exportar NF-e</h2>
+            <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>Baixe XML ou DANFE PDF por periodo de emissao.</p>
+          </div>
+          <button className="btn btn-icon btn-ghost" onClick={onClose} disabled={baixando} aria-label="Fechar">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div style={{ padding: 'var(--space-5)', display: 'grid', gap: 'var(--space-4)' }}>
+          <label style={{ display: 'grid', gap: 6 }}>
+            <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)' }}>Tipo</span>
+            <select className="form-input" value={tipo} onChange={e => setTipo(e.target.value)} disabled={baixando}>
+              <option value="xml">XML</option>
+              <option value="danfe">DANFE PDF</option>
+            </select>
+          </label>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 'var(--space-3)' }}>
+            <label style={{ display: 'grid', gap: 6 }}>
+              <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)' }}>Data inicial</span>
+              <input className="form-input" type="date" value={inicio} onChange={e => setInicio(e.target.value)} disabled={baixando} />
+            </label>
+            <label style={{ display: 'grid', gap: 6 }}>
+              <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)' }}>Data final</span>
+              <input className="form-input" type="date" value={fim} onChange={e => setFim(e.target.value)} disabled={baixando} />
+            </label>
+          </div>
+        </div>
+
+        <div style={{ padding: 'var(--space-4) var(--space-5)', borderTop: '1px solid var(--color-divider)', display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)' }}>
+          <button className="btn btn-ghost" onClick={onClose} disabled={baixando}>Cancelar</button>
+          <button className="btn btn-primary" onClick={handleSubmit} disabled={baixando}>{baixando ? 'Exportando...' : 'Exportar'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function NotasFiscais({ lixeira = false }) {
   const navigate = useNavigate()
   const { isAdmin } = useAuth() || {}
@@ -1013,8 +1948,31 @@ export default function NotasFiscais({ lixeira = false }) {
   const [cancelarNota, setCancelarNota] = useState(null)
   const [cceNota, setCceNota]         = useState(null)
   const [modalInutilizacao, setModalInutilizacao] = useState(false)
+  const [modalExportacao, setModalExportacao] = useState(false)
+  const [pendenciasFiscais, setPendenciasFiscais] = useState([])
+  const [integridadeFiscalFinanceira, setIntegridadeFiscalFinanceira] = useState([])
+  const [auditoriaPendencia, setAuditoriaPendencia] = useState(null)
+  const [auditoriaIntegridadeFiscalFinanceira, setAuditoriaIntegridadeFiscalFinanceira] = useState(null)
   const [q, setQ]                     = useState('')
   const [filtroStatus, setFiltroStatus] = useState('todos')
+
+  const carregarPendenciasFiscais = useCallback(async () => {
+    try {
+      const r = await api.get('/nfe/pendencias', { skipGlobalErrorToast: true })
+      setPendenciasFiscais(r.data?.pendencias || [])
+    } catch {
+      setPendenciasFiscais([])
+    }
+  }, [])
+
+  const carregarIntegridadeFiscalFinanceira = useCallback(async () => {
+    try {
+      const r = await api.get('/nfe/integridade-financeira', { skipGlobalErrorToast: true })
+      setIntegridadeFiscalFinanceira(r.data?.itens || [])
+    } catch {
+      setIntegridadeFiscalFinanceira([])
+    }
+  }, [])
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -1022,12 +1980,19 @@ export default function NotasFiscais({ lixeira = false }) {
       const r = await api.get(lixeira ? '/nfe/lixeira' : '/nfe')
       setNotas(r.data?.notas || [])
       setNfeMeta(r.data?.meta || { ambiente: null, autorizadas_homologacao: 0, alvo_homologacao: HOMOLOGACAO_ALVO })
+      if (lixeira) {
+        setPendenciasFiscais([])
+        setIntegridadeFiscalFinanceira([])
+      } else {
+        await carregarPendenciasFiscais()
+        await carregarIntegridadeFiscalFinanceira()
+      }
     } catch {
       toast.error(lixeira ? 'Erro ao carregar lixeira de NF-e' : 'Erro ao carregar notas fiscais')
     } finally {
       setLoading(false)
     }
-  }, [lixeira])
+  }, [carregarIntegridadeFiscalFinanceira, carregarPendenciasFiscais, lixeira])
 
   useEffect(() => { carregar() }, [carregar])
 
@@ -1110,6 +2075,9 @@ export default function NotasFiscais({ lixeira = false }) {
             </button>
           ) : (
             <>
+              <button className="btn btn-ghost" onClick={() => setModalExportacao(true)} style={{ gap: 'var(--space-2)' }}>
+                <Download size={16} /> Exportar
+              </button>
               {isAdmin && (
                 <button className="btn btn-ghost" onClick={() => navigate('/nfe/lixeira')} style={{ gap: 'var(--space-2)' }}>
                   <Trash2 size={16} /> Lixeira
@@ -1159,6 +2127,14 @@ export default function NotasFiscais({ lixeira = false }) {
         </div>
       </div>}
 
+      {!lixeira && pendenciasFiscais.length > 0 && (
+        <PendenciasFiscaisPanel pendencias={pendenciasFiscais} onRefresh={carregarPendenciasFiscais} onAudit={setAuditoriaPendencia} />
+      )}
+
+      {!lixeira && integridadeFiscalFinanceira.length > 0 && (
+        <IntegridadeFiscalFinanceiraPanel itens={integridadeFiscalFinanceira} onRefresh={carregarIntegridadeFiscalFinanceira} onAudit={setAuditoriaIntegridadeFiscalFinanceira} />
+      )}
+
       {/* Filtros */}
       <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', alignItems: 'center' }}>
         <div style={{ position: 'relative', flex: '1 1 220px', minWidth: 180 }}>
@@ -1207,7 +2183,7 @@ export default function NotasFiscais({ lixeira = false }) {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '2px solid var(--color-divider)' }}>
-                {['NF-e', 'OS', 'Cliente', 'Serviço', 'Valor', 'Emitida em', 'Status', ''].map(h => (
+                {['NF-e', 'Origem', 'Cliente', 'Serviço', 'Valor', 'Emitida em', 'Status', ''].map(h => (
                   <th key={h} style={{ padding: 'var(--space-3) var(--space-4)', textAlign: 'left', fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)', whiteSpace: 'nowrap', background: 'var(--color-surface-offset)' }}>{h}</th>
                 ))}
               </tr>
@@ -1220,7 +2196,7 @@ export default function NotasFiscais({ lixeira = false }) {
                   onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? 'transparent' : 'oklch(from var(--color-surface-offset) l c h / 0.5)'}
                 >
                   <td style={{ padding: 'var(--space-3) var(--space-4)', fontSize: 'var(--text-sm)', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{n.nfe_numero ? `${n.nfe_numero}/${n.nfe_serie}` : '—'}</td>
-                  <td style={{ padding: 'var(--space-3) var(--space-4)', fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--color-primary)' }}>{n.numero}</td>
+                  <td style={{ padding: 'var(--space-3) var(--space-4)', fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--color-primary)' }}>{n.origem === 'avulsa' ? 'Avulsa' : (n.numero || n.numero_os || '-')}</td>
                   <td style={{ padding: 'var(--space-3) var(--space-4)', fontSize: 'var(--text-sm)' }}>{n.clientenome}</td>
                   <td style={{ padding: 'var(--space-3) var(--space-4)', fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.servico}</td>
                   <td style={{ padding: 'var(--space-3) var(--space-4)', fontSize: 'var(--text-sm)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{fmt(n.valortotal)}</td>
@@ -1243,14 +2219,14 @@ export default function NotasFiscais({ lixeira = false }) {
                         <>
                           <button className="btn btn-ghost btn-sm" onClick={() => setCceNota(n)} title="Emitir CC-e">CC-e</button>
                           <button className="btn btn-ghost btn-sm" onClick={() => baixarXmlAutorizacao(n)} title="Baixar XML autorizado">XML</button>
-                          <button className="btn btn-ghost btn-sm" onClick={() => abrirDanfe(n.nfe_chave)} title="Abrir DANFE para impressao">DANFE</button>
+                          <button className="btn btn-ghost btn-sm" onClick={() => baixarDanfe(n.nfe_chave)} title="Baixar DANFE em PDF">DANFE</button>
                           <button className="btn btn-ghost btn-sm" onClick={() => setCancelarNota(n)} title="Cancelar NF-e">Cancelar</button>
                         </>
                       )}
                       {!lixeira && n.nfe_status === 'cancelado' && n.nfe_chave && (
                         <>
                           <button className="btn btn-ghost btn-sm" onClick={() => baixarXmlAutorizacao(n)} title="Baixar XML autorizado">XML</button>
-                          <button className="btn btn-ghost btn-sm" onClick={() => abrirDanfe(n.nfe_chave)} title="Abrir DANFE para impressao">DANFE</button>
+                          <button className="btn btn-ghost btn-sm" onClick={() => baixarDanfe(n.nfe_chave)} title="Baixar DANFE em PDF">DANFE</button>
                         </>
                       )}
                       {!lixeira && ['rejeitado', 'cancelado'].includes(n.nfe_status) && STATUS_NFE_EMISSAO.includes(n.status) && (
@@ -1282,6 +2258,9 @@ export default function NotasFiscais({ lixeira = false }) {
       {detalhe && <ModalDetalhe nfe={detalhe} onClose={() => setDetalhe(null)} />}
       {cancelarNota && <ModalCancelamento nfe={cancelarNota} onClose={() => setCancelarNota(null)} onSuccess={carregar} />}
       {cceNota && <ModalCCE nfe={cceNota} onClose={() => setCceNota(null)} onSuccess={carregar} />}
+      {auditoriaPendencia && <ModalAuditoriaPendenciaFiscal pendencia={auditoriaPendencia} onClose={() => setAuditoriaPendencia(null)} />}
+      {auditoriaIntegridadeFiscalFinanceira && <ModalAuditoriaIntegridadeFiscalFinanceira apontamento={auditoriaIntegridadeFiscalFinanceira} onClose={() => setAuditoriaIntegridadeFiscalFinanceira(null)} isAdmin={isAdmin} onConciliado={() => carregarIntegridadeFiscalFinanceira()} />}
+      {modalExportacao && <ModalExportacaoNFe onClose={() => setModalExportacao(false)} />}
       <InutilizacaoModal open={modalInutilizacao} onClose={() => setModalInutilizacao(false)} onSuccess={carregar} />
     </div>
   )

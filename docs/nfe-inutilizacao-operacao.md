@@ -6,6 +6,10 @@ Use inutilizacao quando um numero de NF-e ficou inutilizado por quebra tecnica
 de sequencia e nao existe NF-e autorizada, cancelada ou denegada com esse
 numero.
 
+Nao use inutilizacao para rejeicao corrigivel de OS. Nesses casos, corrija os
+dados fiscais e reemita a mesma OS; o sistema deve reutilizar o mesmo numero de
+NF-e rejeitado. Detalhes: `docs/nfe-reemissao-rejeicao-sequencia.md`.
+
 Nao use inutilizacao para corrigir NF-e ja autorizada. Para nota autorizada,
 avaliar cancelamento, CC-e ou orientacao contabil.
 

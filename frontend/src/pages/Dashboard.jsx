@@ -9,6 +9,7 @@ import { Doughnut, Line } from 'react-chartjs-2'
 import api from '../services/api'
 import toast from 'react-hot-toast'
 import { useKpiStream } from '../hooks/useKpiStream'
+import { useAuth } from '../context/AuthContext'
 
 ChartJS.register(
   CategoryScale, LinearScale, BarElement, LineElement,
@@ -134,6 +135,59 @@ function ChartCard({ title, subtitle, children, style }) {
   )
 }
 
+function IntegridadeResumoPanel({ resumo, onNavigate }) {
+  const criticos = Number(resumo?.meta?.criticos || 0)
+  const avisos = Number(resumo?.meta?.avisos || 0)
+
+  return (
+    <div style={{
+      background: 'var(--color-surface)',
+      border: `1px solid ${criticos > 0 ? 'var(--color-error)' : 'var(--color-gold)'}`,
+      borderRadius: 'var(--radius-lg)',
+      padding: 'var(--space-3) var(--space-4)',
+      display: 'grid',
+      gap: 'var(--space-3)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800 }}>Integridade operacional</div>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+            {resumo?.meta?.total || 0} apontamento{resumo?.meta?.total !== 1 ? 's' : ''} - {criticos} critico{criticos !== 1 ? 's' : ''} - {avisos} aviso{avisos !== 1 ? 's' : ''}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+          <button className="btn btn-ghost btn-sm" onClick={() => onNavigate('/nfe')}>Ver NF-e</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => onNavigate('/financeiro')}>Ver financeiro</button>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 'var(--space-2)' }}>
+        <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-2) var(--space-3)', background: 'var(--color-surface-offset)' }}>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>Pendencias fiscais</div>
+          <strong>{resumo?.fiscal?.pendencias || 0}</strong>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)' }}>
+            {resumo?.fiscal?.incertas || 0} incerta{resumo?.fiscal?.incertas !== 1 ? 's' : ''}
+          </div>
+        </div>
+        <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-2) var(--space-3)', background: 'var(--color-surface-offset)' }}>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>Financeiro OS</div>
+          <strong>{resumo?.financeiro?.apontamentos || 0}</strong>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)' }}>
+            {resumo?.financeiro?.criticos || 0} critico{resumo?.financeiro?.criticos !== 1 ? 's' : ''}
+          </div>
+        </div>
+        <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-2) var(--space-3)', background: 'var(--color-surface-offset)' }}>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>NF-e x OS</div>
+          <strong>{resumo?.fiscalFinanceiro?.apontamentos || 0}</strong>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)' }}>
+            {resumo?.fiscalFinanceiro?.criticos || 0} critico{resumo?.fiscalFinanceiro?.criticos !== 1 ? 's' : ''}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const gradientPlugin = {
   id: 'customGradient',
   beforeDatasetsDraw(chart) {
@@ -152,11 +206,13 @@ const gradientPlugin = {
 export default function Dashboard() {
   const navigate = useNavigate()
   const { kpis: live, online } = useKpiStream()
+  const { isAdmin } = useAuth() || {}
 
   const [mesSel, setMesSel] = useState(getMesPadrao)
   const [dados, setDados]   = useState(null)
   const [ordens, setOrdens] = useState([])
   const [loading, setLoading] = useState(true)
+  const [integridadeResumo, setIntegridadeResumo] = useState(null)
 
   const mesNome = new Date(`${mesSel}-01T12:00:00`)
     .toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
@@ -172,12 +228,18 @@ export default function Dashboard() {
       ])
       setDados(rRes.data)
       setOrdens(rOrdens.data?.ordens || rOrdens.data || [])
+      if (isAdmin) {
+        const rIntegridade = await api.get('/kpis/integridade', { skipGlobalErrorToast: true }).catch(() => ({ data: null }))
+        setIntegridadeResumo(rIntegridade.data)
+      } else {
+        setIntegridadeResumo(null)
+      }
     } catch {
       toast.error('Erro ao carregar dados')
     } finally {
       setLoading(false)
     }
-  }, [mesSel])
+  }, [isAdmin, mesSel])
 
   useEffect(() => { load() }, [load])
 
@@ -429,6 +491,10 @@ export default function Dashboard() {
           />
         </div>
       </div>
+
+      {isAdmin && integridadeResumo?.meta?.total > 0 && (
+        <IntegridadeResumoPanel resumo={integridadeResumo} onNavigate={navigate} />
+      )}
 
       {/* ── KPIs mensais — usa fmt para valor completo com centavos */}
       <div className="dash-kpi-grid">

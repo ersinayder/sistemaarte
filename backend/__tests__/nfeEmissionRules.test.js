@@ -2,14 +2,100 @@ import { describe, it, expect } from 'vitest';
 import {
   aplicarOverridesItensNFe,
   aplicarOverrideClienteNFe,
+  normalizarItensAvulsosNFe,
   normalizarItemFiscalOverride,
   serializarItemPreviaNFe,
   validarClienteFiscalNFe,
   validarEmitenteFiscalNFe,
   validarItensFiscaisNFe,
+  classificarResultadoEmissao,
+  estadoEmissaoBloqueiaReenvio,
+  rejeicaoPermiteReutilizarNumero,
+  validarXmlAutorizacao,
 } from '../domain/nfeEmissionRules.js';
 
 describe('nfeEmissionRules', () => {
+  describe('resultado da emissao', () => {
+    it.each([
+      ['resultado ausente', null, 'incerto'],
+      ['timeout', { timeout: true }, 'incerto'],
+      ['cStat vazio', { cStat: '' }, 'incerto'],
+      ['codigo desconhecido', { cStat: '999' }, 'incerto'],
+      ['autorizacao', { cStat: 100 }, 'autorizado'],
+      ['duplicidade potencialmente autorizada', { cStat: '204' }, 'incerto'],
+      ['numero inutilizado', { cStat: '205' }, 'incerto'],
+      ['NF-e denegada', { cStat: '206' }, 'incerto'],
+      ['duplicidade com diferenca na chave', { cStat: '539' }, 'incerto'],
+      ['uso denegado destinatario', { cStat: '302' }, 'incerto'],
+      ['destinatario nao habilitado', { cStat: '303' }, 'incerto'],
+      ['CFOP incompativel', { cStat: '386' }, 'rejeitado'],
+      ['NCM inexistente', { cStat: '778' }, 'rejeitado'],
+    ])('classifica %s', (_cenario, resultado, estadoEsperado) => {
+      expect(classificarResultadoEmissao(resultado)).toBe(estadoEsperado);
+    });
+
+    it('usa allowlist estrita para reutilizar a numeracao na mesma OS', () => {
+      expect(rejeicaoPermiteReutilizarNumero('232')).toBe(true);
+      expect(rejeicaoPermiteReutilizarNumero('386')).toBe(true);
+
+      for (const cStat of [null, '', '999', '204', '205', '206', '302', '303', '539']) {
+        expect(rejeicaoPermiteReutilizarNumero(cStat)).toBe(false);
+      }
+    });
+
+    it.each([
+      ['processando', true],
+      ['incerto', true],
+      ['autorizado', false],
+      ['rejeitado', false],
+      ['', false],
+    ])('informa se o estado %s bloqueia reenvio', (status, esperado) => {
+      expect(estadoEmissaoBloqueiaReenvio(status)).toBe(esperado);
+    });
+  });
+
+  describe('XML de autorizacao', () => {
+    const chave = '31260507500718000196550010000000291000000291';
+    const outraChave = '31260507500718000196550010000000291000000292';
+
+    it.each([
+      ['JSON', JSON.stringify({ nfeProc: { protNFe: {} } })],
+      ['vazio', '   '],
+      ['retEnviNFe isolado', '<retEnviNFe><cStat>100</cStat></retEnviNFe>'],
+      ['XML sem nfeProc', '<NFe><infNFe Id="NFe31260507500718000196550010000000291000000291"/></NFe>'],
+      ['chave divergente', '<nfeProc><NFe><infNFe Id="NFe31260507500718000196550010000000291000000292"/></NFe></nfeProc>'],
+      ['XML malformado', `<nfeProc><NFe><infNFe Id="NFe${chave}"></NFe><protNFe><infProt><chNFe>${chave}</chNFe></infProt></protNFe></nfeProc>`],
+      ['chave em comentario', `<nfeProc><!-- <chNFe>${chave}</chNFe> --></nfeProc>`],
+      ['Id em elemento arbitrario', `<nfeProc><qualquer Id="NFe${chave}" /></nfeProc>`],
+      ['protocolo divergente', `<nfeProc><NFe><infNFe Id="NFe${chave}"/></NFe><protNFe><infProt><cStat>100</cStat><chNFe>${outraChave}</chNFe></infProt></protNFe></nfeProc>`],
+      ['Id divergente', `<nfeProc><NFe><infNFe Id="NFe${outraChave}"/></NFe><protNFe><infProt><cStat>100</cStat><chNFe>${chave}</chNFe></infProt></protNFe></nfeProc>`],
+      ['somente infNFe', `<nfeProc><NFe><infNFe Id="NFe${chave}"/></NFe></nfeProc>`],
+      ['somente protocolo', `<nfeProc><protNFe><infProt><cStat>100</cStat><chNFe>${chave}</chNFe></infProt></protNFe></nfeProc>`],
+      ['protocolo sem cStat', `<nfeProc><NFe><infNFe Id="NFe${chave}"/></NFe><protNFe><infProt><chNFe>${chave}</chNFe></infProt></protNFe></nfeProc>`],
+      ['protocolo rejeitado', `<nfeProc><NFe><infNFe Id="NFe${chave}"/></NFe><protNFe><infProt><cStat>386</cStat><chNFe>${chave}</chNFe></infProt></protNFe></nfeProc>`],
+    ])('recusa %s', (_cenario, xml) => {
+      expect(validarXmlAutorizacao(xml, chave)).toBe(false);
+    });
+
+    it('aceita somente nfeProc completo autorizado com as duas chaves iguais', () => {
+      const xml = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<nfeProc xmlns="http://www.portalfiscal.inf.br/nfe">',
+        `<NFe><infNFe Id="NFe${chave}"/></NFe>`,
+        `<protNFe><infProt><cStat>100</cStat><chNFe>${chave}</chNFe></infProt></protNFe>`,
+        '</nfeProc>',
+      ].join('');
+
+      expect(validarXmlAutorizacao(xml, chave)).toBe(true);
+    });
+
+    it('recusa chave esperada formatada em vez de 44 digitos exatos', () => {
+      const xml = `<nfeProc><NFe><infNFe Id="NFe${chave}"/></NFe><protNFe><infProt><cStat>100</cStat><chNFe>${chave}</chNFe></infProt></protNFe></nfeProc>`;
+
+      expect(validarXmlAutorizacao(xml, `NFe ${chave}`)).toBe(false);
+    });
+  });
+
   it('applies per-emission fiscal overrides without mutating the original item', () => {
     const itens = [{
       id: 10,
@@ -201,6 +287,56 @@ describe('nfeEmissionRules', () => {
 
     expect(resultado.ok).toBe(false);
     expect(resultado.erro).toBe('Item "Produto zerado": quantidade deve ser maior que zero.');
+  });
+
+  it('normalizes full avulsa items with fiscal fields and commercial totals', () => {
+    const resultado = normalizarItensAvulsosNFe([
+      {
+        produto_id: 3,
+        nome: 'Moldura avulsa',
+        quantidade: '2',
+        preco_unitario: '45.50',
+        avulso: false,
+        ncm: '44.15.10.00',
+        cfop: '5102',
+        csosn: '400',
+        origem_fiscal: '0',
+        unidade: 'un',
+      },
+    ]);
+
+    expect(resultado.ok).toBe(true);
+    expect(resultado.itens[0]).toMatchObject({
+      produto_id: 3,
+      nome: 'Moldura avulsa',
+      quantidade: 2,
+      preco_unitario: 45.5,
+      subtotal: 91,
+      avulso: false,
+      ncm: '44151000',
+      cfop: '5102',
+      csosn: '400',
+      origem_fiscal: '0',
+      unidade: 'UN',
+    });
+  });
+
+  it('rejects avulsa items without commercial value before issuing NF-e', () => {
+    const resultado = normalizarItensAvulsosNFe([
+      {
+        nome: 'Sem preco',
+        quantidade: 1,
+        preco_unitario: 0,
+        ncm: '44151000',
+        cfop: '5102',
+        csosn: '400',
+        origem_fiscal: '0',
+        unidade: 'UN',
+      },
+    ]);
+
+    expect(resultado.ok).toBe(false);
+    expect(resultado.erro).toContain('preco unitario');
   });
 
   it('rejects emitente with invalid CEP before XML generation', () => {

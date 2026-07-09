@@ -57,6 +57,24 @@ describe('montarNFe', () => {
     expect(infNFe.autXML).toEqual(autXML);
   });
 
+  it('inclui informacoes complementares em infAdic.infCpl quando informado', () => {
+    const { infNFe } = montarNFe({
+      ordem: {
+        ...ordem,
+        informacoes_complementares: 'Entrega combinada com cliente.\nPedido interno 123.',
+      },
+      itens,
+      cliente,
+      emitente,
+      numero: 8,
+      serie: '1',
+    });
+
+    expect(infNFe.infAdic).toEqual({
+      infCpl: 'Entrega combinada com cliente.\nPedido interno 123.',
+    });
+  });
+
   it('dest sem CPF quando cliente nao tem CPF valido', () => {
     const { infNFe } = montarNFe({ ordem, itens, cliente: { name: 'Consumidor' }, emitente, numero: 2, serie: '1' });
     // Consumidor final sem CPF usa CNPJCPF='11111111111' (CPF generico)
@@ -126,5 +144,40 @@ describe('montarNFe', () => {
     expect(imp.ICMS.ICMSSN102.CSOSN).toBe('400');
     expect(imp.PIS.PISNT.CST).toBe('07');
     expect(imp.COFINS.COFINSNT.CST).toBe('07');
+  });
+
+  it('monta NF-e from an avulsa-shaped fiscal DTO without an OS id', () => {
+    const { infNFe } = montarNFe({
+      ordem: { valortotal: 91, descontovalor: 0, pagamento: 'Pix' },
+      itens: [{
+        produto_id: null,
+        nome: 'Item avulso',
+        quantidade: 2,
+        preco_unitario: 45.5,
+        ncm: '44151000',
+        cfop: '5102',
+        csosn: '400',
+        unidade: 'UN',
+        origem_fiscal: '0',
+      }],
+      cliente: {
+        clientenome: 'Cliente Fiscal',
+        cpf: '12345678901',
+        logradouro: 'Rua A',
+        c_numero: '10',
+        bairro: 'Centro',
+        cidade: 'Ipatinga',
+        uf: 'MG',
+        cep: '35160000',
+      },
+      emitente,
+      numero: 300,
+      serie: '1',
+      ambiente: 2,
+    });
+
+    expect(infNFe.det).toHaveLength(1);
+    expect(infNFe.total.ICMSTot.vNF).toBe('91.00');
+    expect(infNFe.pag.detPag[0].tPag).toBe('17');
   });
 });

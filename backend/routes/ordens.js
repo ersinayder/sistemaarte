@@ -46,9 +46,37 @@ const SEL_ORDEM = `
       THEN 0.0
       ELSE CAST(o.valortotal - COALESCE((SELECT SUM(l.valor) FROM lancamentos l WHERE l.ordemid=o.id AND l.pago=1 AND l.deletedat IS NULL),0) AS REAL)
     END AS saldoaberto,
-    COALESCE((SELECT GROUP_CONCAT(oi.nome, ', ') FROM ordem_itens oi WHERE oi.ordemid=o.id ORDER BY oi.id), '') AS itens_resumo
+    COALESCE((SELECT GROUP_CONCAT(oi.nome, ', ') FROM ordem_itens oi WHERE oi.ordemid=o.id ORDER BY oi.id), '') AS itens_resumo,
+    nn.status AS nfe_status,
+    nn.chave AS nfe_chave,
+    nn.protocolo AS nfe_protocolo,
+    nn.numero AS nfe_numero,
+    nn.serie AS nfe_serie,
+    nn.createdat AS nfe_emitida_em,
+    NULL AS nfe_xml,
+    nn.rejeicao_motivo AS nfe_rejeicao_motivo,
+    nn.cancelado_em AS nfe_cancelado_em,
+    nn.cancel_protocolo AS nfe_cancel_protocolo,
+    nn.cancel_motivo AS nfe_cancel_motivo
   FROM ordens o
   LEFT JOIN users u ON u.id=o.criadopor
+  LEFT JOIN nfe_notas nn ON nn.id = (
+    SELECT n2.id
+    FROM nfe_notas n2
+    WHERE n2.origem = 'ordem'
+      AND n2.ordemid = o.id
+      AND n2.deletedat IS NULL
+    ORDER BY
+      CASE n2.status
+        WHEN 'autorizado' THEN 1
+        WHEN 'emitindo' THEN 2
+        WHEN 'rejeitado' THEN 3
+        WHEN 'cancelado' THEN 4
+        ELSE 5
+      END,
+      n2.id DESC
+    LIMIT 1
+  )
 `;
 
 function nextNumero() {

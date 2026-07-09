@@ -1,0 +1,347 @@
+'use strict';
+
+const TRANSICOES_PERMITIDAS = {
+  processando: new Set(['incerto', 'autorizado', 'rejeitado', 'falha_local']),
+  incerto: new Set(['autorizado', 'rejeitado']),
+};
+const STATUS_FINAIS = new Set(['autorizado', 'rejeitado', 'falha_local']);
+const CAMPOS_TRANSICAO = [
+  ['cstat', 'cStat'],
+  ['motivo', 'motivo'],
+  ['chave', 'chave'],
+  ['protocolo', 'protocolo'],
+  ['xml_envio', 'xmlEnvio'],
+  ['xml_retorno', 'xmlRetorno'],
+  ['erro_local', 'erroLocal'],
+];
+
+function repositoryError(status, code, message) {
+  const error = new Error(message);
+  error.status = status;
+  error.code = code;
+  return error;
+}
+
+function normalizarCStats(values = []) {
+  if (!Array.isArray(values)) return [];
+  return Array.from(new Set(
+    values
+      .map((value) => String(value ?? '').trim())
+      .filter(Boolean)
+  ));
+}
+
+function hasTable(db, table) {
+  return Boolean(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(table));
+}
+
+function createNfeAttemptRepository(db, deps = {}) {
+  const agora = deps.agora || (() => new Date().toISOString());
+
+  function buscarAtivaPorOrdem(ordemId, operacao = 'emissao') {
+    return db.prepare(`
+      SELECT *
+      FROM nfe_emissao_tentativas
+      WHERE ordemid = ?
+        AND operacao = ?
+        AND status IN ('processando', 'incerto')
+      ORDER BY id DESC
+      LIMIT 1
+    `).get(ordemId, operacao) || null;
+  }
+
+  function proximoOrdinal(idempotencyBase) {
+    const historico = db.prepare(`
+      SELECT MAX(CAST(substr(idempotency_key, length(?) + 3) AS INTEGER)) AS maior_ordinal
+      FROM nfe_emissao_tentativas
+      WHERE substr(idempotency_key, 1, length(?)) = ?
+        AND substr(idempotency_key, length(?) + 1, 2) = ':a'
+    `).get(idempotencyBase, idempotencyBase, idempotencyBase, idempotencyBase);
+    return Number(historico.maior_ordinal || 0) + 1;
+  }
+
+  function criarTentativaProcessando({ ordemId, serie, usuarioId, numero }) {
+    const lote = String(numero).padStart(9, '0');
+    const idempotencyBase = `emissao:${ordemId}:${serie}:${numero}`;
+    const idempotencyKey = `${idempotencyBase}:a${proximoOrdinal(idempotencyBase)}`;
+    const timestamp = agora();
+
+    let insert;
+    try {
+      insert = db.prepare(`
+        INSERT INTO nfe_emissao_tentativas
+          (ordemid, operacao, idempotency_key, numero, serie, lote, status,
+           solicitado_por, createdat, updatedat)
+        VALUES (?, 'emissao', ?, ?, ?, ?, 'processando', ?, ?, ?)
+      `).run(
+        ordemId,
+        idempotencyKey,
+        numero,
+        serie,
+        lote,
+        usuarioId ?? null,
+        timestamp,
+        timestamp
+      );
+    } catch (error) {
+      if (error.code === 'SQLITE_CONSTRAINT_UNIQUE' && buscarAtivaPorOrdem(ordemId)) {
+        throw repositoryError(409, 'nfe_tentativa_ativa', 'Ja existe uma tentativa ativa para esta OS.');
+      }
+      throw error;
+    }
+
+    db.prepare(`
+      INSERT INTO nfe_emissao_transicoes
+        (tentativaid, ordemid, status, estado_anterior, estado_novo, createdat)
+      VALUES (?, ?, 'processando', NULL, 'processando', ?)
+    `).run(insert.lastInsertRowid, ordemId, timestamp);
+
+    return db.prepare('SELECT * FROM nfe_emissao_tentativas WHERE id = ?')
+      .get(insert.lastInsertRowid);
+  }
+
+  function buscarRejeicaoReutilizavel(ordemId, serie, cstatsReutilizaveis) {
+    const cstats = normalizarCStats(cstatsReutilizaveis);
+    if (!cstats.length) return null;
+
+    const placeholders = cstats.map(() => '?').join(', ');
+    return db.prepare(`
+      SELECT *
+      FROM nfe_emissao_tentativas rejeitada
+      WHERE rejeitada.ordemid = ?
+        AND rejeitada.operacao = 'emissao'
+        AND rejeitada.serie = ?
+        AND rejeitada.status = 'rejeitado'
+        AND TRIM(COALESCE(rejeitada.cstat, '')) IN (${placeholders})
+        AND NOT EXISTS (
+          SELECT 1
+          FROM nfe_emissao_tentativas posterior
+          WHERE posterior.ordemid = rejeitada.ordemid
+            AND posterior.operacao = rejeitada.operacao
+            AND posterior.serie = rejeitada.serie
+            AND posterior.id > rejeitada.id
+            AND NOT (
+              posterior.numero = rejeitada.numero
+              AND posterior.status = 'falha_local'
+            )
+        )
+      ORDER BY rejeitada.id DESC
+      LIMIT 1
+    `).get(ordemId, serie, ...cstats) || null;
+  }
+
+  function numeroOcupadoPorOutraOrdem({ ordemId, serie, numero }) {
+    const tentativa = db.prepare(`
+      SELECT id
+      FROM nfe_emissao_tentativas
+      WHERE operacao = 'emissao'
+        AND serie = ?
+        AND numero = ?
+        AND ordemid <> ?
+        AND status <> 'falha_local'
+      LIMIT 1
+    `).get(serie, numero, ordemId);
+    if (tentativa) return true;
+
+    if (!hasTable(db, 'nfe_notas')) return false;
+    const hasOrdens = hasTable(db, 'ordens');
+    const deletedClause = hasOrdens
+      ? "COALESCE(n.deletedat, CASE WHEN n.origem = 'ordem' THEN o.nfe_deletedat ELSE NULL END) IS NULL"
+      : 'n.deletedat IS NULL';
+    const joinOrdens = hasOrdens ? 'LEFT JOIN ordens o ON o.id = n.ordemid' : '';
+    const nota = db.prepare(`
+      SELECT n.id
+      FROM nfe_notas n
+      ${joinOrdens}
+      WHERE n.serie = ?
+        AND TRIM(COALESCE(n.numero, '')) <> ''
+        AND TRIM(n.numero) NOT GLOB '*[^0-9]*'
+        AND CAST(TRIM(n.numero) AS INTEGER) = ?
+        AND ${deletedClause}
+        AND COALESCE(n.ordemid, -1) <> ?
+      LIMIT 1
+    `).get(serie, numero, ordemId);
+    return Boolean(nota);
+  }
+
+  const reservarTransaction = db.transaction(({
+    ordemId,
+    serie,
+    usuarioId,
+    cstatsReutilizaveis,
+  }) => {
+    if (buscarAtivaPorOrdem(ordemId)) {
+      throw repositoryError(409, 'nfe_tentativa_ativa', 'Ja existe uma tentativa ativa para esta OS.');
+    }
+
+    const serieNormalizada = String(serie);
+    db.prepare(`
+      INSERT OR IGNORE INTO nfe_sequencias (serie, ultimo_numero)
+      VALUES (?, 0)
+    `).run(serieNormalizada);
+
+    const rejeicaoReutilizavel = buscarRejeicaoReutilizavel(
+      ordemId,
+      serieNormalizada,
+      cstatsReutilizaveis
+    );
+    if (rejeicaoReutilizavel) {
+      if (numeroOcupadoPorOutraOrdem({
+        ordemId,
+        serie: serieNormalizada,
+        numero: rejeicaoReutilizavel.numero,
+      })) {
+        throw repositoryError(
+          409,
+          'nfe_numero_rejeitado_indisponivel',
+          'A numeracao rejeitada ja esta ocupada por outra NF-e. Revise a sequencia antes de reenviar.'
+        );
+      }
+      return criarTentativaProcessando({
+        ordemId,
+        serie: serieNormalizada,
+        usuarioId,
+        numero: rejeicaoReutilizavel.numero,
+      });
+    }
+
+    const sequenciaAtual = db.prepare(`
+      SELECT ultimo_numero
+      FROM nfe_sequencias
+      WHERE serie = ?
+    `).get(serieNormalizada);
+    if (Number(sequenciaAtual.ultimo_numero) >= 999999999) {
+      throw repositoryError(409, 'nfe_sequencia_esgotada', 'A sequencia NF-e atingiu o limite de nove digitos.');
+    }
+
+    const sequencia = db.prepare(`
+      UPDATE nfe_sequencias
+      SET ultimo_numero = ultimo_numero + 1
+      WHERE serie = ?
+      RETURNING ultimo_numero
+    `).get(serieNormalizada);
+
+    return criarTentativaProcessando({
+      ordemId,
+      serie: serieNormalizada,
+      usuarioId,
+      numero: sequencia.ultimo_numero,
+    });
+  });
+
+  function reservar(input) {
+    return reservarTransaction.immediate(input);
+  }
+
+  function buscarPorId(id) {
+    return db.prepare('SELECT * FROM nfe_emissao_tentativas WHERE id = ?').get(id) || null;
+  }
+
+  // Caller must hold an external IMMEDIATE transaction for concurrent flows.
+  function transicionarNaTransacao(id, status, dados = {}) {
+    if (!db.inTransaction) {
+      throw repositoryError(
+        500,
+        'nfe_transacao_obrigatoria',
+        'transicionarNaTransacao exige uma transacao externa ativa.'
+      );
+    }
+    const atual = buscarPorId(id);
+    if (!atual) {
+      throw repositoryError(404, 'nfe_tentativa_nao_encontrada', 'Tentativa de emissao nao encontrada.');
+    }
+    if (status === atual.status) return atual;
+    if (!TRANSICOES_PERMITIDAS[atual.status]?.has(status)) {
+      throw repositoryError(409, 'nfe_transicao_invalida', 'Transicao de tentativa de emissao invalida.');
+    }
+
+    const timestamp = agora();
+    const valores = CAMPOS_TRANSICAO.map(([campoBanco, campoPublico]) => {
+      if (Object.prototype.hasOwnProperty.call(dados, campoPublico)) return dados[campoPublico];
+      if (Object.prototype.hasOwnProperty.call(dados, campoBanco)) return dados[campoBanco];
+      return atual[campoBanco];
+    });
+    const concluidoEm = STATUS_FINAIS.has(status)
+      ? (dados.concluido_em ?? timestamp)
+      : atual.concluido_em;
+    db.prepare(`
+      UPDATE nfe_emissao_tentativas
+      SET status = ?,
+          cstat = ?,
+          motivo = ?,
+          chave = ?,
+          protocolo = ?,
+          xml_envio = ?,
+          xml_retorno = ?,
+          erro_local = ?,
+          updatedat = ?,
+          concluido_em = ?
+      WHERE id = ?
+    `).run(status, ...valores, timestamp, concluidoEm, id);
+    db.prepare(`
+      INSERT INTO nfe_emissao_transicoes
+        (tentativaid, ordemid, status, estado_anterior, estado_novo, cstat, motivo, createdat)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      atual.ordemid,
+      status,
+      atual.status,
+      status,
+      dados.cStat ?? dados.cstat ?? null,
+      dados.motivo ?? null,
+      timestamp
+    );
+
+    return buscarPorId(id);
+  }
+
+  const transicionarTransaction = db.transaction(transicionarNaTransacao);
+
+  function transicionar(id, status, dados = {}) {
+    return transicionarTransaction.immediate(id, status, dados);
+  }
+
+  const devolverNumeroTransaction = db.transaction((id) => {
+    const tentativa = buscarPorId(id);
+    if (!tentativa) {
+      throw repositoryError(404, 'nfe_tentativa_nao_encontrada', 'Tentativa de emissao nao encontrada.');
+    }
+    if (tentativa.status !== 'falha_local') return false;
+    const posterior = db.prepare(`
+      SELECT id
+      FROM nfe_emissao_tentativas
+      WHERE serie = ?
+        AND numero = ?
+        AND id > ?
+      LIMIT 1
+    `).get(tentativa.serie, tentativa.numero, tentativa.id);
+    if (posterior) return false;
+
+    const result = db.prepare(`
+      UPDATE nfe_sequencias
+      SET ultimo_numero = ultimo_numero - 1
+      WHERE serie = ?
+        AND ultimo_numero = ?
+    `).run(tentativa.serie, tentativa.numero);
+    return result.changes === 1;
+  });
+
+  function devolverNumero(id) {
+    return devolverNumeroTransaction.immediate(id);
+  }
+
+  return {
+    reservar,
+    buscarPorId,
+    buscarAtivaPorOrdem,
+    devolverNumero,
+    transicionar,
+    // Assumes the caller already owns the surrounding database transaction.
+    transicionarNaTransacao,
+  };
+}
+
+module.exports = {
+  createNfeAttemptRepository,
+};

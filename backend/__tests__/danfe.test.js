@@ -65,6 +65,9 @@ const XML = `<?xml version="1.0" encoding="UTF-8"?>
       </total>
       <transp><modFrete>9</modFrete></transp>
       <pag><detPag><tPag>01</tPag><vPag>100.00</vPag></detPag></pag>
+      <infAdic>
+        <infCpl>Entrega combinada com cliente. Pedido interno 123.</infCpl>
+      </infAdic>
     </infNFe>
   </NFe>
   <protNFe>
@@ -85,6 +88,7 @@ describe('DANFE HTML', () => {
     expect(data.emit.xNome).toBe('ARTE E MOLDURAS LTDA');
     expect(data.dest.xNome).toBe('Cliente Teste');
     expect(data.total.vNF).toBe('100.00');
+    expect(data.infCpl).toBe('Entrega combinada com cliente. Pedido interno 123.');
     expect(data.itens).toHaveLength(1);
     expect(data.itens[0].xProd).toBe('Moldura MDF');
   });
@@ -95,6 +99,7 @@ describe('DANFE HTML', () => {
     expect(html).toContain('NF-e 29');
     expect(html).toContain('3126 0507 5007 1800 0196 5500 1000 0000 2910 0000 0291');
     expect(html).toContain('Moldura MDF');
+    expect(html).toContain('Entrega combinada com cliente. Pedido interno 123.');
     expect(html).toContain('Imprimir / salvar PDF');
   });
 });
