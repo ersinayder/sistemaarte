@@ -595,9 +595,11 @@ function summarizeMigration(sql) {
 
 function isExpectedMigrationError(sql, error) {
   const message = String(error?.message || error || "");
-  if (/duplicate column name/i.test(message)) return true;
-
   const statement = summarizeMigration(sql);
+  if (/duplicate column name/i.test(message)) {
+    return /^ALTER TABLE\s+\S+\s+ADD COLUMN\s+/i.test(statement);
+  }
+
   return /no such column:\s*address/i.test(message)
     && /^UPDATE clientes SET logradouro = address WHERE logradouro IS NULL AND address IS NOT NULL$/i.test(statement);
 }
@@ -633,10 +635,6 @@ function seedPermissionProfiles(targetDb) {
       updatedat=datetime('now','localtime')
   `);
   const getProfile = targetDb.prepare("SELECT id FROM permission_profiles WHERE key=?");
-  const deletePermissions = targetDb.prepare(`
-    DELETE FROM profile_permissions
-    WHERE profile_id = ?
-  `);
   const insertPermission = targetDb.prepare(`
     INSERT OR IGNORE INTO profile_permissions (profile_id, permission)
     VALUES (?, ?)
@@ -648,7 +646,6 @@ function seedPermissionProfiles(targetDb) {
       assertKnownPermissions(permissions);
       insertProfile.run(profile.key, profile.name, profile.description, profile.system, profile.active);
       const row = getProfile.get(profile.key);
-      deletePermissions.run(row.id);
       for (const permission of permissions) {
         insertPermission.run(row.id, permission);
       }
