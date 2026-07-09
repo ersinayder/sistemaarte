@@ -43,7 +43,20 @@ function validarSessaoUsuario(payload, usuarioAtual) {
     return { ok: false, status: 401, error: "Usuario inativo" };
   }
 
-  if (usuarioAtual.role !== payload?.role) {
+  if (usuarioAtual.deletedat) {
+    return { ok: false, status: 401, error: "Usuario arquivado" };
+  }
+
+  if (usuarioAtual.profile_active != null && Number(usuarioAtual.profile_active) !== 1) {
+    return { ok: false, status: 401, error: "Perfil inativo" };
+  }
+
+  if (payload?.accessVersion != null && usuarioAtual.access_version != null
+    && Number(payload.accessVersion) !== Number(usuarioAtual.access_version)) {
+    return { ok: false, status: 401, error: "Sessao desatualizada. Entre novamente." };
+  }
+
+  if (payload?.role && usuarioAtual.role !== payload.role) {
     return { ok: false, status: 401, error: "Sessao desatualizada. Entre novamente." };
   }
 
