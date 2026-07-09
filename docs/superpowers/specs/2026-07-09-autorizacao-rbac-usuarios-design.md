@@ -456,3 +456,9 @@ O projeto sera considerado completo quando:
 - perfis puderem ser revisados e editados pela tela;
 - backend e frontend estiverem com testes relevantes passando;
 - a documentacao refletir o novo modelo.
+
+## Status de Implementacao
+
+- Fase 1 implementada: fundacao RBAC, perfis de sistema, permissoes efetivas em `/auth/me` e token minimo com `accessVersion`.
+- Rotas de negocio continuam usando roles durante esta fase.
+- A migracao de `/usuarios`, arquivamento e exclusao segura fica para a Fase 2.
