@@ -460,5 +460,7 @@ O projeto sera considerado completo quando:
 ## Status de Implementacao
 
 - Fase 1 implementada: fundacao RBAC, perfis de sistema, permissoes efetivas em `/auth/me` e token minimo com `accessVersion`.
-- Rotas de negocio continuam usando roles durante esta fase.
-- A migracao de `/usuarios`, arquivamento e exclusao segura fica para a Fase 2.
+- Fase 2 implementada: gestao de usuarios com filtros, arquivamento/restauracao, reset de senha, exclusao permanente bloqueada por vinculos historicos e tela `/usuarios` operacional.
+- `/api/users`, a rota `/usuarios` e o link de Usuarios na sidebar usam permissoes `usuarios.*`.
+- Rotas de negocio fora de usuarios continuam usando roles durante esta fase.
+- Edicao visual de perfis e matriz de permissoes segue reservada para fase posterior.
