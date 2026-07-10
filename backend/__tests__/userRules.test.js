@@ -16,6 +16,11 @@ describe('userRules', () => {
       error: 'Senha e obrigatoria',
     });
 
+    expect(validarSenhaUsuario('        ', { required: true })).toEqual({
+      ok: false,
+      error: 'Senha nao pode conter apenas espacos',
+    });
+
     expect(validarSenhaUsuario('1234567', { required: true })).toEqual({
       ok: false,
       error: 'Senha deve ter pelo menos 8 caracteres',
@@ -26,6 +31,10 @@ describe('userRules', () => {
 
   it('allows blank password on edit but validates provided password', () => {
     expect(validarSenhaUsuario('', { required: false })).toEqual({ ok: true });
+    expect(validarSenhaUsuario('        ', { required: false })).toEqual({
+      ok: false,
+      error: 'Senha nao pode conter apenas espacos',
+    });
     expect(validarSenhaUsuario('curta', { required: false }).ok).toBe(false);
   });
 

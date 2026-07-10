@@ -1,5 +1,6 @@
 function validarSenhaUsuario(password, { required = false } = {}) {
   const value = String(password ?? "");
+  const trimmed = value.trim();
 
   if (!value) {
     return required
@@ -7,7 +8,11 @@ function validarSenhaUsuario(password, { required = false } = {}) {
       : { ok: true };
   }
 
-  if (value.length < 8) {
+  if (!trimmed) {
+    return { ok: false, error: "Senha nao pode conter apenas espacos" };
+  }
+
+  if (trimmed.length < 8) {
     return { ok: false, error: "Senha deve ter pelo menos 8 caracteres" };
   }
 

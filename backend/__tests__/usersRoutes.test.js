@@ -186,6 +186,23 @@ describe("users routes", () => {
     expect(db.runInsert).not.toHaveBeenCalled();
   });
 
+  it("rejects whitespace-only passwords when creating users", async () => {
+    const res = makeRes();
+
+    await businessHandler("post", "/")(routeRequest({
+      body: {
+        name: "Novo Usuario",
+        username: "novo",
+        password: "        ",
+        role: "caixa",
+      },
+    }), res, vi.fn());
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ error: "Senha nao pode conter apenas espacos" });
+    expect(db.runInsert).not.toHaveBeenCalled();
+  });
+
   it("returns 409 when creating a user with a duplicate username", async () => {
     db.runInsert.mockImplementationOnce(() => {
       throw new Error("UNIQUE constraint failed: users.username");
@@ -367,6 +384,21 @@ describe("users routes", () => {
     expect(bcrypt.compareSync("novaSenha123", params[0])).toBe(true);
     expect(params[1]).toBe("8");
     expect(res.json).toHaveBeenCalledWith({ ok: true });
+  });
+
+  it("rejects whitespace-only passwords when resetting another user's password", async () => {
+    db.getOne.mockReturnValueOnce(mockUser({ id: 8 }));
+
+    const res = makeRes();
+    await businessHandler("post", "/:id/reset-password")(routeRequest({
+      params: { id: "8" },
+      body: { password: "        " },
+      user: { id: 42, role: "admin" },
+    }), res, vi.fn());
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ error: "Senha nao pode conter apenas espacos" });
+    expect(db.run).not.toHaveBeenCalled();
   });
 
   it("blocks self archive, reset, and permanent delete with domain errors", async () => {
