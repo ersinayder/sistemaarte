@@ -3,7 +3,7 @@ const jwt       = require("jsonwebtoken");
 const bcrypt    = require("bcryptjs");
 const rateLimit = require("express-rate-limit");
 const { getOne } = require("../database");
-const { auth, JWT_SECRET } = require("../middlewares/auth");
+const { auth, JWT_SECRET, normalizarUsuarioSessao } = require("../middlewares/auth");
 const {
   criarEstadoLockout,
   registrarFalhaLogin,
@@ -46,7 +46,17 @@ router.post("/login", loginLimiter, (req, res) => {
   }
 
   const user = getOne(
-    "SELECT * FROM users WHERE username=? AND active=1",
+    `SELECT
+       u.*,
+       COALESCE(u.profile_key, u.role) AS profile_key,
+       p.name AS profile_name,
+       p.active AS profile_active,
+       GROUP_CONCAT(pp.permission) AS permissions_csv
+     FROM users u
+     LEFT JOIN permission_profiles p ON p.key = COALESCE(u.profile_key, u.role)
+     LEFT JOIN profile_permissions pp ON pp.profile_id = p.id
+     WHERE u.username=? AND u.active=1 AND u.deletedat IS NULL
+     GROUP BY u.id`,
     [username]
   );
   const senhaValida = bcrypt.compareSync(password, user?.password || DUMMY_PASSWORD_HASH);
@@ -55,13 +65,22 @@ router.post("/login", loginLimiter, (req, res) => {
     return res.status(401).json({ error: "Usuario ou senha invalidos" });
   }
 
+  const sessionUser = normalizarUsuarioSessao(user);
+  if (!sessionUser || Number(sessionUser.profile_active) !== 1) {
+    registrarFalhaLogin(loginLockoutState, username);
+    return res.status(401).json({ error: "Usuario ou senha invalidos" });
+  }
+
   registrarSucessoLogin(loginLockoutState, username);
 
-  const payload = { id: user.id, name: user.name, username: user.username, role: user.role };
+  const payload = {
+    id: sessionUser.id,
+    accessVersion: Number(sessionUser.access_version || 1),
+  };
   const token   = jwt.sign(payload, JWT_SECRET, { expiresIn: "12h" });
 
   res.cookie("token", token, COOKIE_OPTS);
-  res.json({ user: payload });
+  res.json({ user: sessionUser });
 });
 
 // POST /api/auth/logout

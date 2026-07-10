@@ -88,4 +88,38 @@ describe('userRules', () => {
       error: 'Sessao desatualizada. Entre novamente.',
     });
   });
+
+  it("rejects sessions for archived users, inactive profiles, and stale access versions", () => {
+    expect(validarSessaoUsuario(
+      { id: 1, accessVersion: 2 },
+      { id: 1, role: "admin", active: 1, deletedat: null, profile_active: 1, access_version: 2 }
+    )).toEqual({ ok: true });
+
+    expect(validarSessaoUsuario(
+      { id: 1, accessVersion: 2 },
+      { id: 1, role: "admin", active: 1, deletedat: "2026-07-09 10:00:00", profile_active: 1, access_version: 2 }
+    )).toEqual({
+      ok: false,
+      status: 401,
+      error: "Usuario arquivado",
+    });
+
+    expect(validarSessaoUsuario(
+      { id: 1, accessVersion: 2 },
+      { id: 1, role: "admin", active: 1, deletedat: null, profile_active: 0, access_version: 2 }
+    )).toEqual({
+      ok: false,
+      status: 401,
+      error: "Perfil inativo",
+    });
+
+    expect(validarSessaoUsuario(
+      { id: 1, accessVersion: 1 },
+      { id: 1, role: "admin", active: 1, deletedat: null, profile_active: 1, access_version: 2 }
+    )).toEqual({
+      ok: false,
+      status: 401,
+      error: "Sessao desatualizada. Entre novamente.",
+    });
+  });
 });

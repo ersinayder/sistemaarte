@@ -7,13 +7,75 @@ if (!JWT_SECRET) {
   throw new Error("FATAL: JWT_SECRET nao definido. Configure a variavel de ambiente.");
 }
 
-let lookupUsuarioAtual = (payload) => getOne(
-  "SELECT id, role, active FROM users WHERE id=?",
-  [payload.id]
-);
+function lookupUsuarioAtualDefault(payload) {
+  return getOne(
+    `SELECT
+       u.id,
+       u.name,
+       u.username,
+       u.role,
+       COALESCE(u.profile_key, u.role) AS profile_key,
+       u.active,
+       u.deletedat,
+       u.access_version,
+       p.name AS profile_name,
+       p.active AS profile_active,
+       GROUP_CONCAT(pp.permission) AS permissions_csv
+     FROM users u
+     LEFT JOIN permission_profiles p ON p.key = COALESCE(u.profile_key, u.role)
+     LEFT JOIN profile_permissions pp ON pp.profile_id = p.id
+     WHERE u.id=?
+     GROUP BY u.id`,
+    [payload.id]
+  );
+}
+
+let lookupUsuarioAtual = lookupUsuarioAtualDefault;
 
 function setSessionUserLookupForTests(fn) {
   lookupUsuarioAtual = fn;
+}
+
+function resetSessionUserLookupForTests() {
+  lookupUsuarioAtual = lookupUsuarioAtualDefault;
+}
+
+function normalizarPermissoes(row) {
+  if (Array.isArray(row.permissions)) {
+    return row.permissions
+      .map((permission) => String(permission).trim())
+      .filter(Boolean);
+  }
+
+  return String(row.permissions_csv || "")
+    .split(",")
+    .map((permission) => permission.trim())
+    .filter(Boolean);
+}
+
+function normalizarUsuarioSessao(row) {
+  if (!row) return null;
+
+  const profileKey = row.profile_key || row.role;
+  const profileActive = row.profile_active == null ? 1 : Number(row.profile_active);
+
+  return {
+    id: row.id,
+    name: row.name,
+    username: row.username,
+    role: row.role,
+    profile_key: profileKey,
+    profile: {
+      key: profileKey,
+      name: row.profile_name || row.role,
+      active: profileActive,
+    },
+    active: row.active,
+    deletedat: row.deletedat,
+    access_version: row.access_version,
+    profile_active: profileActive,
+    permissions: normalizarPermissoes(row),
+  };
 }
 
 /**
@@ -32,21 +94,27 @@ function auth(roles = []) {
 
     if (!token) return res.status(401).json({ error: "Token necessario" });
 
+    let payload;
     try {
-      const payload = jwt.verify(token, JWT_SECRET);
-      const usuarioAtual = lookupUsuarioAtual(payload);
+      payload = jwt.verify(token, JWT_SECRET);
+    } catch {
+      return res.status(401).json({ error: "Token invalido ou expirado" });
+    }
+
+    try {
+      const usuarioAtual = normalizarUsuarioSessao(lookupUsuarioAtual(payload));
       const sessao = validarSessaoUsuario(payload, usuarioAtual);
       if (!sessao.ok) {
         return res.status(sessao.status || 401).json({ error: sessao.error });
       }
 
-      if (roles.length && !roles.includes(payload.role)) {
+      if (roles.length && !roles.includes(usuarioAtual.role)) {
         return res.status(403).json({ error: "Sem permissao" });
       }
-      req.user = payload;
+      req.user = usuarioAtual;
       next();
-    } catch {
-      return res.status(401).json({ error: "Token invalido ou expirado" });
+    } catch (error) {
+      return next(error);
     }
   };
 
@@ -54,4 +122,10 @@ function auth(roles = []) {
   return middleware;
 }
 
-module.exports = { auth, JWT_SECRET, setSessionUserLookupForTests };
+module.exports = {
+  auth,
+  JWT_SECRET,
+  setSessionUserLookupForTests,
+  resetSessionUserLookupForTests,
+  normalizarUsuarioSessao,
+};
