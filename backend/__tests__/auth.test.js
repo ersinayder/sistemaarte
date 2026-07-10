@@ -33,6 +33,8 @@ require.cache[databasePath] = {
 // Importa DEPOIS de setar o env
 const {
   auth,
+  authPermission,
+  authAnyPermission,
   setSessionUserLookupForTests,
   resetSessionUserLookupForTests,
   normalizarUsuarioSessao,
@@ -227,6 +229,41 @@ describe('auth middleware', () => {
       const req = makeReq({ cookies: { token } });
       auth([])(req, makeRes(), next);
       expect(next).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('autorizacao por permissoes', () => {
+    it('permite acao quando usuario possui a permissao exigida', () => {
+      const req = { user: { permissions: ['usuarios.ver', 'usuarios.editar'] } };
+      const res = makeRes();
+      const next = vi.fn();
+
+      authPermission('usuarios.editar')(req, res, next);
+
+      expect(next).toHaveBeenCalledTimes(1);
+      expect(res.status).not.toHaveBeenCalled();
+    });
+
+    it('bloqueia acao quando usuario nao possui a permissao exigida', () => {
+      const req = { user: { permissions: ['usuarios.ver'] } };
+      const res = makeRes();
+      const next = vi.fn();
+
+      authPermission('usuarios.editar')(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith({ error: 'Sem permissao' });
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it('permite acao quando usuario possui qualquer permissao exigida', () => {
+      const req = { user: { permissions: ['usuarios.restaurar'] } };
+      const res = makeRes();
+      const next = vi.fn();
+
+      authAnyPermission(['usuarios.editar', 'usuarios.restaurar'])(req, res, next);
+
+      expect(next).toHaveBeenCalledTimes(1);
     });
   });
 

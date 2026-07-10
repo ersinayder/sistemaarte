@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const { getOne } = require("../database");
+const { hasPermission, hasAnyPermission } = require("../domain/permissionRules");
 const { validarSessaoUsuario } = require("../domain/userRules");
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -122,8 +123,28 @@ function auth(roles = []) {
   return middleware;
 }
 
+function authPermission(permission) {
+  return (req, res, next) => {
+    if (!hasPermission(req.user, permission)) {
+      return res.status(403).json({ error: "Sem permissao" });
+    }
+    next();
+  };
+}
+
+function authAnyPermission(permissions) {
+  return (req, res, next) => {
+    if (!hasAnyPermission(req.user, permissions)) {
+      return res.status(403).json({ error: "Sem permissao" });
+    }
+    next();
+  };
+}
+
 module.exports = {
   auth,
+  authPermission,
+  authAnyPermission,
   JWT_SECRET,
   setSessionUserLookupForTests,
   resetSessionUserLookupForTests,
