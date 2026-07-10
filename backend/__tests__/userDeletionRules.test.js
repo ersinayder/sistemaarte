@@ -1,3 +1,6 @@
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
 
 const {
@@ -7,6 +10,9 @@ const {
   canPermanentlyDeleteUser,
 } = await import("../domain/userDeletionRules.js");
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const EXPECTED_USER_HISTORY_REFERENCES = [
   { table: "ordens", column: "criadopor", label: "OS criadas" },
   { table: "ordens", column: "deletedpor", label: "OS excluidas" },
@@ -14,6 +20,7 @@ const EXPECTED_USER_HISTORY_REFERENCES = [
   { table: "lancamentos", column: "criadopor", label: "lancamentos criados" },
   { table: "lancamentos", column: "deletedpor", label: "lancamentos excluidos" },
   { table: "statuslog", column: "usuarioid", label: "mudancas de status" },
+  { table: "users", column: "deletedpor", label: "usuarios arquivados" },
   { table: "propostas", column: "criadopor", label: "propostas criadas" },
   { table: "contas_pagar", column: "criadopor", label: "contas a pagar criadas" },
   { table: "contas_pagar", column: "deletedpor", label: "contas a pagar excluidas" },
@@ -43,6 +50,16 @@ describe("userDeletionRules", () => {
       expect(item.column.trim()).not.toBe("");
       expect(item.label).toEqual(expect.any(String));
       expect(item.label.trim()).not.toBe("");
+    }
+  });
+
+  it("keeps catalog table and column names anchored to the database source", () => {
+    const databasePath = path.resolve(__dirname, "../database.js");
+    const databaseSource = fs.readFileSync(databasePath, "utf8");
+
+    for (const item of USER_HISTORY_REFERENCES) {
+      expect(databaseSource).toContain(item.table);
+      expect(databaseSource).toContain(item.column);
     }
   });
 
