@@ -79,6 +79,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
   const isAdmin   = user?.role === 'admin'
   const isCaixa   = user?.role === 'caixa'
   const isOficina = user?.role === 'oficina'
+  const canViewUsuarios = typeof can === 'function' && can('usuarios.ver')
 
   const navItem = (to, label, iconKey) => (
     <NavLink to={to} className={({ isActive }) => `sidebar-nav-item${isActive ? ' active' : ''}`} title={collapsed ? label : undefined}>
@@ -147,7 +148,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
               {section('Cadastros')}
               {navItem('/clientes', 'Clientes', 'clientes')}
               {navItem('/produtos', 'Produtos', 'produtos')}
-              {(isAdmin || can('usuarios.ver')) && navItem('/usuarios', 'Usuários', 'usuarios')}
+              {(isAdmin || canViewUsuarios) && navItem('/usuarios', 'Usuários', 'usuarios')}
               {isAdmin && navItem('/configuracoes', 'Configurações', 'config')}
             </>
           )}

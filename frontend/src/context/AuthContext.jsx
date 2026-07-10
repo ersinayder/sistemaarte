@@ -40,10 +40,10 @@ export function AuthProvider({ children }) {
     () => (Array.isArray(user?.permissions) ? user.permissions : []),
     [user?.permissions]
   );
-  const profile = user?.profile || {
+  const profile = useMemo(() => user?.profile || ({
     key: user?.profile_key || user?.role,
     name: user?.profile_name || user?.role,
-  };
+  }), [user?.profile, user?.profile_key, user?.profile_name, user?.role]);
   const can = useCallback((permission) => {
     if (!permission) return false;
     return permissions.includes("*") || permissions.includes(permission);
