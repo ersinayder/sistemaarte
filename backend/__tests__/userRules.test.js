@@ -4,6 +4,8 @@ const {
   validarSenhaUsuario,
   validarAlteracaoProprioUsuario,
   validarSessaoUsuario,
+  validarAcaoProprioUsuario,
+  validarUltimoAdminDisponivel,
 } = await import('../domain/userRules.js');
 
 describe('userRules', () => {
@@ -121,5 +123,42 @@ describe('userRules', () => {
       status: 401,
       error: "Sessao desatualizada. Entre novamente.",
     });
+  });
+});
+
+describe("regras de gestao de usuarios", () => {
+  it("bloqueia arquivamento, restauracao, reset e exclusao permanente do proprio usuario", () => {
+    expect(validarAcaoProprioUsuario({
+      requesterId: 1,
+      targetId: 1,
+      action: "archive",
+    })).toEqual({ ok: false, error: "Voce nao pode arquivar seu proprio usuario" });
+
+    expect(validarAcaoProprioUsuario({
+      requesterId: 1,
+      targetId: 2,
+      action: "archive",
+    })).toEqual({ ok: true });
+  });
+
+  it("bloqueia remover o ultimo admin ativo nao arquivado", () => {
+    expect(validarUltimoAdminDisponivel({
+      targetRole: "admin",
+      targetActive: 1,
+      targetDeletedat: null,
+      activeAdminCount: 1,
+      action: "archive",
+    })).toEqual({
+      ok: false,
+      error: "Nao e possivel remover o ultimo administrador ativo",
+    });
+
+    expect(validarUltimoAdminDisponivel({
+      targetRole: "caixa",
+      targetActive: 1,
+      targetDeletedat: null,
+      activeAdminCount: 1,
+      action: "archive",
+    })).toEqual({ ok: true });
   });
 });
