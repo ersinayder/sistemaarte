@@ -127,6 +127,12 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
 
         <nav className="sidebar-nav" style={{ paddingTop: 'var(--space-3)' }}>
           {isOficina && navItem('/oficina', 'Fila da Oficina', 'oficina')}
+          {isOficina && canViewUsuarios && (
+            <>
+              {section('Cadastros')}
+              {navItem('/usuarios', 'UsuÃ¡rios', 'usuarios')}
+            </>
+          )}
           {(isAdmin || isCaixa) && (
             <>
               {section('Operação')}

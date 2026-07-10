@@ -5,12 +5,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Sidebar from './Sidebar'
 import api from '../services/api'
 
+let authState
+
 vi.mock('../context/AuthContext', () => ({
-  useAuth: () => ({
-    user: { id: 2, name: 'Caixa RBAC', role: 'caixa' },
-    logout: vi.fn(),
-    switchUser: vi.fn(),
-  }),
+  useAuth: () => authState,
 }))
 
 vi.mock('../services/api', () => ({
@@ -26,6 +24,11 @@ vi.mock('react-hot-toast', () => ({
 describe('Sidebar', () => {
   beforeEach(() => {
     api.get.mockResolvedValue({ data: [] })
+    authState = {
+      user: { id: 2, name: 'Caixa RBAC', role: 'caixa' },
+      logout: vi.fn(),
+      switchUser: vi.fn(),
+    }
     window.matchMedia = vi.fn().mockImplementation(() => ({
       matches: false,
       addEventListener: vi.fn(),
@@ -41,6 +44,24 @@ describe('Sidebar', () => {
     )
 
     expect(screen.getByText('Atendimento')).toBeInTheDocument()
-    expect(screen.queryByText('Usuários')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /usu/i })).not.toBeInTheDocument()
+  })
+
+  it('shows Usuarios for non-admin users with usuarios.ver permission', () => {
+    authState = {
+      user: { id: 3, name: 'Oficina Gestora', role: 'oficina' },
+      logout: vi.fn(),
+      switchUser: vi.fn(),
+      can: (permission) => permission === 'usuarios.ver',
+    }
+
+    render(
+      <MemoryRouter>
+        <Sidebar collapsed={false} />
+      </MemoryRouter>
+    )
+
+    expect(screen.getByText('Fila da Oficina')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /usu/i })).toBeInTheDocument()
   })
 })
