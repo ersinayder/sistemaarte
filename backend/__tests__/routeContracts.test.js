@@ -70,6 +70,19 @@ function routeRoles(router, method, path) {
 }
 
 describe('route authorization contracts', () => {
+  it('protects users routes with fine-grained RBAC permissions', () => {
+    const source = fs.readFileSync(new URL('../routes/users.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/router\.get\(["']\/["'],\s*auth\(\),\s*authPermission\(["']usuarios\.ver["']\)/);
+    expect(source).toMatch(/router\.post\(["']\/["'],\s*auth\(\),\s*authPermission\(["']usuarios\.criar["']\)/);
+    expect(source).toMatch(/router\.put\(["']\/:id["'],\s*auth\(\),\s*authPermission\(["']usuarios\.editar["']\)/);
+    expect(source).toMatch(/router\.get\(["']\/:id\/delete-check["'],\s*auth\(\),\s*authPermission\(["']usuarios\.excluir_permanente["']\)/);
+    expect(source).toMatch(/router\.post\(["']\/:id\/archive["'],\s*auth\(\),\s*authPermission\(["']usuarios\.arquivar["']\)/);
+    expect(source).toMatch(/router\.post\(["']\/:id\/restore["'],\s*auth\(\),\s*authPermission\(["']usuarios\.restaurar["']\)/);
+    expect(source).toMatch(/router\.post\(["']\/:id\/reset-password["'],\s*auth\(\),\s*authPermission\(["']usuarios\.resetar_senha["']\)/);
+    expect(source).toMatch(/router\.delete\(["']\/:id["'],\s*auth\(\),\s*authPermission\(["']usuarios\.excluir_permanente["']\)/);
+  });
+
   it('exposes whatsapp notice routes with explicit role restrictions', async () => {
     const ordensRouter = await loadRouter('../routes/ordens.js');
 
