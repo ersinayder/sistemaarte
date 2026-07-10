@@ -28,7 +28,15 @@ function getErrorMessage(error, fallback) {
 }
 
 function isArchived(user) {
-  return Boolean(user?.archivedat || user?.archivedAt || user?.archived_at || user?.status === 'archived')
+  return Boolean(
+    user?.deletedat ||
+    user?.deletedAt ||
+    user?.deleted_at ||
+    user?.archivedat ||
+    user?.archivedAt ||
+    user?.archived_at ||
+    user?.status === 'archived'
+  )
 }
 
 function isActive(user) {
@@ -508,7 +516,7 @@ export default function Usuarios() {
             Editar
           </button>
         )}
-        {canResetPassword && !archived && (
+        {canResetPassword && !archived && !self && (
           <button
             className={btnClass}
             type="button"

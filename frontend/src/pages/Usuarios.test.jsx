@@ -51,9 +51,7 @@ const usersEnvelope = {
       name: 'Caixa Antigo',
       username: 'caixa.antigo',
       role: 'caixa',
-      active: 0,
-      archivedat: null,
-      archivedreason: null,
+      active: 1,
       createdat: '2026-06-10T10:00:00',
     },
     {
@@ -62,12 +60,20 @@ const usersEnvelope = {
       username: 'oficina.old',
       role: 'oficina',
       active: 0,
-      archivedat: '2026-06-20T10:00:00',
-      archivedreason: 'Saiu da loja',
+      deletedat: '2026-06-20T10:00:00',
+      deletedreason: 'Saiu da loja',
       createdat: '2026-06-11T10:00:00',
     },
+    {
+      id: 4,
+      name: 'Caixa Ativa',
+      username: 'caixa.ativa',
+      role: 'caixa',
+      active: 1,
+      createdat: '2026-06-12T10:00:00',
+    },
   ],
-  meta: { total: 3 },
+  meta: { total: 4 },
 }
 
 function mockUsersApi() {
@@ -106,6 +112,7 @@ describe('Usuarios', () => {
     expect((await screen.findAllByText('Admin Loja')).length).toBeGreaterThan(0)
     expect(screen.getAllByText('Caixa Antigo').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Oficina Arquivada').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Caixa Ativa').length).toBeGreaterThan(0)
     expect(screen.getByRole('columnheader', { name: /usuario/i })).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: /login/i })).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: /perfil/i })).toBeInTheDocument()
@@ -167,5 +174,25 @@ describe('Usuarios', () => {
     await waitFor(() => {
       expect(api.post).toHaveBeenCalledWith('/users/3/restore')
     })
+  })
+
+  it('shows only restore action for archived users returned by the API', async () => {
+    render(<Usuarios />)
+
+    await screen.findByRole('button', { name: /restaurar oficina arquivada/i })
+
+    expect(screen.getAllByText(/motivo: saiu da loja/i).length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: /restaurar oficina arquivada/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /arquivar oficina arquivada/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /redefinir senha de oficina arquivada/i })).not.toBeInTheDocument()
+  })
+
+  it('does not show self reset-password action while keeping it for another active user', async () => {
+    render(<Usuarios />)
+
+    await screen.findAllByText('Admin Loja')
+
+    expect(screen.queryByRole('button', { name: /redefinir senha de admin loja/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /redefinir senha de caixa ativa/i })).toBeInTheDocument()
   })
 })
