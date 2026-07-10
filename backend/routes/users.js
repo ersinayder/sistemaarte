@@ -8,6 +8,7 @@ const {
   validarAcaoProprioUsuario,
   validarUltimoAdminDisponivel,
 } = require("../domain/userRules");
+const { hasPermission } = require("../domain/permissionRules");
 const {
   USER_HISTORY_REFERENCES,
   normalizeArchiveReason,
@@ -79,6 +80,26 @@ function contarAdminsAtivos() {
 function responderValidacao(res, validacao) {
   if (validacao.ok) return false;
   res.status(400).json({ error: validacao.error });
+  return true;
+}
+
+function normalizeText(value) {
+  return String(value ?? "").trim();
+}
+
+function hasOwn(body, field) {
+  return Object.prototype.hasOwnProperty.call(body || {}, field);
+}
+
+function isDuplicateUsernameError(error) {
+  const message = String(error?.message || "");
+  return message.includes("users.username")
+    && (message.includes("UNIQUE constraint failed") || message.includes("SQLITE_CONSTRAINT"));
+}
+
+function responderUsernameDuplicado(res, error) {
+  if (!isDuplicateUsernameError(error)) return false;
+  res.status(409).json({ error: "Nome de usuario ja em uso." });
   return true;
 }
 
@@ -172,7 +193,10 @@ router.get("/", auth(), authPermission("usuarios.ver"), (req, res, next) => {
 
 router.post("/", auth(), authPermission("usuarios.criar"), (req, res, next) => {
   try {
-    const { name, username, password, role } = req.body ?? {};
+    const name = normalizeText(req.body?.name);
+    const username = normalizeText(req.body?.username);
+    const password = req.body?.password;
+    const role = normalizeText(req.body?.role);
     if (!name || !username || !password || !role)
       return res.status(400).json({ error: "Todos os campos sao obrigatorios" });
     if (!ROLES_VALIDOS.includes(role))
@@ -180,25 +204,42 @@ router.post("/", auth(), authPermission("usuarios.criar"), (req, res, next) => {
     const senhaValidacao = validarSenhaUsuario(password, { required: true });
     if (!senhaValidacao.ok)
       return res.status(400).json({ error: senhaValidacao.error });
-    const id = runInsert(
-      "INSERT INTO users (name,username,password,role,profile_key) VALUES (?,?,?,?,?)",
-      [name, username, bcrypt.hashSync(password, 10), role, role]
-    );
+    let id;
+    try {
+      id = runInsert(
+        "INSERT INTO users (name,username,password,role,profile_key) VALUES (?,?,?,?,?)",
+        [name, username, bcrypt.hashSync(password, 10), role, role]
+      );
+    } catch (e) {
+      if (responderUsernameDuplicado(res, e)) return;
+      throw e;
+    }
     res.json({ id, name, username, role, profile_key: role });
   } catch(e) { next(e); }
 });
 
 router.put("/:id", auth(), authPermission("usuarios.editar"), (req, res, next) => {
   try {
-    const { name, username, role, active, password } = req.body ?? {};
+    const body = req.body ?? {};
+    const { active, password } = body;
     const atual = buscarUsuario(req.params.id);
     if (!atual) return res.status(404).json({ error: "Usuario nao encontrado" });
 
-    const nextRole = role || atual.role;
-    const nextUsername = username || atual.username;
+    const hasName = hasOwn(body, "name");
+    const hasUsername = hasOwn(body, "username");
+    const hasRole = hasOwn(body, "role");
+    const hasPassword = hasOwn(body, "password") && String(password ?? "") !== "";
+    const nextName = hasName ? normalizeText(body.name) : atual.name;
+    const nextUsername = hasUsername ? normalizeText(body.username) : atual.username;
+    const nextRole = hasRole ? normalizeText(body.role) : atual.role;
     const nextActive = active == null ? Number(atual.active) : (active ? 1 : 0);
+    if ((hasName && !nextName) || (hasUsername && !nextUsername))
+      return res.status(400).json({ error: "Todos os campos sao obrigatorios" });
     if (!ROLES_VALIDOS.includes(nextRole))
       return res.status(400).json({ error: "Perfil invalido" });
+    if (hasPassword && !hasPermission(req.user, "usuarios.resetar_senha")) {
+      return res.status(403).json({ error: "Sem permissao" });
+    }
 
     const selfCheck = validarAlteracaoProprioUsuario({
       requesterId: req.user?.id,
@@ -220,19 +261,24 @@ router.put("/:id", auth(), authPermission("usuarios.editar"), (req, res, next) =
       || (atual.profile_key || atual.role) !== nextRole
       || Number(atual.active) !== nextActive
       || atual.username !== nextUsername
-      || Boolean(password);
+      || hasPassword;
     const accessVersionSql = mustIncrementAccessVersion ? ", access_version=access_version+1" : "";
 
-    if (password) {
-      run(
-        `UPDATE users SET name=?,username=?,role=?,profile_key=?,active=?,password=?,updatedat=datetime('now','localtime')${accessVersionSql} WHERE id=?`,
-        [name || atual.name, nextUsername, nextRole, nextRole, nextActive, bcrypt.hashSync(password, 10), req.params.id]
-      );
-    } else {
-      run(
-        `UPDATE users SET name=?,username=?,role=?,profile_key=?,active=?,updatedat=datetime('now','localtime')${accessVersionSql} WHERE id=?`,
-        [name || atual.name, nextUsername, nextRole, nextRole, nextActive, req.params.id]
-      );
+    try {
+      if (hasPassword) {
+        run(
+          `UPDATE users SET name=?,username=?,role=?,profile_key=?,active=?,password=?,updatedat=datetime('now','localtime')${accessVersionSql} WHERE id=?`,
+          [nextName, nextUsername, nextRole, nextRole, nextActive, bcrypt.hashSync(password, 10), req.params.id]
+        );
+      } else {
+        run(
+          `UPDATE users SET name=?,username=?,role=?,profile_key=?,active=?,updatedat=datetime('now','localtime')${accessVersionSql} WHERE id=?`,
+          [nextName, nextUsername, nextRole, nextRole, nextActive, req.params.id]
+        );
+      }
+    } catch (e) {
+      if (responderUsernameDuplicado(res, e)) return;
+      throw e;
     }
     res.json({ ok: true });
   } catch(e) { next(e); }
@@ -240,6 +286,8 @@ router.put("/:id", auth(), authPermission("usuarios.editar"), (req, res, next) =
 
 router.get("/:id/delete-check", auth(), authPermission("usuarios.excluir_permanente"), (req, res, next) => {
   try {
+    const usuario = buscarUsuario(req.params.id);
+    if (!usuario) return res.status(404).json({ error: "Usuario nao encontrado" });
     res.json(canPermanentlyDeleteUser(contarReferenciasHistoricas(req.params.id)));
   } catch(e) { next(e); }
 });
@@ -276,6 +324,7 @@ router.post("/:id/restore", auth(), authPermission("usuarios.restaurar"), (req, 
       action: "restore",
     });
     if (responderValidacao(res, selfCheck)) return;
+    if (!usuario.deletedat) return res.status(400).json({ error: "Usuario nao esta arquivado" });
 
     run(
       "UPDATE users SET active=1, deletedat=NULL, deletedpor=NULL, deletedreason=NULL, updatedat=datetime('now','localtime'), access_version=access_version+1 WHERE id=?",

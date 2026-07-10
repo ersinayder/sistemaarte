@@ -148,10 +148,10 @@ describe("users routes", () => {
 
     await businessHandler("post", "/")(routeRequest({
       body: {
-        name: "Nova Caixa",
-        username: "nova.caixa",
+        name: "  Nova Caixa  ",
+        username: "  nova.caixa  ",
         password: "senhaSegura123",
-        role: "caixa",
+        role: " caixa ",
       },
     }), res, vi.fn());
 
@@ -172,6 +172,41 @@ describe("users routes", () => {
     });
   });
 
+  it("rejects whitespace-only required fields when creating users", async () => {
+    for (const body of [
+      { name: "   ", username: "novo", password: "senhaSegura123", role: "caixa" },
+      { name: "Novo Usuario", username: "   ", password: "senhaSegura123", role: "caixa" },
+    ]) {
+      const res = makeRes();
+      await businessHandler("post", "/")(routeRequest({ body }), res, vi.fn());
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({ error: "Todos os campos sao obrigatorios" });
+    }
+    expect(db.runInsert).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 when creating a user with a duplicate username", async () => {
+    db.runInsert.mockImplementationOnce(() => {
+      throw new Error("UNIQUE constraint failed: users.username");
+    });
+
+    const res = makeRes();
+    const next = vi.fn();
+    await businessHandler("post", "/")(routeRequest({
+      body: {
+        name: "Nova Caixa",
+        username: "caixa",
+        password: "senhaSegura123",
+        role: "caixa",
+      },
+    }), res, next);
+
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith({ error: "Nome de usuario ja em uso." });
+    expect(next).not.toHaveBeenCalled();
+  });
+
   it("updates role, active, username, and password while incrementing access_version", async () => {
     db.getOne
       .mockReturnValueOnce(mockUser({ id: 8, role: "caixa", username: "old.caixa", active: 1 }))
@@ -180,10 +215,11 @@ describe("users routes", () => {
     const res = makeRes();
     await businessHandler("put", "/:id")(routeRequest({
       params: { id: "8" },
+      user: { id: 99, role: "admin", permissions: ["usuarios.editar", "usuarios.resetar_senha"] },
       body: {
-        name: "Caixa Atualizada",
-        username: "nova.caixa",
-        role: "oficina",
+        name: " Caixa Atualizada ",
+        username: " nova.caixa ",
+        role: " oficina ",
         active: 0,
         password: "outraSenha123",
       },
@@ -201,6 +237,53 @@ describe("users routes", () => {
     expect(bcrypt.compareSync("outraSenha123", params[5])).toBe(true);
     expect(params[6]).toBe("8");
     expect(res.json).toHaveBeenCalledWith({ ok: true });
+  });
+
+  it("rejects explicit empty username updates instead of keeping the old username", async () => {
+    db.getOne.mockReturnValueOnce(mockUser({ id: 8, username: "old.caixa" }));
+
+    const res = makeRes();
+    await businessHandler("put", "/:id")(routeRequest({
+      params: { id: "8" },
+      body: { username: "   " },
+    }), res, vi.fn());
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ error: "Todos os campos sao obrigatorios" });
+    expect(db.run).not.toHaveBeenCalled();
+  });
+
+  it("blocks password changes through PUT without reset password permission", async () => {
+    db.getOne.mockReturnValueOnce(mockUser({ id: 8, username: "caixa" }));
+
+    const res = makeRes();
+    await businessHandler("put", "/:id")(routeRequest({
+      params: { id: "8" },
+      user: { id: 99, role: "admin", permissions: ["usuarios.editar"] },
+      body: { password: "outraSenha123" },
+    }), res, vi.fn());
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith({ error: "Sem permissao" });
+    expect(db.run).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 when updating a user to a duplicate username", async () => {
+    db.getOne.mockReturnValueOnce(mockUser({ id: 8, username: "caixa" }));
+    db.run.mockImplementationOnce(() => {
+      throw new Error("SQLITE_CONSTRAINT_UNIQUE: UNIQUE constraint failed: users.username");
+    });
+
+    const res = makeRes();
+    const next = vi.fn();
+    await businessHandler("put", "/:id")(routeRequest({
+      params: { id: "8" },
+      body: { username: "admin" },
+    }), res, next);
+
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith({ error: "Nome de usuario ja em uso." });
+    expect(next).not.toHaveBeenCalled();
   });
 
   it("blocks changing or deactivating the last active admin", async () => {
@@ -255,6 +338,20 @@ describe("users routes", () => {
     expect(res.json).toHaveBeenCalledWith({ ok: true });
   });
 
+  it("does not restore users that are not archived", async () => {
+    db.getOne.mockReturnValueOnce(mockUser({ id: 8, active: 1, deletedat: null }));
+
+    const res = makeRes();
+    await businessHandler("post", "/:id/restore")(routeRequest({
+      params: { id: "8" },
+      user: { id: 42, role: "admin" },
+    }), res, vi.fn());
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ error: "Usuario nao esta arquivado" });
+    expect(db.run).not.toHaveBeenCalled();
+  });
+
   it("resets another user's password with a hash and increments access_version", async () => {
     db.getOne.mockReturnValueOnce(mockUser({ id: 8 }));
 
@@ -295,6 +392,7 @@ describe("users routes", () => {
 
   it("returns delete-check allowed=false with blockers from historical references", async () => {
     db.getOne.mockImplementation((sql) => {
+      if (sql.includes("FROM users WHERE id")) return mockUser({ id: 8 });
       if (sql.includes("FROM ordens WHERE criadopor")) return { total: 2 };
       if (sql.includes("FROM statuslog WHERE usuarioid")) return { total: 1 };
       return { total: 0 };
@@ -312,6 +410,18 @@ describe("users routes", () => {
         { table: "statuslog", column: "usuarioid", label: "mudancas de status", total: 1 },
       ],
     });
+  });
+
+  it("returns 404 on delete-check when the user does not exist", async () => {
+    db.getOne.mockReturnValueOnce(null);
+
+    const res = makeRes();
+    await businessHandler("get", "/:id/delete-check")(routeRequest({
+      params: { id: "404" },
+    }), res, vi.fn());
+
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json).toHaveBeenCalledWith({ error: "Usuario nao encontrado" });
   });
 
   it("blocks permanent deletion with 409 when historical references exist", async () => {

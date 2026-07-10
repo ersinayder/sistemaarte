@@ -133,7 +133,11 @@ export default function Usuarios() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    try { const r = await api.get('/users'); setUsers(r.data) }
+    try {
+      const r = await api.get('/users')
+      const data = r.data
+      setUsers(Array.isArray(data) ? data : (data?.users || []))
+    }
     catch { toast.error('Erro ao carregar usuários') }
     finally { setLoading(false) }
   }, [])
