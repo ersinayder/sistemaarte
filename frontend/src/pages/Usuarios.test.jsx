@@ -1,13 +1,32 @@
 import React from 'react'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import api from '../services/api'
 import Usuarios from './Usuarios'
 
+const authState = {
+  user: {
+    id: 1,
+    name: 'Admin Loja',
+    username: 'admin',
+    role: 'admin',
+    permissions: ['*'],
+  },
+  can: vi.fn(() => true),
+}
+
 vi.mock('../services/api', () => ({
   default: {
     get: vi.fn(),
+    post: vi.fn(),
+    put: vi.fn(),
+    delete: vi.fn(),
   },
+}))
+
+vi.mock('../context/AuthContext', () => ({
+  useAuth: () => authState,
 }))
 
 vi.mock('react-hot-toast', () => ({
@@ -17,24 +36,136 @@ vi.mock('react-hot-toast', () => ({
   },
 }))
 
+const usersEnvelope = {
+  users: [
+    {
+      id: 1,
+      name: 'Admin Loja',
+      username: 'admin',
+      role: 'admin',
+      active: 1,
+      createdat: '2026-06-01T10:00:00',
+    },
+    {
+      id: 2,
+      name: 'Caixa Antigo',
+      username: 'caixa.antigo',
+      role: 'caixa',
+      active: 0,
+      archivedat: null,
+      archivedreason: null,
+      createdat: '2026-06-10T10:00:00',
+    },
+    {
+      id: 3,
+      name: 'Oficina Arquivada',
+      username: 'oficina.old',
+      role: 'oficina',
+      active: 0,
+      archivedat: '2026-06-20T10:00:00',
+      archivedreason: 'Saiu da loja',
+      createdat: '2026-06-11T10:00:00',
+    },
+  ],
+  meta: { total: 3 },
+}
+
+function mockUsersApi() {
+  api.get.mockImplementation((url) => {
+    if (url === '/users') {
+      return Promise.resolve({ data: usersEnvelope })
+    }
+    if (url === '/users/2/delete-check') {
+      return Promise.resolve({
+        data: {
+          allowed: false,
+          blockers: ['lancamentos criados'],
+        },
+      })
+    }
+    return Promise.reject(new Error(`GET inesperado: ${url}`))
+  })
+  api.post.mockResolvedValue({ data: {} })
+  api.put.mockResolvedValue({ data: {} })
+  api.delete.mockResolvedValue({ data: {} })
+}
+
 describe('Usuarios', () => {
   beforeEach(() => {
-    api.get.mockReset()
+    vi.clearAllMocks()
+    authState.can.mockImplementation(() => true)
+    mockUsersApi()
   })
 
-  it('renders users from the paginated users API envelope', async () => {
-    api.get.mockResolvedValue({
-      data: {
-        users: [
-          { id: 1, name: 'Ana Caixa', username: 'ana.caixa', role: 'caixa', active: 1 },
-        ],
-        meta: { total: 1 },
-      },
-    })
-
+  it('renders filters, table and API users returned in the paginated users envelope', async () => {
     render(<Usuarios />)
 
-    expect(await screen.findByText('Ana Caixa')).toBeInTheDocument()
-    expect(screen.getByText('@ana.caixa')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText(/buscar por nome ou login/i)).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: /status/i })).toHaveValue('active')
+    expect(screen.getByRole('combobox', { name: /perfil/i })).toHaveValue('')
+    expect((await screen.findAllByText('Admin Loja')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Caixa Antigo').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Oficina Arquivada').length).toBeGreaterThan(0)
+    expect(screen.getByRole('columnheader', { name: /usuario/i })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: /login/i })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: /perfil/i })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: /status/i })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: /criado em/i })).toBeInTheDocument()
+    expect(api.get).toHaveBeenCalledWith('/users', {
+      params: { status: 'active', role: undefined, q: undefined },
+    })
+  })
+
+  it('sends trimmed search text as q when the user changes the search filter', async () => {
+    const user = userEvent.setup()
+    render(<Usuarios />)
+
+    await screen.findAllByText('Caixa Antigo')
+    await user.type(screen.getByPlaceholderText(/buscar por nome ou login/i), ' caixa ')
+
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith('/users', expect.objectContaining({
+        params: expect.objectContaining({ q: 'caixa' }),
+      }))
+    })
+  })
+
+  it('archives a user with the reason informed in the dialog', async () => {
+    const user = userEvent.setup()
+    render(<Usuarios />)
+
+    await user.click(await screen.findByRole('button', { name: /arquivar caixa antigo/i }))
+    const dialog = await screen.findByRole('dialog', { name: /arquivar usuario/i })
+    await user.type(within(dialog).getByLabelText(/motivo/i), 'Saiu da loja')
+    await user.click(within(dialog).getByRole('button', { name: /arquivar/i }))
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith('/users/2/archive', { reason: 'Saiu da loja' })
+    })
+  })
+
+  it('shows delete-check blockers and does not show final permanent delete when blocked', async () => {
+    const user = userEvent.setup()
+    render(<Usuarios />)
+
+    await user.click(await screen.findByRole('button', { name: /verificar exclusao permanente de caixa antigo/i }))
+
+    expect(api.get).toHaveBeenCalledWith('/users/2/delete-check')
+    const dialog = await screen.findByRole('dialog', { name: /exclusao permanente/i })
+    expect(within(dialog).getByText(/lancamentos criados/i)).toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: /excluir permanentemente/i })).not.toBeInTheDocument()
+  })
+
+  it('restores an archived user after confirmation', async () => {
+    const user = userEvent.setup()
+    render(<Usuarios />)
+
+    await user.click(await screen.findByRole('button', { name: /restaurar oficina arquivada/i }))
+    const dialog = await screen.findByRole('dialog', { name: /restaurar usuario/i })
+    await user.click(within(dialog).getByRole('button', { name: /restaurar/i }))
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith('/users/3/restore')
+    })
   })
 })
