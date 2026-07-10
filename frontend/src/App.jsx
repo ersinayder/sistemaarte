@@ -21,11 +21,12 @@ const Produtos     = React.lazy(() => import('./pages/Produtos'))
 const NotasFiscais = React.lazy(() => import('./pages/NotasFiscais'))
 const Configuracoes = React.lazy(() => import('./pages/Configuracoes'))
 
-function PrivateRoute({ children, roles }) {
-  const { user, loading } = useAuth()
+function PrivateRoute({ children, roles, permissions }) {
+  const { user, loading, canAny } = useAuth()
   if (loading) return <div className="loading-center"><div className="spinner"/></div>
   if (!user)   return <Navigate to="/login" replace />
   if (roles && !roles.includes(user.role)) return <Navigate to="/" replace />
+  if (permissions && !canAny(permissions)) return <Navigate to="/" replace />
   return children
 }
 
@@ -60,7 +61,7 @@ function AppRoutes() {
           <Route path="/orcamento-rapido" element={<Navigate to="/orcamento/calculadora" replace />}/>
           <Route path="/propostas" element={<PrivateRoute roles={['admin','caixa']}><Propostas /></PrivateRoute>}/>
           <Route path="/produtos" element={<PrivateRoute roles={['admin','caixa']}><Produtos /></PrivateRoute>}/>
-          <Route path="/usuarios" element={<PrivateRoute roles={['admin']}><Usuarios /></PrivateRoute>}/>
+          <Route path="/usuarios" element={<PrivateRoute permissions={['usuarios.ver']}><Usuarios /></PrivateRoute>}/>
           <Route path="/configuracoes" element={<PrivateRoute roles={['admin']}><Configuracoes /></PrivateRoute>}/>
           <Route path="/nfe" element={<PrivateRoute roles={['admin','caixa']}><NotasFiscais /></PrivateRoute>}/>
           <Route path="/nfe/lixeira" element={<PrivateRoute roles={['admin']}><NotasFiscais lixeira /></PrivateRoute>}/>

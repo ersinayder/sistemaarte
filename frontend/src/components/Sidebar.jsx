@@ -47,7 +47,7 @@ function useTheme() {
 }
 
 export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }) {
-  const { user, logout, switchUser } = useAuth()
+  const { user, logout, switchUser, can } = useAuth()
   const [vencidas, setVencidas] = useState(0)
   const theme = useTheme()
   const logoSrc = theme === 'light' ? '/logo preta.png' : '/logo.png'
@@ -147,7 +147,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
               {section('Cadastros')}
               {navItem('/clientes', 'Clientes', 'clientes')}
               {navItem('/produtos', 'Produtos', 'produtos')}
-              {isAdmin && navItem('/usuarios', 'Usuários', 'usuarios')}
+              {(isAdmin || can('usuarios.ver')) && navItem('/usuarios', 'Usuários', 'usuarios')}
               {isAdmin && navItem('/configuracoes', 'Configurações', 'config')}
             </>
           )}

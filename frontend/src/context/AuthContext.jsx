@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
 import api from "../services/api";
 
 const AuthContext = createContext(null);
@@ -36,9 +36,25 @@ export function AuthProvider({ children }) {
   const isAdmin   = user?.role === "admin";
   const isCaixa   = user?.role === "caixa"   || user?.role === "admin";
   const isOficina = user?.role === "oficina" || user?.role === "admin";
+  const permissions = useMemo(
+    () => (Array.isArray(user?.permissions) ? user.permissions : []),
+    [user?.permissions]
+  );
+  const profile = user?.profile || {
+    key: user?.profile_key || user?.role,
+    name: user?.profile_name || user?.role,
+  };
+  const can = useCallback((permission) => {
+    if (!permission) return false;
+    return permissions.includes("*") || permissions.includes(permission);
+  }, [permissions]);
+  const canAny = useCallback((required) => {
+    if (!Array.isArray(required) || required.length === 0) return false;
+    return required.some((permission) => can(permission));
+  }, [can]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, switchUser, isAdmin, isCaixa, isOficina }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, switchUser, isAdmin, isCaixa, isOficina, permissions, profile, can, canAny }}>
       {children}
     </AuthContext.Provider>
   );
