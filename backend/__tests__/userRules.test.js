@@ -6,6 +6,7 @@ const {
   validarSessaoUsuario,
   validarAcaoProprioUsuario,
   validarUltimoAdminDisponivel,
+  isAdminDisponivel,
 } = await import('../domain/userRules.js');
 
 describe('userRules', () => {
@@ -128,11 +129,18 @@ describe('userRules', () => {
 
 describe("regras de gestao de usuarios", () => {
   it("bloqueia arquivamento, restauracao, reset e exclusao permanente do proprio usuario", () => {
-    expect(validarAcaoProprioUsuario({
-      requesterId: 1,
-      targetId: 1,
-      action: "archive",
-    })).toEqual({ ok: false, error: "Voce nao pode arquivar seu proprio usuario" });
+    [
+      ["archive", "Voce nao pode arquivar seu proprio usuario"],
+      ["restore", "Voce nao pode restaurar seu proprio usuario"],
+      ["reset_password", "Voce nao pode resetar sua propria senha por esta tela"],
+      ["delete_permanent", "Voce nao pode excluir permanentemente seu proprio usuario"],
+    ].forEach(([action, error]) => {
+      expect(validarAcaoProprioUsuario({
+        requesterId: 1,
+        targetId: 1,
+        action,
+      })).toEqual({ ok: false, error });
+    });
 
     expect(validarAcaoProprioUsuario({
       requesterId: 1,
@@ -141,24 +149,60 @@ describe("regras de gestao de usuarios", () => {
     })).toEqual({ ok: true });
   });
 
-  it("bloqueia remover o ultimo admin ativo nao arquivado", () => {
+  it("identifica administradores ativos e nao arquivados disponiveis", () => {
+    expect(isAdminDisponivel({ role: "admin", active: 1, deletedat: null })).toBe(true);
+    expect(isAdminDisponivel({ role: "admin", active: "1", deletedat: null })).toBe(true);
+    expect(isAdminDisponivel({ role: "admin", active: 0, deletedat: null })).toBe(false);
+    expect(isAdminDisponivel({ role: "admin", active: 1, deletedat: "2026-07-09 10:00:00" })).toBe(false);
+    expect(isAdminDisponivel({ role: "caixa", active: 1, deletedat: null })).toBe(false);
+  });
+
+  it("bloqueia acoes que removem o ultimo admin ativo nao arquivado", () => {
+    ["archive", "deactivate", "delete_permanent", "change_role"].forEach((action) => {
+      expect(validarUltimoAdminDisponivel({
+        targetRole: "admin",
+        targetActive: 1,
+        targetDeletedat: null,
+        activeAdminCount: 1,
+        action,
+      })).toEqual({
+        ok: false,
+        error: "Nao e possivel remover o ultimo administrador ativo",
+      });
+    });
+  });
+
+  it("permite acoes que nao removem o ultimo admin disponivel", () => {
     expect(validarUltimoAdminDisponivel({
       targetRole: "admin",
       targetActive: 1,
       targetDeletedat: null,
       activeAdminCount: 1,
-      action: "archive",
-    })).toEqual({
-      ok: false,
-      error: "Nao e possivel remover o ultimo administrador ativo",
-    });
+      action: "restore",
+    })).toEqual({ ok: true });
 
     expect(validarUltimoAdminDisponivel({
-      targetRole: "caixa",
+      targetRole: "admin",
       targetActive: 1,
       targetDeletedat: null,
-      activeAdminCount: 1,
+      activeAdminCount: 2,
       action: "archive",
+    })).toEqual({ ok: true });
+
+    expect(validarUltimoAdminDisponivel({
+      targetRole: "admin",
+      targetActive: 1,
+      targetDeletedat: "2026-07-09 10:00:00",
+      activeAdminCount: 1,
+      action: "delete_permanent",
+    })).toEqual({ ok: true });
+
+    expect(validarUltimoAdminDisponivel({
+      targetRole: "admin",
+      targetActive: 0,
+      targetDeletedat: null,
+      activeAdminCount: 1,
+      action: "delete_permanent",
     })).toEqual({ ok: true });
   });
 });
