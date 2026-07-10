@@ -331,9 +331,28 @@ describe('auth middleware', () => {
       expect(next).not.toHaveBeenCalled();
     });
 
-    it('mantem compatibilidade com token antigo sem accessVersion', () => {
+    it('mantem compatibilidade com token antigo sem accessVersion quando versao atual ainda e inicial', () => {
       const token = makeToken({ id: 10, role: 'admin' });
       const req = makeReq({ cookies: { token } });
+      setSessionUserLookupForTests(() => ({
+        id: 10,
+        role: 'admin',
+        active: 1,
+        deletedat: null,
+        access_version: 1,
+        profile_active: 1,
+        permissions: [],
+      }));
+
+      auth(['admin'])(req, makeRes(), next);
+
+      expect(next).toHaveBeenCalledOnce();
+    });
+
+    it('rejeita token antigo sem accessVersion apos incremento da versao de acesso', () => {
+      const token = makeToken({ id: 10, role: 'admin' });
+      const req = makeReq({ cookies: { token } });
+      const res = makeRes();
       setSessionUserLookupForTests(() => ({
         id: 10,
         role: 'admin',
@@ -344,9 +363,11 @@ describe('auth middleware', () => {
         permissions: [],
       }));
 
-      auth(['admin'])(req, makeRes(), next);
+      auth(['admin'])(req, res, next);
 
-      expect(next).toHaveBeenCalledOnce();
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith({ error: 'Sessao desatualizada. Entre novamente.' });
+      expect(next).not.toHaveBeenCalled();
     });
 
     it('rejeita token antigo quando role do token diverge da role atual', () => {

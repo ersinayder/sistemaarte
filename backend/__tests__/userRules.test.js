@@ -133,6 +133,15 @@ describe('userRules', () => {
       status: 401,
       error: "Sessao desatualizada. Entre novamente.",
     });
+
+    expect(validarSessaoUsuario(
+      { id: 1, role: "admin" },
+      { id: 1, role: "admin", active: 1, deletedat: null, profile_active: 1, access_version: 2 }
+    )).toEqual({
+      ok: false,
+      status: 401,
+      error: "Sessao desatualizada. Entre novamente.",
+    });
   });
 });
 

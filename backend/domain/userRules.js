@@ -89,8 +89,10 @@ function validarSessaoUsuario(payload, usuarioAtual) {
     return { ok: false, status: 401, error: "Perfil inativo" };
   }
 
-  if (payload?.accessVersion != null && usuarioAtual.access_version != null
-    && Number(payload.accessVersion) !== Number(usuarioAtual.access_version)) {
+  const currentAccessVersion = Number(usuarioAtual.access_version || 1);
+  const tokenAccessVersion = payload?.accessVersion == null ? 1 : Number(payload.accessVersion);
+
+  if (tokenAccessVersion !== currentAccessVersion) {
     return { ok: false, status: 401, error: "Sessao desatualizada. Entre novamente." };
   }
 
