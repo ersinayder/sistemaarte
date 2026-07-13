@@ -3,7 +3,7 @@ const path = require("path");
 const multer = require("multer");
 const router = require("express").Router();
 const { getOne, getAll, run, runInsert, backup } = require("../database");
-const { auth } = require("../middlewares/auth");
+const { auth, authPermission } = require("../middlewares/auth");
 const {
   normalizarEmpresaConfig,
   validarEmpresaConfig,
@@ -532,26 +532,26 @@ router.put("/whatsapp", auth(["admin"]), (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.get("/backups", auth(["admin"]), (_req, res, next) => {
+router.get("/backups", auth(), authPermission("backups.ver"), (_req, res, next) => {
   try {
     res.json({ backups: backupAtual() });
   } catch (e) { next(e); }
 });
 
-router.post("/backups/manual", auth(["admin"]), async (_req, res, next) => {
+router.post("/backups/manual", auth(), authPermission("backups.executar"), async (_req, res, next) => {
   try {
     await backup();
     res.json({ ok: true, backups: backupAtual() });
   } catch (e) { next(e); }
 });
 
-router.get("/seguranca", auth(["admin"]), (_req, res, next) => {
+router.get("/seguranca", auth(), authPermission("configuracoes.seguranca"), (_req, res, next) => {
   try {
     res.json({ seguranca: segurancaAtual() });
   } catch (e) { next(e); }
 });
 
-router.get("/sistema", auth(["admin"]), (_req, res, next) => {
+router.get("/sistema", auth(), authPermission("configuracoes.ver"), (_req, res, next) => {
   try {
     res.json({ sistema: sistemaAtual() });
   } catch (e) { next(e); }

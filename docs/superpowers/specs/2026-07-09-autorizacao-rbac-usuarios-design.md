@@ -463,5 +463,7 @@ O projeto sera considerado completo quando:
 - Fase 2 implementada: gestao de usuarios com filtros, arquivamento/restauracao, reset de senha, exclusao permanente bloqueada por vinculos historicos e tela `/usuarios` operacional.
 - `/api/users`, a rota `/usuarios` e o link de Usuarios na sidebar usam permissoes `usuarios.*`.
 - Fase 3 iniciada: `/api/clientes`, `/api/produtos`, rotas `/clientes` e `/produtos`, links de cadastro e acoes dessas paginas usam permissoes `clientes.*` e `produtos.*`.
-- Rotas de negocio sensiveis fora de usuarios/clientes/produtos continuam usando roles durante esta fase.
+- Fase 3 expandida: `/api/backup`, endpoints de apoio em `/api/configuracoes/backups`, `/api/configuracoes/seguranca`, `/api/configuracoes/sistema` e `/api/relatorios` usam permissoes `backups.*`, `configuracoes.*` e `relatorios.*`.
+- A tela `/configuracoes` ainda nao foi ampliada para perfis nao-admin, pois mistura secoes sensiveis que precisam de gates visuais proprios.
+- Rotas de negocio sensiveis fora de usuarios/clientes/produtos/backups/configuracoes de apoio/relatorios continuam usando roles durante esta fase.
 - Edicao visual de perfis e matriz de permissoes segue reservada para fase posterior.

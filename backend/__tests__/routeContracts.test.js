@@ -104,6 +104,27 @@ describe('route authorization contracts', () => {
     expect(produtosSource).toMatch(/router\.delete\(["']\/:id["'],\s*auth\(\),\s*authPermission\(["']produtos\.excluir["']\)/);
   });
 
+  it('protects admin support routes with fine-grained RBAC permissions', () => {
+    const backupSource = fs.readFileSync(new URL('../routes/backup.js', import.meta.url), 'utf8');
+    const configuracoesSource = fs.readFileSync(new URL('../routes/configuracoes.js', import.meta.url), 'utf8');
+    const relatoriosSource = fs.readFileSync(new URL('../routes/relatorios.js', import.meta.url), 'utf8');
+
+    expect(backupSource).toMatch(/const\s+\{\s*auth,\s*authPermission\s*\}\s*=\s*require\(["']\.\.\/middlewares\/auth["']\)/);
+    expect(backupSource).toMatch(/router\.get\(["']\/status["'],\s*auth\(\),\s*authPermission\(["']backups\.ver["']\)/);
+    expect(backupSource).toMatch(/router\.post\(["']\/["'],\s*auth\(\),\s*authPermission\(["']backups\.executar["']\)/);
+
+    expect(configuracoesSource).toMatch(/const\s+\{\s*auth,\s*authPermission\s*\}\s*=\s*require\(["']\.\.\/middlewares\/auth["']\)/);
+    expect(configuracoesSource).toMatch(/router\.get\(["']\/backups["'],\s*auth\(\),\s*authPermission\(["']backups\.ver["']\)/);
+    expect(configuracoesSource).toMatch(/router\.post\(["']\/backups\/manual["'],\s*auth\(\),\s*authPermission\(["']backups\.executar["']\)/);
+    expect(configuracoesSource).toMatch(/router\.get\(["']\/seguranca["'],\s*auth\(\),\s*authPermission\(["']configuracoes\.seguranca["']\)/);
+    expect(configuracoesSource).toMatch(/router\.get\(["']\/sistema["'],\s*auth\(\),\s*authPermission\(["']configuracoes\.ver["']\)/);
+
+    expect(relatoriosSource).toMatch(/const\s+\{\s*auth,\s*authPermission\s*\}\s*=\s*require\(["']\.\.\/middlewares\/auth["']\)/);
+    expect(relatoriosSource).toMatch(/router\.get\(["']\/resumo["'],\s*auth\(\),\s*authPermission\(["']relatorios\.ver["']\)/);
+    expect(relatoriosSource).toMatch(/router\.get\(["']\/producao["'],\s*auth\(\),\s*authPermission\(["']relatorios\.producao["']\)/);
+    expect(relatoriosSource).toMatch(/router\.get\(["']\/producao\/pdf["'],\s*auth\(\),\s*authPermission\(["']relatorios\.producao["']\)/);
+  });
+
   it('exposes whatsapp notice routes with explicit role restrictions', async () => {
     const ordensRouter = await loadRouter('../routes/ordens.js');
 
@@ -139,14 +160,11 @@ describe('route authorization contracts', () => {
 
   it('restricts sensitive read routes away from oficina', async () => {
     const caixaRouter = await loadRouter('../routes/caixa.js');
-    const relatoriosRouter = await loadRouter('../routes/relatorios.js');
     const financeiroRouter = await loadRouter('../routes/financeiro.js');
     const kpisRouter = await loadRouter('../routes/kpis.js');
 
     expect(routeRoles(caixaRouter, 'get', '/')).toEqual(['admin', 'caixa']);
     expect(routeRoles(caixaRouter, 'get', '/fechamento')).toEqual(['admin', 'caixa']);
-    expect(routeRoles(relatoriosRouter, 'get', '/resumo')).toEqual(['admin', 'caixa']);
-    expect(routeRoles(relatoriosRouter, 'get', '/producao/pdf')).toEqual(['admin']);
     expect(routeRoles(financeiroRouter, 'get', '/resumo')).toEqual(['admin']);
     expect(routeRoles(financeiroRouter, 'get', '/resumo/pdf')).toEqual(['admin']);
     expect(routeRoles(kpisRouter, 'get', '/integridade')).toEqual(['admin']);
@@ -961,12 +979,9 @@ describe('pagination route contracts', () => {
 });
 
 describe('backup route contracts', () => {
-  it('exposes admin-only backup status and returns full manual backup result', async () => {
-    const backupRouter = await loadRouter('../routes/backup.js');
+  it('exposes backup status and returns full manual backup result', () => {
     const source = fs.readFileSync(new URL('../routes/backup.js', import.meta.url), 'utf8');
 
-    expect(routeRoles(backupRouter, 'get', '/status')).toEqual(['admin']);
-    expect(routeRoles(backupRouter, 'post', '/')).toEqual(['admin']);
     expect(source).toMatch(/readBackupStatus/);
     expect(source).toMatch(/res\.json\(result\)/);
     expect(source).not.toMatch(/res\.json\(\{\s*ok:\s*true\s*\}\)/);
