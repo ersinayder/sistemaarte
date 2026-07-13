@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'react-hot-toast';
 import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 const TABS = [
-  { id: 'resumo', label: 'Resumo mensal' },
-  { id: 'pagar', label: 'Contas a pagar' },
-  { id: 'receber', label: 'Contas a receber' },
-  { id: 'dre', label: 'DRE gerencial' },
+  { id: 'resumo', label: 'Resumo mensal', permissions: ['financeiro.ver'] },
+  { id: 'pagar', label: 'Contas a pagar', permissions: ['financeiro.contas_pagar.ver'] },
+  { id: 'receber', label: 'Contas a receber', permissions: ['financeiro.ver'] },
+  { id: 'dre', label: 'DRE gerencial', permissions: ['financeiro.relatorios'] },
 ];
 
 const CATEGORIAS = ['Fornecedor', 'Aluguel', 'Energia', 'Internet', 'Impostos', 'Salarios', 'Marketing', 'Manutencao', 'Materiais', 'Taxas', 'Outros'];
@@ -220,6 +221,7 @@ function ContaForm({ initial, onCancel, onSave }) {
 }
 
 export default function Financeiro() {
+  const { can } = useAuth();
   const [tab, setTab] = useState('resumo');
   const [mes, setMes] = useState(mesAtual());
   const [loading, setLoading] = useState(false);
@@ -232,17 +234,32 @@ export default function Financeiro() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
 
+  const canViewFinanceiro = can('financeiro.ver');
+  const canViewContasPagar = can('financeiro.contas_pagar.ver');
+  const canEditContasPagar = can('financeiro.contas_pagar.editar');
+  const canPagarContasPagar = can('financeiro.contas_pagar.pagar');
+  const canPrintReports = can('financeiro.relatorios');
+  const visibleTabs = useMemo(
+    () => TABS.filter((item) => item.permissions.some((permission) => can(permission))),
+    [can]
+  );
+
   useEffect(() => { document.title = 'Financeiro - Arte & Molduras'; }, []);
+  useEffect(() => {
+    if (visibleTabs.length > 0 && !visibleTabs.some((item) => item.id === tab)) {
+      setTab(visibleTabs[0].id);
+    }
+  }, [tab, visibleTabs]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const [resumoRes, contasRes, receberRes, dreRes, integridadeRes] = await Promise.all([
-        api.get(`/financeiro/resumo?mes=${mes}`),
-        api.get(`/financeiro/contas-pagar?mes=${mes}`),
-        api.get('/financeiro/contas-receber'),
-        api.get(`/financeiro/dre?mes=${mes}`),
-        api.get('/financeiro/integridade-os', { skipGlobalErrorToast: true }).catch(() => ({ data: null })),
+        canViewFinanceiro ? api.get(`/financeiro/resumo?mes=${mes}`) : Promise.resolve({ data: null }),
+        canViewContasPagar ? api.get(`/financeiro/contas-pagar?mes=${mes}`) : Promise.resolve({ data: [] }),
+        canViewFinanceiro ? api.get('/financeiro/contas-receber') : Promise.resolve({ data: [] }),
+        canPrintReports ? api.get(`/financeiro/dre?mes=${mes}`) : Promise.resolve({ data: null }),
+        canViewFinanceiro ? api.get('/financeiro/integridade-os', { skipGlobalErrorToast: true }).catch(() => ({ data: null })) : Promise.resolve({ data: null }),
       ]);
       setResumo(resumoRes.data || null);
       setContas(contasRes.data || []);
@@ -254,7 +271,7 @@ export default function Financeiro() {
     } finally {
       setLoading(false);
     }
-  }, [mes]);
+  }, [canPrintReports, canViewContasPagar, canViewFinanceiro, mes]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -272,6 +289,7 @@ export default function Financeiro() {
   const totalReceber = receber.reduce((s, c) => s + Number(c.saldo || 0), 0);
 
   const saveConta = async (payload) => {
+    if (!canEditContasPagar) return;
     try {
       if (editing) await api.put(`/financeiro/contas-pagar/${editing.id}`, payload);
       else await api.post('/financeiro/contas-pagar', payload);
@@ -285,6 +303,7 @@ export default function Financeiro() {
   };
 
   const pagarConta = async (conta) => {
+    if (!canPagarContasPagar) return;
     if (!window.confirm(`Marcar "${conta.descricao}" como paga e lançar saída no caixa?`)) return;
     try {
       await api.patch(`/financeiro/contas-pagar/${conta.id}/pagar`, { pagoem: today(), pagamento: conta.pagamento || 'Pix' });
@@ -296,6 +315,7 @@ export default function Financeiro() {
   };
 
   const cancelarConta = async (conta) => {
+    if (!canEditContasPagar) return;
     if (!window.confirm(`Cancelar "${conta.descricao}"?`)) return;
     try {
       await api.patch(`/financeiro/contas-pagar/${conta.id}/cancelar`);
@@ -307,6 +327,7 @@ export default function Financeiro() {
   };
 
   const abrirImpressao = () => {
+    if (!canPrintReports) return;
     const urls = {
       resumo: `/api/financeiro/resumo/pdf?mes=${encodeURIComponent(mes)}`,
       pagar: `/api/financeiro/contas-pagar/pdf?mes=${encodeURIComponent(mes)}`,
@@ -340,11 +361,11 @@ export default function Financeiro() {
         <StatCard label="Pagas no mes" value={fmt(totaisPagar.pagas)} color="var(--color-success)" />
         <StatCard label="Vencidas" value={fmt(totaisPagar.vencidas)} color="var(--color-error)" />
       </div>
-      {showForm && <ContaForm initial={editing} onCancel={() => { setShowForm(false); setEditing(null); }} onSave={saveConta} />}
+      {showForm && canEditContasPagar && <ContaForm initial={editing} onCancel={() => { setShowForm(false); setEditing(null); }} onSave={saveConta} />}
       <div className="card" style={{ overflow: 'hidden' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-4)', borderBottom: '1px solid var(--color-border)' }}>
           <strong>Contas do mes</strong>
-          <button className="btn btn-primary" onClick={() => { setEditing(null); setShowForm(true); }}>Nova conta</button>
+          {canEditContasPagar && <button className="btn btn-primary" onClick={() => { setEditing(null); setShowForm(true); }}>Nova conta</button>}
         </div>
         <div className="table-wrap">
           <table>
@@ -360,7 +381,7 @@ export default function Financeiro() {
                   <td>{conta.categoria}</td>
                   <td><StatusBadge status={conta.status} /></td>
                   <td className="tabnum" style={{ fontWeight: 800 }}>{fmt(conta.valor)}</td>
-                  <td><Actions conta={conta} onPay={pagarConta} onEdit={(c) => { setEditing(c); setShowForm(true); }} onCancel={cancelarConta} /></td>
+                  <td><Actions conta={conta} canPay={canPagarContasPagar} canEdit={canEditContasPagar} onPay={pagarConta} onEdit={(c) => { setEditing(c); setShowForm(true); }} onCancel={cancelarConta} /></td>
                 </tr>
               ))}
             </tbody>
@@ -419,31 +440,33 @@ export default function Financeiro() {
         </div>
         <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
           <input className="form-input" type="month" value={mes} onChange={(e) => setMes(e.target.value)} style={{ width: 160 }} />
-          <button className="btn btn-secondary" onClick={abrirImpressao}>Imprimir</button>
+          {canPrintReports && <button className="btn btn-secondary" onClick={abrirImpressao}>Imprimir</button>}
           <button className="btn btn-secondary" onClick={load} disabled={loading}>Atualizar</button>
         </div>
       </div>
-      <IntegridadeFinanceiraPanel integridade={integridade} onAudit={setAuditoriaOS} />
+      {canViewFinanceiro && <IntegridadeFinanceiraPanel integridade={integridade} onAudit={setAuditoriaOS} />}
       <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginBottom: 'var(--space-4)' }}>
-        {TABS.map((item) => <button key={item.id} className={tab === item.id ? 'btn btn-primary' : 'btn btn-secondary'} onClick={() => setTab(item.id)}>{item.label}</button>)}
+        {visibleTabs.map((item) => <button key={item.id} className={tab === item.id ? 'btn btn-primary' : 'btn btn-secondary'} onClick={() => setTab(item.id)}>{item.label}</button>)}
       </div>
       {loading ? <div className="loading-center"><div className="spinner" /></div>
         : tab === 'resumo' ? renderResumo()
         : tab === 'pagar' ? renderPagar()
         : tab === 'receber' ? renderReceber()
-        : renderDre()}
+        : tab === 'dre' ? renderDre()
+        : <div className="empty-state">Sem permissao para visualizar dados financeiros.</div>}
       {auditoriaOS && <ModalAuditoriaFinanceiraOS apontamento={auditoriaOS} onClose={() => setAuditoriaOS(null)} />}
     </div>
   );
 }
 
-function Actions({ conta, onPay, onEdit, onCancel }) {
+function Actions({ conta, canPay, canEdit, onPay, onEdit, onCancel }) {
   if (conta.status !== 'Pendente') return <span style={{ color: 'var(--color-text-faint)' }}>-</span>;
+  if (!canPay && !canEdit) return <span style={{ color: 'var(--color-text-faint)' }}>-</span>;
   return (
     <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-      <button className="btn btn-primary btn-sm" onClick={() => onPay(conta)}>Pagar</button>
-      <button className="btn btn-secondary btn-sm" onClick={() => onEdit(conta)}>Editar</button>
-      <button className="btn btn-ghost btn-sm" onClick={() => onCancel(conta)}>Cancelar</button>
+      {canPay && <button className="btn btn-primary btn-sm" onClick={() => onPay(conta)}>Pagar</button>}
+      {canEdit && <button className="btn btn-secondary btn-sm" onClick={() => onEdit(conta)}>Editar</button>}
+      {canEdit && <button className="btn btn-ghost btn-sm" onClick={() => onCancel(conta)}>Cancelar</button>}
     </div>
   );
 }

@@ -83,6 +83,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
   const canViewClientes = hasCan && can('clientes.ver')
   const canViewProdutos = hasCan && can('produtos.ver')
   const canViewUsuarios = hasCan && can('usuarios.ver')
+  const canViewFinanceiro = hasCan && (can('financeiro.ver') || can('financeiro.contas_pagar.ver') || can('financeiro.relatorios'))
   const canViewCadastros = canViewClientes || canViewProdutos || canViewUsuarios
 
   const navItem = (to, label, iconKey) => (
@@ -143,6 +144,12 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
               )}
             </>
           )}
+          {!(isAdmin || isCaixa) && canViewFinanceiro && (
+            <>
+              {section('Administracao')}
+              {canViewFinanceiro && navItem('/financeiro', 'Financeiro', 'relat')}
+            </>
+          )}
           {(isAdmin || isCaixa) && (
             <>
               {section('Operação')}
@@ -159,7 +166,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
               {navItem('/oficina', 'Fila da Oficina', 'oficina')}
 
               {section('Administração')}
-              {isAdmin && navItem('/financeiro', 'Financeiro', 'relat')}
+              {canViewFinanceiro && navItem('/financeiro', 'Financeiro', 'relat')}
 
               {section('Cadastros')}
               {canViewClientes && navItem('/clientes', 'Clientes', 'clientes')}

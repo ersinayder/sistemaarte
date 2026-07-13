@@ -464,6 +464,7 @@ O projeto sera considerado completo quando:
 - `/api/users`, a rota `/usuarios` e o link de Usuarios na sidebar usam permissoes `usuarios.*`.
 - Fase 3 iniciada: `/api/clientes`, `/api/produtos`, rotas `/clientes` e `/produtos`, links de cadastro e acoes dessas paginas usam permissoes `clientes.*` e `produtos.*`.
 - Fase 3 expandida: `/api/backup`, endpoints de apoio em `/api/configuracoes/backups`, `/api/configuracoes/seguranca`, `/api/configuracoes/sistema` e `/api/relatorios` usam permissoes `backups.*`, `configuracoes.*` e `relatorios.*`.
+- Fase 3 financeiro admin: `/api/financeiro`, rota `/financeiro`, link da sidebar e acoes da pagina Financeiro usam permissoes `financeiro.*`, preservando acesso padrao somente para `admin`.
 - A tela `/configuracoes` ainda nao foi ampliada para perfis nao-admin, pois mistura secoes sensiveis que precisam de gates visuais proprios.
-- Rotas de negocio sensiveis fora de usuarios/clientes/produtos/backups/configuracoes de apoio/relatorios continuam usando roles durante esta fase.
+- Rotas de negocio sensiveis fora de usuarios/clientes/produtos/backups/configuracoes de apoio/relatorios/financeiro admin continuam usando roles durante esta fase.
 - Edicao visual de perfis e matriz de permissoes segue reservada para fase posterior.

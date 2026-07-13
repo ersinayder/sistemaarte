@@ -125,6 +125,43 @@ describe('route authorization contracts', () => {
     expect(relatoriosSource).toMatch(/router\.get\(["']\/producao\/pdf["'],\s*auth\(\),\s*authPermission\(["']relatorios\.producao["']\)/);
   });
 
+  it('protects financeiro admin routes with fine-grained RBAC permissions', () => {
+    const source = fs.readFileSync(new URL('../routes/financeiro.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/const\s+\{\s*auth,\s*authPermission\s*\}\s*=\s*require\(["']\.\.\/middlewares\/auth["']\)/);
+    expect(source).toMatch(/router\.get\(["']\/resumo["'],\s*auth\(\),\s*authPermission\(["']financeiro\.ver["']\)/);
+    expect(source).toMatch(/router\.get\(["']\/resumo\/pdf["'],\s*auth\(\),\s*authPermission\(["']financeiro\.relatorios["']\)/);
+    expect(source).toMatch(/router\.get\(["']\/contas-pagar["'],\s*auth\(\),\s*authPermission\(["']financeiro\.contas_pagar\.ver["']\)/);
+    expect(source).toMatch(/router\.get\(["']\/contas-pagar\/pdf["'],\s*auth\(\),\s*authPermission\(["']financeiro\.relatorios["']\)/);
+    expect(source).toMatch(/router\.post\(["']\/contas-pagar["'],\s*auth\(\),\s*authPermission\(["']financeiro\.contas_pagar\.editar["']\)/);
+    expect(source).toMatch(/router\.put\(["']\/contas-pagar\/:id["'],\s*auth\(\),\s*authPermission\(["']financeiro\.contas_pagar\.editar["']\)/);
+    expect(source).toMatch(/router\.patch\(["']\/contas-pagar\/:id\/pagar["'],\s*auth\(\),\s*authPermission\(["']financeiro\.contas_pagar\.pagar["']\)/);
+    expect(source).toMatch(/router\.patch\(["']\/contas-pagar\/:id\/cancelar["'],\s*auth\(\),\s*authPermission\(["']financeiro\.contas_pagar\.editar["']\)/);
+    expect(source).toMatch(/router\.delete\(["']\/contas-pagar\/:id["'],\s*auth\(\),\s*authPermission\(["']financeiro\.contas_pagar\.editar["']\)/);
+    expect(source).toMatch(/router\.get\(["']\/contas-receber["'],\s*auth\(\),\s*authPermission\(["']financeiro\.ver["']\)/);
+    expect(source).toMatch(/router\.get\(["']\/integridade-os\/:ordemId["'],\s*auth\(\),\s*authPermission\(["']financeiro\.ver["']\)/);
+    expect(source).toMatch(/router\.get\(["']\/integridade-os["'],\s*auth\(\),\s*authPermission\(["']financeiro\.ver["']\)/);
+    expect(source).toMatch(/router\.get\(["']\/contas-receber\/pdf["'],\s*auth\(\),\s*authPermission\(["']financeiro\.relatorios["']\)/);
+    expect(source).toMatch(/router\.get\(["']\/dre["'],\s*auth\(\),\s*authPermission\(["']financeiro\.relatorios["']\)/);
+    expect(source).toMatch(/router\.get\(["']\/dre\/pdf["'],\s*auth\(\),\s*authPermission\(["']financeiro\.relatorios["']\)/);
+  });
+
+  it('gates financeiro frontend access and actions by permissions', () => {
+    const appSource = fs.readFileSync(new URL('../../frontend/src/App.jsx', import.meta.url), 'utf8');
+    const sidebarSource = fs.readFileSync(new URL('../../frontend/src/components/Sidebar.jsx', import.meta.url), 'utf8');
+    const financeiroSource = fs.readFileSync(new URL('../../frontend/src/pages/Financeiro.jsx', import.meta.url), 'utf8');
+
+    expect(appSource).toMatch(/path=["']\/financeiro["'][\s\S]+permissions=\{\[['"]financeiro\.ver['"],\s*['"]financeiro\.contas_pagar\.ver['"],\s*['"]financeiro\.relatorios['"]\]\}/);
+    expect(sidebarSource).toMatch(/canViewFinanceiro\s*=[\s\S]+financeiro\.ver[\s\S]+financeiro\.contas_pagar\.ver[\s\S]+financeiro\.relatorios/);
+    expect(sidebarSource).toMatch(/canViewFinanceiro && navItem\(["']\/financeiro["'],\s*["']Financeiro["']/);
+    expect(financeiroSource).toMatch(/useAuth/);
+    expect(financeiroSource).toMatch(/can\(["']financeiro\.contas_pagar\.editar["']\)/);
+    expect(financeiroSource).toMatch(/can\(["']financeiro\.contas_pagar\.pagar["']\)/);
+    expect(financeiroSource).toMatch(/can\(["']financeiro\.relatorios["']\)/);
+    expect(financeiroSource).toMatch(/canEditContasPagar &&/);
+    expect(financeiroSource).toMatch(/canPrintReports &&/);
+  });
+
   it('exposes whatsapp notice routes with explicit role restrictions', async () => {
     const ordensRouter = await loadRouter('../routes/ordens.js');
 
@@ -160,13 +197,10 @@ describe('route authorization contracts', () => {
 
   it('restricts sensitive read routes away from oficina', async () => {
     const caixaRouter = await loadRouter('../routes/caixa.js');
-    const financeiroRouter = await loadRouter('../routes/financeiro.js');
     const kpisRouter = await loadRouter('../routes/kpis.js');
 
     expect(routeRoles(caixaRouter, 'get', '/')).toEqual(['admin', 'caixa']);
     expect(routeRoles(caixaRouter, 'get', '/fechamento')).toEqual(['admin', 'caixa']);
-    expect(routeRoles(financeiroRouter, 'get', '/resumo')).toEqual(['admin']);
-    expect(routeRoles(financeiroRouter, 'get', '/resumo/pdf')).toEqual(['admin']);
     expect(routeRoles(kpisRouter, 'get', '/integridade')).toEqual(['admin']);
   });
 
@@ -275,23 +309,11 @@ describe('route persistence contracts', () => {
     expect(source).toMatch(/onFocus=\{selectInputValue\}/);
   });
 
-  it('mounts admin financeiro API and paying accounts creates a caixa output', async () => {
+  it('mounts financeiro API and paying accounts creates a caixa output', async () => {
     const serverSource = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
     const source = fs.readFileSync(new URL('../routes/financeiro.js', import.meta.url), 'utf8');
-    const financeiroRouter = await loadRouter('../routes/financeiro.js');
 
     expect(serverSource).toMatch(/app\.use\(["']\/api\/financeiro["'],\s*require\(["']\.\/routes\/financeiro["']\)\)/);
-    expect(routeRoles(financeiroRouter, 'get', '/resumo')).toEqual(['admin']);
-    expect(routeRoles(financeiroRouter, 'get', '/contas-pagar')).toEqual(['admin']);
-    expect(routeRoles(financeiroRouter, 'get', '/contas-pagar/pdf')).toEqual(['admin']);
-    expect(routeRoles(financeiroRouter, 'post', '/contas-pagar')).toEqual(['admin']);
-    expect(routeRoles(financeiroRouter, 'patch', '/contas-pagar/:id/pagar')).toEqual(['admin']);
-    expect(routeRoles(financeiroRouter, 'get', '/integridade-os')).toEqual(['admin']);
-    expect(routeRoles(financeiroRouter, 'get', '/integridade-os/:ordemId')).toEqual(['admin']);
-    expect(routeRoles(financeiroRouter, 'get', '/contas-receber')).toEqual(['admin']);
-    expect(routeRoles(financeiroRouter, 'get', '/contas-receber/pdf')).toEqual(['admin']);
-    expect(routeRoles(financeiroRouter, 'get', '/dre')).toEqual(['admin']);
-    expect(routeRoles(financeiroRouter, 'get', '/dre/pdf')).toEqual(['admin']);
     expect(source).toMatch(/INSERT INTO lancamentos/);
     expect(source).toMatch(/tipo,\s*categoria,\s*descricao,\s*pagamento,\s*valor/);
     expect(source).toMatch(/UPDATE contas_pagar SET status='Pago'/);

@@ -1,6 +1,6 @@
 const router = require("express").Router();
 const { getAll, getOne, run, runInsert, transaction } = require("../database");
-const { auth } = require("../middlewares/auth");
+const { auth, authPermission } = require("../middlewares/auth");
 const { hoje } = require("../utils/dates");
 const { toNumber } = require("../utils/numbers");
 const {
@@ -128,13 +128,13 @@ function getDrePayload(mesInput) {
   return { mes, receitaBruta, devolucoes, receitaLiquida, despesas, totalDespesas, resultado: receitaLiquida - totalDespesas };
 }
 
-router.get("/resumo", auth(["admin"]), (req, res, next) => {
+router.get("/resumo", auth(), authPermission("financeiro.ver"), (req, res, next) => {
   try {
     res.json(getResumoFinanceiroPayload(req.query.mes));
   } catch (e) { next(e); }
 });
 
-router.get("/resumo/pdf", auth(["admin"]), (req, res, next) => {
+router.get("/resumo/pdf", auth(), authPermission("financeiro.relatorios"), (req, res, next) => {
   try {
     const resumo = getResumoFinanceiroPayload(req.query.mes);
     sendPrintHtml(
@@ -145,13 +145,13 @@ router.get("/resumo/pdf", auth(["admin"]), (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.get("/contas-pagar", auth(["admin"]), (req, res, next) => {
+router.get("/contas-pagar", auth(), authPermission("financeiro.contas_pagar.ver"), (req, res, next) => {
   try {
     res.json(getContasPagarPayload(req.query));
   } catch (e) { next(e); }
 });
 
-router.get("/contas-pagar/pdf", auth(["admin"]), (req, res, next) => {
+router.get("/contas-pagar/pdf", auth(), authPermission("financeiro.relatorios"), (req, res, next) => {
   try {
     const contas = getContasPagarPayload(req.query);
     const mes = req.query.mes || mesAtual();
@@ -163,7 +163,7 @@ router.get("/contas-pagar/pdf", auth(["admin"]), (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.post("/contas-pagar", auth(["admin"]), (req, res, next) => {
+router.post("/contas-pagar", auth(), authPermission("financeiro.contas_pagar.editar"), (req, res, next) => {
   try {
     const errors = validarContaPagar(req.body);
     if (errors.length) return res.status(400).json({ error: errors.join("; "), errors });
@@ -187,7 +187,7 @@ router.post("/contas-pagar", auth(["admin"]), (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.put("/contas-pagar/:id", auth(["admin"]), (req, res, next) => {
+router.put("/contas-pagar/:id", auth(), authPermission("financeiro.contas_pagar.editar"), (req, res, next) => {
   try {
     const old = rowConta(req.params.id);
     if (!old) return res.status(404).json({ error: "Conta nao encontrada" });
@@ -215,7 +215,7 @@ router.put("/contas-pagar/:id", auth(["admin"]), (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.patch("/contas-pagar/:id/pagar", auth(["admin"]), (req, res, next) => {
+router.patch("/contas-pagar/:id/pagar", auth(), authPermission("financeiro.contas_pagar.pagar"), (req, res, next) => {
   try {
     const conta = rowConta(req.params.id);
     if (!conta) return res.status(404).json({ error: "Conta nao encontrada" });
@@ -240,7 +240,7 @@ router.patch("/contas-pagar/:id/pagar", auth(["admin"]), (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.patch("/contas-pagar/:id/cancelar", auth(["admin"]), (req, res, next) => {
+router.patch("/contas-pagar/:id/cancelar", auth(), authPermission("financeiro.contas_pagar.editar"), (req, res, next) => {
   try {
     const conta = rowConta(req.params.id);
     if (!conta) return res.status(404).json({ error: "Conta nao encontrada" });
@@ -250,7 +250,7 @@ router.patch("/contas-pagar/:id/cancelar", auth(["admin"]), (req, res, next) => 
   } catch (e) { next(e); }
 });
 
-router.delete("/contas-pagar/:id", auth(["admin"]), (req, res, next) => {
+router.delete("/contas-pagar/:id", auth(), authPermission("financeiro.contas_pagar.editar"), (req, res, next) => {
   try {
     const conta = rowConta(req.params.id);
     if (!conta) return res.status(404).json({ error: "Conta nao encontrada" });
@@ -260,13 +260,13 @@ router.delete("/contas-pagar/:id", auth(["admin"]), (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.get("/contas-receber", auth(["admin"]), (_req, res, next) => {
+router.get("/contas-receber", auth(), authPermission("financeiro.ver"), (_req, res, next) => {
   try {
     res.json(getContasReceberPayload());
   } catch (e) { next(e); }
 });
 
-router.get("/integridade-os/:ordemId", auth(["admin"]), (req, res, next) => {
+router.get("/integridade-os/:ordemId", auth(), authPermission("financeiro.ver"), (req, res, next) => {
   try {
     const ordem = getOne(
       "SELECT id, numero, clientenome, status, valortotal FROM ordens WHERE id=? AND deletedat IS NULL",
@@ -293,7 +293,7 @@ router.get("/integridade-os/:ordemId", auth(["admin"]), (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.get("/integridade-os", auth(["admin"]), (_req, res, next) => {
+router.get("/integridade-os", auth(), authPermission("financeiro.ver"), (_req, res, next) => {
   try {
     const ordens = getAll(
       "SELECT id, numero, clientenome, status, valortotal FROM ordens WHERE deletedat IS NULL ORDER BY id DESC"
@@ -306,7 +306,7 @@ router.get("/integridade-os", auth(["admin"]), (_req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.get("/contas-receber/pdf", auth(["admin"]), (_req, res, next) => {
+router.get("/contas-receber/pdf", auth(), authPermission("financeiro.relatorios"), (_req, res, next) => {
   try {
     const contas = getContasReceberPayload();
     sendPrintHtml(
@@ -317,13 +317,13 @@ router.get("/contas-receber/pdf", auth(["admin"]), (_req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.get("/dre", auth(["admin"]), (req, res, next) => {
+router.get("/dre", auth(), authPermission("financeiro.relatorios"), (req, res, next) => {
   try {
     res.json(getDrePayload(req.query.mes));
   } catch (e) { next(e); }
 });
 
-router.get("/dre/pdf", auth(["admin"]), (req, res, next) => {
+router.get("/dre/pdf", auth(), authPermission("financeiro.relatorios"), (req, res, next) => {
   try {
     const dre = getDrePayload(req.query.mes);
     sendPrintHtml(

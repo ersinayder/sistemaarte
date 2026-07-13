@@ -54,7 +54,7 @@ function AppRoutes() {
           <Route path="/caixa/:id" element={<PrivateRoute roles={['admin','caixa']}><Caixa /></PrivateRoute>}/>
           <Route path="/clientes" element={<PrivateRoute permissions={['clientes.ver']}><Clientes /></PrivateRoute>}/>
           <Route path="/clientes/:id" element={<PrivateRoute permissions={['clientes.ver']}><Clientes /></PrivateRoute>}/>
-          <Route path="/financeiro" element={<PrivateRoute roles={['admin']}><Financeiro /></PrivateRoute>}/>
+          <Route path="/financeiro" element={<PrivateRoute permissions={['financeiro.ver', 'financeiro.contas_pagar.ver', 'financeiro.relatorios']}><Financeiro /></PrivateRoute>}/>
           <Route path="/relatorios" element={<Navigate to="/financeiro" replace />}/>
           <Route path="/orcamento" element={<PrivateRoute roles={['admin','caixa']}><Orcamento /></PrivateRoute>}/>
           <Route path="/orcamento/calculadora" element={<PrivateRoute roles={['admin','caixa']}><CalculadoraOrcamento /></PrivateRoute>}/>
