@@ -17,7 +17,10 @@ vi.mock('./components/Layout', async () => {
 })
 
 vi.mock('./pages/Usuarios', () => ({ default: () => <div>Pagina Usuarios</div> }))
+vi.mock('./pages/Clientes', () => ({ default: () => <div>Pagina Clientes</div> }))
+vi.mock('./pages/Produtos', () => ({ default: () => <div>Pagina Produtos</div> }))
 vi.mock('./pages/Atendimento', () => ({ default: () => <div>Atendimento</div> }))
+vi.mock('./pages/Oficina', () => ({ default: () => <div>Oficina</div> }))
 vi.mock('./pages/Login', () => ({ default: () => <div>Login</div> }))
 
 describe('App permission routes', () => {
@@ -50,5 +53,53 @@ describe('App permission routes', () => {
 
     expect(await screen.findByText('Atendimento')).toBeInTheDocument()
     expect(screen.queryByText('Pagina Usuarios')).not.toBeInTheDocument()
+  })
+
+  it('renders clientes for non-caixa users with clientes.ver permission', async () => {
+    authState.user.role = 'oficina'
+    authState.user.permissions = ['clientes.ver']
+
+    render(
+      <MemoryRouter initialEntries={['/clientes']}>
+        <App />
+      </MemoryRouter>
+    )
+
+    expect(await screen.findByText('Pagina Clientes')).toBeInTheDocument()
+  })
+
+  it('does not render clientes for caixa without clientes.ver permission', async () => {
+    render(
+      <MemoryRouter initialEntries={['/clientes']}>
+        <App />
+      </MemoryRouter>
+    )
+
+    expect(await screen.findByText('Atendimento')).toBeInTheDocument()
+    expect(screen.queryByText('Pagina Clientes')).not.toBeInTheDocument()
+  })
+
+  it('renders produtos for non-caixa users with produtos.ver permission', async () => {
+    authState.user.role = 'oficina'
+    authState.user.permissions = ['produtos.ver']
+
+    render(
+      <MemoryRouter initialEntries={['/produtos']}>
+        <App />
+      </MemoryRouter>
+    )
+
+    expect(await screen.findByText('Pagina Produtos')).toBeInTheDocument()
+  })
+
+  it('does not render produtos for caixa without produtos.ver permission', async () => {
+    render(
+      <MemoryRouter initialEntries={['/produtos']}>
+        <App />
+      </MemoryRouter>
+    )
+
+    expect(await screen.findByText('Atendimento')).toBeInTheDocument()
+    expect(screen.queryByText('Pagina Produtos')).not.toBeInTheDocument()
   })
 })

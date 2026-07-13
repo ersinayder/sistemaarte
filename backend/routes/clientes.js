@@ -1,6 +1,6 @@
 const router = require("express").Router();
 const { getAll, getOne, run, runInsert, transaction } = require("../database");
-const { auth } = require("../middlewares/auth");
+const { auth, authPermission } = require("../middlewares/auth");
 const { normalizarPaginacao, montarMetaPaginacao } = require("../domain/paginationRules");
 const { consultarCnpj } = require("../services/cnpjLookupService");
 
@@ -12,7 +12,7 @@ const SEL_CLIENTE = `
   WHERE c.deletedat IS NULL
 `;
 
-router.get("/", auth(["admin","caixa"]), (req, res, next) => {
+router.get("/", auth(), authPermission("clientes.ver"), (req, res, next) => {
   try {
     const querPaginacao = req.query.page !== undefined || req.query.limit !== undefined;
     const { page, limit, offset } = normalizarPaginacao(req.query, { defaultLimit: 25, maxLimit: 100 });
@@ -52,7 +52,7 @@ router.get("/", auth(["admin","caixa"]), (req, res, next) => {
   } catch(e) { next(e); }
 });
 
-router.get("/cnpj/:cnpj", auth(["admin","caixa"]), async (req, res, next) => {
+router.get("/cnpj/:cnpj", auth(), authPermission("clientes.consultar_documentos"), async (req, res, next) => {
   try {
     res.json(await consultarCnpj(req.params.cnpj));
   } catch(e) {
@@ -60,7 +60,7 @@ router.get("/cnpj/:cnpj", auth(["admin","caixa"]), async (req, res, next) => {
   }
 });
 
-router.get("/:id", auth(["admin","caixa"]), (req, res, next) => {
+router.get("/:id", auth(), authPermission("clientes.ver"), (req, res, next) => {
   try {
     const id = req.params.id;
     const c = getOne("SELECT * FROM clientes WHERE id=? AND deletedat IS NULL", [id]);
@@ -106,7 +106,7 @@ router.get("/:id", auth(["admin","caixa"]), (req, res, next) => {
   } catch(e) { next(e); }
 });
 
-router.get("/:id/ordens", auth(["admin","caixa"]), (req, res, next) => {
+router.get("/:id/ordens", auth(), authPermission("clientes.ver"), (req, res, next) => {
   try {
     res.json(getAll(
       "SELECT * FROM ordens WHERE clienteid=? AND deletedat IS NULL ORDER BY createdat DESC",
@@ -115,7 +115,7 @@ router.get("/:id/ordens", auth(["admin","caixa"]), (req, res, next) => {
   } catch(e) { next(e); }
 });
 
-router.post("/", auth(["admin","caixa"]), (req, res, next) => {
+router.post("/", auth(), authPermission("clientes.criar"), (req, res, next) => {
   try {
     const { name, phone, email, cpf, ie, logradouro, numero, bairro, cidade, uf, cep, notes } = req.body ?? {};
     if (!name) return res.status(400).json({ error: "Nome obrigatorio" });
@@ -131,7 +131,7 @@ router.post("/", auth(["admin","caixa"]), (req, res, next) => {
   } catch(e) { next(e); }
 });
 
-router.put("/:id", auth(["admin","caixa"]), (req, res, next) => {
+router.put("/:id", auth(), authPermission("clientes.editar"), (req, res, next) => {
   try {
     const { name, phone, email, cpf, ie, logradouro, numero, bairro, cidade, uf, cep, notes } = req.body ?? {};
     if (!name) return res.status(400).json({ error: "Nome obrigatorio" });
@@ -152,7 +152,7 @@ router.put("/:id", auth(["admin","caixa"]), (req, res, next) => {
   } catch(e) { next(e); }
 });
 
-router.delete("/:id", auth(["admin"]), (req, res, next) => {
+router.delete("/:id", auth(), authPermission("clientes.excluir"), (req, res, next) => {
   try {
     const c = getOne("SELECT id,name FROM clientes WHERE id=? AND deletedat IS NULL", [req.params.id]);
     if (!c) return res.status(404).json({ error: "Cliente nao encontrado" });

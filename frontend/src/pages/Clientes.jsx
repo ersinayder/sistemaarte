@@ -35,8 +35,12 @@ const STATUS_COLOR = {
 
 export default function Clientes() {
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const canEdit = user?.role !== 'viewer';
+  const { user, can } = useAuth();
+  const hasCan = typeof can === 'function';
+  const canCreate = hasCan ? can('clientes.criar') : user?.role !== 'viewer';
+  const canEdit = hasCan ? can('clientes.editar') : user?.role !== 'viewer';
+  const canDelete = hasCan ? can('clientes.excluir') : user?.role === 'admin';
+  const canConsultDocuments = hasCan ? can('clientes.consultar_documentos') : user?.role !== 'viewer';
 
   const blank = {
     tipo:'PF', nome:'', cpf:'', cnpj:'', ie:'', contato:'', email:'',
@@ -173,7 +177,7 @@ export default function Clientes() {
     setCpfError(state.cpfError);
     setCnpjError(state.cnpjError);
 
-    if (state.tipo === 'PJ' && normalized.length === 14 && !state.cnpjError) {
+    if (canConsultDocuments && state.tipo === 'PJ' && normalized.length === 14 && !state.cnpjError) {
       buscarCNPJ(state.cnpj);
     }
   };
@@ -451,7 +455,7 @@ export default function Clientes() {
           <h1 className="erp-page-title" style={{ fontSize:'var(--text-xl)', fontWeight:800, margin:0 }}>Clientes</h1>
           <p className="erp-page-subtitle" style={{ margin:0, fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>{clientesMeta.total ?? clientes.length} cadastrado{(clientesMeta.total ?? clientes.length)!==1?'s':''}</p>
         </div>
-        {canEdit && (
+        {canCreate && (
           <button className="btn btn-primary" onClick={openNew}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
             Novo Cliente
@@ -486,7 +490,7 @@ export default function Clientes() {
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
               <div style={{ textAlign:'center' }}>
                 <p style={{ fontWeight:600, margin:0 }}>{search ? 'Nenhum cliente encontrado' : 'Nenhum cliente cadastrado'}</p>
-                {!search && canEdit && <p style={{ fontSize:'var(--text-xs)', margin:'var(--space-1) 0 0' }}>Clique em "Novo Cliente" para começar</p>}
+                {!search && canCreate && <p style={{ fontSize:'var(--text-xs)', margin:'var(--space-1) 0 0' }}>Clique em "Novo Cliente" para começar</p>}
               </div>
             </div>
           ) : (
@@ -511,10 +515,10 @@ export default function Clientes() {
                       <span className="badge badge-primary">{c.totalordens ?? 0} OS</span>
                       {(c.cpf || c.ie) && <span className="badge badge-secondary">{c.cpf ? documentoLabel(c.cpf) : 'IE'}</span>}
                     </div>
-                    {canEdit && (
+                    {(canEdit || canDelete) && (
                       <div className="mobile-record-actions" onClick={e => e.stopPropagation()}>
-                        <button className="btn btn-secondary btn-sm" onClick={() => openEdit(c)}>Editar</button>
-                        <button className="btn btn-ghost btn-sm inline-danger" onClick={() => setConfirmDel(c)}>Excluir</button>
+                        {canEdit && <button className="btn btn-secondary btn-sm" onClick={() => openEdit(c)}>Editar</button>}
+                        {canDelete && <button className="btn btn-ghost btn-sm inline-danger" onClick={() => setConfirmDel(c)}>Excluir</button>}
                       </div>
                     )}
                   </div>
@@ -554,14 +558,14 @@ export default function Clientes() {
                       <td style={{ textAlign:'right', fontFamily:'monospace', fontSize:'var(--text-xs)' }}>{fmt(c.gastototal)}</td>
                       <td>
                         <div style={{ display:'flex', gap:'var(--space-1)', justifyContent:'flex-end' }} onClick={e => e.stopPropagation()}>
-                          {canEdit && (
+                          {(canEdit || canDelete) && (
                             <>
-                              <button className="btn btn-ghost btn-xs" title="Editar" onClick={() => openEdit(c)}>
+                              {canEdit && <button className="btn btn-ghost btn-xs" title="Editar" onClick={() => openEdit(c)}>
                                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                              </button>
-                              <button className="btn btn-ghost btn-xs" style={{ color:'var(--color-error)' }} title="Excluir" onClick={() => setConfirmDel(c)}>
+                              </button>}
+                              {canDelete && <button className="btn btn-ghost btn-xs" style={{ color:'var(--color-error)' }} title="Excluir" onClick={() => setConfirmDel(c)}>
                                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                              </button>
+                              </button>}
                             </>
                           )}
                         </div>

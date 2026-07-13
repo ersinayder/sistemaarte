@@ -462,5 +462,6 @@ O projeto sera considerado completo quando:
 - Fase 1 implementada: fundacao RBAC, perfis de sistema, permissoes efetivas em `/auth/me` e token minimo com `accessVersion`.
 - Fase 2 implementada: gestao de usuarios com filtros, arquivamento/restauracao, reset de senha, exclusao permanente bloqueada por vinculos historicos e tela `/usuarios` operacional.
 - `/api/users`, a rota `/usuarios` e o link de Usuarios na sidebar usam permissoes `usuarios.*`.
-- Rotas de negocio fora de usuarios continuam usando roles durante esta fase.
+- Fase 3 iniciada: `/api/clientes`, `/api/produtos`, rotas `/clientes` e `/produtos`, links de cadastro e acoes dessas paginas usam permissoes `clientes.*` e `produtos.*`.
+- Rotas de negocio sensiveis fora de usuarios/clientes/produtos continuam usando roles durante esta fase.
 - Edicao visual de perfis e matriz de permissoes segue reservada para fase posterior.

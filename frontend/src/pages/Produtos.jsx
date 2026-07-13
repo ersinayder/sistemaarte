@@ -220,7 +220,11 @@ const CATBADGE = {
 }
 
 export default function Produtos() {
-  const { isAdmin, isCaixa } = useAuth()
+  const { isAdmin, isCaixa, can } = useAuth()
+  const hasCan = typeof can === 'function'
+  const canCreate = hasCan ? can('produtos.criar') : (isAdmin || isCaixa)
+  const canEdit = hasCan ? can('produtos.editar') : (isAdmin || isCaixa)
+  const canDelete = hasCan ? can('produtos.excluir') : isAdmin
   const [produtos, setProdutos]   = useState([])
   const [loading, setLoading]     = useState(false)
   const [search, setSearch]       = useState('')
@@ -271,7 +275,7 @@ export default function Produtos() {
             </div>
           )}
         </div>
-        {(isAdmin||isCaixa) && (
+        {canCreate && (
           <button className="btn btn-primary" onClick={()=>setModal({open:true,edit:null})}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
             Novo Produto
@@ -295,7 +299,7 @@ export default function Produtos() {
           <div className="empty-state">
             <h3>Nenhum produto</h3>
             <p>{search||catFiltro ? 'Nenhum resultado para o filtro.' : 'Cadastre o primeiro produto.'}</p>
-            {(isAdmin||isCaixa) && <button className="btn btn-primary" onClick={()=>setModal({open:true,edit:null})}>Novo Produto</button>}
+            {canCreate && <button className="btn btn-primary" onClick={()=>setModal({open:true,edit:null})}>Novo Produto</button>}
           </div>
         ) : (
           <>
@@ -319,12 +323,12 @@ export default function Produtos() {
                     <div className="mobile-record-sub">Estoque: <strong>{p.estoque}</strong> {p.unidade || ''}</div>
                     <div className="mobile-record-sub">NCM {p.ncm || '---'} · CFOP {p.cfop || '---'}</div>
                   </div>
-                  {(isAdmin||isCaixa) && (
+                  {(canEdit || canDelete) && (
                     <div className="mobile-record-footer">
                       <div />
                       <div className="mobile-record-actions">
-                        <button className="btn btn-secondary btn-sm" onClick={()=>setModal({open:true,edit:p})}>Editar</button>
-                        {isAdmin && <button className="btn btn-ghost btn-sm inline-danger" onClick={()=>{setDeleteId(p.id);setDeleteName(p.nome)}}>Excluir</button>}
+                        {canEdit && <button className="btn btn-secondary btn-sm" onClick={()=>setModal({open:true,edit:p})}>Editar</button>}
+                        {canDelete && <button className="btn btn-ghost btn-sm inline-danger" onClick={()=>{setDeleteId(p.id);setDeleteName(p.nome)}}>Excluir</button>}
                       </div>
                     </div>
                   )}
@@ -355,13 +359,13 @@ export default function Produtos() {
                       </td>
                       <td>
                         <div style={{display:'flex',gap:'var(--space-1)'}}>
-                          {(isAdmin||isCaixa) && (
-                            <button className="btn btn-icon btn-ghost btn-sm" title="Editar" onClick={()=>setModal({open:true,edit:p})}>
+                          {canEdit && (
+                            <button className="btn btn-icon btn-ghost btn-sm" title="Editar" aria-label={`Editar ${p.nome}`} onClick={()=>setModal({open:true,edit:p})}>
                               <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                             </button>
                           )}
-                          {isAdmin && (
-                            <button className="btn btn-icon btn-ghost btn-sm" title="Excluir" style={{color:'var(--color-error)'}} onClick={()=>{setDeleteId(p.id);setDeleteName(p.nome)}}>
+                          {canDelete && (
+                            <button className="btn btn-icon btn-ghost btn-sm" title="Excluir" aria-label={`Excluir ${p.nome}`} style={{color:'var(--color-error)'}} onClick={()=>{setDeleteId(p.id);setDeleteName(p.nome)}}>
                               <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
                             </button>
                           )}

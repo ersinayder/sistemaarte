@@ -79,7 +79,11 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
   const isAdmin   = user?.role === 'admin'
   const isCaixa   = user?.role === 'caixa'
   const isOficina = user?.role === 'oficina'
-  const canViewUsuarios = typeof can === 'function' && can('usuarios.ver')
+  const hasCan = typeof can === 'function'
+  const canViewClientes = hasCan && can('clientes.ver')
+  const canViewProdutos = hasCan && can('produtos.ver')
+  const canViewUsuarios = hasCan && can('usuarios.ver')
+  const canViewCadastros = canViewClientes || canViewProdutos || canViewUsuarios
 
   const navItem = (to, label, iconKey) => (
     <NavLink to={to} className={({ isActive }) => `sidebar-nav-item${isActive ? ' active' : ''}`} title={collapsed ? label : undefined}>
@@ -127,10 +131,16 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
 
         <nav className="sidebar-nav" style={{ paddingTop: 'var(--space-3)' }}>
           {isOficina && navItem('/oficina', 'Fila da Oficina', 'oficina')}
-          {isOficina && canViewUsuarios && (
+          {!(isAdmin || isCaixa) && canViewCadastros && (
             <>
               {section('Cadastros')}
+              {canViewClientes && navItem('/clientes', 'Clientes', 'clientes')}
+              {canViewProdutos && navItem('/produtos', 'Produtos', 'produtos')}
+              {canViewUsuarios && (
+                <>
               {navItem('/usuarios', 'UsuÃ¡rios', 'usuarios')}
+                </>
+              )}
             </>
           )}
           {(isAdmin || isCaixa) && (
@@ -152,8 +162,8 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
               {isAdmin && navItem('/financeiro', 'Financeiro', 'relat')}
 
               {section('Cadastros')}
-              {navItem('/clientes', 'Clientes', 'clientes')}
-              {navItem('/produtos', 'Produtos', 'produtos')}
+              {canViewClientes && navItem('/clientes', 'Clientes', 'clientes')}
+              {canViewProdutos && navItem('/produtos', 'Produtos', 'produtos')}
               {(isAdmin || canViewUsuarios) && navItem('/usuarios', 'Usuários', 'usuarios')}
               {isAdmin && navItem('/configuracoes', 'Configurações', 'config')}
             </>

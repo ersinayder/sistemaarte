@@ -52,15 +52,15 @@ function AppRoutes() {
           <Route path="/ordens/:id" element={<PrivateRoute roles={['admin','caixa']}><OrdemDetalhe /></PrivateRoute>}/>
           <Route path="/caixa" element={<PrivateRoute roles={['admin','caixa']}><Caixa /></PrivateRoute>}/>
           <Route path="/caixa/:id" element={<PrivateRoute roles={['admin','caixa']}><Caixa /></PrivateRoute>}/>
-          <Route path="/clientes" element={<PrivateRoute roles={['admin','caixa']}><Clientes /></PrivateRoute>}/>
-          <Route path="/clientes/:id" element={<PrivateRoute roles={['admin','caixa']}><Clientes /></PrivateRoute>}/>
+          <Route path="/clientes" element={<PrivateRoute permissions={['clientes.ver']}><Clientes /></PrivateRoute>}/>
+          <Route path="/clientes/:id" element={<PrivateRoute permissions={['clientes.ver']}><Clientes /></PrivateRoute>}/>
           <Route path="/financeiro" element={<PrivateRoute roles={['admin']}><Financeiro /></PrivateRoute>}/>
           <Route path="/relatorios" element={<Navigate to="/financeiro" replace />}/>
           <Route path="/orcamento" element={<PrivateRoute roles={['admin','caixa']}><Orcamento /></PrivateRoute>}/>
           <Route path="/orcamento/calculadora" element={<PrivateRoute roles={['admin','caixa']}><CalculadoraOrcamento /></PrivateRoute>}/>
           <Route path="/orcamento-rapido" element={<Navigate to="/orcamento/calculadora" replace />}/>
           <Route path="/propostas" element={<PrivateRoute roles={['admin','caixa']}><Propostas /></PrivateRoute>}/>
-          <Route path="/produtos" element={<PrivateRoute roles={['admin','caixa']}><Produtos /></PrivateRoute>}/>
+          <Route path="/produtos" element={<PrivateRoute permissions={['produtos.ver']}><Produtos /></PrivateRoute>}/>
           <Route path="/usuarios" element={<PrivateRoute permissions={['usuarios.ver']}><Usuarios /></PrivateRoute>}/>
           <Route path="/configuracoes" element={<PrivateRoute roles={['admin']}><Configuracoes /></PrivateRoute>}/>
           <Route path="/nfe" element={<PrivateRoute roles={['admin','caixa']}><NotasFiscais /></PrivateRoute>}/>

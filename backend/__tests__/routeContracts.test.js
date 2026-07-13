@@ -83,6 +83,27 @@ describe('route authorization contracts', () => {
     expect(source).toMatch(/router\.delete\(["']\/:id["'],\s*auth\(\),\s*authPermission\(["']usuarios\.excluir_permanente["']\)/);
   });
 
+  it('protects clientes and produtos routes with fine-grained RBAC permissions', () => {
+    const clientesSource = fs.readFileSync(new URL('../routes/clientes.js', import.meta.url), 'utf8');
+    const produtosSource = fs.readFileSync(new URL('../routes/produtos.js', import.meta.url), 'utf8');
+
+    expect(clientesSource).toMatch(/const\s+\{\s*auth,\s*authPermission\s*\}\s*=\s*require\(["']\.\.\/middlewares\/auth["']\)/);
+    expect(clientesSource).toMatch(/router\.get\(["']\/["'],\s*auth\(\),\s*authPermission\(["']clientes\.ver["']\)/);
+    expect(clientesSource).toMatch(/router\.get\(["']\/cnpj\/:cnpj["'],\s*auth\(\),\s*authPermission\(["']clientes\.consultar_documentos["']\)/);
+    expect(clientesSource).toMatch(/router\.get\(["']\/:id["'],\s*auth\(\),\s*authPermission\(["']clientes\.ver["']\)/);
+    expect(clientesSource).toMatch(/router\.get\(["']\/:id\/ordens["'],\s*auth\(\),\s*authPermission\(["']clientes\.ver["']\)/);
+    expect(clientesSource).toMatch(/router\.post\(["']\/["'],\s*auth\(\),\s*authPermission\(["']clientes\.criar["']\)/);
+    expect(clientesSource).toMatch(/router\.put\(["']\/:id["'],\s*auth\(\),\s*authPermission\(["']clientes\.editar["']\)/);
+    expect(clientesSource).toMatch(/router\.delete\(["']\/:id["'],\s*auth\(\),\s*authPermission\(["']clientes\.excluir["']\)/);
+
+    expect(produtosSource).toMatch(/const\s+\{\s*auth,\s*authPermission\s*\}\s*=\s*require\(["']\.\.\/middlewares\/auth["']\)/);
+    expect(produtosSource).toMatch(/router\.get\(["']\/["'],\s*auth\(\),\s*authPermission\(["']produtos\.ver["']\)/);
+    expect(produtosSource).toMatch(/router\.get\(["']\/:id["'],\s*auth\(\),\s*authPermission\(["']produtos\.ver["']\)/);
+    expect(produtosSource).toMatch(/router\.post\(["']\/["'],\s*auth\(\),\s*authPermission\(["']produtos\.criar["']\)/);
+    expect(produtosSource).toMatch(/router\.put\(["']\/:id["'],\s*auth\(\),\s*authPermission\(["']produtos\.editar["']\)/);
+    expect(produtosSource).toMatch(/router\.delete\(["']\/:id["'],\s*auth\(\),\s*authPermission\(["']produtos\.excluir["']\)/);
+  });
+
   it('exposes whatsapp notice routes with explicit role restrictions', async () => {
     const ordensRouter = await loadRouter('../routes/ordens.js');
 
@@ -120,8 +141,6 @@ describe('route authorization contracts', () => {
     const caixaRouter = await loadRouter('../routes/caixa.js');
     const relatoriosRouter = await loadRouter('../routes/relatorios.js');
     const financeiroRouter = await loadRouter('../routes/financeiro.js');
-    const clientesRouter = await loadRouter('../routes/clientes.js');
-    const produtosRouter = await loadRouter('../routes/produtos.js');
     const kpisRouter = await loadRouter('../routes/kpis.js');
 
     expect(routeRoles(caixaRouter, 'get', '/')).toEqual(['admin', 'caixa']);
@@ -130,11 +149,6 @@ describe('route authorization contracts', () => {
     expect(routeRoles(relatoriosRouter, 'get', '/producao/pdf')).toEqual(['admin']);
     expect(routeRoles(financeiroRouter, 'get', '/resumo')).toEqual(['admin']);
     expect(routeRoles(financeiroRouter, 'get', '/resumo/pdf')).toEqual(['admin']);
-    expect(routeRoles(clientesRouter, 'get', '/')).toEqual(['admin', 'caixa']);
-    expect(routeRoles(clientesRouter, 'get', '/:id')).toEqual(['admin', 'caixa']);
-    expect(routeRoles(clientesRouter, 'get', '/:id/ordens')).toEqual(['admin', 'caixa']);
-    expect(routeRoles(produtosRouter, 'get', '/')).toEqual(['admin', 'caixa']);
-    expect(routeRoles(produtosRouter, 'get', '/:id')).toEqual(['admin', 'caixa']);
     expect(routeRoles(kpisRouter, 'get', '/integridade')).toEqual(['admin']);
   });
 

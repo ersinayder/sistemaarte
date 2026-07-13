@@ -64,4 +64,41 @@ describe('Sidebar', () => {
     expect(screen.getByText('Fila da Oficina')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /usu/i })).toBeInTheDocument()
   })
+
+  it('shows Clientes and Produtos for non-caixa users with matching permissions', () => {
+    authState = {
+      user: { id: 3, name: 'Oficina Cadastros', role: 'oficina' },
+      logout: vi.fn(),
+      switchUser: vi.fn(),
+      can: (permission) => ['clientes.ver', 'produtos.ver'].includes(permission),
+    }
+
+    render(
+      <MemoryRouter>
+        <Sidebar collapsed={false} />
+      </MemoryRouter>
+    )
+
+    expect(screen.getByText('Fila da Oficina')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /clientes/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /produtos/i })).toBeInTheDocument()
+  })
+
+  it('hides Clientes and Produtos from caixa when permissions are absent', () => {
+    authState = {
+      user: { id: 2, name: 'Caixa Sem Cadastro', role: 'caixa' },
+      logout: vi.fn(),
+      switchUser: vi.fn(),
+      can: () => false,
+    }
+
+    render(
+      <MemoryRouter>
+        <Sidebar collapsed={false} />
+      </MemoryRouter>
+    )
+
+    expect(screen.queryByRole('link', { name: /clientes/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /produtos/i })).not.toBeInTheDocument()
+  })
 })
