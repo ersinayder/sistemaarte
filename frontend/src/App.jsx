@@ -46,7 +46,7 @@ function AppRoutes() {
           <Route path="/oficina" element={<PrivateRoute><Oficina /></PrivateRoute>}/>
           <Route path="/oficina/:id" element={<PrivateRoute><OrdemDetalhe context="oficina" /></PrivateRoute>}/>
           <Route path="/atendimento" element={<PrivateRoute roles={['admin','caixa']}><Atendimento /></PrivateRoute>}/>
-          <Route path="/dashboard" element={<PrivateRoute roles={['admin','caixa']}><Dashboard /></PrivateRoute>}/>
+          <Route path="/dashboard" element={<PrivateRoute permissions={['dashboard.ver']}><Dashboard /></PrivateRoute>}/>
           <Route path="/ordens" element={<PrivateRoute roles={['admin','caixa']}><Ordens /></PrivateRoute>}/>
           <Route path="/ordens/lixeira" element={<PrivateRoute roles={['admin']}><OrdemLixeira /></PrivateRoute>}/>
           <Route path="/ordens/:id" element={<PrivateRoute roles={['admin','caixa']}><OrdemDetalhe /></PrivateRoute>}/>
@@ -62,7 +62,7 @@ function AppRoutes() {
           <Route path="/propostas" element={<PrivateRoute roles={['admin','caixa']}><Propostas /></PrivateRoute>}/>
           <Route path="/produtos" element={<PrivateRoute permissions={['produtos.ver']}><Produtos /></PrivateRoute>}/>
           <Route path="/usuarios" element={<PrivateRoute permissions={['usuarios.ver']}><Usuarios /></PrivateRoute>}/>
-          <Route path="/configuracoes" element={<PrivateRoute roles={['admin']}><Configuracoes /></PrivateRoute>}/>
+          <Route path="/configuracoes" element={<PrivateRoute permissions={['configuracoes.ver', 'configuracoes.editar_empresa', 'configuracoes.editar_fiscal', 'configuracoes.editar_whatsapp', 'configuracoes.editar_impressao', 'configuracoes.seguranca', 'backups.ver', 'backups.executar']}><Configuracoes /></PrivateRoute>}/>
           <Route path="/nfe" element={<PrivateRoute roles={['admin','caixa']}><NotasFiscais /></PrivateRoute>}/>
           <Route path="/nfe/lixeira" element={<PrivateRoute roles={['admin']}><NotasFiscais lixeira /></PrivateRoute>}/>
           <Route path="*" element={<Navigate to={defaultRoute} replace />} />

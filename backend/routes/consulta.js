@@ -1,7 +1,7 @@
 
 const router = require("express").Router();
 const https  = require("https");
-const { auth } = require("../middlewares/auth");
+const { auth, authPermission } = require("../middlewares/auth");
 const { normalizeCnpj, validaCNPJ } = require("../domain/cnpjRules");
 
 function fetchJson(url, ms = 7000) {
@@ -17,7 +17,7 @@ function fetchJson(url, ms = 7000) {
 }
 
 // GET /api/consulta/cnpj/:cnpj
-router.get("/cnpj/:cnpj", auth(["admin","caixa"]), async (req, res) => {
+router.get("/cnpj/:cnpj", auth(), authPermission("clientes.consultar_documentos"), async (req, res) => {
   const cnpj = normalizeCnpj(req.params.cnpj);
   if (cnpj.length !== 14 || !validaCNPJ(cnpj)) return res.status(400).json({ error: "CNPJ inválido" });
 
@@ -43,7 +43,7 @@ router.get("/cnpj/:cnpj", auth(["admin","caixa"]), async (req, res) => {
   }
 });
 
-router.get("/cep/:cep", auth(["admin","caixa"]), async (req, res) => {
+router.get("/cep/:cep", auth(), authPermission("clientes.consultar_documentos"), async (req, res) => {
   const digits = String(req.params.cep || "").replace(/\D/g, "");
   if (digits.length !== 8) return res.status(400).json({ error: "CEP invalido" });
 
@@ -66,7 +66,7 @@ router.get("/cep/:cep", auth(["admin","caixa"]), async (req, res) => {
 });
 
 // GET /api/consulta/cpf/:cpf - requer certificado digital (nao implementado)
-router.get("/cpf/:cpf", auth(["admin","caixa"]), (_req, res) =>
+router.get("/cpf/:cpf", auth(), authPermission("clientes.consultar_documentos"), (_req, res) =>
   res.status(501).json({ error: "Consulta CPF requer certificado digital." })
 );
 

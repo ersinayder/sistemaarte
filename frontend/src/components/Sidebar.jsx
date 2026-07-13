@@ -84,6 +84,8 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
   const canViewProdutos = hasCan && can('produtos.ver')
   const canViewUsuarios = hasCan && can('usuarios.ver')
   const canViewFinanceiro = hasCan && (can('financeiro.ver') || can('financeiro.contas_pagar.ver') || can('financeiro.relatorios'))
+  const canViewConfiguracoes = hasCan && (can('configuracoes.ver') || can('configuracoes.editar_empresa') || can('configuracoes.editar_fiscal') || can('configuracoes.editar_whatsapp') || can('configuracoes.editar_impressao') || can('configuracoes.seguranca') || can('backups.ver') || can('backups.executar'))
+  const canViewDashboard = hasCan && can('dashboard.ver')
   const canViewCadastros = canViewClientes || canViewProdutos || canViewUsuarios
 
   const navItem = (to, label, iconKey) => (
@@ -150,11 +152,17 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
               {canViewFinanceiro && navItem('/financeiro', 'Financeiro', 'relat')}
             </>
           )}
+          {!(isAdmin || isCaixa) && canViewConfiguracoes && (
+            <>
+              {section('Sistema')}
+              {canViewConfiguracoes && navItem('/configuracoes', 'Configuracoes', 'config')}
+            </>
+          )}
           {(isAdmin || isCaixa) && (
             <>
               {section('Operação')}
               {navItem('/atendimento', 'Atendimento', 'atendimento')}
-              {navItem('/dashboard', 'Resumo', 'resumo')}
+              {canViewDashboard && navItem('/dashboard', 'Resumo', 'resumo')}
               {navItem('/caixa', 'Caixa', 'caixa')}
               {navItemBadge('/ordens', 'Ordens de Serviço', 'ordens', vencidas)}
               {navItem('/propostas', 'Propostas', 'propostas')}
@@ -172,7 +180,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
               {canViewClientes && navItem('/clientes', 'Clientes', 'clientes')}
               {canViewProdutos && navItem('/produtos', 'Produtos', 'produtos')}
               {(isAdmin || canViewUsuarios) && navItem('/usuarios', 'Usuários', 'usuarios')}
-              {isAdmin && navItem('/configuracoes', 'Configurações', 'config')}
+              {canViewConfiguracoes && navItem('/configuracoes', 'Configurações', 'config')}
             </>
           )}
         </nav>

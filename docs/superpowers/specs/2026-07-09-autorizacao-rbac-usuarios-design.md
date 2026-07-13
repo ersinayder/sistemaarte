@@ -465,6 +465,7 @@ O projeto sera considerado completo quando:
 - Fase 3 iniciada: `/api/clientes`, `/api/produtos`, rotas `/clientes` e `/produtos`, links de cadastro e acoes dessas paginas usam permissoes `clientes.*` e `produtos.*`.
 - Fase 3 expandida: `/api/backup`, endpoints de apoio em `/api/configuracoes/backups`, `/api/configuracoes/seguranca`, `/api/configuracoes/sistema` e `/api/relatorios` usam permissoes `backups.*`, `configuracoes.*` e `relatorios.*`.
 - Fase 3 financeiro admin: `/api/financeiro`, rota `/financeiro`, link da sidebar e acoes da pagina Financeiro usam permissoes `financeiro.*`, preservando acesso padrao somente para `admin`.
-- A tela `/configuracoes` ainda nao foi ampliada para perfis nao-admin, pois mistura secoes sensiveis que precisam de gates visuais proprios.
-- Rotas de negocio sensiveis fora de usuarios/clientes/produtos/backups/configuracoes de apoio/relatorios/financeiro admin continuam usando roles durante esta fase.
+- Fase 3 concluida: `/api/configuracoes`, rota `/configuracoes`, link da sidebar e secoes/acoes da pagina Configuracoes usam permissoes `configuracoes.*` e `backups.*`.
+- Fase 3 fechamento simples: `/api/kpis`, rota `/dashboard`, link Resumo, painel de integridade do Dashboard e `/api/consulta` usam permissoes `dashboard.*` e `clientes.consultar_documentos`.
+- Rotas de negocio sensiveis fora de usuarios/clientes/produtos/backups/configuracoes/relatorios/financeiro admin/dashboard/consulta continuam usando roles e ficam para a Fase 4.
 - Edicao visual de perfis e matriz de permissoes segue reservada para fase posterior.

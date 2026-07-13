@@ -125,6 +125,70 @@ describe('route authorization contracts', () => {
     expect(relatoriosSource).toMatch(/router\.get\(["']\/producao\/pdf["'],\s*auth\(\),\s*authPermission\(["']relatorios\.producao["']\)/);
   });
 
+  it('protects all configuration routes with fine-grained RBAC permissions', () => {
+    const source = fs.readFileSync(new URL('../routes/configuracoes.js', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/const\s+\{\s*auth,\s*authPermission\s*\}\s*=\s*require\(["']\.\.\/middlewares\/auth["']\)/);
+    expect(source).toMatch(/router\.get\(["']\/["'],\s*auth\(\),\s*authPermission\(["']configuracoes\.ver["']\)/);
+    expect(source).toMatch(/router\.get\(["']\/empresa["'],\s*auth\(\),\s*authPermission\(["']configuracoes\.ver["']\)/);
+    expect(source).toMatch(/router\.put\(["']\/empresa["'],\s*auth\(\),\s*authPermission\(["']configuracoes\.editar_empresa["']\)/);
+    expect(source).toMatch(/router\.get\(["']\/fiscal["'],\s*auth\(\),\s*authPermission\(["']configuracoes\.editar_fiscal["']\)/);
+    expect(source).toMatch(/router\.put\(["']\/fiscal["'],\s*auth\(\),\s*authPermission\(["']configuracoes\.editar_fiscal["']\)/);
+    expect(source).toMatch(/router\.post\(["']\/fiscal\/certificado["'],\s*auth\(\),\s*authPermission\(["']configuracoes\.editar_fiscal["']\)/);
+    expect(source).toMatch(/router\.put\(["']\/fiscal\/certificado\/senha["'],\s*auth\(\),\s*authPermission\(["']configuracoes\.editar_fiscal["']\)/);
+    expect(source).toMatch(/router\.get\(["']\/fiscal\/autxml["'],\s*auth\(\),\s*authPermission\(["']configuracoes\.editar_fiscal["']\)/);
+    expect(source).toMatch(/router\.post\(["']\/fiscal\/autxml["'],\s*auth\(\),\s*authPermission\(["']configuracoes\.editar_fiscal["']\)/);
+    expect(source).toMatch(/router\.put\(["']\/fiscal\/autxml\/:id["'],\s*auth\(\),\s*authPermission\(["']configuracoes\.editar_fiscal["']\)/);
+    expect(source).toMatch(/router\.delete\(["']\/fiscal\/autxml\/:id["'],\s*auth\(\),\s*authPermission\(["']configuracoes\.editar_fiscal["']\)/);
+    expect(source).toMatch(/router\.get\(["']\/whatsapp["'],\s*auth\(\),\s*authPermission\(["']configuracoes\.editar_whatsapp["']\)/);
+    expect(source).toMatch(/router\.get\(["']\/whatsapp\/web-status["'],\s*auth\(\),\s*authPermission\(["']configuracoes\.editar_whatsapp["']\)/);
+    expect(source).toMatch(/router\.put\(["']\/whatsapp["'],\s*auth\(\),\s*authPermission\(["']configuracoes\.editar_whatsapp["']\)/);
+    expect(source).toMatch(/router\.get\(["']\/impressao["'],\s*auth\(\),\s*authPermission\(["']configuracoes\.editar_impressao["']\)/);
+    expect(source).toMatch(/router\.put\(["']\/impressao["'],\s*auth\(\),\s*authPermission\(["']configuracoes\.editar_impressao["']\)/);
+    expect(source).toMatch(/router\.post\(["']\/impressao\/teste["'],\s*auth\(\),\s*authPermission\(["']configuracoes\.editar_impressao["']\)/);
+    expect(source).toMatch(/router\.post\(["']\/impressao\/diagnostico["'],\s*auth\(\),\s*authPermission\(["']configuracoes\.editar_impressao["']\)/);
+  });
+
+  it('gates configuration frontend access and sections by permissions', () => {
+    const appSource = fs.readFileSync(new URL('../../frontend/src/App.jsx', import.meta.url), 'utf8');
+    const sidebarSource = fs.readFileSync(new URL('../../frontend/src/components/Sidebar.jsx', import.meta.url), 'utf8');
+    const configuracoesSource = fs.readFileSync(new URL('../../frontend/src/pages/Configuracoes.jsx', import.meta.url), 'utf8');
+
+    expect(appSource).toMatch(/path=["']\/configuracoes["'][\s\S]+permissions=\{\[[^\]]*configuracoes\.ver[^\]]*configuracoes\.editar_empresa[^\]]*configuracoes\.editar_fiscal[^\]]*configuracoes\.editar_whatsapp[^\]]*configuracoes\.editar_impressao[^\]]*configuracoes\.seguranca[^\]]*backups\.ver[^\]]*backups\.executar[^\]]*\]\}/);
+    expect(sidebarSource).toMatch(/canViewConfiguracoes\s*=[\s\S]+configuracoes\.ver[\s\S]+configuracoes\.editar_empresa[\s\S]+configuracoes\.editar_fiscal[\s\S]+configuracoes\.editar_whatsapp[\s\S]+configuracoes\.editar_impressao[\s\S]+configuracoes\.seguranca[\s\S]+backups\.ver[\s\S]+backups\.executar/);
+    expect(sidebarSource).toMatch(/canViewConfiguracoes && navItem\(["']\/configuracoes["']/);
+    expect(configuracoesSource).toMatch(/useAuth/);
+    expect(configuracoesSource).toMatch(/permissions:\s*\[['"]configuracoes\.editar_fiscal["']\]/);
+    expect(configuracoesSource).toMatch(/permissions:\s*\[['"]configuracoes\.editar_whatsapp["']\]/);
+    expect(configuracoesSource).toMatch(/permissions:\s*\[['"]configuracoes\.editar_impressao["']\]/);
+    expect(configuracoesSource).toMatch(/visibleSections/);
+    expect(configuracoesSource).toMatch(/canEditEmpresa/);
+    expect(configuracoesSource).toMatch(/canRunBackup/);
+  });
+
+  it('protects dashboard and consultation routes with fine-grained RBAC permissions', () => {
+    const kpisSource = fs.readFileSync(new URL('../routes/kpis.js', import.meta.url), 'utf8');
+    const consultaSource = fs.readFileSync(new URL('../routes/consulta.js', import.meta.url), 'utf8');
+    const appSource = fs.readFileSync(new URL('../../frontend/src/App.jsx', import.meta.url), 'utf8');
+    const sidebarSource = fs.readFileSync(new URL('../../frontend/src/components/Sidebar.jsx', import.meta.url), 'utf8');
+    const dashboardSource = fs.readFileSync(new URL('../../frontend/src/pages/Dashboard.jsx', import.meta.url), 'utf8');
+
+    expect(kpisSource).toMatch(/const\s+\{\s*auth,\s*authPermission\s*\}\s*=\s*require\(["']\.\.\/middlewares\/auth["']\)/);
+    expect(kpisSource).toMatch(/router\.get\(["']\/["'],\s*auth\(\),\s*authPermission\(["']dashboard\.ver["']\)/);
+    expect(kpisSource).toMatch(/router\.get\(["']\/integridade["'],\s*auth\(\),\s*authPermission\(["']dashboard\.integridade["']\)/);
+    expect(kpisSource).toMatch(/router\.get\(["']\/stream["'],\s*auth\(\),\s*authPermission\(["']dashboard\.ver["']\)/);
+
+    expect(consultaSource).toMatch(/const\s+\{\s*auth,\s*authPermission\s*\}\s*=\s*require\(["']\.\.\/middlewares\/auth["']\)/);
+    expect(consultaSource).toMatch(/router\.get\(["']\/cnpj\/:cnpj["'],\s*auth\(\),\s*authPermission\(["']clientes\.consultar_documentos["']\)/);
+    expect(consultaSource).toMatch(/router\.get\(["']\/cep\/:cep["'],\s*auth\(\),\s*authPermission\(["']clientes\.consultar_documentos["']\)/);
+    expect(consultaSource).toMatch(/router\.get\(["']\/cpf\/:cpf["'],\s*auth\(\),\s*authPermission\(["']clientes\.consultar_documentos["']\)/);
+
+    expect(appSource).toMatch(/path=["']\/dashboard["'][\s\S]+permissions=\{\[['"]dashboard\.ver["']\]\}/);
+    expect(sidebarSource).toMatch(/canViewDashboard\s*=[\s\S]+dashboard\.ver/);
+    expect(sidebarSource).toMatch(/canViewDashboard && navItem\(["']\/dashboard["']/);
+    expect(dashboardSource).toMatch(/can\(["']dashboard\.integridade["']\)/);
+  });
+
   it('protects financeiro admin routes with fine-grained RBAC permissions', () => {
     const source = fs.readFileSync(new URL('../routes/financeiro.js', import.meta.url), 'utf8');
 
@@ -197,17 +261,9 @@ describe('route authorization contracts', () => {
 
   it('restricts sensitive read routes away from oficina', async () => {
     const caixaRouter = await loadRouter('../routes/caixa.js');
-    const kpisRouter = await loadRouter('../routes/kpis.js');
 
     expect(routeRoles(caixaRouter, 'get', '/')).toEqual(['admin', 'caixa']);
     expect(routeRoles(caixaRouter, 'get', '/fechamento')).toEqual(['admin', 'caixa']);
-    expect(routeRoles(kpisRouter, 'get', '/integridade')).toEqual(['admin']);
-  });
-
-  it('keeps CEP lookup behind the authenticated API for admin and caixa', async () => {
-    const consultaRouter = await loadRouter('../routes/consulta.js');
-
-    expect(routeRoles(consultaRouter, 'get', '/cep/:cep')).toEqual(['admin', 'caixa']);
   });
 });
 
@@ -405,14 +461,13 @@ describe('security configuration contracts', () => {
     expect(source).toMatch(/lockoutLoginPorUsuario:\s*true/);
   });
 
-  it('keeps print configuration admin-only and sanitized before server printing', async () => {
-    const configuracoesRouter = await loadRouter('../routes/configuracoes.js');
+  it('keeps print configuration permission-gated and sanitized before server printing', () => {
     const source = fs.readFileSync(new URL('../routes/configuracoes.js', import.meta.url), 'utf8');
 
-    expect(routeRoles(configuracoesRouter, 'get', '/impressao')).toEqual(['admin']);
-    expect(routeRoles(configuracoesRouter, 'put', '/impressao')).toEqual(['admin']);
-    expect(routeRoles(configuracoesRouter, 'post', '/impressao/teste')).toEqual(['admin']);
-    expect(routeRoles(configuracoesRouter, 'post', '/impressao/diagnostico')).toEqual(['admin']);
+    expect(source).toMatch(/router\.get\(["']\/impressao["'],\s*auth\(\),\s*authPermission\(["']configuracoes\.editar_impressao["']\)/);
+    expect(source).toMatch(/router\.put\(["']\/impressao["'],\s*auth\(\),\s*authPermission\(["']configuracoes\.editar_impressao["']\)/);
+    expect(source).toMatch(/router\.post\(["']\/impressao\/teste["'],\s*auth\(\),\s*authPermission\(["']configuracoes\.editar_impressao["']\)/);
+    expect(source).toMatch(/router\.post\(["']\/impressao\/diagnostico["'],\s*auth\(\),\s*authPermission\(["']configuracoes\.editar_impressao["']\)/);
     expect(source).toMatch(/normalizarImpressaoConfig/);
     expect(source).toMatch(/validarImpressaoConfig/);
     expect(source).toMatch(/renderTesteImpressaoHtml/);
@@ -431,13 +486,12 @@ describe('security configuration contracts', () => {
     expect(configuracoesSource).toMatch(/Erro do envio/);
   });
 
-  it('keeps whatsapp web status admin-only and starts the queue worker behind an env gate', async () => {
-    const configuracoesRouter = await loadRouter('../routes/configuracoes.js');
+  it('keeps whatsapp web status permission-gated and starts the queue worker behind an env gate', () => {
     const configuracoesSource = fs.readFileSync(new URL('../routes/configuracoes.js', import.meta.url), 'utf8');
     const serverSource = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
     const ecosystemSource = fs.readFileSync(new URL('../ecosystem.config.js', import.meta.url), 'utf8');
 
-    expect(routeRoles(configuracoesRouter, 'get', '/whatsapp/web-status')).toEqual(['admin']);
+    expect(configuracoesSource).toMatch(/router\.get\(["']\/whatsapp\/web-status["'],\s*auth\(\),\s*authPermission\(["']configuracoes\.editar_whatsapp["']\)/);
     expect(configuracoesSource).toMatch(/createWhatsappWebProvider/);
     expect(serverSource).toMatch(/WHATSAPP_WEB_ENABLED/);
     expect(serverSource).toMatch(/createWhatsappWorker/);
@@ -658,14 +712,13 @@ describe('security configuration contracts', () => {
     expect(databaseSource).toMatch(/CREATE INDEX IF NOT EXISTS idx_nfe_integridade_conciliacoes_ordem/);
   });
 
-  it('exposes admin-only integrity summary without external fiscal calls', async () => {
-    const kpisRouter = await loadRouter('../routes/kpis.js');
+  it('exposes permission-gated integrity summary without external fiscal calls', () => {
     const source = fs.readFileSync(new URL('../routes/kpis.js', import.meta.url), 'utf8');
     const routeStart = source.indexOf('router.get("/integridade"');
     const streamStart = source.indexOf('router.get("/stream"');
     const routeSource = source.slice(routeStart, streamStart);
 
-    expect(routeRoles(kpisRouter, 'get', '/integridade')).toEqual(['admin']);
+    expect(source).toMatch(/router\.get\(["']\/integridade["'],\s*auth\(\),\s*authPermission\(["']dashboard\.integridade["']\)/);
     expect(source).toMatch(/montarResumoIntegridade/);
     expect(source).toMatch(/listarPendenciasFiscais/);
     expect(source).toMatch(/auditarIntegridadeFinanceiraOS/);
@@ -779,7 +832,7 @@ describe('security configuration contracts', () => {
     expect(source).not.toMatch(/Resolver pendencia|Reenviar pendencia|Consultar SEFAZ agora/);
   });
 
-  it('shows admin-only integrity summary on Dashboard without corrective actions', () => {
+  it('shows permission-gated integrity summary on Dashboard without corrective actions', () => {
     const source = fs.readFileSync(new URL('../../frontend/src/pages/Dashboard.jsx', import.meta.url), 'utf8');
     const panelStart = source.indexOf('function IntegridadeResumoPanel');
     const nextFunction = source.indexOf('export default function Dashboard', panelStart);
@@ -787,9 +840,9 @@ describe('security configuration contracts', () => {
 
     expect(source).toMatch(/function IntegridadeResumoPanel/);
     expect(source).toMatch(/const \{ kpis: live, online \} = useKpiStream\(\)/);
-    expect(source).toMatch(/const \{ isAdmin \} = useAuth\(\) \|\| \{\}/);
+    expect(source).toMatch(/can\(["']dashboard\.integridade["']\)/);
     expect(source).toMatch(/api\.get\(['"]\/kpis\/integridade['"],\s*\{\s*skipGlobalErrorToast:\s*true\s*\}\)/);
-    expect(source).toMatch(/isAdmin && integridadeResumo\?\.meta\?\.total > 0/);
+    expect(source).toMatch(/canViewIntegridade && integridadeResumo\?\.meta\?\.total > 0/);
     expect(source).toMatch(/<IntegridadeResumoPanel resumo=\{integridadeResumo\} onNavigate=\{navigate\}/);
     expect(panelSource).not.toMatch(/Corrigir|Consultar SEFAZ|Reenviar|Cancelar|Emitir CC-e|Editar OS/);
   });
