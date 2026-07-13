@@ -124,21 +124,27 @@ function auth(roles = []) {
 }
 
 function authPermission(permission) {
-  return (req, res, next) => {
+  const middleware = (req, res, next) => {
     if (!hasPermission(req.user, permission)) {
       return res.status(403).json({ error: "Sem permissao" });
     }
     next();
   };
+
+  middleware._permission = permission;
+  return middleware;
 }
 
 function authAnyPermission(permissions) {
-  return (req, res, next) => {
+  const middleware = (req, res, next) => {
     if (!hasAnyPermission(req.user, permissions)) {
       return res.status(403).json({ error: "Sem permissao" });
     }
     next();
   };
+
+  middleware._permissions = permissions;
+  return middleware;
 }
 
 module.exports = {

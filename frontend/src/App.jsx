@@ -30,12 +30,37 @@ function PrivateRoute({ children, roles, permissions }) {
   return children
 }
 
+function SemAcesso() {
+  return (
+    <div className="loading-center" style={{ flexDirection: 'column', gap: 'var(--space-2)', textAlign: 'center' }}>
+      <strong>Sem acesso disponivel</strong>
+      <span style={{ color: 'var(--color-text-muted)', maxWidth: 420 }}>
+        Seu usuario esta ativo, mas nao possui permissao para acessar os modulos do sistema.
+      </span>
+    </div>
+  )
+}
+
 function AppRoutes() {
-  const { user, loading } = useAuth()
+  const { user, loading, canAny } = useAuth()
   if (loading) return <div className="loading-center"><div className="spinner"/></div>
   if (!user)   return <Routes><Route path="*" element={<LoginPage />} /></Routes>
 
-  const defaultRoute = user.role === 'oficina' ? '/oficina' : '/atendimento'
+  const firstAllowedRoute = [
+    [user.role === 'oficina' && canAny(['oficina.ver']), '/oficina'],
+    [canAny(['atendimento.ver']), '/atendimento'],
+    [canAny(['dashboard.ver']), '/dashboard'],
+    [canAny(['ordens.ver']), '/ordens'],
+    [canAny(['caixa.ver']), '/caixa'],
+    [canAny(['propostas.ver']), '/propostas'],
+    [canAny(['nfe.ver']), '/nfe'],
+    [canAny(['clientes.ver']), '/clientes'],
+    [canAny(['produtos.ver']), '/produtos'],
+    [canAny(['financeiro.ver', 'financeiro.contas_pagar.ver', 'financeiro.relatorios']), '/financeiro'],
+    [canAny(['usuarios.ver']), '/usuarios'],
+    [canAny(['configuracoes.ver', 'configuracoes.editar_empresa', 'configuracoes.editar_fiscal', 'configuracoes.editar_whatsapp', 'configuracoes.editar_impressao', 'configuracoes.seguranca', 'backups.ver', 'backups.executar']), '/configuracoes'],
+  ].find(([allowed]) => allowed)?.[1]
+  const defaultRoute = firstAllowedRoute || '/sem-acesso'
 
   return (
     <React.Suspense fallback={<div className="loading-center"><div className="spinner"/></div>}>
@@ -43,28 +68,29 @@ function AppRoutes() {
         <Route path="/login" element={<Navigate to={defaultRoute} replace />} />
         <Route element={<Layout />}>
           <Route index element={<Navigate to={defaultRoute} replace />} />
-          <Route path="/oficina" element={<PrivateRoute><Oficina /></PrivateRoute>}/>
-          <Route path="/oficina/:id" element={<PrivateRoute><OrdemDetalhe context="oficina" /></PrivateRoute>}/>
-          <Route path="/atendimento" element={<PrivateRoute roles={['admin','caixa']}><Atendimento /></PrivateRoute>}/>
+          <Route path="/oficina" element={<PrivateRoute permissions={['oficina.ver']}><Oficina /></PrivateRoute>}/>
+          <Route path="/oficina/:id" element={<PrivateRoute permissions={['oficina.ver', 'ordens.ver']}><OrdemDetalhe context="oficina" /></PrivateRoute>}/>
+          <Route path="/atendimento" element={<PrivateRoute permissions={['atendimento.ver']}><Atendimento /></PrivateRoute>}/>
           <Route path="/dashboard" element={<PrivateRoute permissions={['dashboard.ver']}><Dashboard /></PrivateRoute>}/>
-          <Route path="/ordens" element={<PrivateRoute roles={['admin','caixa']}><Ordens /></PrivateRoute>}/>
-          <Route path="/ordens/lixeira" element={<PrivateRoute roles={['admin']}><OrdemLixeira /></PrivateRoute>}/>
-          <Route path="/ordens/:id" element={<PrivateRoute roles={['admin','caixa']}><OrdemDetalhe /></PrivateRoute>}/>
-          <Route path="/caixa" element={<PrivateRoute roles={['admin','caixa']}><Caixa /></PrivateRoute>}/>
-          <Route path="/caixa/:id" element={<PrivateRoute roles={['admin','caixa']}><Caixa /></PrivateRoute>}/>
+          <Route path="/ordens" element={<PrivateRoute permissions={['ordens.ver']}><Ordens /></PrivateRoute>}/>
+          <Route path="/ordens/lixeira" element={<PrivateRoute permissions={['ordens.excluir', 'ordens.restaurar', 'ordens.excluir_permanente']}><OrdemLixeira /></PrivateRoute>}/>
+          <Route path="/ordens/:id" element={<PrivateRoute permissions={['ordens.ver']}><OrdemDetalhe /></PrivateRoute>}/>
+          <Route path="/caixa" element={<PrivateRoute permissions={['caixa.ver']}><Caixa /></PrivateRoute>}/>
+          <Route path="/caixa/:id" element={<PrivateRoute permissions={['caixa.ver']}><Caixa /></PrivateRoute>}/>
           <Route path="/clientes" element={<PrivateRoute permissions={['clientes.ver']}><Clientes /></PrivateRoute>}/>
           <Route path="/clientes/:id" element={<PrivateRoute permissions={['clientes.ver']}><Clientes /></PrivateRoute>}/>
           <Route path="/financeiro" element={<PrivateRoute permissions={['financeiro.ver', 'financeiro.contas_pagar.ver', 'financeiro.relatorios']}><Financeiro /></PrivateRoute>}/>
           <Route path="/relatorios" element={<Navigate to="/financeiro" replace />}/>
-          <Route path="/orcamento" element={<PrivateRoute roles={['admin','caixa']}><Orcamento /></PrivateRoute>}/>
-          <Route path="/orcamento/calculadora" element={<PrivateRoute roles={['admin','caixa']}><CalculadoraOrcamento /></PrivateRoute>}/>
+          <Route path="/orcamento" element={<PrivateRoute permissions={['propostas.criar']}><Orcamento /></PrivateRoute>}/>
+          <Route path="/orcamento/calculadora" element={<PrivateRoute permissions={['ordens.criar', 'propostas.criar']}><CalculadoraOrcamento /></PrivateRoute>}/>
           <Route path="/orcamento-rapido" element={<Navigate to="/orcamento/calculadora" replace />}/>
-          <Route path="/propostas" element={<PrivateRoute roles={['admin','caixa']}><Propostas /></PrivateRoute>}/>
+          <Route path="/propostas" element={<PrivateRoute permissions={['propostas.ver']}><Propostas /></PrivateRoute>}/>
           <Route path="/produtos" element={<PrivateRoute permissions={['produtos.ver']}><Produtos /></PrivateRoute>}/>
           <Route path="/usuarios" element={<PrivateRoute permissions={['usuarios.ver']}><Usuarios /></PrivateRoute>}/>
           <Route path="/configuracoes" element={<PrivateRoute permissions={['configuracoes.ver', 'configuracoes.editar_empresa', 'configuracoes.editar_fiscal', 'configuracoes.editar_whatsapp', 'configuracoes.editar_impressao', 'configuracoes.seguranca', 'backups.ver', 'backups.executar']}><Configuracoes /></PrivateRoute>}/>
-          <Route path="/nfe" element={<PrivateRoute roles={['admin','caixa']}><NotasFiscais /></PrivateRoute>}/>
-          <Route path="/nfe/lixeira" element={<PrivateRoute roles={['admin']}><NotasFiscais lixeira /></PrivateRoute>}/>
+          <Route path="/nfe" element={<PrivateRoute permissions={['nfe.ver']}><NotasFiscais /></PrivateRoute>}/>
+          <Route path="/nfe/lixeira" element={<PrivateRoute permissions={['nfe.lixeira']}><NotasFiscais lixeira /></PrivateRoute>}/>
+          <Route path="/sem-acesso" element={<SemAcesso />}/>
           <Route path="*" element={<Navigate to={defaultRoute} replace />} />
         </Route>
       </Routes>

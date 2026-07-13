@@ -48,6 +48,7 @@ ordens.excluir
 ordens.restaurar
 ordens.excluir_permanente
 ordens.imprimir
+ordens.whatsapp
 
 oficina.ver
 oficina.alterar_status
@@ -88,6 +89,9 @@ nfe.xml
 nfe.danfe
 nfe.lixeira
 nfe.inutilizar
+nfe.integridade
+nfe.exportar
+nfe.conciliar
 
 relatorios.ver
 relatorios.producao
@@ -467,5 +471,6 @@ O projeto sera considerado completo quando:
 - Fase 3 financeiro admin: `/api/financeiro`, rota `/financeiro`, link da sidebar e acoes da pagina Financeiro usam permissoes `financeiro.*`, preservando acesso padrao somente para `admin`.
 - Fase 3 concluida: `/api/configuracoes`, rota `/configuracoes`, link da sidebar e secoes/acoes da pagina Configuracoes usam permissoes `configuracoes.*` e `backups.*`.
 - Fase 3 fechamento simples: `/api/kpis`, rota `/dashboard`, link Resumo, painel de integridade do Dashboard e `/api/consulta` usam permissoes `dashboard.*` e `clientes.consultar_documentos`.
-- Rotas de negocio sensiveis fora de usuarios/clientes/produtos/backups/configuracoes/relatorios/financeiro admin/dashboard/consulta continuam usando roles e ficam para a Fase 4.
-- Edicao visual de perfis e matriz de permissoes segue reservada para fase posterior.
+- Fase 4 concluida: `/api/caixa`, `/api/ordens`, impressao/PDF de OS, `/api/propostas` e `/api/nfe` usam permissoes granulares; rotas e acoes frontend de Atendimento, Ordens, Oficina, Caixa, Propostas e NF-e tambem foram migradas para `can(...)`.
+- Regras criticas preservadas na Fase 4: oficina nao cancela OS, cancelamento de OS exige `ordens.cancelar`, entrega continua dependente de saldo oficial, lixeira fiscal segue restrita e NF-e autorizada/cancelada nao entra em lixeira.
+- Edicao visual de perfis, matriz de permissoes e limpeza final de helpers legados seguem reservadas para fase posterior.

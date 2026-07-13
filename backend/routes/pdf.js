@@ -1,6 +1,6 @@
 const router = require("express").Router();
 const { getOne, getAll } = require("../database");
-const { auth } = require("../middlewares/auth");
+const { auth, authPermission } = require("../middlewares/auth");
 const { getResumoFinanceiroOS } = require("../domain/financeiroRules");
 const { renderOrdemServicoHtml } = require("../utils/print/ordemServico");
 const { sendPrintHtml } = require("../utils/print/base");
@@ -25,7 +25,7 @@ const SEL_ORDEM = `
   LEFT JOIN users u ON u.id = o.criadopor
 `;
 
-router.get("/:id/pdf", auth(["admin", "caixa"]), (req, res) => {
+router.get("/:id/pdf", auth(), authPermission("ordens.imprimir"), (req, res) => {
   try {
     const os = getOne(SEL_ORDEM + " WHERE o.id=? AND o.deletedat IS NULL", [req.params.id]);
     if (!os) return res.status(404).json({ error: "OS nao encontrada" });
@@ -56,7 +56,7 @@ router.get("/:id/pdf", auth(["admin", "caixa"]), (req, res) => {
   }
 });
 
-router.post("/:id/print", auth(["admin", "caixa"]), async (req, res) => {
+router.post("/:id/print", auth(), authPermission("ordens.imprimir"), async (req, res) => {
   let copies;
   try {
     copies = normalizePrintCopies(req.body?.copies);

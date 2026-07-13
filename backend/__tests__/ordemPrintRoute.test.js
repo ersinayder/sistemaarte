@@ -69,6 +69,7 @@ async function loadPrintHandler() {
     layer,
     handler: layer?.route?.stack?.at(-1)?.handle,
     roles: layer?.route?.stack?.map((entry) => entry.handle?._roles).find(Array.isArray),
+    permission: layer?.route?.stack?.map((entry) => entry.handle?._permission).find(Boolean),
   };
 }
 
@@ -91,11 +92,11 @@ describe('ordem service order server printing route', () => {
     }));
   });
 
-  it('exposes direct OS printing only to admin and caixa', async () => {
-    const { layer, roles } = await loadPrintHandler();
+  it('exposes direct OS printing only to users with print permission', async () => {
+    const { layer, permission } = await loadPrintHandler();
 
     expect(layer).toBeTruthy();
-    expect(roles).toEqual(['admin', 'caixa']);
+    expect(permission).toBe('ordens.imprimir');
   });
 
   it('prints the requested service order with one or two copies on the server printer', async () => {

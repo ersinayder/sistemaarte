@@ -11,6 +11,12 @@ vi.mock('../services/api', () => ({
   },
 }))
 
+vi.mock('../context/AuthContext', () => ({
+  useAuth: () => ({
+    can: (permission) => ['financeiro.ver', 'financeiro.contas_pagar.ver', 'financeiro.relatorios'].includes(permission),
+  }),
+}))
+
 vi.mock('react-hot-toast', () => ({
   toast: {
     error: vi.fn(),

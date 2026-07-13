@@ -108,7 +108,7 @@ function IconNFe() {
 export default function OrdemDetalhe({ context }) {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { isCaixa, isAdmin, isOficina } = useAuth()
+  const { isOficina, can } = useAuth()
 
   const isOficinaContext = context === 'oficina' || isOficina
   const backPath = isOficinaContext ? '/oficina' : '/ordens'
@@ -178,6 +178,8 @@ export default function OrdemDetalhe({ context }) {
   }, [historico, lancamentosOS])
 
   const mudarStatus = async (novoStatus) => {
+    if (novoStatus === 'Cancelado' && !(typeof can === 'function' && can('ordens.cancelar'))) return toast.error('Sem permissao para cancelar OS')
+    if (!(typeof can === 'function' && (can('ordens.alterar_status') || can('oficina.alterar_status')))) return toast.error('Sem permissao para alterar status')
     try {
       await api.patch(`/ordens/${id}/status`, { status: novoStatus })
       toast.success(`Status → ${novoStatus}`)
@@ -186,6 +188,7 @@ export default function OrdemDetalhe({ context }) {
   }
 
   const adicionarObs = async () => {
+    if (!(typeof can === 'function' && (can('ordens.alterar_status') || can('oficina.alterar_status')))) return toast.error('Sem permissao para adicionar observacao')
     if (!novaObs.trim()) return
     setSavingObs(true)
     try {
@@ -198,6 +201,7 @@ export default function OrdemDetalhe({ context }) {
   }
 
   const excluirOS = async () => {
+    if (!(typeof can === 'function' && can('ordens.excluir'))) return toast.error('Sem permissao para excluir OS')
     try {
       await api.delete(`/ordens/${id}`)
       toast.success(`OS ${ordem.numero} excluída.`)
@@ -208,8 +212,12 @@ export default function OrdemDetalhe({ context }) {
     }
   }
 
-  const imprimirOS = () => window.open(`/api/ordens/${id}/pdf`, '_blank', 'noopener,noreferrer')
+  const imprimirOS = () => {
+    if (!(typeof can === 'function' && can('ordens.imprimir'))) return toast.error('Sem permissao para imprimir OS')
+    window.open(`/api/ordens/${id}/pdf`, '_blank', 'noopener,noreferrer')
+  }
   const baixarDanfe = async () => {
+    if (!(typeof can === 'function' && can('nfe.danfe'))) return toast.error('Sem permissao para baixar DANFE')
     if (!ordem?.nfe_chave) {
       toast.error('Chave da NF-e indisponivel')
       return
@@ -223,6 +231,7 @@ export default function OrdemDetalhe({ context }) {
 
   // ── NF-e ──────────────────────────────────────────────────────────────────
   const handleEmitirNFe = async () => {
+    if (!(typeof can === 'function' && can('nfe.emitir'))) return toast.error('Sem permissao para emitir NF-e')
     if (!window.confirm('Emitir NF-e para esta OS? A nota será enviada à SEFAZ.')) return
     setEmitindo(true)
     try {
@@ -243,16 +252,20 @@ export default function OrdemDetalhe({ context }) {
   const saldoOS   = Number(ordem.saldoaberto ?? 0)
   const vencida   = ordem.prazo && ordem.prazo < today() && !['Entregue','Cancelado','Pronto'].includes(ordem.status)
   const statusIdx = STATUS_FLOW.indexOf(ordem.status)
-  const canAdvance = (isCaixa || isOficina || isAdmin) && ordem.status !== 'Entregue' && ordem.status !== 'Cancelado'
-  const canCancel  = (isCaixa || isAdmin) && !isOficinaContext && ordem.status !== 'Cancelado'
-  const canSendWpp = (isAdmin || isCaixa) && !['Cancelado'].includes(ordem.status)
-  const canDelete  = isAdmin && !isOficinaContext
+  const canChangeStatus = typeof can === 'function' && (can('ordens.alterar_status') || can('oficina.alterar_status'))
+  const canAdvance = canChangeStatus && ordem.status !== 'Entregue' && ordem.status !== 'Cancelado'
+  const canCancel  = typeof can === 'function' && can('ordens.cancelar') && !isOficinaContext && ordem.status !== 'Cancelado'
+  const canSendWpp = typeof can === 'function' && can('ordens.whatsapp') && !['Cancelado'].includes(ordem.status)
+  const canDelete  = typeof can === 'function' && can('ordens.excluir') && !isOficinaContext
+  const canPrint = typeof can === 'function' && can('ordens.imprimir')
+  const canDownloadDanfe = typeof can === 'function' && can('nfe.danfe')
   const wppUrl     = buildWppUrl(ordem)
   const wppLabel = ordem.status === 'Pronto' ? 'Avisar Pronto' : 'Confirmar Pedido'
 
   // NF-e: algumas empresas exigem nota antes do pagamento, entao Aguardando tambem e elegivel.
   const podeEmitirNFe =
-    (isAdmin || isCaixa) &&
+    typeof can === 'function' &&
+    can('nfe.emitir') &&
     !isOficinaContext &&
     STATUS_NFE_EMISSAO.includes(ordem.status) &&
     !ordem.nfe_chave
@@ -334,12 +347,14 @@ export default function OrdemDetalhe({ context }) {
           </a>
         )}
 
-        <button className="btn btn-ghost btn-sm" onClick={imprimirOS}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><path d="M6 14h12v8H6z"/>
-          </svg>
-          Imprimir OS
-        </button>
+        {canPrint && (
+          <button className="btn btn-ghost btn-sm" onClick={imprimirOS}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><path d="M6 14h12v8H6z"/>
+            </svg>
+            Imprimir OS
+          </button>
+        )}
 
         {canDelete && (
           <button className="btn btn-sm" onClick={() => setConfirmDelete(true)}
@@ -523,7 +538,7 @@ export default function OrdemDetalhe({ context }) {
                     </div>
                   )}
                 </div>
-                <button
+                {canDownloadDanfe && <button
                   className="btn btn-sm"
                   onClick={baixarDanfe}
                   style={{
@@ -539,7 +554,7 @@ export default function OrdemDetalhe({ context }) {
                   }}
                 >
                   <IconNFe /> Baixar DANFE
-                </button>
+                </button>}
               </div>
             )}
 

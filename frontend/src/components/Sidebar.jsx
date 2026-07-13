@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react'
-import { NavLink, useNavigate, useLocation } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
+import React, { useEffect, useState } from 'react'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
+import { useAuth } from '../context/AuthContext'
 import api from '../services/api'
 
 const Icon = ({ d, d2 }) => (
@@ -24,7 +24,6 @@ const ICONS = {
   produtos:  { d: 'M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z', d2: 'M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12' },
   nfe:       { d: 'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z', d2: 'M14 2v6h6M9 13h6M9 17h4' },
   config:    { d: 'M12 15.5A3.5 3.5 0 1012 8a3.5 3.5 0 000 7.5z', d2: 'M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51h.08a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9c.23.61.81 1 1.47 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z' },
-  mais:      { d: 'M4 6h16M4 12h16M4 18h16' },
 }
 
 const ROLE_LABEL = { admin: 'Administrador', caixa: 'Caixa', oficina: 'Oficina' }
@@ -52,41 +51,51 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
   const theme = useTheme()
   const logoSrc = theme === 'light' ? '/logo preta.png' : '/logo.png'
   const location = useLocation()
+  const navigate = useNavigate()
 
-  // Fecha drawer mobile ao navegar
+  const hasCan = typeof can === 'function'
+  const isAdmin = user?.role === 'admin'
+  const isCaixa = user?.role === 'caixa'
+  const isOficina = user?.role === 'oficina'
+  const hasPermission = (permission, legacyAllowed = false) => hasCan ? can(permission) : legacyAllowed
+
+  const canViewAtendimento = hasPermission('atendimento.ver', isAdmin || isCaixa)
+  const canViewDashboard = hasPermission('dashboard.ver', isAdmin || isCaixa)
+  const canViewCaixa = hasPermission('caixa.ver', isAdmin || isCaixa)
+  const canViewOrdens = hasPermission('ordens.ver', isAdmin || isCaixa)
+  const canViewOrcamento = hasPermission('propostas.criar', isAdmin || isCaixa) || hasPermission('ordens.criar', isAdmin || isCaixa)
+  const canViewPropostas = hasPermission('propostas.ver', isAdmin || isCaixa)
+  const canViewOficina = hasPermission('oficina.ver', isAdmin || isCaixa || isOficina)
+  const canViewNfe = hasPermission('nfe.ver', isAdmin || isCaixa)
+  const canViewClientes = hasPermission('clientes.ver', isAdmin || isCaixa)
+  const canViewProdutos = hasPermission('produtos.ver', isAdmin || isCaixa)
+  const canViewUsuarios = hasPermission('usuarios.ver', isAdmin)
+  const canViewFinanceiro = hasPermission('financeiro.ver', isAdmin) || hasPermission('financeiro.contas_pagar.ver', isAdmin) || hasPermission('financeiro.relatorios', isAdmin)
+  const canViewConfiguracoes = hasPermission('configuracoes.ver', isAdmin) || hasPermission('configuracoes.editar_empresa', isAdmin) || hasPermission('configuracoes.editar_fiscal', isAdmin) || hasPermission('configuracoes.editar_whatsapp', isAdmin) || hasPermission('configuracoes.editar_impressao', isAdmin) || hasPermission('configuracoes.seguranca', isAdmin) || hasPermission('backups.ver', isAdmin) || hasPermission('backups.executar', isAdmin)
+  const canViewCadastros = canViewClientes || canViewProdutos || canViewUsuarios
+  const canViewOperacao = canViewAtendimento || canViewDashboard || canViewCaixa || canViewOrdens || canViewOrcamento || canViewPropostas
+
   useEffect(() => {
     if (onMobileClose) onMobileClose()
   }, [location.pathname])
 
   useEffect(() => {
+    if (!canViewOrdens) return undefined
     let cancelled = false
     const load = async () => {
       try {
         const r = await api.get('/ordens?vencidas=1')
         if (cancelled) return
-        setVencidas((r.data?.ordens || r.data || []).length)
+        setVencidas((r.data?.ordens || r.data?.data || r.data || []).length)
       } catch {}
     }
     load()
     const t = setInterval(load, 60_000)
     return () => { cancelled = true; clearInterval(t) }
-  }, [])
+  }, [canViewOrdens])
 
-  const navigate = useNavigate()
-  const handleSwitch = () => { switchUser(); navigate('/login'); toast('Faça login com outro usuário') }
-  const handleLogout = () => { logout(); navigate('/login'); toast('Sessão encerrada') }
-
-  const isAdmin   = user?.role === 'admin'
-  const isCaixa   = user?.role === 'caixa'
-  const isOficina = user?.role === 'oficina'
-  const hasCan = typeof can === 'function'
-  const canViewClientes = hasCan && can('clientes.ver')
-  const canViewProdutos = hasCan && can('produtos.ver')
-  const canViewUsuarios = hasCan && can('usuarios.ver')
-  const canViewFinanceiro = hasCan && (can('financeiro.ver') || can('financeiro.contas_pagar.ver') || can('financeiro.relatorios'))
-  const canViewConfiguracoes = hasCan && (can('configuracoes.ver') || can('configuracoes.editar_empresa') || can('configuracoes.editar_fiscal') || can('configuracoes.editar_whatsapp') || can('configuracoes.editar_impressao') || can('configuracoes.seguranca') || can('backups.ver') || can('backups.executar'))
-  const canViewDashboard = hasCan && can('dashboard.ver')
-  const canViewCadastros = canViewClientes || canViewProdutos || canViewUsuarios
+  const handleSwitch = () => { switchUser(); navigate('/login'); toast('Faca login com outro usuario') }
+  const handleLogout = () => { logout(); navigate('/login'); toast('Sessao encerrada') }
 
   const navItem = (to, label, iconKey) => (
     <NavLink to={to} className={({ isActive }) => `sidebar-nav-item${isActive ? ' active' : ''}`} title={collapsed ? label : undefined}>
@@ -99,11 +108,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
     <NavLink to={to} className={({ isActive }) => `sidebar-nav-item${isActive ? ' active' : ''}`} title={collapsed ? label : undefined} style={{ position: 'relative' }}>
       <Icon {...ICONS[iconKey]} />
       {!collapsed && <span className="nav-label">{label}</span>}
-      {badge > 0 && (
-        <span className="sidebar-badge">
-          {badge > 99 ? '99+' : badge}
-        </span>
-      )}
+      {badge > 0 && <span className="sidebar-badge">{badge > 99 ? '99+' : badge}</span>}
     </NavLink>
   )
 
@@ -113,7 +118,6 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
 
   return (
     <>
-      {/* ── Sidebar desktop (≥ 768px) + Drawer mobile */}
       <aside className={`sidebar${collapsed ? ' collapsed' : ''}${mobileOpen ? ' mobile-open' : ''}`}>
         <div className="sidebar-header" onClick={onToggle}
           style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: collapsed ? 'var(--space-3) 0' : 'var(--space-6) var(--space-3) var(--space-4)', gap: 'var(--space-2)', borderBottom: '1px solid var(--color-divider)', position: 'relative' }}
@@ -133,54 +137,47 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
         </div>
 
         <nav className="sidebar-nav" style={{ paddingTop: 'var(--space-3)' }}>
-          {isOficina && navItem('/oficina', 'Fila da Oficina', 'oficina')}
-          {!(isAdmin || isCaixa) && canViewCadastros && (
+          {canViewOperacao && (
             <>
-              {section('Cadastros')}
-              {canViewClientes && navItem('/clientes', 'Clientes', 'clientes')}
-              {canViewProdutos && navItem('/produtos', 'Produtos', 'produtos')}
-              {canViewUsuarios && (
-                <>
-              {navItem('/usuarios', 'UsuÃ¡rios', 'usuarios')}
-                </>
-              )}
-            </>
-          )}
-          {!(isAdmin || isCaixa) && canViewFinanceiro && (
-            <>
-              {section('Administracao')}
-              {canViewFinanceiro && navItem('/financeiro', 'Financeiro', 'relat')}
-            </>
-          )}
-          {!(isAdmin || isCaixa) && canViewConfiguracoes && (
-            <>
-              {section('Sistema')}
-              {canViewConfiguracoes && navItem('/configuracoes', 'Configuracoes', 'config')}
-            </>
-          )}
-          {(isAdmin || isCaixa) && (
-            <>
-              {section('Operação')}
-              {navItem('/atendimento', 'Atendimento', 'atendimento')}
+              {section('Operacao')}
+              {canViewAtendimento && navItem('/atendimento', 'Atendimento', 'atendimento')}
               {canViewDashboard && navItem('/dashboard', 'Resumo', 'resumo')}
-              {navItem('/caixa', 'Caixa', 'caixa')}
-              {navItemBadge('/ordens', 'Ordens de Serviço', 'ordens', vencidas)}
-              {navItem('/propostas', 'Propostas', 'propostas')}
-
+              {canViewCaixa && navItem('/caixa', 'Caixa', 'caixa')}
+              {canViewOrdens && navItemBadge('/ordens', 'Ordens de Servico', 'ordens', vencidas)}
+              {canViewOrcamento && navItem('/orcamento', 'Orcamento', 'orcamento')}
+              {canViewPropostas && navItem('/propostas', 'Propostas', 'propostas')}
+            </>
+          )}
+          {canViewNfe && (
+            <>
               {section('Fiscal')}
               {navItem('/nfe', 'Notas Fiscais', 'nfe')}
-
-              {section('Produção')}
+            </>
+          )}
+          {canViewOficina && (
+            <>
+              {section('Producao')}
               {navItem('/oficina', 'Fila da Oficina', 'oficina')}
-
-              {section('Administração')}
-              {canViewFinanceiro && navItem('/financeiro', 'Financeiro', 'relat')}
-
+            </>
+          )}
+          {canViewFinanceiro && (
+            <>
+              {section('Administracao')}
+              {navItem('/financeiro', 'Financeiro', 'relat')}
+            </>
+          )}
+          {canViewCadastros && (
+            <>
               {section('Cadastros')}
               {canViewClientes && navItem('/clientes', 'Clientes', 'clientes')}
               {canViewProdutos && navItem('/produtos', 'Produtos', 'produtos')}
-              {(isAdmin || canViewUsuarios) && navItem('/usuarios', 'Usuários', 'usuarios')}
-              {canViewConfiguracoes && navItem('/configuracoes', 'Configurações', 'config')}
+              {canViewUsuarios && navItem('/usuarios', 'Usuarios', 'usuarios')}
+            </>
+          )}
+          {canViewConfiguracoes && (
+            <>
+              {section('Sistema')}
+              {navItem('/configuracoes', 'Configuracoes', 'config')}
             </>
           )}
         </nav>
@@ -193,12 +190,12 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
             {!collapsed && (
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontWeight: 700, fontSize: 'var(--text-xs)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name}</div>
-                <div style={{ fontSize: 10, color: ROLE_COLOR[user?.role], fontWeight: 600 }}>{ROLE_LABEL[user?.role]}</div>
+                <div style={{ fontSize: 10, color: ROLE_COLOR[user?.role], fontWeight: 600 }}>{ROLE_LABEL[user?.role] || user?.role}</div>
               </div>
             )}
           </div>
           <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
-            <button className="btn btn-ghost btn-sm" onClick={handleSwitch} title="Trocar usuário" style={{ flex: 1, justifyContent: 'center', fontSize: 'var(--text-xs)' }}>
+            <button className="btn btn-ghost btn-sm" onClick={handleSwitch} title="Trocar usuario" style={{ flex: 1, justifyContent: 'center', fontSize: 'var(--text-xs)' }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6"/></svg>
               {!collapsed && <span>Trocar</span>}
             </button>

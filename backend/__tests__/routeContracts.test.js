@@ -156,7 +156,7 @@ describe('route authorization contracts', () => {
 
     expect(appSource).toMatch(/path=["']\/configuracoes["'][\s\S]+permissions=\{\[[^\]]*configuracoes\.ver[^\]]*configuracoes\.editar_empresa[^\]]*configuracoes\.editar_fiscal[^\]]*configuracoes\.editar_whatsapp[^\]]*configuracoes\.editar_impressao[^\]]*configuracoes\.seguranca[^\]]*backups\.ver[^\]]*backups\.executar[^\]]*\]\}/);
     expect(sidebarSource).toMatch(/canViewConfiguracoes\s*=[\s\S]+configuracoes\.ver[\s\S]+configuracoes\.editar_empresa[\s\S]+configuracoes\.editar_fiscal[\s\S]+configuracoes\.editar_whatsapp[\s\S]+configuracoes\.editar_impressao[\s\S]+configuracoes\.seguranca[\s\S]+backups\.ver[\s\S]+backups\.executar/);
-    expect(sidebarSource).toMatch(/canViewConfiguracoes && navItem\(["']\/configuracoes["']/);
+    expect(sidebarSource).toMatch(/\{canViewConfiguracoes && \([\s\S]+navItem\(["']\/configuracoes["']/);
     expect(configuracoesSource).toMatch(/useAuth/);
     expect(configuracoesSource).toMatch(/permissions:\s*\[['"]configuracoes\.editar_fiscal["']\]/);
     expect(configuracoesSource).toMatch(/permissions:\s*\[['"]configuracoes\.editar_whatsapp["']\]/);
@@ -217,7 +217,7 @@ describe('route authorization contracts', () => {
 
     expect(appSource).toMatch(/path=["']\/financeiro["'][\s\S]+permissions=\{\[['"]financeiro\.ver['"],\s*['"]financeiro\.contas_pagar\.ver['"],\s*['"]financeiro\.relatorios['"]\]\}/);
     expect(sidebarSource).toMatch(/canViewFinanceiro\s*=[\s\S]+financeiro\.ver[\s\S]+financeiro\.contas_pagar\.ver[\s\S]+financeiro\.relatorios/);
-    expect(sidebarSource).toMatch(/canViewFinanceiro && navItem\(["']\/financeiro["'],\s*["']Financeiro["']/);
+    expect(sidebarSource).toMatch(/\{canViewFinanceiro && \([\s\S]+navItem\(["']\/financeiro["'],\s*["']Financeiro["']/);
     expect(financeiroSource).toMatch(/useAuth/);
     expect(financeiroSource).toMatch(/can\(["']financeiro\.contas_pagar\.editar["']\)/);
     expect(financeiroSource).toMatch(/can\(["']financeiro\.contas_pagar\.pagar["']\)/);
@@ -226,44 +226,60 @@ describe('route authorization contracts', () => {
     expect(financeiroSource).toMatch(/canPrintReports &&/);
   });
 
-  it('exposes whatsapp notice routes with explicit role restrictions', async () => {
-    const ordensRouter = await loadRouter('../routes/ordens.js');
+  it('protects sensitive order routes with fine-grained RBAC permissions', () => {
+    const source = fs.readFileSync(new URL('../routes/ordens.js', import.meta.url), 'utf8');
+    const pdfSource = fs.readFileSync(new URL('../routes/pdf.js', import.meta.url), 'utf8');
 
-    expect(routeRoles(ordensRouter, 'post', '/:id/whatsapp-avisos/:tipo/abrir')).toEqual(['admin', 'caixa', 'oficina']);
-    expect(routeRoles(ordensRouter, 'patch', '/:id/whatsapp-avisos/:tipo/status')).toEqual(['admin', 'caixa', 'oficina']);
+    expect(source).toMatch(/const\s+\{\s*auth,\s*authAnyPermission,\s*authPermission\s*\}\s*=\s*require\(["']\.\.\/middlewares\/auth["']\)/);
+    expect(source).toMatch(/router\.get\(["']\/["'],\s*auth\(\),\s*authPermission\(["']ordens\.ver["']\)/);
+    expect(source).toMatch(/router\.get\(["']\/:id["'],\s*auth\(\),\s*authPermission\(["']ordens\.ver["']\)/);
+    expect(source).toMatch(/router\.post\(["']\/["'],\s*auth\(\),\s*authPermission\(["']ordens\.criar["']\)/);
+    expect(source).toMatch(/router\.put\(["']\/:id["'],\s*auth\(\),\s*authAnyPermission\(\[["']ordens\.editar["'],\s*["']ordens\.alterar_status["'],\s*["']oficina\.alterar_status["']\]\)/);
+    expect(source).toMatch(/router\.patch\(["']\/:id\/status["'],\s*auth\(\),\s*authAnyPermission\(\[["']ordens\.alterar_status["'],\s*["']oficina\.alterar_status["']\]\)/);
+    expect(source).toMatch(/router\.post\(["']\/:id\/whatsapp-avisos\/:tipo\/abrir["'],\s*auth\(\),\s*authPermission\(["']ordens\.whatsapp["']\)/);
+    expect(source).toMatch(/router\.patch\(["']\/:id\/whatsapp-avisos\/:tipo\/status["'],\s*auth\(\),\s*authPermission\(["']ordens\.whatsapp["']\)/);
+    expect(source).toMatch(/router\.post\(["']\/:id\/whatsapp-confirmacao["'],\s*auth\(\),\s*authPermission\(["']ordens\.whatsapp["']\)/);
+    expect(source).toMatch(/router\.delete\(["']\/:id["'],\s*auth\(\),\s*authPermission\(["']ordens\.excluir["']\)/);
+    expect(source).toMatch(/router\.post\(["']\/:id\/restore["'],\s*auth\(\),\s*authPermission\(["']ordens\.restaurar["']\)/);
+    expect(source).toMatch(/router\.delete\(["']\/:id\/permanente["'],\s*auth\(\),\s*authPermission\(["']ordens\.excluir_permanente["']\)/);
+    expect(pdfSource).toMatch(/router\.get\(["']\/:id\/pdf["'],\s*auth\(\),\s*authPermission\(["']ordens\.imprimir["']\)/);
+    expect(pdfSource).toMatch(/router\.post\(["']\/:id\/print["'],\s*auth\(\),\s*authPermission\(["']ordens\.imprimir["']\)/);
   });
 
-  it('restricts fiscal write routes to admin and caixa', async () => {
-    const nfeRouter = await loadRouter('../routes/nfe.js');
+  it('protects fiscal routes with fine-grained RBAC permissions', () => {
+    const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
 
-    expect(routeRoles(nfeRouter, 'get', '/status-servico')).toEqual(['admin', 'caixa']);
-    expect(routeRoles(nfeRouter, 'get', '/avulsa/preview')).toEqual(['admin', 'caixa']);
-    expect(routeRoles(nfeRouter, 'post', '/avulsa/preview')).toEqual(['admin', 'caixa']);
-    expect(routeRoles(nfeRouter, 'post', '/avulsa')).toEqual(['admin', 'caixa']);
-    expect(routeRoles(nfeRouter, 'get', '/integridade-financeira')).toEqual(['admin', 'caixa']);
-    expect(routeRoles(nfeRouter, 'get', '/integridade-financeira/:ordemId')).toEqual(['admin', 'caixa']);
-    expect(routeRoles(nfeRouter, 'post', '/integridade-financeira/:ordemId/conciliar')).toEqual(['admin']);
-    expect(routeRoles(nfeRouter, 'get', '/pendencias')).toEqual(['admin', 'caixa']);
-    expect(routeRoles(nfeRouter, 'get', '/pendencias/:origem/:id/transicoes')).toEqual(['admin', 'caixa']);
-    expect(routeRoles(nfeRouter, 'get', '/emitir/:id/preview')).toEqual(['admin', 'caixa']);
-    expect(routeRoles(nfeRouter, 'post', '/emitir/:id')).toEqual(['admin', 'caixa']);
-    expect(routeRoles(nfeRouter, 'post', '/:chave/cce')).toEqual(['admin', 'caixa']);
-    expect(routeRoles(nfeRouter, 'post', '/:chave/cancelar')).toEqual(['admin', 'caixa']);
-    expect(routeRoles(nfeRouter, 'get', '/inutilizacoes/contexto')).toEqual(['admin']);
-    expect(routeRoles(nfeRouter, 'get', '/inutilizacoes')).toEqual(['admin']);
-    expect(routeRoles(nfeRouter, 'post', '/inutilizacoes')).toEqual(['admin']);
-    expect(routeRoles(nfeRouter, 'get', '/inutilizacoes/:id/xml/:tipo')).toEqual(['admin']);
-    expect(routeRoles(nfeRouter, 'get', '/exportar')).toEqual(['admin', 'caixa']);
-    expect(routeRoles(nfeRouter, 'get', '/lixeira')).toEqual(['admin']);
-    expect(routeRoles(nfeRouter, 'delete', '/:id')).toEqual(['admin']);
-    expect(routeRoles(nfeRouter, 'post', '/:id/restore')).toEqual(['admin']);
+    expect(source).toMatch(/const\s+\{\s*auth,\s*authPermission\s*\}\s*=\s*require\(['"]\.\.\/middlewares\/auth['"]\)/);
+    expect(source).toMatch(/router\.get\(['"]\/['"],\s*auth\(\),\s*authPermission\(['"]nfe\.ver['"]\)/);
+    expect(source).toMatch(/router\.get\(['"]\/lixeira['"],\s*auth\(\),\s*authPermission\(['"]nfe\.lixeira['"]\)/);
+    expect(source).toMatch(/router\.get\(['"]\/status-servico['"],\s*auth\(\),\s*authPermission\(['"]nfe\.ver['"]\)/);
+    expect(source).toMatch(/router\.post\(['"]\/integridade-financeira\/:ordemId\/conciliar['"],\s*auth\(\),\s*authPermission\(['"]nfe\.conciliar['"]\)/);
+    expect(source).toMatch(/router\.get\(['"]\/integridade-financeira['"],\s*auth\(\),\s*authPermission\(['"]nfe\.integridade['"]\)/);
+    expect(source).toMatch(/router\.get\(['"]\/pendencias['"],\s*auth\(\),\s*authPermission\(['"]nfe\.integridade['"]\)/);
+    expect(source).toMatch(/router\.get\(['"]\/inutilizacoes\/contexto['"],\s*auth\(\),\s*authPermission\(['"]nfe\.inutilizar['"]\)/);
+    expect(source).toMatch(/router\.post\(['"]\/inutilizacoes['"],\s*auth\(\),\s*authPermission\(['"]nfe\.inutilizar['"]\)/);
+    expect(source).toMatch(/router\.get\(['"]\/avulsa\/preview['"],\s*auth\(\),\s*authPermission\(['"]nfe\.emitir['"]\)/);
+    expect(source).toMatch(/router\.post\(['"]\/avulsa['"],\s*auth\(\),\s*authPermission\(['"]nfe\.emitir['"]\)/);
+    expect(source).toMatch(/router\.get\(['"]\/exportar['"],\s*auth\(\),\s*authPermission\(['"]nfe\.exportar['"]\)/);
+    expect(source).toMatch(/router\.get\(['"]\/:chave\/xml\/autorizacao['"],\s*auth\(\),\s*authPermission\(['"]nfe\.xml['"]\)/);
+    expect(source).toMatch(/router\.get\(['"]\/:chave\/danfe['"],\s*auth\(\),\s*authPermission\(['"]nfe\.danfe['"]\)/);
+    expect(source).toMatch(/router\.get\(['"]\/emitir\/:id\/preview['"],\s*auth\(\),\s*authPermission\(['"]nfe\.emitir['"]\)/);
+    expect(source).toMatch(/router\.delete\(['"]\/:id['"],\s*auth\(\),\s*authPermission\(['"]nfe\.lixeira['"]\)/);
+    expect(source).toMatch(/router\.post\(['"]\/:id\/restore['"],\s*auth\(\),\s*authPermission\(['"]nfe\.lixeira['"]\)/);
+    expect(source).toMatch(/router\.post\(['"]\/emitir\/:id['"],\s*auth\(\),\s*authPermission\(['"]nfe\.emitir['"]\)/);
+    expect(source).toMatch(/router\.post\(['"]\/:chave\/cce['"],\s*auth\(\),\s*authPermission\(['"]nfe\.cce['"]\)/);
+    expect(source).toMatch(/router\.post\(['"]\/:chave\/cancelar['"],\s*auth\(\),\s*authPermission\(['"]nfe\.cancelar['"]\)/);
   });
 
-  it('restricts sensitive read routes away from oficina', async () => {
-    const caixaRouter = await loadRouter('../routes/caixa.js');
+  it('protects caixa routes with fine-grained RBAC permissions', () => {
+    const source = fs.readFileSync(new URL('../routes/caixa.js', import.meta.url), 'utf8');
 
-    expect(routeRoles(caixaRouter, 'get', '/')).toEqual(['admin', 'caixa']);
-    expect(routeRoles(caixaRouter, 'get', '/fechamento')).toEqual(['admin', 'caixa']);
+    expect(source).toMatch(/const\s+\{\s*auth,\s*authPermission\s*\}\s*=\s*require\(["']\.\.\/middlewares\/auth["']\)/);
+    expect(source).toMatch(/router\.get\(["']\/["'],\s*auth\(\),\s*authPermission\(["']caixa\.ver["']\)/);
+    expect(source).toMatch(/router\.get\(["']\/fechamento["'],\s*auth\(\),\s*authPermission\(["']caixa\.fechamento["']\)/);
+    expect(source).toMatch(/router\.post\(["']\/["'],\s*auth\(\),\s*authPermission\(["']caixa\.criar_lancamento["']\)/);
+    expect(source).toMatch(/router\.put\(["']\/:id["'],\s*auth\(\),\s*authPermission\(["']caixa\.editar_lancamento["']\)/);
+    expect(source).toMatch(/router\.delete\(["']\/:id["'],\s*auth\(\),\s*authPermission\(["']caixa\.excluir_lancamento["']\)/);
   });
 });
 
@@ -320,11 +336,11 @@ describe('route persistence contracts', () => {
     expect(databaseSource).toMatch(/origem='saldoos' AND tipo != 'Entrada' AND deletedat IS NULL/);
   });
 
-  it('lets admin remove an accidental OS entry payment from caixa and resets the OS entry value', async () => {
+  it('lets permitted users remove an accidental OS entry payment from caixa and resets the OS entry value', () => {
     const source = fs.readFileSync(new URL('../routes/caixa.js', import.meta.url), 'utf8');
 
     expect(source).not.toMatch(/A entrada automatica da OS nao pode ser excluida pelo caixa/);
-    expect(source).toMatch(/router\.delete\(["']\/:id["'],\s*auth\(\["admin"\]\)/);
+    expect(source).toMatch(/router\.delete\(["']\/:id["'],\s*auth\(\),\s*authPermission\(["']caixa\.excluir_lancamento["']\)/);
     expect(source).toMatch(/getResumoFinanceiroOS\(old\.ordemid\)/);
     expect(source).toMatch(/ordemStatus\?\.status === "Entregue"/);
     expect(source).toMatch(/Nao e possivel excluir pagamento de OS entregue/);
@@ -406,20 +422,20 @@ describe('route persistence contracts', () => {
 
   it('does not let oficina mutate OS items through the generic update route', () => {
     const source = fs.readFileSync(new URL('../routes/ordens.js', import.meta.url), 'utf8');
-    const start = source.indexOf('if (req.user.role === "oficina")');
+    const start = source.indexOf('if (!canEditOrdem)');
     const end = source.indexOf('const total =', start);
-    const oficinaBranch = source.slice(start, end);
+    const statusOnlyBranch = source.slice(start, end);
 
-    expect(oficinaBranch).toContain('UPDATE ordens SET status=?');
-    expect(oficinaBranch).not.toMatch(/saveItens/);
-    expect(oficinaBranch).not.toMatch(/DELETE FROM ordem_itens/);
+    expect(statusOnlyBranch).toContain('UPDATE ordens SET status=?');
+    expect(statusOnlyBranch).not.toMatch(/saveItens/);
+    expect(statusOnlyBranch).not.toMatch(/DELETE FROM ordem_itens/);
   });
 
-  it('blocks oficina from cancelling an OS through update and status routes', () => {
+  it('blocks OS cancellation without the cancel permission through update and status routes', () => {
     const source = fs.readFileSync(new URL('../routes/ordens.js', import.meta.url), 'utf8');
 
-    expect(source).toMatch(/req\.user\.role === "oficina"[\s\S]+status === 'Cancelado'[\s\S]+Oficina nao pode cancelar OS/);
-    expect(source).toMatch(/req\.user\.role === 'oficina' && status === 'Cancelado'/);
+    expect(source).toMatch(/status === 'Cancelado'[\s\S]+!hasPermission\(req\.user,\s*["']ordens\.cancelar["']\)/);
+    expect(source).toMatch(/Sem permissao para cancelar OS/);
   });
 });
 
@@ -636,22 +652,21 @@ describe('security configuration contracts', () => {
 
     expect(source).toMatch(/createNfeInutilizacaoService/);
     expect(source).toMatch(/transmitirInutilizacaoNFe/);
-    expect(source).toMatch(/router\.get\(['"]\/inutilizacoes\/contexto['"],\s*auth\(\['admin'\]\)/);
-    expect(source).toMatch(/router\.post\(['"]\/inutilizacoes['"],\s*auth\(\['admin'\]\)/);
+    expect(source).toMatch(/router\.get\(['"]\/inutilizacoes\/contexto['"],\s*auth\(\),\s*authPermission\(['"]nfe\.inutilizar['"]\)/);
+    expect(source).toMatch(/router\.post\(['"]\/inutilizacoes['"],\s*auth\(\),\s*authPermission\(['"]nfe\.inutilizar['"]\)/);
     expect(source.indexOf("'/inutilizacoes/contexto'")).toBeLessThan(source.indexOf("'/:chave/eventos'"));
     expect(source).toMatch(/res\.setHeader\(['"]Content-Type['"],\s*['"]application\/xml; charset=utf-8['"]\)/);
     expect(serviceSource).toMatch(/const sharedBusyState/);
     expect(serviceSource).toMatch(/busyState\.busy/);
   });
 
-  it('exposes sanitized fiscal pending attempts before dynamic key routes', async () => {
-    const nfeRouter = await loadRouter('../routes/nfe.js');
+  it('exposes sanitized fiscal pending attempts before dynamic key routes', () => {
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
     const repositorySource = fs.readFileSync(new URL('../repositories/nfePendenciaRepository.js', import.meta.url), 'utf8');
     const pendenciasStart = source.indexOf("router.get('/pendencias'");
     const chaveEventosStart = source.indexOf("router.get('/:chave/eventos'");
 
-    expect(routeRoles(nfeRouter, 'get', '/pendencias')).toEqual(['admin', 'caixa']);
+    expect(source).toMatch(/router\.get\(['"]\/pendencias['"],\s*auth\(\),\s*authPermission\(['"]nfe\.integridade['"]\)/);
     expect(source).toMatch(/listarPendenciasFiscais/);
     expect(pendenciasStart).toBeGreaterThan(-1);
     expect(pendenciasStart).toBeLessThan(chaveEventosStart);
@@ -661,14 +676,13 @@ describe('security configuration contracts', () => {
     expect(repositorySource).not.toMatch(/erro_local/);
   });
 
-  it('exposes fiscal-financial integrity audit without SEFAZ calls', async () => {
-    const nfeRouter = await loadRouter('../routes/nfe.js');
+  it('exposes fiscal-financial integrity audit without SEFAZ calls', () => {
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
     const routeStart = source.indexOf("router.get('/integridade-financeira',");
     const pendenciasStart = source.indexOf("router.get('/pendencias'", routeStart);
     const routeSource = source.slice(routeStart, pendenciasStart);
 
-    expect(routeRoles(nfeRouter, 'get', '/integridade-financeira')).toEqual(['admin', 'caixa']);
+    expect(source).toMatch(/router\.get\(['"]\/integridade-financeira['"],\s*auth\(\),\s*authPermission\(['"]nfe\.integridade['"]\)/);
     expect(source).toMatch(/auditarIntegridadeFiscalFinanceiraNFe/);
     expect(routeStart).toBeGreaterThan(-1);
     expect(routeStart).toBeLessThan(pendenciasStart);
@@ -676,14 +690,13 @@ describe('security configuration contracts', () => {
     expect(routeSource).not.toMatch(/nfe_xml[:,]|xml:/);
   });
 
-  it('exposes fiscal-financial integrity detail without SEFAZ calls', async () => {
-    const nfeRouter = await loadRouter('../routes/nfe.js');
+  it('exposes fiscal-financial integrity detail without SEFAZ calls', () => {
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
     const routeStart = source.indexOf("router.get('/integridade-financeira/:ordemId'");
     const listRouteStart = source.indexOf("router.get('/integridade-financeira'", routeStart + 1);
     const routeSource = source.slice(routeStart, listRouteStart);
 
-    expect(routeRoles(nfeRouter, 'get', '/integridade-financeira/:ordemId')).toEqual(['admin', 'caixa']);
+    expect(source).toMatch(/router\.get\(['"]\/integridade-financeira\/:ordemId['"],\s*auth\(\),\s*authPermission\(['"]nfe\.integridade['"]\)/);
     expect(source).toMatch(/montarDetalheIntegridadeFiscalFinanceiraNFe/);
     expect(routeStart).toBeGreaterThan(-1);
     expect(routeStart).toBeLessThan(listRouteStart);
@@ -694,15 +707,14 @@ describe('security configuration contracts', () => {
     expect(routeSource).not.toMatch(/res\.json\([^)]*nfe_xml|xml:/s);
   });
 
-  it('allows admin to locally reconcile fiscal-financial total divergence without SEFAZ calls', async () => {
-    const nfeRouter = await loadRouter('../routes/nfe.js');
+  it('allows permitted users to locally reconcile fiscal-financial total divergence without SEFAZ calls', () => {
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
     const databaseSource = fs.readFileSync(new URL('../database.js', import.meta.url), 'utf8');
     const routeStart = source.indexOf("router.post('/integridade-financeira/:ordemId/conciliar'");
     const nextRouteStart = source.indexOf("router.get('/integridade-financeira/:ordemId'", routeStart);
     const routeSource = source.slice(routeStart, nextRouteStart);
 
-    expect(routeRoles(nfeRouter, 'post', '/integridade-financeira/:ordemId/conciliar')).toEqual(['admin']);
+    expect(source).toMatch(/router\.post\(['"]\/integridade-financeira\/:ordemId\/conciliar['"],\s*auth\(\),\s*authPermission\(['"]nfe\.conciliar['"]\)/);
     expect(routeStart).toBeGreaterThan(-1);
     expect(routeStart).toBeLessThan(nextRouteStart);
     expect(routeSource).toMatch(/prepararConciliacaoIntegridadeFiscalFinanceiraNFe/);
@@ -729,15 +741,14 @@ describe('security configuration contracts', () => {
     expect(routeSource).not.toMatch(/res\.json\([^)]*(xml|payload|cpf|phone)/s);
   });
 
-  it('exposes sanitized fiscal pending transition audit without SEFAZ calls', async () => {
-    const nfeRouter = await loadRouter('../routes/nfe.js');
+  it('exposes sanitized fiscal pending transition audit without SEFAZ calls', () => {
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
     const repositorySource = fs.readFileSync(new URL('../repositories/nfePendenciaRepository.js', import.meta.url), 'utf8');
     const routeStart = source.indexOf("router.get('/pendencias/:origem/:id/transicoes'");
     const nextRouteStart = source.indexOf("router.get('/inutilizacoes/contexto'", routeStart);
     const routeSource = source.slice(routeStart, nextRouteStart);
 
-    expect(routeRoles(nfeRouter, 'get', '/pendencias/:origem/:id/transicoes')).toEqual(['admin', 'caixa']);
+    expect(source).toMatch(/router\.get\(['"]\/pendencias\/:origem\/:id\/transicoes['"],\s*auth\(\),\s*authPermission\(['"]nfe\.integridade['"]\)/);
     expect(source).toMatch(/buscarPendenciaFiscalComTransicoes/);
     expect(routeStart).toBeGreaterThan(-1);
     expect(routeStart).toBeLessThan(source.indexOf("router.get('/:chave/eventos'"));
@@ -777,7 +788,7 @@ describe('security configuration contracts', () => {
     expect(source).toMatch(/function PendenciasFiscaisPanel/);
     expect(source).toMatch(/api\.get\(['"]\/nfe\/pendencias['"],\s*\{\s*skipGlobalErrorToast:\s*true\s*\}\)/);
     expect(source).toMatch(/setPendenciasFiscais\(r\.data\?\.pendencias \|\| \[\]\)/);
-    expect(source).toMatch(/\{!lixeira && pendenciasFiscais\.length > 0 && \(/);
+    expect(source).toMatch(/\{canIntegridade && !lixeira && pendenciasFiscais\.length > 0 && \(/);
     expect(source).toMatch(/<PendenciasFiscaisPanel pendencias=\{pendenciasFiscais\}/);
   });
 
@@ -790,7 +801,7 @@ describe('security configuration contracts', () => {
     expect(source).toMatch(/function IntegridadeFiscalFinanceiraPanel/);
     expect(source).toMatch(/api\.get\(['"]\/nfe\/integridade-financeira['"],\s*\{\s*skipGlobalErrorToast:\s*true\s*\}\)/);
     expect(source).toMatch(/setIntegridadeFiscalFinanceira\(r\.data\?\.itens \|\| \[\]\)/);
-    expect(source).toMatch(/\{!lixeira && integridadeFiscalFinanceira\.length > 0 && \(/);
+    expect(source).toMatch(/\{canIntegridade && !lixeira && integridadeFiscalFinanceira\.length > 0 && \(/);
     expect(source).toMatch(/<IntegridadeFiscalFinanceiraPanel itens=\{integridadeFiscalFinanceira\} onRefresh=\{carregarIntegridadeFiscalFinanceira\}/);
     expect(panelSource).not.toMatch(/Reemitir|Cancelar|Corrigir|Consultar SEFAZ|Editar OS/);
   });
@@ -954,7 +965,7 @@ describe('security configuration contracts', () => {
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
 
     expect(source).toMatch(/gerarExportacaoNFe/);
-    expect(source).toMatch(/router\.get\(['"]\/exportar['"],\s*auth\(\[['"]admin['"],\s*['"]caixa['"]\]\)/);
+    expect(source).toMatch(/router\.get\(['"]\/exportar['"],\s*auth\(\),\s*authPermission\(['"]nfe\.exportar['"]\)/);
     expect(source.indexOf("router.get('/exportar'")).toBeLessThan(source.indexOf("router.get('/:chave/eventos'"));
     expect(source).toMatch(/Content-Type['"],\s*result\.contentType/);
     expect(source).toMatch(/Content-Disposition['"],\s*`attachment; filename="\$\{result\.filename\}"/);
@@ -997,7 +1008,7 @@ describe('security configuration contracts', () => {
     expect(databaseSource).toMatch(/ALTER TABLE ordens ADD COLUMN nfe_deletedpor INTEGER/);
     expect(databaseSource).toMatch(/ALTER TABLE ordens ADD COLUMN nfe_deletedreason TEXT/);
     expect(source).toMatch(/listarNotasFiscais\(getDB\(\),\s*\{\s*lixeira:\s*false\s*\}\)/);
-    expect(source).toMatch(/router\.get\(['"]\/lixeira['"],\s*auth\(\['admin'\]\)/);
+    expect(source).toMatch(/router\.get\(['"]\/lixeira['"],\s*auth\(\),\s*authPermission\(['"]nfe\.lixeira['"]\)/);
     expect(source).toMatch(/listarNotasFiscais\(getDB\(\),\s*\{\s*lixeira:\s*true\s*\}\)/);
     expect(source).toMatch(/moverNotaParaLixeira/);
     expect(source).toMatch(/restaurarNotaDaLixeira/);
@@ -1107,16 +1118,18 @@ describe('configuration route contracts', () => {
 });
 
 describe('propostas route contracts', () => {
-  it('mounts propostas API and keeps it restricted to admin and caixa', async () => {
+  it('mounts propostas API and protects it with fine-grained RBAC permissions', () => {
     const source = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+    const propostasSource = fs.readFileSync(new URL('../routes/propostas.js', import.meta.url), 'utf8');
 
     expect(source).toMatch(/app\.use\(["']\/api\/propostas["'],\s*require\(["']\.\/routes\/propostas["']\)\)/);
 
-    const propostasRouter = await loadRouter('../routes/propostas.js');
-    expect(routeRoles(propostasRouter, 'get', '/')).toEqual(['admin', 'caixa']);
-    expect(routeRoles(propostasRouter, 'post', '/')).toEqual(['admin', 'caixa']);
-    expect(routeRoles(propostasRouter, 'patch', '/:id/status')).toEqual(['admin', 'caixa']);
-    expect(routeRoles(propostasRouter, 'post', '/:id/gerar-os')).toEqual(['admin', 'caixa']);
+    expect(propostasSource).toMatch(/const\s+\{\s*auth,\s*authPermission\s*\}\s*=\s*require\(["']\.\.\/middlewares\/auth["']\)/);
+    expect(propostasSource).toMatch(/router\.get\(["']\/["'],\s*auth\(\),\s*authPermission\(["']propostas\.ver["']\)/);
+    expect(propostasSource).toMatch(/router\.get\(["']\/:id["'],\s*auth\(\),\s*authPermission\(["']propostas\.ver["']\)/);
+    expect(propostasSource).toMatch(/router\.post\(["']\/["'],\s*auth\(\),\s*authPermission\(["']propostas\.criar["']\)/);
+    expect(propostasSource).toMatch(/router\.patch\(["']\/:id\/status["'],\s*auth\(\),\s*authPermission\(["']propostas\.editar_status["']\)/);
+    expect(propostasSource).toMatch(/router\.post\(["']\/:id\/gerar-os["'],\s*auth\(\),\s*authPermission\(["']propostas\.gerar_os["']\)/);
   });
 
   it('implements proposal conversion without generating OS numbers before approval', () => {
@@ -1128,11 +1141,10 @@ describe('propostas route contracts', () => {
     expect(source).toMatch(/UPDATE propostas SET ordemid=\?/);
   });
 
-  it('exposes printable proposal PDF only to admin and caixa', async () => {
-    const propostasRouter = await loadRouter('../routes/propostas.js');
+  it('exposes printable proposal PDF through the proposal print permission', () => {
     const source = fs.readFileSync(new URL('../routes/propostas.js', import.meta.url), 'utf8');
 
-    expect(routeRoles(propostasRouter, 'get', '/:id/pdf')).toEqual(['admin', 'caixa']);
+    expect(source).toMatch(/router\.get\(["']\/:id\/pdf["'],\s*auth\(\),\s*authPermission\(["']propostas\.imprimir["']\)/);
     expect(source).toMatch(/renderPropostaHtml/);
     expect(source).toMatch(/sendPrintHtml/);
   });

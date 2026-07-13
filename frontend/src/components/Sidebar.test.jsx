@@ -52,7 +52,7 @@ describe('Sidebar', () => {
       user: { id: 3, name: 'Oficina Gestora', role: 'oficina' },
       logout: vi.fn(),
       switchUser: vi.fn(),
-      can: (permission) => permission === 'usuarios.ver',
+      can: (permission) => ['oficina.ver', 'usuarios.ver'].includes(permission),
     }
 
     render(
@@ -70,7 +70,7 @@ describe('Sidebar', () => {
       user: { id: 3, name: 'Oficina Cadastros', role: 'oficina' },
       logout: vi.fn(),
       switchUser: vi.fn(),
-      can: (permission) => ['clientes.ver', 'produtos.ver'].includes(permission),
+      can: (permission) => ['oficina.ver', 'clientes.ver', 'produtos.ver'].includes(permission),
     }
 
     render(

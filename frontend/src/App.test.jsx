@@ -45,6 +45,8 @@ describe('App permission routes', () => {
   })
 
   it('does not render usuarios without usuarios.ver permission', async () => {
+    authState.user.permissions = ['atendimento.ver']
+
     render(
       <MemoryRouter initialEntries={['/usuarios']}>
         <App />
@@ -52,6 +54,17 @@ describe('App permission routes', () => {
     )
 
     expect(await screen.findByText('Atendimento')).toBeInTheDocument()
+    expect(screen.queryByText('Pagina Usuarios')).not.toBeInTheDocument()
+  })
+
+  it('shows a no-access state when the user has no route permissions', async () => {
+    render(
+      <MemoryRouter initialEntries={['/usuarios']}>
+        <App />
+      </MemoryRouter>
+    )
+
+    expect(await screen.findByText('Sem acesso disponivel')).toBeInTheDocument()
     expect(screen.queryByText('Pagina Usuarios')).not.toBeInTheDocument()
   })
 
@@ -69,6 +82,8 @@ describe('App permission routes', () => {
   })
 
   it('does not render clientes for caixa without clientes.ver permission', async () => {
+    authState.user.permissions = ['atendimento.ver']
+
     render(
       <MemoryRouter initialEntries={['/clientes']}>
         <App />
@@ -93,6 +108,8 @@ describe('App permission routes', () => {
   })
 
   it('does not render produtos for caixa without produtos.ver permission', async () => {
+    authState.user.permissions = ['atendimento.ver']
+
     render(
       <MemoryRouter initialEntries={['/produtos']}>
         <App />

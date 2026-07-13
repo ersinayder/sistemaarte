@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const { getAll, getOne, run, runInsert, transaction } = require("../database");
-const { auth } = require("../middlewares/auth");
+const { auth, authAnyPermission, authPermission } = require("../middlewares/auth");
+const { hasAnyPermission, hasPermission } = require("../domain/permissionRules");
 const { toNumber } = require("../utils/numbers");
 const { hoje } = require("../utils/dates");
 const {
@@ -312,12 +313,17 @@ function salvarAvisoAberto(ordemId, tipo, phone, text, userId) {
 }
 
 // GET /api/ordens
-router.get("/", auth(), (req, res, next) => {
+router.get("/", auth(), authPermission("ordens.ver"), (req, res, next) => {
   try {
     const { status, q, vencidas, lixeira, tipo } = req.query;
     const querPaginacao = req.query.page !== undefined || req.query.limit !== undefined;
     const { page, limit, offset } = normalizarPaginacao(req.query, { defaultLimit: 14, maxLimit: 100 });
-    const isLixeira = lixeira === "1" && req.user.role === "admin";
+    const querLixeira = lixeira === "1";
+    const podeVerLixeira = hasAnyPermission(req.user, ["ordens.excluir", "ordens.restaurar", "ordens.excluir_permanente"]);
+    if (querLixeira && !podeVerLixeira) {
+      return res.status(403).json({ error: "Sem permissao" });
+    }
+    const isLixeira = querLixeira && podeVerLixeira;
     const where = [isLixeira ? "o.deletedat IS NOT NULL" : "o.deletedat IS NULL"];
     const p = [];
     if (!isLixeira) {
@@ -349,7 +355,7 @@ router.get("/", auth(), (req, res, next) => {
 });
 
 // GET /api/ordens/:id
-router.get("/:id", auth(), (req, res, next) => {
+router.get("/:id", auth(), authPermission("ordens.ver"), (req, res, next) => {
   try {
     const o = getOne(SEL_ORDEM + " WHERE o.id=? AND o.deletedat IS NULL", [req.params.id]);
     if (!o) return res.status(404).json({ error: "Nao encontrado" });
@@ -378,7 +384,7 @@ router.get("/:id", auth(), (req, res, next) => {
 });
 
 // POST /api/ordens
-router.post("/", auth(["admin","caixa"]), (req, res, next) => {
+router.post("/", auth(), authPermission("ordens.criar"), (req, res, next) => {
   const {
     clienteid, clientenome, clientetelefone, clientecpf,
     servico, descricao, valortotal, valorentrada, descontoinput,
@@ -458,10 +464,12 @@ router.post("/", auth(["admin","caixa"]), (req, res, next) => {
 });
 
 // PUT /api/ordens/:id
-router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
+router.put("/:id", auth(), authAnyPermission(["ordens.editar", "ordens.alterar_status", "oficina.alterar_status"]), (req, res, next) => {
   try {
     const old = getOne("SELECT * FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);
     if (!old) return res.status(404).json({ error: "Nao encontrado ou OS cancelada" });
+    const canEditOrdem = hasPermission(req.user, "ordens.editar");
+    const canAlterarStatus = hasAnyPermission(req.user, ["ordens.alterar_status", "oficina.alterar_status"]);
 
     const {
       descricao, valortotal, valorentrada, descontoinput,
@@ -473,9 +481,10 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
     const statusRaw = req.body?.status;
     const status = statusRaw ? normalizarStatus(statusRaw) : null;
 
-    if (req.user.role === "oficina") {
+    if (!canEditOrdem) {
+      if (!canAlterarStatus) return res.status(403).json({ error: "Sem permissao" });
       if (!status) return res.status(400).json({ error: "Informe o status" });
-      if (status === 'Cancelado') return res.status(403).json({ error: "Oficina nao pode cancelar OS." });
+      if (status === 'Cancelado' && !hasPermission(req.user, "ordens.cancelar")) return res.status(403).json({ error: "Sem permissao para cancelar OS." });
       const erroStatus = validarStatus(status, old.status);
       if (erroStatus) return res.status(400).json({ error: erroStatus });
       if (status === 'Entregue') {
@@ -520,6 +529,10 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
     const novoCliente = clientenome || old.clientenome;
     const novoServico = servico || old.servico;
     const novoPagamento = pagamento || old.pagamento || "Pix";
+
+    if (status === 'Cancelado' && status !== old.status && !hasPermission(req.user, "ordens.cancelar")) {
+      return res.status(403).json({ error: "Sem permissao para cancelar OS." });
+    }
 
     if (status && status !== old.status) {
       const erroStatus = validarStatus(status, old.status);
@@ -584,7 +597,7 @@ router.put("/:id", auth(["admin","caixa","oficina"]), (req, res, next) => {
 });
 
 // PATCH /api/ordens/:id/status
-router.patch("/:id/status", auth(["admin","caixa","oficina"]), (req, res, next) => {
+router.patch("/:id/status", auth(), authAnyPermission(["ordens.alterar_status", "oficina.alterar_status"]), (req, res, next) => {
   try {
     const { obs } = req.body ?? {};
     const status = normalizarStatus(req.body?.status);
@@ -593,8 +606,8 @@ router.patch("/:id/status", auth(["admin","caixa","oficina"]), (req, res, next) 
     const existe = getOne("SELECT id FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);
     if (!existe) return res.status(404).json({ error: "Nao encontrado" });
 
-    if (req.user.role === 'oficina' && status === 'Cancelado') {
-      return res.status(403).json({ error: "Oficina nao pode cancelar OS." });
+    if (status === 'Cancelado' && !hasPermission(req.user, "ordens.cancelar")) {
+      return res.status(403).json({ error: "Sem permissao para cancelar OS." });
     }
 
     if (status === 'Entregue') {
@@ -628,7 +641,7 @@ router.patch("/:id/status", auth(["admin","caixa","oficina"]), (req, res, next) 
 });
 
 // POST /api/ordens/:id/whatsapp-avisos/:tipo/abrir
-router.post("/:id/whatsapp-avisos/:tipo/abrir", auth(["admin","caixa","oficina"]), (req, res, next) => {
+router.post("/:id/whatsapp-avisos/:tipo/abrir", auth(), authPermission("ordens.whatsapp"), (req, res, next) => {
   try {
     const tipo = normalizarTipoAviso(req.params.tipo);
     if (!tipo) return res.status(400).json({ error: "Tipo de aviso invalido." });
@@ -661,7 +674,7 @@ router.post("/:id/whatsapp-avisos/:tipo/abrir", auth(["admin","caixa","oficina"]
 });
 
 // PATCH /api/ordens/:id/whatsapp-avisos/:tipo/status
-router.patch("/:id/whatsapp-avisos/:tipo/status", auth(["admin","caixa","oficina"]), (req, res, next) => {
+router.patch("/:id/whatsapp-avisos/:tipo/status", auth(), authPermission("ordens.whatsapp"), (req, res, next) => {
   try {
     const tipo = normalizarTipoAviso(req.params.tipo);
     const status = normalizarStatusAviso(req.body?.status);
@@ -701,7 +714,7 @@ router.patch("/:id/whatsapp-avisos/:tipo/status", auth(["admin","caixa","oficina
 });
 
 // POST /api/ordens/:id/whatsapp-confirmacao
-router.post("/:id/whatsapp-confirmacao", auth(["admin","caixa"]), async (req, res, next) => {
+router.post("/:id/whatsapp-confirmacao", auth(), authPermission("ordens.whatsapp"), async (req, res, next) => {
   try {
     const os = getOne(SEL_ORDEM + " WHERE o.id=? AND o.deletedat IS NULL", [req.params.id]);
     if (!os) return res.status(404).json({ error: "OS nao encontrada" });
@@ -711,7 +724,7 @@ router.post("/:id/whatsapp-confirmacao", auth(["admin","caixa"]), async (req, re
 });
 
 // DELETE /api/ordens/:id  (soft delete — move para lixeira)
-router.delete("/:id", auth(["admin"]), (req, res, next) => {
+router.delete("/:id", auth(), authPermission("ordens.excluir"), (req, res, next) => {
   try {
     const { reason } = req.body ?? {};
     const old = getOne("SELECT id FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);
@@ -725,7 +738,7 @@ router.delete("/:id", auth(["admin"]), (req, res, next) => {
 });
 
 // POST /api/ordens/:id/restore  (restaurar da lixeira)
-router.post("/:id/restore", auth(["admin"]), (req, res, next) => {
+router.post("/:id/restore", auth(), authPermission("ordens.restaurar"), (req, res, next) => {
   try {
     const old = getOne("SELECT id FROM ordens WHERE id=? AND deletedat IS NOT NULL", [req.params.id]);
     if (!old) return res.status(404).json({ error: "Nao encontrado na lixeira" });
@@ -735,7 +748,7 @@ router.post("/:id/restore", auth(["admin"]), (req, res, next) => {
 });
 
 // DELETE /api/ordens/:id/permanente  (exclusao definitiva — somente admin)
-router.delete("/:id/permanente", auth(["admin"]), (req, res, next) => {
+router.delete("/:id/permanente", auth(), authPermission("ordens.excluir_permanente"), (req, res, next) => {
   try {
     const old = getOne("SELECT id FROM ordens WHERE id=?", [req.params.id]);
     if (!old) return res.status(404).json({ error: "Nao encontrado" });

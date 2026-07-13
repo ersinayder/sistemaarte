@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import api from '../services/api';
 import { buildPropostaWhatsappUrl } from '../utils/propostaWhatsapp';
+import { useAuth } from '../context/AuthContext';
 
 const STATUS = [
   { id: 'Novo lead', label: 'Novo lead', slug: 'proposta-novo', color: '#38BDF8' },
@@ -34,7 +35,7 @@ function StatusBadge({ status }) {
   );
 }
 
-function PropostaModal({ proposta, onClose, onMove, onGerarOS, onOpenPdf, onOpenWhatsapp }) {
+function PropostaModal({ proposta, onClose, onMove, onGerarOS, onOpenPdf, onOpenWhatsapp, canEditStatus, canGerarOS, canPrint }) {
   if (!proposta) return null;
   const podeGerar = proposta.status === 'Aprovado' && !proposta.ordemid;
 
@@ -102,7 +103,7 @@ function PropostaModal({ proposta, onClose, onMove, onGerarOS, onOpenPdf, onOpen
 
         <div className="modal-footer" style={{ justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {STATUS.map((s) => (
+            {canEditStatus && STATUS.map((s) => (
               <button key={s.id} className="btn btn-secondary btn-sm" disabled={s.id === proposta.status} onClick={() => onMove(proposta, s.id)}>
                 {s.label}
               </button>
@@ -110,8 +111,8 @@ function PropostaModal({ proposta, onClose, onMove, onGerarOS, onOpenPdf, onOpen
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <button className="btn btn-secondary" onClick={() => onOpenWhatsapp(proposta)}>WhatsApp</button>
-            <button className="btn btn-secondary" onClick={() => onOpenPdf(proposta)}>PDF</button>
-            <button className="btn btn-primary" disabled={!podeGerar} onClick={() => onGerarOS(proposta)}>Gerar OS</button>
+            {canPrint && <button className="btn btn-secondary" onClick={() => onOpenPdf(proposta)}>PDF</button>}
+            {canGerarOS && <button className="btn btn-primary" disabled={!podeGerar} onClick={() => onGerarOS(proposta)}>Gerar OS</button>}
           </div>
         </div>
       </div>
@@ -121,6 +122,11 @@ function PropostaModal({ proposta, onClose, onMove, onGerarOS, onOpenPdf, onOpen
 
 export default function Propostas() {
   const navigate = useNavigate();
+  const { can } = useAuth();
+  const canCreate = typeof can === 'function' && can('propostas.criar');
+  const canEditStatus = typeof can === 'function' && can('propostas.editar_status');
+  const canGerarOS = typeof can === 'function' && can('propostas.gerar_os');
+  const canPrint = typeof can === 'function' && can('propostas.imprimir');
   const [propostas, setPropostas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
@@ -163,6 +169,7 @@ export default function Propostas() {
   };
 
   const move = useCallback(async (proposta, status) => {
+    if (!canEditStatus) return toast.error('Sem permissao para alterar status da proposta');
     try {
       const { data } = await api.patch(`/propostas/${proposta.id}/status`, { status });
       setPropostas((prev) => prev.map((p) => p.id === proposta.id ? data : p));
@@ -170,7 +177,7 @@ export default function Propostas() {
     } catch (e) {
       toast.error(e?.response?.data?.error || 'Erro ao mover proposta');
     }
-  }, []);
+  }, [canEditStatus]);
 
   const onDragStart = useCallback((e, proposta) => {
     setDraggingId(proposta.id);
@@ -205,6 +212,7 @@ export default function Propostas() {
 
   const onDrop = useCallback(async (e, status) => {
     e.preventDefault();
+    if (!canEditStatus) return;
     const id = e.dataTransfer.getData('propostaId');
     setDraggingId(null);
     setDragOverCol(null);
@@ -212,9 +220,10 @@ export default function Propostas() {
     const proposta = propostas.find((p) => String(p.id) === String(id));
     if (!proposta || proposta.status === status) return;
     await move(proposta, status);
-  }, [move, propostas]);
+  }, [canEditStatus, move, propostas]);
 
   const gerarOS = async (proposta) => {
+    if (!canGerarOS) return toast.error('Sem permissao para gerar OS');
     try {
       const { data } = await api.post(`/propostas/${proposta.id}/gerar-os`);
       toast.success('OS gerada');
@@ -225,6 +234,7 @@ export default function Propostas() {
   };
 
   const openPdf = (proposta) => {
+    if (!canPrint) return toast.error('Sem permissao para imprimir proposta');
     window.open(`/api/propostas/${proposta.id}/pdf`, '_blank', 'noopener,noreferrer');
   };
 
@@ -264,20 +274,24 @@ export default function Propostas() {
             placeholder="Buscar proposta ou cliente"
             style={{ width: 260, height: 28, fontSize: 11, padding: '0 var(--space-2)' }}
           />
-          <button
-            className="btn btn-secondary"
-            onClick={() => navigate('/orcamento/calculadora')}
-            style={{ height: 28, fontSize: 11, padding: '0 10px', whiteSpace: 'nowrap' }}
-          >
-            Calculadora
-          </button>
-          <button
-            className="btn btn-primary"
-            onClick={() => navigate('/orcamento')}
-            style={{ height: 28, fontSize: 11, padding: '0 10px', whiteSpace: 'nowrap' }}
-          >
-            Nova proposta
-          </button>
+          {canCreate && (
+            <>
+              <button
+                className="btn btn-secondary"
+                onClick={() => navigate('/orcamento/calculadora')}
+                style={{ height: 28, fontSize: 11, padding: '0 10px', whiteSpace: 'nowrap' }}
+              >
+                Calculadora
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={() => navigate('/orcamento')}
+                style={{ height: 28, fontSize: 11, padding: '0 10px', whiteSpace: 'nowrap' }}
+              >
+                Nova proposta
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -372,7 +386,7 @@ export default function Propostas() {
                         key={p.id}
                         className={`kanban-card${draggingId === p.id ? ' kanban-card-dragging' : ''}`}
                         data-status={col.slug}
-                        draggable
+                        draggable={canEditStatus}
                         onDragStart={(e) => onDragStart(e, p)}
                         onDragEnd={() => { setDraggingId(null); setDragOverCol(null); }}
                         onClick={() => openDetail(p)}
@@ -428,7 +442,17 @@ export default function Propostas() {
         </div>
       )}
 
-      <PropostaModal proposta={detail} onClose={() => setDetail(null)} onMove={move} onGerarOS={gerarOS} onOpenPdf={openPdf} onOpenWhatsapp={openWhatsapp} />
+      <PropostaModal
+        proposta={detail}
+        onClose={() => setDetail(null)}
+        onMove={move}
+        onGerarOS={gerarOS}
+        onOpenPdf={openPdf}
+        onOpenWhatsapp={openWhatsapp}
+        canEditStatus={canEditStatus}
+        canGerarOS={canGerarOS}
+        canPrint={canPrint}
+      />
     </div>
   );
 }

@@ -95,8 +95,11 @@ function Pagination({ current, total, onChange }) {
 }
 
 export default function Caixa() {
-  const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const { can } = useAuth();
+  const canCreate = typeof can === 'function' && can('caixa.criar_lancamento');
+  const canEdit = typeof can === 'function' && can('caixa.editar_lancamento');
+  const canDelete = typeof can === 'function' && can('caixa.excluir_lancamento');
+  const canPrintFechamento = typeof can === 'function' && can('caixa.fechamento');
 
   const [lancamentos, setLancamentos] = useState([]);
   const [loading,     setLoading]     = useState(true);
@@ -157,6 +160,8 @@ export default function Caixa() {
   useEffect(() => { setPage(1); }, [filterTipo, filterPag, filterCat, filterOrigem, busca, selectedDay, viewMode]);
 
   const handleSave = async (form) => {
+    if (editItem && !canEdit) return toast.error('Sem permissao para editar lancamento');
+    if (!editItem && !canCreate) return toast.error('Sem permissao para criar lancamento');
     try {
       if (editItem) {
         await api.put(`/caixa/${editItem.id}`, form);
@@ -175,6 +180,7 @@ export default function Caixa() {
   };
 
   const handleDelete = async (id) => {
+    if (!canDelete) return toast.error('Sem permissao para excluir lancamento');
     if (!window.confirm('Excluir este lançamento?')) return;
     try {
       await api.delete(`/caixa/${id}`);
@@ -239,7 +245,7 @@ export default function Caixa() {
               </span>
             </div>
           )}
-          {viewMode === 'dia' && (
+          {canPrintFechamento && viewMode === 'dia' && (
             <button className="btn btn-secondary"
               style={{ fontSize:'var(--text-xs)', display:'flex', alignItems:'center', gap:'var(--space-1)' }}
               onClick={() => abrirFechamentoCaixa(selectedDay)}>
@@ -250,13 +256,15 @@ export default function Caixa() {
               PDF
             </button>
           )}
-          <button className="btn btn-primary" onClick={()=>{ setEditItem(null); setShowModal(true); }}
-            style={{ fontSize:'var(--text-xs)', display:'flex', alignItems:'center', gap:'var(--space-1)' }}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M12 5v14M5 12h14"/>
-            </svg>
-            Novo manual
-          </button>
+          {canCreate && (
+            <button className="btn btn-primary" onClick={()=>{ setEditItem(null); setShowModal(true); }}
+              style={{ fontSize:'var(--text-xs)', display:'flex', alignItems:'center', gap:'var(--space-1)' }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M12 5v14M5 12h14"/>
+              </svg>
+              Novo manual
+            </button>
+          )}
         </div>
       </div>
 
@@ -354,12 +362,12 @@ export default function Caixa() {
               </div>
               <div className="mobile-record-sub">{l.ordemnumero || 'Manual'}</div>
             </div>
-            {isAdmin && (
+            {(canEdit || canDelete) && (
               <div className="mobile-record-footer">
                 <div />
                 <div className="mobile-record-actions">
-                  <button className="btn btn-secondary btn-sm" onClick={()=>{ setEditItem(l); setShowModal(true); }}>Editar</button>
-                  <button className="btn btn-ghost btn-sm inline-danger" onClick={()=>handleDelete(l.id)}>Excluir</button>
+                  {canEdit && <button className="btn btn-secondary btn-sm" onClick={()=>{ setEditItem(l); setShowModal(true); }}>Editar</button>}
+                  {canDelete && <button className="btn btn-ghost btn-sm inline-danger" onClick={()=>handleDelete(l.id)}>Excluir</button>}
                 </div>
               </div>
             )}
@@ -414,7 +422,7 @@ export default function Caixa() {
                 </td>
                 <td style={{ padding:'var(--space-2) var(--space-3)' }}>
                   <div style={{ display:'flex', gap:4, justifyContent:'flex-end' }}>
-                    {isAdmin && (
+                    {canEdit && (
                       <button onClick={()=>{ setEditItem(l); setShowModal(true); }}
                         style={{ color:'var(--color-text-muted)', padding:4, background:'none', border:'none', cursor:'pointer',
                           borderRadius:'var(--radius-sm)' }} title="Editar">
@@ -424,7 +432,7 @@ export default function Caixa() {
                         </svg>
                       </button>
                     )}
-                    {isAdmin && (
+                    {canDelete && (
                       <button onClick={()=>handleDelete(l.id)}
                         style={{ color:'var(--color-error)', padding:4, background:'none', border:'none', cursor:'pointer',
                           borderRadius:'var(--radius-sm)' }} title="Excluir">
