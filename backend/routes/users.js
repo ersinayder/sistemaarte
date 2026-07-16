@@ -16,6 +16,7 @@ const {
 } = require("../domain/userDeletionRules");
 
 const ROLES_VALIDOS = ["admin", "caixa", "oficina"];
+const PERMISSOES_GESTAO_USUARIOS = ["usuarios.ver", "usuarios.editar", "usuarios.restaurar"];
 
 function normalizarPermissoes(row) {
   return String(row?.permissions_csv || "")
@@ -135,6 +136,75 @@ function validarRemocaoUltimoAdmin(res, usuario, action) {
   }));
 }
 
+function buscarPerfilPermissao(profileKey) {
+  return getOne(
+    "SELECT key, name, base_role, active FROM permission_profiles WHERE key=?",
+    [profileKey]
+  );
+}
+
+function validarPerfilPermissao(res, { role, profileKey }) {
+  if (!profileKey) return { ok: false, error: "Perfil de permissoes e obrigatorio" };
+
+  const profile = buscarPerfilPermissao(profileKey);
+  if (!profile) return { ok: false, error: "Perfil de permissoes nao encontrado" };
+  if (Number(profile.active) !== 1) return { ok: false, error: "Perfil de permissoes inativo" };
+  if ((profile.base_role || profile.key) !== role) {
+    return { ok: false, error: "Perfil de permissoes incompativel com o tipo estrutural" };
+  }
+  return { ok: true, profile };
+}
+
+function perfilPermiteGestaoUsuarios(profile) {
+  if (!profile || Number(profile.active) !== 1) return false;
+  const permissoes = new Set(normalizarPermissoes(profile));
+  return PERMISSOES_GESTAO_USUARIOS.every((permission) => permissoes.has(permission));
+}
+
+function validarCoberturaGestaoUsuarios({ targetId, nextActive, nextProfileKey }) {
+  const profiles = getAll(
+    `SELECT
+       p.key,
+       p.active,
+       GROUP_CONCAT(pp.permission) AS permissions_csv
+     FROM permission_profiles p
+     LEFT JOIN profile_permissions pp ON pp.profile_id = p.id
+     GROUP BY p.id`
+  );
+  const users = getAll(
+    `SELECT id, COALESCE(profile_key, role) AS profile_key
+     FROM users
+     WHERE active=1 AND deletedat IS NULL`
+  );
+
+  if (!profiles?.length || !users?.length) return { ok: true };
+
+  const profilesByKey = new Map(profiles.map((profile) => [profile.key, profile]));
+  const hasActiveManager = users.some((user) => {
+    const isTarget = String(user.id) === String(targetId);
+    const profileKey = isTarget ? nextProfileKey : user.profile_key;
+    const isActive = isTarget ? Number(nextActive) === 1 : true;
+    return isActive && perfilPermiteGestaoUsuarios(profilesByKey.get(profileKey));
+  });
+
+  if (!hasActiveManager) {
+    return {
+      ok: false,
+      error: "Nao e possivel deixar o sistema sem um usuario ativo com permissao para gerenciar usuarios",
+    };
+  }
+  return { ok: true };
+}
+
+function validarRemocaoCoberturaGestaoUsuarios(res, usuario) {
+  if (Number(usuario.active) !== 1 || usuario.deletedat) return false;
+  return responderValidacao(res, validarCoberturaGestaoUsuarios({
+    targetId: usuario.id,
+    nextActive: 0,
+    nextProfileKey: usuario.profile_key || usuario.role,
+  }));
+}
+
 router.get("/", auth(), authPermission("usuarios.ver"), (req, res, next) => {
   try {
     const requestedStatus = String(req.query?.status || "active");
@@ -197,10 +267,13 @@ router.post("/", auth(), authPermission("usuarios.criar"), (req, res, next) => {
     const username = normalizeText(req.body?.username);
     const password = req.body?.password;
     const role = normalizeText(req.body?.role);
+    const profileKey = hasOwn(req.body, "profile_key") ? normalizeText(req.body?.profile_key) : role;
     if (!name || !username || !password || !role)
       return res.status(400).json({ error: "Todos os campos sao obrigatorios" });
     if (!ROLES_VALIDOS.includes(role))
       return res.status(400).json({ error: "Perfil invalido" });
+    const profileValidation = validarPerfilPermissao(res, { role, profileKey });
+    if (responderValidacao(res, profileValidation)) return;
     const senhaValidacao = validarSenhaUsuario(password, { required: true });
     if (!senhaValidacao.ok)
       return res.status(400).json({ error: senhaValidacao.error });
@@ -208,13 +281,13 @@ router.post("/", auth(), authPermission("usuarios.criar"), (req, res, next) => {
     try {
       id = runInsert(
         "INSERT INTO users (name,username,password,role,profile_key) VALUES (?,?,?,?,?)",
-        [name, username, bcrypt.hashSync(password, 10), role, role]
+        [name, username, bcrypt.hashSync(password, 10), role, profileKey]
       );
     } catch (e) {
       if (responderUsernameDuplicado(res, e)) return;
       throw e;
     }
-    res.json({ id, name, username, role, profile_key: role });
+    res.json({ id, name, username, role, profile_key: profileKey });
   } catch(e) { next(e); }
 });
 
@@ -228,15 +301,21 @@ router.put("/:id", auth(), authPermission("usuarios.editar"), (req, res, next) =
     const hasName = hasOwn(body, "name");
     const hasUsername = hasOwn(body, "username");
     const hasRole = hasOwn(body, "role");
+    const hasProfileKey = hasOwn(body, "profile_key");
     const hasPassword = hasOwn(body, "password") && String(password ?? "") !== "";
     const nextName = hasName ? normalizeText(body.name) : atual.name;
     const nextUsername = hasUsername ? normalizeText(body.username) : atual.username;
     const nextRole = hasRole ? normalizeText(body.role) : atual.role;
+    const nextProfileKey = hasProfileKey
+      ? normalizeText(body.profile_key)
+      : (hasRole ? nextRole : (atual.profile_key || nextRole));
     const nextActive = active == null ? Number(atual.active) : (active ? 1 : 0);
     if ((hasName && !nextName) || (hasUsername && !nextUsername))
       return res.status(400).json({ error: "Todos os campos sao obrigatorios" });
     if (!ROLES_VALIDOS.includes(nextRole))
       return res.status(400).json({ error: "Perfil invalido" });
+    const profileValidation = validarPerfilPermissao(res, { role: nextRole, profileKey: nextProfileKey });
+    if (responderValidacao(res, profileValidation)) return;
     if (hasPassword && !hasPermission(req.user, "usuarios.resetar_senha")) {
       return res.status(403).json({ error: "Sem permissao" });
     }
@@ -246,6 +325,8 @@ router.put("/:id", auth(), authPermission("usuarios.editar"), (req, res, next) =
       targetId: req.params.id,
       currentRole: atual.role,
       nextRole,
+      currentProfileKey: atual.profile_key || atual.role,
+      nextProfileKey,
       nextActive,
     });
     if (!selfCheck.ok) return res.status(400).json({ error: selfCheck.error });
@@ -253,12 +334,25 @@ router.put("/:id", auth(), authPermission("usuarios.editar"), (req, res, next) =
     const action = atual.role !== nextRole ? "change_role" : "deactivate";
     if ((atual.role !== nextRole || Number(atual.active) !== nextActive) && validarRemocaoUltimoAdmin(res, atual, action)) return;
 
+    const currentProfileKey = atual.profile_key || atual.role;
+    const changedAccessBoundary = atual.role !== nextRole
+      || currentProfileKey !== nextProfileKey
+      || Number(atual.active) !== nextActive;
+    if (
+      changedAccessBoundary
+      && responderValidacao(res, validarCoberturaGestaoUsuarios({
+        targetId: req.params.id,
+        nextActive,
+        nextProfileKey,
+      }))
+    ) return;
+
     const senhaValidacao = validarSenhaUsuario(password, { required: false });
     if (!senhaValidacao.ok)
       return res.status(400).json({ error: senhaValidacao.error });
 
     const mustIncrementAccessVersion = atual.role !== nextRole
-      || (atual.profile_key || atual.role) !== nextRole
+      || currentProfileKey !== nextProfileKey
       || Number(atual.active) !== nextActive
       || atual.username !== nextUsername
       || hasPassword;
@@ -268,12 +362,12 @@ router.put("/:id", auth(), authPermission("usuarios.editar"), (req, res, next) =
       if (hasPassword) {
         run(
           `UPDATE users SET name=?,username=?,role=?,profile_key=?,active=?,password=?,updatedat=datetime('now','localtime')${accessVersionSql} WHERE id=?`,
-          [nextName, nextUsername, nextRole, nextRole, nextActive, bcrypt.hashSync(password, 10), req.params.id]
+          [nextName, nextUsername, nextRole, nextProfileKey, nextActive, bcrypt.hashSync(password, 10), req.params.id]
         );
       } else {
         run(
           `UPDATE users SET name=?,username=?,role=?,profile_key=?,active=?,updatedat=datetime('now','localtime')${accessVersionSql} WHERE id=?`,
-          [nextName, nextUsername, nextRole, nextRole, nextActive, req.params.id]
+          [nextName, nextUsername, nextRole, nextProfileKey, nextActive, req.params.id]
         );
       }
     } catch (e) {
@@ -304,6 +398,7 @@ router.post("/:id/archive", auth(), authPermission("usuarios.arquivar"), (req, r
     });
     if (responderValidacao(res, selfCheck)) return;
     if (validarRemocaoUltimoAdmin(res, usuario, "archive")) return;
+    if (validarRemocaoCoberturaGestaoUsuarios(res, usuario)) return;
 
     run(
       "UPDATE users SET active=0, deletedat=datetime('now','localtime'), deletedpor=?, deletedreason=?, updatedat=datetime('now','localtime'), access_version=access_version+1 WHERE id=?",
@@ -377,6 +472,7 @@ router.delete("/:id", auth(), authPermission("usuarios.excluir_permanente"), (re
         blockers: resultado.blockers,
       });
     }
+    if (validarRemocaoCoberturaGestaoUsuarios(res, usuario)) return;
 
     run("DELETE FROM users WHERE id=?", [req.params.id]);
     res.json({ ok: true });

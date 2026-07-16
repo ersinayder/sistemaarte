@@ -1,5 +1,5 @@
 const router = require("express").Router();
-const { getAll, getOne, run, transaction } = require("../database");
+const { getAll, getOne, run, runInsert, transaction } = require("../database");
 const { auth, authPermission } = require("../middlewares/auth");
 const {
   PERMISSIONS,
@@ -12,6 +12,8 @@ const {
 } = require("../domain/permissionRules");
 
 const SECURITY_PROFILE_PERMISSIONS = ["usuarios.ver", "usuarios.editar", "usuarios.restaurar"];
+const ROLES_VALIDOS = ["admin", "caixa", "oficina"];
+const PROFILE_KEY_RE = /^[a-z][a-z0-9_-]{1,39}$/;
 
 function normalizarPermissoesCsv(row) {
   return sortPermissionsByCatalog(
@@ -37,6 +39,7 @@ function perfilPublico(row) {
     key: row.key,
     name: row.name,
     description: row.description || "",
+    base_role: row.base_role || row.key,
     system: Number(row.system) === 1,
     active: Number(row.active) === 1,
     createdat: row.createdat,
@@ -55,6 +58,7 @@ function buscarPerfil(key) {
        p.key,
        p.name,
        p.description,
+       p.base_role,
        p.system,
        p.active,
        p.createdat,
@@ -78,6 +82,7 @@ function listarPerfis() {
        p.key,
        p.name,
        p.description,
+       p.base_role,
        p.system,
        p.active,
        p.createdat,
@@ -186,6 +191,17 @@ function catalogoResposta() {
   };
 }
 
+function normalizarChavePerfil(value) {
+  return normalizarTexto(value)
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_-]/g, "");
+}
+
+function validarBaseRole(baseRole) {
+  return ROLES_VALIDOS.includes(baseRole);
+}
+
 router.get("/", auth(), authPermission("usuarios.ver"), (_req, res, next) => {
   try {
     res.json({
@@ -206,6 +222,49 @@ router.get("/:key", auth(), authPermission("usuarios.ver"), (req, res, next) => 
       ...catalogoResposta(),
     });
   } catch (e) { next(e); }
+});
+
+router.post("/", auth(), authPermission("configuracoes.seguranca"), (req, res, next) => {
+  try {
+    const key = normalizarChavePerfil(req.body?.key || req.body?.name);
+    const name = normalizarTexto(req.body?.name);
+    const description = normalizarTexto(req.body?.description);
+    const baseRole = normalizarTexto(req.body?.base_role);
+    const sourceKey = normalizarChavePerfil(req.body?.source_profile_key || baseRole);
+
+    if (!key || !name || !baseRole) return res.status(400).json({ error: "Chave, nome e tipo estrutural sao obrigatorios" });
+    if (!PROFILE_KEY_RE.test(key)) return res.status(400).json({ error: "Chave do perfil invalida" });
+    if (DEFAULT_PROFILE_PERMISSIONS[key]) return res.status(400).json({ error: "Chave reservada para perfil de sistema" });
+    if (!validarBaseRole(baseRole)) return res.status(400).json({ error: "Tipo estrutural invalido" });
+    if (getOne("SELECT id FROM permission_profiles WHERE key=?", [key])) {
+      return res.status(409).json({ error: "Perfil ja existe" });
+    }
+
+    const sourceProfile = buscarPerfil(sourceKey);
+    if (!sourceProfile) return res.status(400).json({ error: "Perfil base nao encontrado" });
+    if (Number(sourceProfile.active) !== 1) return res.status(400).json({ error: "Perfil base inativo" });
+    if ((sourceProfile.base_role || sourceProfile.key) !== baseRole) {
+      return res.status(400).json({ error: "Perfil base incompativel com o tipo estrutural" });
+    }
+
+    const permissions = Array.isArray(req.body?.permissions)
+      ? normalizarPermissoesEntrada(req.body.permissions)
+      : normalizarPermissoesCsv(sourceProfile);
+    let profileId;
+
+    transaction(() => {
+      profileId = runInsert(
+        "INSERT INTO permission_profiles (key,name,description,base_role,system,active) VALUES (?,?,?,?,0,1)",
+        [key, name, description, baseRole]
+      );
+      substituirPermissoesPerfil(profileId, permissions);
+    });
+
+    res.json({ ok: true, profile: perfilPublico(buscarPerfil(key)) });
+  } catch (e) {
+    if (responderPermissaoDesconhecida(res, e)) return;
+    next(e);
+  }
 });
 
 router.put("/:key", auth(), authPermission("configuracoes.seguranca"), (req, res, next) => {

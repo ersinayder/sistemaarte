@@ -24,12 +24,18 @@ function validarAlteracaoProprioUsuario({
   targetId,
   currentRole,
   nextRole,
+  currentProfileKey,
+  nextProfileKey,
   nextActive,
 }) {
   if (Number(requesterId) !== Number(targetId)) return { ok: true };
 
   if (currentRole !== nextRole) {
     return { ok: false, error: "Voce nao pode alterar seu proprio perfil" };
+  }
+
+  if (currentProfileKey && nextProfileKey && currentProfileKey !== nextProfileKey) {
+    return { ok: false, error: "Voce nao pode alterar seu proprio perfil de permissoes" };
   }
 
   if (Number(nextActive) !== 1) {

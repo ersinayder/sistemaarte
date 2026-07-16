@@ -194,6 +194,7 @@ CREATE TABLE IF NOT EXISTS permission_profiles (
   key         TEXT    UNIQUE NOT NULL,
   name        TEXT    NOT NULL,
   description TEXT,
+  base_role   TEXT,
   system      INTEGER NOT NULL DEFAULT 0,
   active      INTEGER NOT NULL DEFAULT 1,
   createdat   TEXT    DEFAULT (datetime('now','localtime')),
@@ -625,9 +626,14 @@ function applyMigrations(targetDb, migrations) {
 
 function seedPermissionProfiles(targetDb) {
   const insertProfile = targetDb.prepare(`
-    INSERT INTO permission_profiles (key, name, description, system, active, updatedat)
-    VALUES (?, ?, ?, ?, ?, datetime('now','localtime'))
+    INSERT INTO permission_profiles (key, name, description, base_role, system, active, updatedat)
+    VALUES (?, ?, ?, ?, ?, ?, datetime('now','localtime'))
     ON CONFLICT(key) DO NOTHING
+  `);
+  const updateMissingBaseRole = targetDb.prepare(`
+    UPDATE permission_profiles
+    SET base_role=?
+    WHERE key=? AND base_role IS NULL
   `);
   const getProfile = targetDb.prepare("SELECT id FROM permission_profiles WHERE key=?");
   const insertPermission = targetDb.prepare(`
@@ -639,7 +645,8 @@ function seedPermissionProfiles(targetDb) {
     for (const profile of DEFAULT_PROFILES) {
       const permissions = DEFAULT_PROFILE_PERMISSIONS[profile.key] || [];
       assertKnownPermissions(permissions);
-      insertProfile.run(profile.key, profile.name, profile.description, profile.system, profile.active);
+      insertProfile.run(profile.key, profile.name, profile.description, profile.base_role, profile.system, profile.active);
+      updateMissingBaseRole.run(profile.base_role, profile.key);
       const row = getProfile.get(profile.key);
       for (const permission of permissions) {
         insertPermission.run(row.id, permission);
@@ -977,6 +984,7 @@ function initDB() {
       key         TEXT    UNIQUE NOT NULL,
       name        TEXT    NOT NULL,
       description TEXT,
+      base_role   TEXT,
       system      INTEGER NOT NULL DEFAULT 0,
       active      INTEGER NOT NULL DEFAULT 1,
       createdat   TEXT    DEFAULT (datetime('now','localtime')),
@@ -989,6 +997,8 @@ function initDB() {
       UNIQUE(profile_id, permission),
       FOREIGN KEY(profile_id) REFERENCES permission_profiles(id) ON DELETE CASCADE
     )`,
+    "ALTER TABLE permission_profiles ADD COLUMN base_role TEXT",
+    "UPDATE permission_profiles SET base_role=key WHERE base_role IS NULL AND key IN ('admin','caixa','oficina')",
     "CREATE INDEX IF NOT EXISTS idx_profile_permissions_permission ON profile_permissions(permission)",
   ];
   applyMigrations(db, migrations);

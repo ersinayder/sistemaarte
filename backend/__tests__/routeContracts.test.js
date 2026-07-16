@@ -90,6 +90,7 @@ describe('route authorization contracts', () => {
     expect(serverSource).toMatch(/app\.use\(["']\/api\/permission-profiles["'],\s*require\(["']\.\/routes\/permissionProfiles["']\)\)/);
     expect(source).toMatch(/router\.get\(["']\/["'],\s*auth\(\),\s*authPermission\(["']usuarios\.ver["']\)/);
     expect(source).toMatch(/router\.get\(["']\/:key["'],\s*auth\(\),\s*authPermission\(["']usuarios\.ver["']\)/);
+    expect(source).toMatch(/router\.post\(["']\/["'],\s*auth\(\),\s*authPermission\(["']configuracoes\.seguranca["']\)/);
     expect(source).toMatch(/router\.put\(["']\/:key["'],\s*auth\(\),\s*authPermission\(["']configuracoes\.seguranca["']\)/);
     expect(source).toMatch(/router\.post\(["']\/:key\/restore-defaults["'],\s*auth\(\),\s*authPermission\(["']configuracoes\.seguranca["']\)/);
   });

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 const {
   PERMISSIONS,
   DEFAULT_PROFILE_PERMISSIONS,
+  DEFAULT_PROFILES,
   isKnownPermission,
   getDefaultPermissionsForProfile,
   hasPermission,
@@ -69,5 +70,13 @@ describe("permissionRules", () => {
     for (const [profileKey, permissions] of Object.entries(DEFAULT_PROFILE_PERMISSIONS)) {
       expect(new Set(permissions).size, profileKey).toBe(permissions.length);
     }
+  });
+
+  it("declares a structural base role for every default profile", () => {
+    expect(DEFAULT_PROFILES).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: "admin", base_role: "admin" }),
+      expect.objectContaining({ key: "caixa", base_role: "caixa" }),
+      expect.objectContaining({ key: "oficina", base_role: "oficina" }),
+    ]));
   });
 });

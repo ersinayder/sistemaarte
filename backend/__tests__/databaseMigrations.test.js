@@ -58,6 +58,9 @@ describe('database migrations', () => {
     const source = fs.readFileSync(path.join(__dirname, "..", "database.js"), "utf8");
     expect(source).toMatch(/CREATE TABLE IF NOT EXISTS permission_profiles/);
     expect(source).toMatch(/CREATE TABLE IF NOT EXISTS profile_permissions/);
+    expect(source).toMatch(/base_role\s+TEXT/);
+    expect(source).toMatch(/ALTER TABLE permission_profiles ADD COLUMN base_role TEXT/);
+    expect(source).toMatch(/UPDATE permission_profiles SET base_role=key WHERE base_role IS NULL AND key IN \('admin','caixa','oficina'\)/);
     expect(source).toMatch(/ALTER TABLE users ADD COLUMN profile_key TEXT/);
     expect(source).toMatch(/ALTER TABLE users ADD COLUMN access_version INTEGER NOT NULL DEFAULT 1/);
     expect(source).toMatch(/UPDATE users SET profile_key=role WHERE profile_key IS NULL/);
@@ -76,6 +79,7 @@ describe('database migrations', () => {
         key         TEXT    UNIQUE NOT NULL,
         name        TEXT    NOT NULL,
         description TEXT,
+        base_role   TEXT,
         system      INTEGER NOT NULL DEFAULT 0,
         active      INTEGER NOT NULL DEFAULT 1,
         createdat   TEXT    DEFAULT (datetime('now','localtime')),
@@ -94,8 +98,8 @@ describe('database migrations', () => {
       database.seedPermissionProfiles(db);
       database.seedPermissionProfiles(db);
 
-      const admin = db.prepare("SELECT id, name, system, active FROM permission_profiles WHERE key='admin'").get();
-      expect(admin).toMatchObject({ name: 'Administrador', system: 1, active: 1 });
+      const admin = db.prepare("SELECT id, name, base_role, system, active FROM permission_profiles WHERE key='admin'").get();
+      expect(admin).toMatchObject({ name: 'Administrador', base_role: 'admin', system: 1, active: 1 });
 
       const before = db.prepare("SELECT COUNT(*) AS total FROM profile_permissions WHERE profile_id=? AND permission='usuarios.ver'").get(admin.id);
       expect(before.total).toBe(1);
@@ -142,6 +146,36 @@ describe('database migrations', () => {
 
       const row = db.prepare("SELECT updatedat FROM users WHERE username='admin'").get();
       expect(row.updatedat).toEqual(expect.any(String));
+    } finally {
+      db.close();
+    }
+  });
+
+  it('backfills base_role only for default permission profiles', () => {
+    const db = new Database(':memory:');
+    db.exec(`
+      CREATE TABLE permission_profiles (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        key         TEXT    UNIQUE NOT NULL,
+        name        TEXT    NOT NULL,
+        description TEXT,
+        system      INTEGER NOT NULL DEFAULT 0,
+        active      INTEGER NOT NULL DEFAULT 1,
+        createdat   TEXT    DEFAULT (datetime('now','localtime')),
+        updatedat   TEXT    DEFAULT (datetime('now','localtime'))
+      );
+      INSERT INTO permission_profiles (key, name, system)
+      VALUES ('admin', 'Administrador', 1), ('caixa_senior', 'Caixa Senior', 0);
+    `);
+
+    try {
+      database.applyMigrations(db, [
+        "ALTER TABLE permission_profiles ADD COLUMN base_role TEXT",
+        "UPDATE permission_profiles SET base_role=key WHERE base_role IS NULL AND key IN ('admin','caixa','oficina')",
+      ]);
+
+      expect(db.prepare("SELECT base_role FROM permission_profiles WHERE key='admin'").get()).toEqual({ base_role: 'admin' });
+      expect(db.prepare("SELECT base_role FROM permission_profiles WHERE key='caixa_senior'").get()).toEqual({ base_role: null });
     } finally {
       db.close();
     }

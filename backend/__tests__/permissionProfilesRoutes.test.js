@@ -52,6 +52,7 @@ function profileRow(overrides = {}) {
     key: "caixa",
     name: "Caixa",
     description: "Atendimento",
+    base_role: "caixa",
     system: 1,
     active: 1,
     createdat: "2026-07-10 09:00:00",
@@ -93,6 +94,7 @@ describe("permission profiles routes", () => {
           key: "caixa",
           name: "Caixa",
           system: true,
+          base_role: "caixa",
           active: true,
           user_count: 2,
           active_user_count: 1,
@@ -106,6 +108,72 @@ describe("permission profiles routes", () => {
     }));
     expect(res.json.mock.calls[0][0].profiles[0]).not.toHaveProperty("id");
     expect(res.json.mock.calls[0][0].profiles[0]).not.toHaveProperty("permissions_csv");
+  });
+
+  it("creates a custom profile by copying permissions from a compatible source profile", async () => {
+    db.getOne
+      .mockReturnValueOnce(null)
+      .mockReturnValueOnce(profileRow({
+        id: 2,
+        key: "caixa",
+        base_role: "caixa",
+        permissions_csv: "ordens.ver,clientes.ver",
+      }))
+      .mockReturnValueOnce(profileRow({
+        id: 55,
+        key: "caixa_senior",
+        name: "Caixa Senior",
+        description: "Atendimento com extras",
+        base_role: "caixa",
+        system: 0,
+        active: 1,
+        permissions_csv: "ordens.ver,clientes.ver",
+      }));
+    db.runInsert.mockReturnValueOnce(55);
+
+    const res = makeRes();
+    await businessHandler("post", "/")(routeRequest({
+      body: {
+        key: " caixa_senior ",
+        name: " Caixa Senior ",
+        description: " Atendimento com extras ",
+        base_role: " caixa ",
+        source_profile_key: "caixa",
+      },
+    }), res, vi.fn());
+
+    expect(db.transaction).toHaveBeenCalledTimes(1);
+    expect(db.runInsert).toHaveBeenCalledWith(
+      "INSERT INTO permission_profiles (key,name,description,base_role,system,active) VALUES (?,?,?,?,0,1)",
+      ["caixa_senior", "Caixa Senior", "Atendimento com extras", "caixa"],
+    );
+    expect(db.run).toHaveBeenCalledWith(
+      "INSERT INTO profile_permissions (profile_id, permission) VALUES (?, ?)",
+      [55, "ordens.ver"],
+    );
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      ok: true,
+      profile: expect.objectContaining({
+        key: "caixa_senior",
+        base_role: "caixa",
+        system: false,
+      }),
+    }));
+  });
+
+  it("rejects custom profiles with an invalid structural base role", async () => {
+    const res = makeRes();
+    await businessHandler("post", "/")(routeRequest({
+      body: {
+        key: "fiscal",
+        name: "Fiscal",
+        base_role: "fiscal",
+      },
+    }), res, vi.fn());
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ error: "Tipo estrutural invalido" });
+    expect(db.runInsert).not.toHaveBeenCalled();
   });
 
   it("updates a profile in a transaction and invalidates sessions for affected users", async () => {

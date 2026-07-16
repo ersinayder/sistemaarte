@@ -144,6 +144,12 @@ describe("users routes", () => {
   });
 
   it("creates a user with profile_key matching role and a hashed password", async () => {
+    db.getOne.mockReturnValueOnce({
+      key: "caixa",
+      name: "Caixa",
+      base_role: "caixa",
+      active: 1,
+    });
     const res = makeRes();
 
     await businessHandler("post", "/")(routeRequest({
@@ -172,6 +178,105 @@ describe("users routes", () => {
     });
   });
 
+  it("creates a user with a custom permission profile without changing structural role", async () => {
+    db.getOne.mockReturnValueOnce({
+      key: "caixa_senior",
+      name: "Caixa Senior",
+      base_role: "caixa",
+      active: 1,
+    });
+    const res = makeRes();
+
+    await businessHandler("post", "/")(routeRequest({
+      body: {
+        name: "  Caixa Senior  ",
+        username: "  caixa.senior  ",
+        password: "senhaSegura123",
+        role: " caixa ",
+        profile_key: " caixa_senior ",
+      },
+    }), res, vi.fn());
+
+    const [sql, params] = db.runInsert.mock.calls[0];
+    expect(sql).toMatch(/INSERT INTO users\s+\(name,username,password,role,profile_key\)/);
+    expect(params[3]).toBe("caixa");
+    expect(params[4]).toBe("caixa_senior");
+    expect(res.json).toHaveBeenCalledWith({
+      id: 123,
+      name: "Caixa Senior",
+      username: "caixa.senior",
+      role: "caixa",
+      profile_key: "caixa_senior",
+    });
+  });
+
+  it("rejects assigning a permission profile incompatible with the structural role", async () => {
+    db.getOne.mockReturnValueOnce({
+      key: "oficina_status",
+      name: "Oficina Status",
+      base_role: "oficina",
+      active: 1,
+    });
+
+    const res = makeRes();
+    await businessHandler("post", "/")(routeRequest({
+      body: {
+        name: "Caixa",
+        username: "caixa.profile",
+        password: "senhaSegura123",
+        role: "caixa",
+        profile_key: "oficina_status",
+      },
+    }), res, vi.fn());
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ error: "Perfil de permissoes incompativel com o tipo estrutural" });
+    expect(db.runInsert).not.toHaveBeenCalled();
+  });
+
+  it("rejects assigning a default permission profile when it is inactive", async () => {
+    db.getOne.mockReturnValueOnce({
+      key: "caixa",
+      name: "Caixa",
+      base_role: "caixa",
+      active: 0,
+    });
+
+    const res = makeRes();
+    await businessHandler("post", "/")(routeRequest({
+      body: {
+        name: "Caixa",
+        username: "caixa.inativo",
+        password: "senhaSegura123",
+        role: "caixa",
+        profile_key: "caixa",
+      },
+    }), res, vi.fn());
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ error: "Perfil de permissoes inativo" });
+    expect(db.runInsert).not.toHaveBeenCalled();
+  });
+
+  it("rejects updating to a missing default permission profile", async () => {
+    db.getOne
+      .mockReturnValueOnce(mockUser({ id: 8, role: "caixa", profile_key: "caixa_senior" }))
+      .mockReturnValueOnce(null);
+
+    const res = makeRes();
+    await businessHandler("put", "/:id")(routeRequest({
+      params: { id: "8" },
+      user: { id: 99, role: "admin", permissions: ["usuarios.editar"] },
+      body: {
+        profile_key: "caixa",
+      },
+    }), res, vi.fn());
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ error: "Perfil de permissoes nao encontrado" });
+    expect(db.run).not.toHaveBeenCalled();
+  });
+
   it("rejects whitespace-only required fields when creating users", async () => {
     for (const body of [
       { name: "   ", username: "novo", password: "senhaSegura123", role: "caixa" },
@@ -187,6 +292,12 @@ describe("users routes", () => {
   });
 
   it("rejects whitespace-only passwords when creating users", async () => {
+    db.getOne.mockReturnValueOnce({
+      key: "caixa",
+      name: "Caixa",
+      base_role: "caixa",
+      active: 1,
+    });
     const res = makeRes();
 
     await businessHandler("post", "/")(routeRequest({
@@ -204,6 +315,12 @@ describe("users routes", () => {
   });
 
   it("returns 409 when creating a user with a duplicate username", async () => {
+    db.getOne.mockReturnValueOnce({
+      key: "caixa",
+      name: "Caixa",
+      base_role: "caixa",
+      active: 1,
+    });
     db.runInsert.mockImplementationOnce(() => {
       throw new Error("UNIQUE constraint failed: users.username");
     });
@@ -227,6 +344,12 @@ describe("users routes", () => {
   it("updates role, active, username, and password while incrementing access_version", async () => {
     db.getOne
       .mockReturnValueOnce(mockUser({ id: 8, role: "caixa", username: "old.caixa", active: 1 }))
+      .mockReturnValueOnce({
+        key: "oficina",
+        name: "Oficina",
+        base_role: "oficina",
+        active: 1,
+      })
       .mockReturnValueOnce({ total: 2 });
 
     const res = makeRes();
@@ -256,6 +379,98 @@ describe("users routes", () => {
     expect(res.json).toHaveBeenCalledWith({ ok: true });
   });
 
+  it("updates only profile_key and increments access_version without changing role", async () => {
+    db.getOne
+      .mockReturnValueOnce(mockUser({ id: 8, role: "caixa", profile_key: "caixa", active: 1 }))
+      .mockReturnValueOnce({
+        key: "caixa_senior",
+        name: "Caixa Senior",
+        base_role: "caixa",
+        active: 1,
+      })
+      .mockReturnValueOnce({ total: 2 });
+
+    const res = makeRes();
+    await businessHandler("put", "/:id")(routeRequest({
+      params: { id: "8" },
+      user: { id: 99, role: "admin", permissions: ["usuarios.editar"] },
+      body: {
+        profile_key: " caixa_senior ",
+      },
+    }), res, vi.fn());
+
+    const [sql, params] = db.run.mock.calls[0];
+    expect(sql).toContain("profile_key=?");
+    expect(sql).toContain("access_version=access_version+1");
+    expect(params[2]).toBe("caixa");
+    expect(params[3]).toBe("caixa_senior");
+    expect(res.json).toHaveBeenCalledWith({ ok: true });
+  });
+
+  it("blocks profile changes that would leave no active user able to manage users", async () => {
+    db.getOne
+      .mockReturnValueOnce(mockUser({
+        id: 8,
+        role: "caixa",
+        profile_key: "caixa_admin",
+        active: 1,
+        deletedat: null,
+      }))
+      .mockReturnValueOnce({
+        key: "caixa_limitado",
+        name: "Caixa Limitado",
+        base_role: "caixa",
+        active: 1,
+      });
+    db.getAll
+      .mockReturnValueOnce([
+        { key: "caixa_admin", active: 1, permissions_csv: "usuarios.ver,usuarios.editar,usuarios.restaurar" },
+        { key: "caixa_limitado", active: 1, permissions_csv: "ordens.ver" },
+      ])
+      .mockReturnValueOnce([{ id: 8, profile_key: "caixa_admin" }]);
+
+    const res = makeRes();
+    await businessHandler("put", "/:id")(routeRequest({
+      params: { id: "8" },
+      user: { id: 99, role: "admin", permissions: ["usuarios.editar"] },
+      body: { profile_key: "caixa_limitado" },
+    }), res, vi.fn());
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      error: "Nao e possivel deixar o sistema sem um usuario ativo com permissao para gerenciar usuarios",
+    });
+    expect(db.run).not.toHaveBeenCalled();
+  });
+
+  it("blocks archiving the last active user able to manage users", async () => {
+    db.getOne.mockReturnValueOnce(mockUser({
+      id: 8,
+      role: "caixa",
+      profile_key: "caixa_admin",
+      active: 1,
+      deletedat: null,
+    }));
+    db.getAll
+      .mockReturnValueOnce([
+        { key: "caixa_admin", active: 1, permissions_csv: "usuarios.ver,usuarios.editar,usuarios.restaurar" },
+      ])
+      .mockReturnValueOnce([{ id: 8, profile_key: "caixa_admin" }]);
+
+    const res = makeRes();
+    await businessHandler("post", "/:id/archive")(routeRequest({
+      params: { id: "8" },
+      user: { id: 99, role: "admin", permissions: ["usuarios.arquivar"] },
+      body: { reason: "Saiu" },
+    }), res, vi.fn());
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      error: "Nao e possivel deixar o sistema sem um usuario ativo com permissao para gerenciar usuarios",
+    });
+    expect(db.run).not.toHaveBeenCalled();
+  });
+
   it("rejects explicit empty username updates instead of keeping the old username", async () => {
     db.getOne.mockReturnValueOnce(mockUser({ id: 8, username: "old.caixa" }));
 
@@ -271,7 +486,14 @@ describe("users routes", () => {
   });
 
   it("blocks password changes through PUT without reset password permission", async () => {
-    db.getOne.mockReturnValueOnce(mockUser({ id: 8, username: "caixa" }));
+    db.getOne
+      .mockReturnValueOnce(mockUser({ id: 8, username: "caixa" }))
+      .mockReturnValueOnce({
+        key: "caixa",
+        name: "Caixa",
+        base_role: "caixa",
+        active: 1,
+      });
 
     const res = makeRes();
     await businessHandler("put", "/:id")(routeRequest({
@@ -286,7 +508,14 @@ describe("users routes", () => {
   });
 
   it("returns 409 when updating a user to a duplicate username", async () => {
-    db.getOne.mockReturnValueOnce(mockUser({ id: 8, username: "caixa" }));
+    db.getOne
+      .mockReturnValueOnce(mockUser({ id: 8, username: "caixa" }))
+      .mockReturnValueOnce({
+        key: "caixa",
+        name: "Caixa",
+        base_role: "caixa",
+        active: 1,
+      });
     db.run.mockImplementationOnce(() => {
       throw new Error("SQLITE_CONSTRAINT_UNIQUE: UNIQUE constraint failed: users.username");
     });
@@ -306,6 +535,12 @@ describe("users routes", () => {
   it("blocks changing or deactivating the last active admin", async () => {
     db.getOne
       .mockReturnValueOnce(mockUser({ id: 1, role: "admin", active: 1, deletedat: null }))
+      .mockReturnValueOnce({
+        key: "caixa",
+        name: "Caixa",
+        base_role: "caixa",
+        active: 1,
+      })
       .mockReturnValueOnce({ total: 1 });
 
     const res = makeRes();
@@ -495,5 +730,38 @@ describe("users routes", () => {
 
     expect(db.run).toHaveBeenCalledWith("DELETE FROM users WHERE id=?", ["8"]);
     expect(res.json).toHaveBeenCalledWith({ ok: true });
+  });
+
+  it("blocks permanently deleting the last active user able to manage users", async () => {
+    db.getOne.mockImplementation((sql) => {
+      if (sql.includes("FROM users u") || sql.includes("FROM users WHERE id")) {
+        return mockUser({
+          id: 8,
+          role: "caixa",
+          profile_key: "caixa_admin",
+          active: 1,
+          deletedat: null,
+        });
+      }
+      if (sql.includes("role='admin'")) return { total: 2 };
+      return { total: 0 };
+    });
+    db.getAll
+      .mockReturnValueOnce([
+        { key: "caixa_admin", active: 1, permissions_csv: "usuarios.ver,usuarios.editar,usuarios.restaurar" },
+      ])
+      .mockReturnValueOnce([{ id: 8, profile_key: "caixa_admin" }]);
+
+    const res = makeRes();
+    await businessHandler("delete", "/:id")(routeRequest({
+      params: { id: "8" },
+      user: { id: 99, role: "admin", permissions: ["usuarios.excluir_permanente"] },
+    }), res, vi.fn());
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      error: "Nao e possivel deixar o sistema sem um usuario ativo com permissao para gerenciar usuarios",
+    });
+    expect(db.run).not.toHaveBeenCalled();
   });
 });

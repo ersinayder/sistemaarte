@@ -111,6 +111,28 @@ function samePermissions(a, b) {
   return JSON.stringify(sortedPermissions(a)) === JSON.stringify(sortedPermissions(b))
 }
 
+function profileBaseRole(profile) {
+  return profile?.base_role || profile?.key
+}
+
+function defaultProfiles() {
+  return ROLES.map(role => ({
+    key: role,
+    name: ROLE_LABEL[role],
+    base_role: role,
+    active: true,
+    permissions: [],
+  }))
+}
+
+function profilesForRole(profiles, role, currentProfileKey = '') {
+  const source = profiles?.length ? profiles : defaultProfiles()
+  return source.filter(profile => (
+    profileBaseRole(profile) === role
+    && (profile.active || profile.key === currentProfileKey)
+  ))
+}
+
 function ModalShell({ title, onClose, children, footer, maxWidth = 520 }) {
   const titleId = useId()
 
@@ -144,17 +166,39 @@ function ModalShell({ title, onClose, children, footer, maxWidth = 520 }) {
   )
 }
 
-function UserFormModal({ editUser, onClose, onSaved }) {
+function UserFormModal({ editUser, profiles, profilesLoading, onClose, onSaved }) {
   const [form, setForm] = useState({
     name: editUser?.name || '',
     username: editUser?.username || '',
     password: '',
     role: editUser?.role || 'caixa',
+    profile_key: editUser?.profile_key || editUser?.role || 'caixa',
     active: Number(editUser?.active ?? 1) !== 0,
   })
   const [saving, setSaving] = useState(false)
   const isEdit = Boolean(editUser)
   const set = (key, value) => setForm(current => ({ ...current, [key]: value }))
+  const compatibleProfiles = useMemo(
+    () => profilesForRole(profiles, form.role, form.profile_key),
+    [form.profile_key, form.role, profiles]
+  )
+  const selectedProfile = compatibleProfiles.find(profile => profile.key === form.profile_key) || compatibleProfiles[0] || null
+
+  useEffect(() => {
+    if (!compatibleProfiles.length) return
+    if (!compatibleProfiles.some(profile => profile.key === form.profile_key)) {
+      set('profile_key', compatibleProfiles[0].key)
+    }
+  }, [compatibleProfiles, form.profile_key])
+
+  const changeRole = (nextRole) => {
+    const nextProfiles = profilesForRole(profiles, nextRole)
+    setForm(current => ({
+      ...current,
+      role: nextRole,
+      profile_key: nextProfiles[0]?.key || nextRole,
+    }))
+  }
 
   const save = async () => {
     if (!form.name.trim() || !form.username.trim()) {
@@ -171,6 +215,7 @@ function UserFormModal({ editUser, onClose, onSaved }) {
         name: form.name.trim(),
         username: form.username.trim(),
         role: form.role,
+        profile_key: form.profile_key || form.role,
         active: form.active ? 1 : 0,
       }
       if (!isEdit) payload.password = form.password
@@ -237,14 +282,28 @@ function UserFormModal({ editUser, onClose, onSaved }) {
           </div>
         )}
         <div className="form-group">
-          <label className="form-label" htmlFor="usuario-role">Perfil</label>
+          <label className="form-label" htmlFor="usuario-role">Tipo estrutural</label>
           <select
             id="usuario-role"
             className="form-input"
             value={form.role}
-            onChange={event => set('role', event.target.value)}
+            onChange={event => changeRole(event.target.value)}
           >
             {ROLES.map(role => <option key={role} value={role}>{ROLE_LABEL[role]}</option>)}
+          </select>
+        </div>
+        <div className="form-group">
+          <label className="form-label" htmlFor="usuario-profile-key">Perfil de permissoes</label>
+          <select
+            id="usuario-profile-key"
+            className="form-input"
+            value={selectedProfile?.key || form.profile_key}
+            onChange={event => set('profile_key', event.target.value)}
+            disabled={profilesLoading}
+          >
+            {compatibleProfiles.map(profile => (
+              <option key={profile.key} value={profile.key}>{profile.name || profile.key}</option>
+            ))}
           </select>
         </div>
         {isEdit && (
@@ -274,8 +333,130 @@ function UserFormModal({ editUser, onClose, onSaved }) {
         }}
       >
         <strong style={{ color: 'var(--color-text)' }}>Permissoes efetivas</strong>
-        <div style={{ marginTop: 4 }}>{ROLE_SUMMARY[form.role]}</div>
-        <div style={{ marginTop: 4 }}>Edicao detalhada de permissoes nao faz parte desta tela.</div>
+        <div style={{ marginTop: 4 }}>{selectedProfile?.description || ROLE_SUMMARY[form.role]}</div>
+        <div style={{ marginTop: 4 }}>
+          Tipo: {ROLE_LABEL[form.role]}. Perfil: {selectedProfile?.name || form.profile_key || ROLE_LABEL[form.role]}.
+        </div>
+      </div>
+    </ModalShell>
+  )
+}
+
+function NewProfileModal({ profiles, onClose, onCreated }) {
+  const [form, setForm] = useState({
+    name: '',
+    key: '',
+    description: '',
+    base_role: 'caixa',
+    source_profile_key: '',
+  })
+  const [saving, setSaving] = useState(false)
+  const compatibleSources = useMemo(
+    () => profilesForRole(profiles, form.base_role),
+    [form.base_role, profiles]
+  )
+  const set = (key, value) => setForm(current => ({ ...current, [key]: value }))
+
+  useEffect(() => {
+    if (!compatibleSources.length) return
+    if (!compatibleSources.some(profile => profile.key === form.source_profile_key)) {
+      set('source_profile_key', compatibleSources[0].key)
+    }
+  }, [compatibleSources, form.source_profile_key])
+
+  const save = async () => {
+    if (!form.name.trim()) {
+      toast.error('Nome do perfil e obrigatorio')
+      return
+    }
+    setSaving(true)
+    try {
+      const payload = {
+        name: form.name.trim(),
+        key: form.key.trim(),
+        description: form.description.trim(),
+        base_role: form.base_role,
+        source_profile_key: form.source_profile_key || form.base_role,
+      }
+      const response = await api.post('/permission-profiles', payload)
+      toast.success('Perfil criado')
+      await onCreated(response?.data?.profile?.key || payload.key || response?.data?.profile?.key)
+      onClose()
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Erro ao criar perfil'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <ModalShell
+      title="Novo perfil"
+      onClose={onClose}
+      maxWidth={620}
+      footer={(
+        <>
+          <button className="btn btn-ghost" type="button" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" type="button" onClick={save} disabled={saving}>
+            {saving ? 'Criando...' : 'Criar perfil'}
+          </button>
+        </>
+      )}
+    >
+      <div className="form-grid-2">
+        <div className="form-group">
+          <label className="form-label" htmlFor="novo-perfil-name">Nome do perfil</label>
+          <input
+            id="novo-perfil-name"
+            className="form-input"
+            value={form.name}
+            onChange={event => set('name', event.target.value)}
+            autoFocus
+          />
+        </div>
+        <div className="form-group">
+          <label className="form-label" htmlFor="novo-perfil-key">Chave tecnica</label>
+          <input
+            id="novo-perfil-key"
+            className="form-input"
+            value={form.key}
+            onChange={event => set('key', event.target.value.toLowerCase().replace(/\s+/g, '_'))}
+          />
+        </div>
+        <div className="form-group">
+          <label className="form-label" htmlFor="novo-perfil-base-role">Tipo estrutural</label>
+          <select
+            id="novo-perfil-base-role"
+            className="form-input"
+            value={form.base_role}
+            onChange={event => setForm(current => ({ ...current, base_role: event.target.value, source_profile_key: '' }))}
+          >
+            {ROLES.map(role => <option key={role} value={role}>{ROLE_LABEL[role]}</option>)}
+          </select>
+        </div>
+        <div className="form-group">
+          <label className="form-label" htmlFor="novo-perfil-source">Copiar permissoes de</label>
+          <select
+            id="novo-perfil-source"
+            className="form-input"
+            value={form.source_profile_key || compatibleSources[0]?.key || ''}
+            onChange={event => set('source_profile_key', event.target.value)}
+          >
+            {compatibleSources.map(profile => (
+              <option key={profile.key} value={profile.key}>{profile.name || profile.key}</option>
+            ))}
+          </select>
+        </div>
+        <div className="form-group col-span-2">
+          <label className="form-label" htmlFor="novo-perfil-description">Descricao</label>
+          <textarea
+            id="novo-perfil-description"
+            className="form-input"
+            rows={2}
+            value={form.description}
+            onChange={event => set('description', event.target.value)}
+          />
+        </div>
       </div>
     </ModalShell>
   )
@@ -478,12 +659,24 @@ function RoleBadge({ role, label }) {
   return <span className={`badge ${ROLE_BADGE[role] || 'badge-secondary'}`}>{label || ROLE_LABEL[role] || role || '-'}</span>
 }
 
+function UserProfileCell({ user }) {
+  return (
+    <div style={{ display: 'grid', gap: 4, justifyItems: 'start' }}>
+      <RoleBadge role={user.role} label={user.profile_name} />
+      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+        Tipo: {ROLE_LABEL[user.role] || user.role || '-'}
+      </span>
+    </div>
+  )
+}
+
 function PerfilEditor({ data, loading, canEdit, currentProfileKey, onReload }) {
   const profiles = data?.profiles || []
   const permissionGroups = data?.permissionGroups || []
   const [selectedKey, setSelectedKey] = useState('')
   const [draft, setDraft] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [creating, setCreating] = useState(false)
 
   const selected = useMemo(
     () => profiles.find(profile => profile.key === selectedKey) || profiles[0] || null,
@@ -582,6 +775,11 @@ function PerfilEditor({ data, loading, canEdit, currentProfileKey, onReload }) {
     }
   }
 
+  const profileCreated = async (createdKey) => {
+    await onReload()
+    if (createdKey) setSelectedKey(createdKey)
+  }
+
   if (loading) {
     return (
       <div className="loading-center" style={{ minHeight: 280 }}>
@@ -602,11 +800,18 @@ function PerfilEditor({ data, loading, canEdit, currentProfileKey, onReload }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: 'var(--space-4)', height: '100%', minHeight: 0, overflow: 'auto', alignContent: 'start' }}>
       <div className="card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: 'var(--space-4)', borderBottom: '1px solid var(--color-border)' }}>
-          <h2 style={{ margin: 0, fontSize: 'var(--text-base)', fontWeight: 800 }}>Perfis</h2>
-          <p style={{ margin: '4px 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
-            {profiles.length} perfil{profiles.length === 1 ? '' : 's'} configurado{profiles.length === 1 ? '' : 's'}
-          </p>
+        <div style={{ padding: 'var(--space-4)', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 'var(--text-base)', fontWeight: 800 }}>Perfis</h2>
+            <p style={{ margin: '4px 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+              {profiles.length} perfil{profiles.length === 1 ? '' : 's'} configurado{profiles.length === 1 ? '' : 's'}
+            </p>
+          </div>
+          {canEdit && (
+            <button className="btn btn-ghost btn-sm" type="button" onClick={() => setCreating(true)}>
+              Novo perfil
+            </button>
+          )}
         </div>
         <div style={{ overflowY: 'auto', padding: 'var(--space-2)' }}>
           {profiles.map(profile => (
@@ -614,11 +819,15 @@ function PerfilEditor({ data, loading, canEdit, currentProfileKey, onReload }) {
               key={profile.key}
               className={`btn ${profile.key === selected?.key ? 'btn-secondary' : 'btn-ghost'}`}
               type="button"
+              aria-label={`Selecionar perfil ${profile.name || profile.key}`}
               onClick={() => setSelectedKey(profile.key)}
               style={{ width: '100%', justifyContent: 'space-between', marginBottom: 'var(--space-1)' }}
             >
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profile.name}</span>
-              <span className="badge badge-secondary">{profile.permissions?.length || 0}</span>
+              <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+                <span className="badge badge-secondary">{ROLE_LABEL[profileBaseRole(profile)] || profileBaseRole(profile)}</span>
+                <span className="badge badge-secondary">{profile.permissions?.length || 0}</span>
+              </span>
             </button>
           ))}
         </div>
@@ -630,6 +839,8 @@ function PerfilEditor({ data, loading, canEdit, currentProfileKey, onReload }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
               <h2 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 800 }}>{selected?.name}</h2>
               {selected?.system && <span className="badge badge-secondary">Sistema</span>}
+              {!selected?.system && <span className="badge badge-secondary">Customizado</span>}
+              <span className="badge badge-secondary">Tipo: {ROLE_LABEL[profileBaseRole(selected)] || profileBaseRole(selected)}</span>
               {isAdminProfile && <span className="badge badge-primary">Protegido</span>}
               {!selected?.active && <span className="badge badge-warning">Inativo</span>}
             </div>
@@ -749,6 +960,14 @@ function PerfilEditor({ data, loading, canEdit, currentProfileKey, onReload }) {
           </div>
         </div>
       </div>
+
+      {creating && (
+        <NewProfileModal
+          profiles={profiles}
+          onClose={() => setCreating(false)}
+          onCreated={profileCreated}
+        />
+      )}
     </div>
   )
 }
@@ -820,6 +1039,10 @@ export default function Usuarios() {
   useEffect(() => {
     if (activeTab === 'perfis') loadProfiles()
   }, [activeTab, loadProfiles])
+
+  useEffect(() => {
+    if (formModal && !profilesData.profiles.length) loadProfiles()
+  }, [formModal, loadProfiles, profilesData.profiles.length])
 
   const checkPermanentDelete = async (targetUser) => {
     setCheckingDeleteId(targetUser.id)
@@ -965,15 +1188,15 @@ export default function Usuarios() {
           </select>
         </div>
         <div className="form-group" style={{ margin: 0, minWidth: 150 }}>
-          <label className="sr-only" htmlFor="usuarios-role">Perfil</label>
+          <label className="sr-only" htmlFor="usuarios-role">Tipo estrutural</label>
           <select
             id="usuarios-role"
             className="form-input"
             value={role}
             onChange={event => setRole(event.target.value)}
-            aria-label="Perfil"
+            aria-label="Tipo estrutural"
           >
-            <option value="">Todos perfis</option>
+            <option value="">Todos tipos</option>
             {ROLES.map(item => <option key={item} value={item}>{ROLE_LABEL[item]}</option>)}
           </select>
         </div>
@@ -1013,7 +1236,7 @@ export default function Usuarios() {
                           <div className="mobile-record-title">{item.name}</div>
                           <div className="mobile-record-sub">@{item.username}</div>
                         </div>
-                        <RoleBadge role={item.role} label={item.profile_name} />
+                        <UserProfileCell user={item} />
                       </div>
                       <div className="mobile-record-row">
                         <div className="mobile-record-meta">
@@ -1053,7 +1276,7 @@ export default function Usuarios() {
                             {reason && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>Motivo: {reason}</div>}
                           </td>
                           <td style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>@{item.username}</td>
-                          <td><RoleBadge role={item.role} label={item.profile_name} /></td>
+                          <td><UserProfileCell user={item} /></td>
                           <td><StatusBadge user={item} /></td>
                           <td style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
                             {formatDate(item.createdat || item.createdAt || item.created_at)}
@@ -1076,6 +1299,8 @@ export default function Usuarios() {
       {formModal && (
         <UserFormModal
           editUser={formModal.id ? formModal : null}
+          profiles={profilesData.profiles}
+          profilesLoading={profilesLoading}
           onClose={() => setFormModal(null)}
           onSaved={load}
         />

@@ -51,6 +51,8 @@ const usersEnvelope = {
       name: 'Caixa Antigo',
       username: 'caixa.antigo',
       role: 'caixa',
+      profile_key: 'caixa',
+      profile_name: 'Caixa',
       active: 1,
       createdat: '2026-06-10T10:00:00',
     },
@@ -59,6 +61,8 @@ const usersEnvelope = {
       name: 'Oficina Arquivada',
       username: 'oficina.old',
       role: 'oficina',
+      profile_key: 'oficina',
+      profile_name: 'Oficina',
       active: 0,
       deletedat: '2026-06-20T10:00:00',
       deletedreason: 'Saiu da loja',
@@ -69,6 +73,8 @@ const usersEnvelope = {
       name: 'Caixa Ativa',
       username: 'caixa.ativa',
       role: 'caixa',
+      profile_key: 'caixa_senior',
+      profile_name: 'Caixa Senior',
       active: 1,
       createdat: '2026-06-12T10:00:00',
     },
@@ -83,6 +89,7 @@ const profilesEnvelope = {
       name: 'Administrador',
       description: 'Acesso total ao sistema.',
       system: true,
+      base_role: 'admin',
       active: true,
       active_user_count: 1,
       permissions: ['ordens.ver', 'clientes.ver', 'clientes.excluir', 'usuarios.ver', 'usuarios.editar'],
@@ -93,13 +100,36 @@ const profilesEnvelope = {
       name: 'Caixa',
       description: 'Atendimento do balcao.',
       system: true,
+      base_role: 'caixa',
       active: true,
       active_user_count: 2,
       permissions: ['ordens.ver', 'clientes.ver'],
       default_permissions: ['ordens.ver', 'clientes.ver'],
     },
+    {
+      key: 'caixa_senior',
+      name: 'Caixa Senior',
+      description: 'Atendimento com permissao ampliada.',
+      system: false,
+      base_role: 'caixa',
+      active: true,
+      active_user_count: 1,
+      permissions: ['ordens.ver', 'clientes.ver', 'clientes.excluir'],
+      default_permissions: [],
+    },
+    {
+      key: 'oficina',
+      name: 'Oficina',
+      description: 'Fila de producao.',
+      system: true,
+      base_role: 'oficina',
+      active: true,
+      active_user_count: 1,
+      permissions: ['oficina.ver'],
+      default_permissions: ['oficina.ver'],
+    },
   ],
-  permissions: ['ordens.ver', 'clientes.ver', 'clientes.excluir', 'usuarios.ver', 'usuarios.editar'],
+  permissions: ['ordens.ver', 'clientes.ver', 'clientes.excluir', 'usuarios.ver', 'usuarios.editar', 'oficina.ver'],
   permissionGroups: [
     { key: 'ordens', label: 'Ordens de servico', permissions: ['ordens.ver'] },
     { key: 'clientes', label: 'Clientes', permissions: ['clientes.ver', 'clientes.excluir'] },
@@ -142,7 +172,7 @@ describe('Usuarios', () => {
 
     expect(screen.getByPlaceholderText(/buscar por nome ou login/i)).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: /status/i })).toHaveValue('active')
-    expect(screen.getByRole('combobox', { name: /perfil/i })).toHaveValue('')
+    expect(screen.getByRole('combobox', { name: /tipo estrutural/i })).toHaveValue('')
     expect((await screen.findAllByText('Admin Loja')).length).toBeGreaterThan(0)
     expect(screen.getAllByText('Caixa Antigo').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Oficina Arquivada').length).toBeGreaterThan(0)
@@ -230,6 +260,50 @@ describe('Usuarios', () => {
     expect(screen.getByRole('button', { name: /redefinir senha de caixa ativa/i })).toBeInTheDocument()
   })
 
+  it('creates a user with structural role and custom permission profile separated', async () => {
+    const user = userEvent.setup()
+    render(<Usuarios />)
+
+    await screen.findAllByText('Caixa Antigo')
+    await user.click(screen.getByRole('button', { name: /novo usuario/i }))
+    const dialog = await screen.findByRole('dialog', { name: /novo usuario/i })
+
+    await user.type(within(dialog).getByLabelText(/nome completo/i), 'Caixa Novo')
+    await user.type(within(dialog).getByLabelText(/login/i), 'caixa.novo')
+    await user.type(within(dialog).getByLabelText(/senha/i), 'senha123')
+    await user.selectOptions(within(dialog).getByLabelText(/tipo estrutural/i), 'caixa')
+    await user.selectOptions(within(dialog).getByLabelText(/perfil de permissoes/i), 'caixa_senior')
+    await user.click(within(dialog).getByRole('button', { name: /criar usuario/i }))
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith('/users', expect.objectContaining({
+        name: 'Caixa Novo',
+        username: 'caixa.novo',
+        role: 'caixa',
+        profile_key: 'caixa_senior',
+        active: 1,
+        password: 'senha123',
+      }))
+    })
+  })
+
+  it('filters permission profile options by the selected structural role', async () => {
+    const user = userEvent.setup()
+    render(<Usuarios />)
+
+    await screen.findAllByText('Caixa Antigo')
+    await user.click(screen.getByRole('button', { name: /novo usuario/i }))
+    const dialog = await screen.findByRole('dialog', { name: /novo usuario/i })
+    const profileSelect = within(dialog).getByLabelText(/perfil de permissoes/i)
+
+    expect(within(profileSelect).getByRole('option', { name: /caixa senior/i })).toBeInTheDocument()
+
+    await user.selectOptions(within(dialog).getByLabelText(/tipo estrutural/i), 'oficina')
+
+    expect(within(profileSelect).queryByRole('option', { name: /caixa senior/i })).not.toBeInTheDocument()
+    expect(within(profileSelect).getByRole('option', { name: /oficina/i })).toBeInTheDocument()
+  })
+
   it('edits profile permissions from the Perfis tab', async () => {
     const user = userEvent.setup()
     render(<Usuarios />)
@@ -239,7 +313,7 @@ describe('Usuarios', () => {
     await waitFor(() => {
       expect(api.get).toHaveBeenCalledWith('/permission-profiles')
     })
-    await user.click(await screen.findByRole('button', { name: /caixa/i }))
+    await user.click(await screen.findByRole('button', { name: /^selecionar perfil caixa$/i }))
     const checkbox = screen.getByLabelText(/clientes\.excluir/i)
 
     expect(checkbox).not.toBeChecked()
@@ -252,6 +326,32 @@ describe('Usuarios', () => {
         description: 'Atendimento do balcao.',
         active: true,
         permissions: expect.arrayContaining(['ordens.ver', 'clientes.ver', 'clientes.excluir']),
+      }))
+    })
+  })
+
+  it('creates a custom permission profile from the Perfis tab', async () => {
+    const user = userEvent.setup()
+    render(<Usuarios />)
+
+    await user.click(screen.getByRole('button', { name: /^perfis$/i }))
+    await user.click(await screen.findByRole('button', { name: /novo perfil/i }))
+    const dialog = await screen.findByRole('dialog', { name: /novo perfil/i })
+
+    await user.type(within(dialog).getByLabelText(/nome do perfil/i), 'Caixa Gerente')
+    await user.type(within(dialog).getByLabelText(/chave tecnica/i), 'caixa_gerente')
+    await user.type(within(dialog).getByLabelText(/descricao/i), 'Atendimento com gestao de equipe')
+    await user.selectOptions(within(dialog).getByLabelText(/tipo estrutural/i), 'caixa')
+    await user.selectOptions(within(dialog).getByLabelText(/copiar permissoes de/i), 'caixa_senior')
+    await user.click(within(dialog).getByRole('button', { name: /criar perfil/i }))
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith('/permission-profiles', expect.objectContaining({
+        name: 'Caixa Gerente',
+        key: 'caixa_gerente',
+        description: 'Atendimento com gestao de equipe',
+        base_role: 'caixa',
+        source_profile_key: 'caixa_senior',
       }))
     })
   })
