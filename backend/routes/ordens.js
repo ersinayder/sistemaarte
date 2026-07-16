@@ -234,7 +234,9 @@ function avisoVirtual(ordem, tipo, canUseNotice, avisosPorChave) {
 }
 
 function deveRedigirDadosOperacionais(user) {
-  return hasPermission(user, "oficina.ver") && !hasAnyPermission(user, [
+  const isStructuralWorkshop = user?.role === "oficina";
+  const isWorkshopPermissionContext = hasPermission(user, "oficina.ver");
+  return (isStructuralWorkshop || isWorkshopPermissionContext) && !hasAnyPermission(user, [
     "atendimento.ver",
     "caixa.ver",
     "financeiro.ver",
@@ -328,12 +330,15 @@ function salvarAvisoAberto(ordemId, tipo, phone, text, userId) {
 }
 
 // GET /api/ordens
-router.get("/", auth(), authPermission("ordens.ver"), (req, res, next) => {
+router.get("/", auth(), authAnyPermission(["ordens.ver", "ordens.excluir", "ordens.restaurar", "ordens.excluir_permanente"]), (req, res, next) => {
   try {
     const { status, q, vencidas, lixeira, tipo } = req.query;
     const querPaginacao = req.query.page !== undefined || req.query.limit !== undefined;
     const { page, limit, offset } = normalizarPaginacao(req.query, { defaultLimit: 14, maxLimit: 100 });
     const querLixeira = lixeira === "1";
+    if (!querLixeira && !hasPermission(req.user, "ordens.ver")) {
+      return res.status(403).json({ error: "Sem permissao" });
+    }
     const podeVerLixeira = hasAnyPermission(req.user, ["ordens.excluir", "ordens.restaurar", "ordens.excluir_permanente"]);
     if (querLixeira && !podeVerLixeira) {
       return res.status(403).json({ error: "Sem permissao" });

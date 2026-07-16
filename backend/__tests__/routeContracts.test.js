@@ -166,13 +166,19 @@ describe('route authorization contracts', () => {
     const sidebarSource = fs.readFileSync(new URL('../../frontend/src/components/Sidebar.jsx', import.meta.url), 'utf8');
     const configuracoesSource = fs.readFileSync(new URL('../../frontend/src/pages/Configuracoes.jsx', import.meta.url), 'utf8');
 
-    expect(appSource).toMatch(/path=["']\/configuracoes["'][\s\S]+permissions=\{\[[^\]]*configuracoes\.ver[^\]]*configuracoes\.editar_empresa[^\]]*configuracoes\.editar_fiscal[^\]]*configuracoes\.editar_whatsapp[^\]]*configuracoes\.editar_impressao[^\]]*configuracoes\.seguranca[^\]]*backups\.ver[^\]]*backups\.executar[^\]]*\]\}/);
-    expect(sidebarSource).toMatch(/canViewConfiguracoes\s*=[\s\S]+configuracoes\.ver[\s\S]+configuracoes\.editar_empresa[\s\S]+configuracoes\.editar_fiscal[\s\S]+configuracoes\.editar_whatsapp[\s\S]+configuracoes\.editar_impressao[\s\S]+configuracoes\.seguranca[\s\S]+backups\.ver[\s\S]+backups\.executar/);
+    expect(appSource).toMatch(/path=["']\/configuracoes["'][\s\S]+permissions=\{\[[^\]]*configuracoes\.ver[^\]]*configuracoes\.editar_fiscal[^\]]*configuracoes\.editar_whatsapp[^\]]*configuracoes\.editar_impressao[^\]]*configuracoes\.seguranca[^\]]*backups\.ver[^\]]*\]\}/);
+    expect(appSource).not.toMatch(/path=["']\/configuracoes["'][\s\S]+permissions=\{\[[^\]]*configuracoes\.editar_empresa[^\]]*\]\}/);
+    expect(appSource).not.toMatch(/path=["']\/configuracoes["'][\s\S]+permissions=\{\[[^\]]*backups\.executar[^\]]*\]\}/);
+    expect(sidebarSource).toMatch(/canViewConfiguracoes\s*=[\s\S]+configuracoes\.ver[\s\S]+configuracoes\.editar_fiscal[\s\S]+configuracoes\.editar_whatsapp[\s\S]+configuracoes\.editar_impressao[\s\S]+configuracoes\.seguranca[\s\S]+backups\.ver/);
+    expect(sidebarSource).not.toMatch(/canViewConfiguracoes\s*=[^\n]+configuracoes\.editar_empresa/);
+    expect(sidebarSource).not.toMatch(/canViewConfiguracoes\s*=[^\n]+backups\.executar/);
     expect(sidebarSource).toMatch(/\{canViewConfiguracoes && \([\s\S]+navItem\(["']\/configuracoes["']/);
     expect(configuracoesSource).toMatch(/useAuth/);
     expect(configuracoesSource).toMatch(/permissions:\s*\[['"]configuracoes\.editar_fiscal["']\]/);
     expect(configuracoesSource).toMatch(/permissions:\s*\[['"]configuracoes\.editar_whatsapp["']\]/);
     expect(configuracoesSource).toMatch(/permissions:\s*\[['"]configuracoes\.editar_impressao["']\]/);
+    expect(configuracoesSource).toMatch(/permissions:\s*\[['"]configuracoes\.ver["']\]/);
+    expect(configuracoesSource).toMatch(/permissions:\s*\[['"]backups\.ver["']\]/);
     expect(configuracoesSource).toMatch(/visibleSections/);
     expect(configuracoesSource).toMatch(/canEditEmpresa/);
     expect(configuracoesSource).toMatch(/canRunBackup/);
@@ -243,7 +249,7 @@ describe('route authorization contracts', () => {
     const pdfSource = fs.readFileSync(new URL('../routes/pdf.js', import.meta.url), 'utf8');
 
     expect(source).toMatch(/const\s+\{\s*auth,\s*authAnyPermission,\s*authPermission\s*\}\s*=\s*require\(["']\.\.\/middlewares\/auth["']\)/);
-    expect(source).toMatch(/router\.get\(["']\/["'],\s*auth\(\),\s*authPermission\(["']ordens\.ver["']\)/);
+    expect(source).toMatch(/router\.get\(["']\/["'],\s*auth\(\),\s*authAnyPermission\(\[["']ordens\.ver["'],\s*["']ordens\.excluir["'],\s*["']ordens\.restaurar["'],\s*["']ordens\.excluir_permanente["']\]\)/);
     expect(source).toMatch(/router\.get\(["']\/:id["'],\s*auth\(\),\s*authPermission\(["']ordens\.ver["']\)/);
     expect(source).toMatch(/router\.post\(["']\/["'],\s*auth\(\),\s*authPermission\(["']ordens\.criar["']\)/);
     expect(source).toMatch(/router\.put\(["']\/:id["'],\s*auth\(\),\s*authAnyPermission\(\[["']ordens\.editar["'],\s*["']ordens\.alterar_status["'],\s*["']oficina\.alterar_status["']\]\)/);
@@ -1136,6 +1142,8 @@ describe('propostas route contracts', () => {
   it('mounts propostas API and protects it with fine-grained RBAC permissions', () => {
     const source = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
     const propostasSource = fs.readFileSync(new URL('../routes/propostas.js', import.meta.url), 'utf8');
+    const novaPropostaSource = fs.readFileSync(new URL('../../frontend/src/pages/NovaProposta.jsx', import.meta.url), 'utf8');
+    const orcamentoSource = fs.readFileSync(new URL('../../frontend/src/pages/Orcamento.jsx', import.meta.url), 'utf8');
 
     expect(source).toMatch(/app\.use\(["']\/api\/propostas["'],\s*require\(["']\.\/routes\/propostas["']\)\)/);
 
@@ -1145,6 +1153,10 @@ describe('propostas route contracts', () => {
     expect(propostasSource).toMatch(/router\.post\(["']\/["'],\s*auth\(\),\s*authPermission\(["']propostas\.criar["']\)/);
     expect(propostasSource).toMatch(/router\.patch\(["']\/:id\/status["'],\s*auth\(\),\s*authPermission\(["']propostas\.editar_status["']\)/);
     expect(propostasSource).toMatch(/router\.post\(["']\/:id\/gerar-os["'],\s*auth\(\),\s*authPermission\(["']propostas\.gerar_os["']\)/);
+    expect(novaPropostaSource).toMatch(/canViewProposals[\s\S]+can\(['"]propostas\.ver['"]\)/);
+    expect(novaPropostaSource).toMatch(/navigate\(canViewProposals\s*\?\s*['"]\/propostas['"]\s*:\s*['"]\/orcamento\/calculadora['"]\)/);
+    expect(novaPropostaSource).toMatch(/\{canViewProposals && \([\s\S]+Ver funil/);
+    expect(orcamentoSource).toMatch(/if \(canViewProposals\) navigate\(['"]\/propostas['"]\)/);
   });
 
   it('implements proposal conversion without generating OS numbers before approval', () => {

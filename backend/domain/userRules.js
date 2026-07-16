@@ -27,8 +27,13 @@ function validarAlteracaoProprioUsuario({
   currentProfileKey,
   nextProfileKey,
   nextActive,
+  hasPassword = false,
 }) {
   if (Number(requesterId) !== Number(targetId)) return { ok: true };
+
+  if (hasPassword) {
+    return { ok: false, error: "Voce nao pode resetar sua propria senha por esta tela" };
+  }
 
   if (currentRole !== nextRole) {
     return { ok: false, error: "Voce nao pode alterar seu proprio perfil" };

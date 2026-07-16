@@ -71,7 +71,7 @@ const userAdminWhatsapp = {
 
 const userOficinaRedigida = {
   id: 9,
-  permissions: ['oficina.ver', 'ordens.whatsapp'],
+  permissions: ['oficina.ver', 'ordens.ver', 'ordens.whatsapp'],
 };
 
 describe('whatsapp avisos routes', () => {
@@ -221,6 +221,29 @@ describe('whatsapp avisos routes', () => {
     expect(payload[0].pagamento).toBeUndefined();
     expect(payload[0].whatsappAvisos.confirmacao_pedido).toBeNull();
     expect(payload[0].whatsappAvisoPrincipal).toBeNull();
+  });
+
+  it('redacts financial fields for structural oficina even with a custom order-only profile', async () => {
+    db.getAll
+      .mockReturnValueOnce([{ ...ordem, status: 'Aguardando' }])
+      .mockReturnValueOnce([]);
+
+    const handler = businessHandler('get', '/');
+    const res = makeRes();
+    const next = vi.fn();
+
+    await handler({
+      query: {},
+      user: { id: 10, role: 'oficina', permissions: ['ordens.ver'] },
+    }, res, next);
+
+    if (next.mock.calls.length) throw next.mock.calls[0][0];
+    const [payload] = res.json.mock.calls[0];
+    expect(payload).toHaveLength(1);
+    expect(payload[0].valortotal).toBeUndefined();
+    expect(payload[0].valorentrada).toBeUndefined();
+    expect(payload[0].saldoaberto).toBeUndefined();
+    expect(payload[0].pagamento).toBeUndefined();
   });
 
   it('forbids oficina from opening financial confirmation notices', async () => {

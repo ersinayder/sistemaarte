@@ -16,7 +16,7 @@ const {
 } = require("../domain/userDeletionRules");
 
 const ROLES_VALIDOS = ["admin", "caixa", "oficina"];
-const PERMISSOES_GESTAO_USUARIOS = ["usuarios.ver", "usuarios.editar", "usuarios.restaurar"];
+const PERMISSOES_GESTAO_USUARIOS = ["usuarios.ver", "usuarios.editar", "usuarios.restaurar", "configuracoes.seguranca"];
 
 function normalizarPermissoes(row) {
   return String(row?.permissions_csv || "")
@@ -138,7 +138,16 @@ function validarRemocaoUltimoAdmin(res, usuario, action) {
 
 function buscarPerfilPermissao(profileKey) {
   return getOne(
-    "SELECT key, name, base_role, active FROM permission_profiles WHERE key=?",
+    `SELECT
+       p.key,
+       p.name,
+       p.base_role,
+       p.active,
+       GROUP_CONCAT(pp.permission) AS permissions_csv
+     FROM permission_profiles p
+     LEFT JOIN profile_permissions pp ON pp.profile_id = p.id
+     WHERE p.key=?
+     GROUP BY p.id`,
     [profileKey]
   );
 }
@@ -153,6 +162,18 @@ function validarPerfilPermissao(res, { role, profileKey }) {
     return { ok: false, error: "Perfil de permissoes incompativel com o tipo estrutural" };
   }
   return { ok: true, profile };
+}
+
+function perfilTemPermissaoAdministrativa(profile) {
+  const permissions = normalizarPermissoes(profile);
+  return permissions.includes("*") || permissions.includes("configuracoes.seguranca");
+}
+
+function validarAtribuicaoPerfilAdministrativo(res, req, { role, profile }) {
+  if (role !== "admin" && !perfilTemPermissaoAdministrativa(profile)) return false;
+  if (hasPermission(req.user, "configuracoes.seguranca")) return false;
+  res.status(403).json({ error: "Sem permissao para atribuir perfil administrativo" });
+  return true;
 }
 
 function perfilPermiteGestaoUsuarios(profile) {
@@ -274,6 +295,7 @@ router.post("/", auth(), authPermission("usuarios.criar"), (req, res, next) => {
       return res.status(400).json({ error: "Perfil invalido" });
     const profileValidation = validarPerfilPermissao(res, { role, profileKey });
     if (responderValidacao(res, profileValidation)) return;
+    if (validarAtribuicaoPerfilAdministrativo(res, req, { role, profile: profileValidation.profile })) return;
     const senhaValidacao = validarSenhaUsuario(password, { required: true });
     if (!senhaValidacao.ok)
       return res.status(400).json({ error: senhaValidacao.error });
@@ -320,6 +342,13 @@ router.put("/:id", auth(), authPermission("usuarios.editar"), (req, res, next) =
       return res.status(403).json({ error: "Sem permissao" });
     }
 
+    const currentProfileKey = atual.profile_key || atual.role;
+    const changedProfileAssignment = atual.role !== nextRole || currentProfileKey !== nextProfileKey;
+    if (
+      changedProfileAssignment
+      && validarAtribuicaoPerfilAdministrativo(res, req, { role: nextRole, profile: profileValidation.profile })
+    ) return;
+
     const selfCheck = validarAlteracaoProprioUsuario({
       requesterId: req.user?.id,
       targetId: req.params.id,
@@ -328,13 +357,13 @@ router.put("/:id", auth(), authPermission("usuarios.editar"), (req, res, next) =
       currentProfileKey: atual.profile_key || atual.role,
       nextProfileKey,
       nextActive,
+      hasPassword,
     });
     if (!selfCheck.ok) return res.status(400).json({ error: selfCheck.error });
 
     const action = atual.role !== nextRole ? "change_role" : "deactivate";
     if ((atual.role !== nextRole || Number(atual.active) !== nextActive) && validarRemocaoUltimoAdmin(res, atual, action)) return;
 
-    const currentProfileKey = atual.profile_key || atual.role;
     const changedAccessBoundary = atual.role !== nextRole
       || currentProfileKey !== nextProfileKey
       || Number(atual.active) !== nextActive;

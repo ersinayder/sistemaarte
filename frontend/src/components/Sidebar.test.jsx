@@ -55,7 +55,7 @@ describe('Sidebar', () => {
       logout: vi.fn(),
       switchUser: vi.fn(),
       profile: { key: 'oficina', name: 'Oficina' },
-      can: (permission) => ['oficina.ver', 'usuarios.ver'].includes(permission),
+      can: (permission) => ['oficina.ver', 'ordens.ver', 'usuarios.ver'].includes(permission),
     }
 
     render(
@@ -74,7 +74,7 @@ describe('Sidebar', () => {
       logout: vi.fn(),
       switchUser: vi.fn(),
       profile: { key: 'oficina', name: 'Oficina' },
-      can: (permission) => ['oficina.ver', 'clientes.ver', 'produtos.ver'].includes(permission),
+      can: (permission) => ['oficina.ver', 'ordens.ver', 'clientes.ver', 'produtos.ver'].includes(permission),
     }
 
     render(

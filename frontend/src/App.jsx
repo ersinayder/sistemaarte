@@ -21,11 +21,16 @@ const Produtos     = React.lazy(() => import('./pages/Produtos'))
 const NotasFiscais = React.lazy(() => import('./pages/NotasFiscais'))
 const Configuracoes = React.lazy(() => import('./pages/Configuracoes'))
 
-function PrivateRoute({ children, permissions }) {
+function PrivateRoute({ children, permissions, requireAll = false }) {
   const { user, loading, canAny } = useAuth()
   if (loading) return <div className="loading-center"><div className="spinner"/></div>
   if (!user)   return <Navigate to="/login" replace />
-  if (permissions && !canAny(permissions)) return <Navigate to="/" replace />
+  if (permissions) {
+    const allowed = requireAll
+      ? permissions.every((permission) => canAny([permission]))
+      : canAny(permissions)
+    if (!allowed) return <Navigate to="/" replace />
+  }
   return children
 }
 
@@ -44,10 +49,11 @@ function AppRoutes() {
   const { user, loading, canAny } = useAuth()
   if (loading) return <div className="loading-center"><div className="spinner"/></div>
   if (!user)   return <Routes><Route path="*" element={<LoginPage />} /></Routes>
+  const canAll = (permissions) => permissions.every((permission) => canAny([permission]))
 
   const firstAllowedRoute = [
     [canAny(['atendimento.ver']), '/atendimento'],
-    [canAny(['oficina.ver']), '/oficina'],
+    [canAll(['oficina.ver', 'ordens.ver']), '/oficina'],
     [canAny(['dashboard.ver']), '/dashboard'],
     [canAny(['ordens.ver']), '/ordens'],
     [canAny(['caixa.ver']), '/caixa'],
@@ -57,7 +63,7 @@ function AppRoutes() {
     [canAny(['produtos.ver']), '/produtos'],
     [canAny(['financeiro.ver', 'financeiro.contas_pagar.ver', 'financeiro.relatorios']), '/financeiro'],
     [canAny(['usuarios.ver']), '/usuarios'],
-    [canAny(['configuracoes.ver', 'configuracoes.editar_empresa', 'configuracoes.editar_fiscal', 'configuracoes.editar_whatsapp', 'configuracoes.editar_impressao', 'configuracoes.seguranca', 'backups.ver', 'backups.executar']), '/configuracoes'],
+    [canAny(['configuracoes.ver', 'configuracoes.editar_fiscal', 'configuracoes.editar_whatsapp', 'configuracoes.editar_impressao', 'configuracoes.seguranca', 'backups.ver']), '/configuracoes'],
   ].find(([allowed]) => allowed)?.[1]
   const defaultRoute = firstAllowedRoute || '/sem-acesso'
 
@@ -67,8 +73,8 @@ function AppRoutes() {
         <Route path="/login" element={<Navigate to={defaultRoute} replace />} />
         <Route element={<Layout />}>
           <Route index element={<Navigate to={defaultRoute} replace />} />
-          <Route path="/oficina" element={<PrivateRoute permissions={['oficina.ver']}><Oficina /></PrivateRoute>}/>
-          <Route path="/oficina/:id" element={<PrivateRoute permissions={['oficina.ver', 'ordens.ver']}><OrdemDetalhe context="oficina" /></PrivateRoute>}/>
+          <Route path="/oficina" element={<PrivateRoute permissions={['oficina.ver', 'ordens.ver']} requireAll><Oficina /></PrivateRoute>}/>
+          <Route path="/oficina/:id" element={<PrivateRoute permissions={['oficina.ver', 'ordens.ver']} requireAll><OrdemDetalhe context="oficina" /></PrivateRoute>}/>
           <Route path="/atendimento" element={<PrivateRoute permissions={['atendimento.ver']}><Atendimento /></PrivateRoute>}/>
           <Route path="/dashboard" element={<PrivateRoute permissions={['dashboard.ver']}><Dashboard /></PrivateRoute>}/>
           <Route path="/ordens" element={<PrivateRoute permissions={['ordens.ver']}><Ordens /></PrivateRoute>}/>
@@ -86,7 +92,7 @@ function AppRoutes() {
           <Route path="/propostas" element={<PrivateRoute permissions={['propostas.ver']}><Propostas /></PrivateRoute>}/>
           <Route path="/produtos" element={<PrivateRoute permissions={['produtos.ver']}><Produtos /></PrivateRoute>}/>
           <Route path="/usuarios" element={<PrivateRoute permissions={['usuarios.ver']}><Usuarios /></PrivateRoute>}/>
-          <Route path="/configuracoes" element={<PrivateRoute permissions={['configuracoes.ver', 'configuracoes.editar_empresa', 'configuracoes.editar_fiscal', 'configuracoes.editar_whatsapp', 'configuracoes.editar_impressao', 'configuracoes.seguranca', 'backups.ver', 'backups.executar']}><Configuracoes /></PrivateRoute>}/>
+          <Route path="/configuracoes" element={<PrivateRoute permissions={['configuracoes.ver', 'configuracoes.editar_fiscal', 'configuracoes.editar_whatsapp', 'configuracoes.editar_impressao', 'configuracoes.seguranca', 'backups.ver']}><Configuracoes /></PrivateRoute>}/>
           <Route path="/nfe" element={<PrivateRoute permissions={['nfe.ver']}><NotasFiscais /></PrivateRoute>}/>
           <Route path="/nfe/lixeira" element={<PrivateRoute permissions={['nfe.lixeira']}><NotasFiscais lixeira /></PrivateRoute>}/>
           <Route path="/sem-acesso" element={<SemAcesso />}/>

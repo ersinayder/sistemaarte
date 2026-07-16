@@ -122,6 +122,44 @@ describe('database migrations', () => {
     }
   });
 
+  it('does not restore removed default permissions during idempotent seed', () => {
+    const db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    db.exec(`
+      CREATE TABLE permission_profiles (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        key         TEXT    UNIQUE NOT NULL,
+        name        TEXT    NOT NULL,
+        description TEXT,
+        base_role   TEXT,
+        system      INTEGER NOT NULL DEFAULT 0,
+        active      INTEGER NOT NULL DEFAULT 1,
+        createdat   TEXT    DEFAULT (datetime('now','localtime')),
+        updatedat   TEXT    DEFAULT (datetime('now','localtime'))
+      );
+      CREATE TABLE profile_permissions (
+        profile_id INTEGER NOT NULL,
+        permission TEXT    NOT NULL,
+        createdat  TEXT    DEFAULT (datetime('now','localtime')),
+        UNIQUE(profile_id, permission),
+        FOREIGN KEY(profile_id) REFERENCES permission_profiles(id) ON DELETE CASCADE
+      );
+    `);
+
+    try {
+      database.seedPermissionProfiles(db);
+      const caixa = db.prepare("SELECT id FROM permission_profiles WHERE key='caixa'").get();
+      db.prepare("DELETE FROM profile_permissions WHERE profile_id=? AND permission='nfe.emitir'").run(caixa.id);
+
+      database.seedPermissionProfiles(db);
+
+      const restored = db.prepare("SELECT permission FROM profile_permissions WHERE profile_id=? AND permission='nfe.emitir'").get(caixa.id);
+      expect(restored).toBeUndefined();
+    } finally {
+      db.close();
+    }
+  });
+
   it('applies the users updatedat migration on populated SQLite tables', () => {
     const db = new Database(':memory:');
     db.exec(`

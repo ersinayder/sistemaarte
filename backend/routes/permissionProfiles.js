@@ -11,7 +11,7 @@ const {
   sortPermissionsByCatalog,
 } = require("../domain/permissionRules");
 
-const SECURITY_PROFILE_PERMISSIONS = ["usuarios.ver", "usuarios.editar", "usuarios.restaurar"];
+const SECURITY_PROFILE_PERMISSIONS = ["usuarios.ver", "usuarios.editar", "usuarios.restaurar", "configuracoes.seguranca"];
 const ROLES_VALIDOS = ["admin", "caixa", "oficina"];
 const PROFILE_KEY_RE = /^[a-z][a-z0-9_-]{1,39}$/;
 

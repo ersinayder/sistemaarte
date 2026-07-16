@@ -287,6 +287,36 @@ describe('Usuarios', () => {
     })
   })
 
+  it('preserves an edited user custom profile while profiles are still loading', async () => {
+    const user = userEvent.setup()
+    let resolveProfiles
+    api.get.mockImplementation((url) => {
+      if (url === '/users') {
+        return Promise.resolve({ data: usersEnvelope })
+      }
+      if (url === '/permission-profiles') {
+        return new Promise((resolve) => { resolveProfiles = resolve })
+      }
+      return Promise.reject(new Error(`GET inesperado: ${url}`))
+    })
+
+    render(<Usuarios />)
+
+    await screen.findAllByText('Caixa Ativa')
+    await user.click(screen.getByRole('button', { name: /editar caixa ativa/i }))
+    const dialog = await screen.findByRole('dialog', { name: /editar usuario/i })
+    await user.click(within(dialog).getByRole('button', { name: /salvar alteracoes/i }))
+
+    await waitFor(() => {
+      expect(api.put).toHaveBeenCalledWith('/users/4', expect.objectContaining({
+        role: 'caixa',
+        profile_key: 'caixa_senior',
+      }))
+    })
+
+    resolveProfiles?.({ data: profilesEnvelope })
+  })
+
   it('filters permission profile options by the selected structural role', async () => {
     const user = userEvent.setup()
     render(<Usuarios />)

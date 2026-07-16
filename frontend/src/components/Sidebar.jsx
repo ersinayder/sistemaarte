@@ -62,13 +62,13 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
   const canViewOrdens = hasPermission('ordens.ver')
   const canViewOrcamento = hasPermission('propostas.criar') || hasPermission('ordens.criar')
   const canViewPropostas = hasPermission('propostas.ver')
-  const canViewOficina = hasPermission('oficina.ver')
+  const canViewOficina = hasPermission('oficina.ver') && hasPermission('ordens.ver')
   const canViewNfe = hasPermission('nfe.ver')
   const canViewClientes = hasPermission('clientes.ver')
   const canViewProdutos = hasPermission('produtos.ver')
   const canViewUsuarios = hasPermission('usuarios.ver')
   const canViewFinanceiro = hasPermission('financeiro.ver') || hasPermission('financeiro.contas_pagar.ver') || hasPermission('financeiro.relatorios')
-  const canViewConfiguracoes = hasPermission('configuracoes.ver') || hasPermission('configuracoes.editar_empresa') || hasPermission('configuracoes.editar_fiscal') || hasPermission('configuracoes.editar_whatsapp') || hasPermission('configuracoes.editar_impressao') || hasPermission('configuracoes.seguranca') || hasPermission('backups.ver') || hasPermission('backups.executar')
+  const canViewConfiguracoes = hasPermission('configuracoes.ver') || hasPermission('configuracoes.editar_fiscal') || hasPermission('configuracoes.editar_whatsapp') || hasPermission('configuracoes.editar_impressao') || hasPermission('configuracoes.seguranca') || hasPermission('backups.ver')
   const canViewCadastros = canViewClientes || canViewProdutos || canViewUsuarios
   const canViewOperacao = canViewAtendimento || canViewDashboard || canViewCaixa || canViewOrdens || canViewOrcamento || canViewPropostas
 

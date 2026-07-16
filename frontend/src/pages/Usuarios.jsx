@@ -125,9 +125,21 @@ function defaultProfiles() {
   }))
 }
 
-function profilesForRole(profiles, role, currentProfileKey = '') {
+function profilesForRole(profiles, role, currentProfileKey = '', currentProfileName = '') {
   const source = profiles?.length ? profiles : defaultProfiles()
-  return source.filter(profile => (
+  const withCurrent = source.some(profile => profile.key === currentProfileKey) || !currentProfileKey
+    ? source
+    : [
+        ...source,
+        {
+          key: currentProfileKey,
+          name: currentProfileName || currentProfileKey,
+          base_role: role,
+          active: true,
+          permissions: [],
+        },
+      ]
+  return withCurrent.filter(profile => (
     profileBaseRole(profile) === role
     && (profile.active || profile.key === currentProfileKey)
   ))
@@ -179,17 +191,18 @@ function UserFormModal({ editUser, profiles, profilesLoading, onClose, onSaved }
   const isEdit = Boolean(editUser)
   const set = (key, value) => setForm(current => ({ ...current, [key]: value }))
   const compatibleProfiles = useMemo(
-    () => profilesForRole(profiles, form.role, form.profile_key),
-    [form.profile_key, form.role, profiles]
+    () => profilesForRole(profiles, form.role, form.profile_key, editUser?.profile_name),
+    [editUser?.profile_name, form.profile_key, form.role, profiles]
   )
   const selectedProfile = compatibleProfiles.find(profile => profile.key === form.profile_key) || compatibleProfiles[0] || null
 
   useEffect(() => {
+    if (profilesLoading) return
     if (!compatibleProfiles.length) return
     if (!compatibleProfiles.some(profile => profile.key === form.profile_key)) {
       set('profile_key', compatibleProfiles[0].key)
     }
-  }, [compatibleProfiles, form.profile_key])
+  }, [compatibleProfiles, form.profile_key, profilesLoading])
 
   const changeRole = (nextRole) => {
     const nextProfiles = profilesForRole(profiles, nextRole)

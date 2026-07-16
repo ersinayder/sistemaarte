@@ -210,6 +210,58 @@ describe("users routes", () => {
     });
   });
 
+  it("blocks creating an administrator without security permission", async () => {
+    db.getOne.mockReturnValueOnce({
+      key: "admin",
+      name: "Administrador",
+      base_role: "admin",
+      active: 1,
+      permissions_csv: "usuarios.ver,usuarios.editar,configuracoes.seguranca",
+    });
+
+    const res = makeRes();
+    await businessHandler("post", "/")(routeRequest({
+      user: { id: 12, role: "caixa", permissions: ["usuarios.criar"] },
+      body: {
+        name: "Admin Novo",
+        username: "admin.novo",
+        password: "senhaSegura123",
+        role: "admin",
+        profile_key: "admin",
+      },
+    }), res, vi.fn());
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith({ error: "Sem permissao para atribuir perfil administrativo" });
+    expect(db.runInsert).not.toHaveBeenCalled();
+  });
+
+  it("blocks assigning security profiles without security permission", async () => {
+    db.getOne.mockReturnValueOnce({
+      key: "caixa_seguranca",
+      name: "Caixa Seguranca",
+      base_role: "caixa",
+      active: 1,
+      permissions_csv: "usuarios.ver,usuarios.editar,configuracoes.seguranca",
+    });
+
+    const res = makeRes();
+    await businessHandler("post", "/")(routeRequest({
+      user: { id: 12, role: "caixa", permissions: ["usuarios.criar"] },
+      body: {
+        name: "Gestor Caixa",
+        username: "gestor.caixa",
+        password: "senhaSegura123",
+        role: "caixa",
+        profile_key: "caixa_seguranca",
+      },
+    }), res, vi.fn());
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith({ error: "Sem permissao para atribuir perfil administrativo" });
+    expect(db.runInsert).not.toHaveBeenCalled();
+  });
+
   it("rejects assigning a permission profile incompatible with the structural role", async () => {
     db.getOne.mockReturnValueOnce({
       key: "oficina_status",
@@ -407,6 +459,32 @@ describe("users routes", () => {
     expect(res.json).toHaveBeenCalledWith({ ok: true });
   });
 
+  it("blocks promoting another user to administrator without security permission", async () => {
+    db.getOne
+      .mockReturnValueOnce(mockUser({ id: 8, role: "caixa", profile_key: "caixa", active: 1 }))
+      .mockReturnValueOnce({
+        key: "admin",
+        name: "Administrador",
+        base_role: "admin",
+        active: 1,
+        permissions_csv: "usuarios.ver,usuarios.editar,configuracoes.seguranca",
+      });
+
+    const res = makeRes();
+    await businessHandler("put", "/:id")(routeRequest({
+      params: { id: "8" },
+      user: { id: 99, role: "caixa", permissions: ["usuarios.editar"] },
+      body: {
+        role: "admin",
+        profile_key: "admin",
+      },
+    }), res, vi.fn());
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith({ error: "Sem permissao para atribuir perfil administrativo" });
+    expect(db.run).not.toHaveBeenCalled();
+  });
+
   it("blocks profile changes that would leave no active user able to manage users", async () => {
     db.getOne
       .mockReturnValueOnce(mockUser({
@@ -434,6 +512,42 @@ describe("users routes", () => {
       params: { id: "8" },
       user: { id: 99, role: "admin", permissions: ["usuarios.editar"] },
       body: { profile_key: "caixa_limitado" },
+    }), res, vi.fn());
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      error: "Nao e possivel deixar o sistema sem um usuario ativo com permissao para gerenciar usuarios",
+    });
+    expect(db.run).not.toHaveBeenCalled();
+  });
+
+  it("blocks profile changes when the remaining user manager lacks security permission", async () => {
+    db.getOne
+      .mockReturnValueOnce(mockUser({
+        id: 8,
+        role: "caixa",
+        profile_key: "caixa_admin",
+        active: 1,
+        deletedat: null,
+      }))
+      .mockReturnValueOnce({
+        key: "caixa_user_manager",
+        name: "Caixa Usuarios",
+        base_role: "caixa",
+        active: 1,
+      });
+    db.getAll
+      .mockReturnValueOnce([
+        { key: "caixa_admin", active: 1, permissions_csv: "usuarios.ver,usuarios.editar,usuarios.restaurar,configuracoes.seguranca" },
+        { key: "caixa_user_manager", active: 1, permissions_csv: "usuarios.ver,usuarios.editar,usuarios.restaurar" },
+      ])
+      .mockReturnValueOnce([{ id: 8, profile_key: "caixa_admin" }]);
+
+    const res = makeRes();
+    await businessHandler("put", "/:id")(routeRequest({
+      params: { id: "8" },
+      user: { id: 99, role: "admin", permissions: ["usuarios.editar"] },
+      body: { profile_key: "caixa_user_manager" },
     }), res, vi.fn());
 
     expect(res.status).toHaveBeenCalledWith(400);
@@ -504,6 +618,28 @@ describe("users routes", () => {
 
     expect(res.status).toHaveBeenCalledWith(403);
     expect(res.json).toHaveBeenCalledWith({ error: "Sem permissao" });
+    expect(db.run).not.toHaveBeenCalled();
+  });
+
+  it("blocks self password changes through PUT even with reset permission", async () => {
+    db.getOne
+      .mockReturnValueOnce(mockUser({ id: 99, username: "admin", role: "admin", profile_key: "admin" }))
+      .mockReturnValueOnce({
+        key: "admin",
+        name: "Administrador",
+        base_role: "admin",
+        active: 1,
+      });
+
+    const res = makeRes();
+    await businessHandler("put", "/:id")(routeRequest({
+      params: { id: "99" },
+      user: { id: 99, role: "admin", permissions: ["usuarios.editar", "usuarios.resetar_senha"] },
+      body: { password: "outraSenha123" },
+    }), res, vi.fn());
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ error: "Voce nao pode resetar sua propria senha por esta tela" });
     expect(db.run).not.toHaveBeenCalled();
   });
 

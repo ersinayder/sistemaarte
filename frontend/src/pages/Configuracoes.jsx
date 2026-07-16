@@ -112,11 +112,11 @@ const EMPTY_IMPRESSAO = {
 }
 
 const SECTIONS = [
-  { id: 'empresa', label: 'Empresa', desc: 'Dados cadastrais e endereco do emitente.', permissions: ['configuracoes.ver', 'configuracoes.editar_empresa'] },
+  { id: 'empresa', label: 'Empresa', desc: 'Dados cadastrais e endereco do emitente.', permissions: ['configuracoes.ver'] },
   { id: 'fiscal', label: 'Fiscal', desc: 'Certificado, ambiente e numeracao fiscal.', permissions: ['configuracoes.editar_fiscal'] },
   { id: 'whatsapp', label: 'WhatsApp', desc: 'Provedor, token e mensagens automaticas.', permissions: ['configuracoes.editar_whatsapp'] },
   { id: 'impressao', label: 'Impressao', desc: 'Destino da impressora de OS e testes A5.', permissions: ['configuracoes.editar_impressao'] },
-  { id: 'backups', label: 'Backups', desc: 'Rotina local, offsite e verificacao diaria.', permissions: ['backups.ver', 'backups.executar'] },
+  { id: 'backups', label: 'Backups', desc: 'Rotina local, offsite e verificacao diaria.', permissions: ['backups.ver'] },
   { id: 'seguranca', label: 'Seguranca', desc: 'Acesso, limites e protecoes da aplicacao.', permissions: ['configuracoes.seguranca'] },
   { id: 'sistema', label: 'Sistema', desc: 'Parametros gerais e saude operacional.', permissions: ['configuracoes.ver'] },
 ]

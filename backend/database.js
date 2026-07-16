@@ -636,6 +636,7 @@ function seedPermissionProfiles(targetDb) {
     WHERE key=? AND base_role IS NULL
   `);
   const getProfile = targetDb.prepare("SELECT id FROM permission_profiles WHERE key=?");
+  const countPermissions = targetDb.prepare("SELECT COUNT(*) AS total FROM profile_permissions WHERE profile_id=?");
   const insertPermission = targetDb.prepare(`
     INSERT OR IGNORE INTO profile_permissions (profile_id, permission)
     VALUES (?, ?)
@@ -648,6 +649,8 @@ function seedPermissionProfiles(targetDb) {
       insertProfile.run(profile.key, profile.name, profile.description, profile.base_role, profile.system, profile.active);
       updateMissingBaseRole.run(profile.base_role, profile.key);
       const row = getProfile.get(profile.key);
+      const shouldSeedPermissions = Number(countPermissions.get(row.id)?.total || 0) === 0;
+      if (!shouldSeedPermissions) continue;
       for (const permission of permissions) {
         insertPermission.run(row.id, permission);
       }

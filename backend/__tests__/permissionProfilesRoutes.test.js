@@ -68,7 +68,7 @@ function adminProfilePermissions() {
   return {
     key: "admin",
     active: 1,
-    permissions_csv: "usuarios.ver,usuarios.editar,usuarios.restaurar",
+    permissions_csv: "usuarios.ver,usuarios.editar,usuarios.restaurar,configuracoes.seguranca",
   };
 }
 
@@ -278,6 +278,33 @@ describe("permission profiles routes", () => {
         name: "Caixa",
         active: true,
         permissions: ["ordens.ver"],
+      },
+    }), res, vi.fn());
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      error: "Nao e possivel deixar o sistema sem um usuario ativo com permissao para gerenciar usuarios",
+    });
+    expect(db.run).not.toHaveBeenCalled();
+  });
+
+  it("blocks removing security permission from the only access manager profile", async () => {
+    db.getOne.mockReturnValueOnce(profileRow({
+      permissions_csv: "usuarios.ver,usuarios.editar,usuarios.restaurar,configuracoes.seguranca",
+    }));
+    db.getAll
+      .mockReturnValueOnce([
+        { key: "caixa", active: 1, permissions_csv: "usuarios.ver,usuarios.editar,usuarios.restaurar,configuracoes.seguranca" },
+      ])
+      .mockReturnValueOnce([{ id: 2, profile_key: "caixa" }]);
+
+    const res = makeRes();
+    await businessHandler("put", "/:key")(routeRequest({
+      params: { key: "caixa" },
+      body: {
+        name: "Caixa",
+        active: true,
+        permissions: ["usuarios.ver", "usuarios.editar", "usuarios.restaurar"],
       },
     }), res, vi.fn());
 

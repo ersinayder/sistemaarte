@@ -22,6 +22,8 @@ vi.mock('./pages/Produtos', () => ({ default: () => <div>Pagina Produtos</div> }
 vi.mock('./pages/Atendimento', () => ({ default: () => <div>Atendimento</div> }))
 vi.mock('./pages/Oficina', () => ({ default: () => <div>Oficina</div> }))
 vi.mock('./pages/Login', () => ({ default: () => <div>Login</div> }))
+vi.mock('./pages/Configuracoes', () => ({ default: () => <div>Configuracoes</div> }))
+vi.mock('./pages/OrdemLixeira', () => ({ default: () => <div>Lixeira OS</div> }))
 
 describe('App permission routes', () => {
   beforeEach(() => {
@@ -118,5 +120,34 @@ describe('App permission routes', () => {
 
     expect(await screen.findByText('Atendimento')).toBeInTheDocument()
     expect(screen.queryByText('Pagina Produtos')).not.toBeInTheDocument()
+  })
+
+  it('does not render oficina when the user lacks ordens.ver needed by the board', async () => {
+    authState.user.profile_key = 'oficina'
+    authState.user.permissions = ['oficina.ver']
+
+    render(
+      <MemoryRouter initialEntries={['/oficina']}>
+        <App />
+      </MemoryRouter>
+    )
+
+    expect(await screen.findByText('Sem acesso disponivel')).toBeInTheDocument()
+    expect(screen.queryByText('Oficina')).not.toBeInTheDocument()
+  })
+
+  it('does not render configuracoes for execute-only backup or company-edit-only permissions', async () => {
+    for (const permissions of [['backups.executar'], ['configuracoes.editar_empresa']]) {
+      authState.user.permissions = permissions
+      const { unmount } = render(
+        <MemoryRouter initialEntries={['/configuracoes']}>
+          <App />
+        </MemoryRouter>
+      )
+
+      expect(await screen.findByText('Sem acesso disponivel')).toBeInTheDocument()
+      expect(screen.queryByText('Configuracoes')).not.toBeInTheDocument()
+      unmount()
+    }
   })
 })

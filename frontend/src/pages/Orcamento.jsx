@@ -844,8 +844,11 @@ function NovaOSModal({ produtosIniciais, clienteInicial, clienteIdInicial, clien
 }
 
 export default function Orcamento() {
-  const { user }   = useAuth()
+  const { user, can }   = useAuth()
   const navigate   = useNavigate()
+  const canCreateProposal = typeof can === 'function' && can('propostas.criar')
+  const canCreateOrder = typeof can === 'function' && can('ordens.criar')
+  const canViewProposals = typeof can === 'function' && can('propostas.ver')
 
   const [items, setItems]                     = useState([])
   const [cliente, setCliente]                 = useState('')
@@ -935,7 +938,7 @@ export default function Orcamento() {
       setItems([])
       setCliente('')
       setClienteId(null)
-      navigate('/propostas')
+      if (canViewProposals) navigate('/propostas')
     } catch (e) {
       toast.error(e?.response?.data?.error || 'Erro ao salvar proposta')
     } finally {
@@ -977,22 +980,24 @@ export default function Orcamento() {
           <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)', marginTop: 2 }}>Monte itens e calcule o preço final</div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button className="btn btn-secondary btn-sm" onClick={() => navigate('/orcamento')}>
-            Proposta formal
-          </button>
+          {canCreateProposal && (
+            <button className="btn btn-secondary btn-sm" onClick={() => navigate('/orcamento')}>
+              Proposta formal
+            </button>
+          )}
           {items.length > 0 && (
             <button className="btn btn-ghost btn-sm" onClick={() => setShowConfirm(true)}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
               Limpar
             </button>
           )}
-          {items.length > 0 && (
+          {items.length > 0 && canCreateProposal && (
             <button className="btn btn-secondary btn-sm" onClick={salvarProposta} disabled={savingProposta}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>
               {savingProposta ? 'Salvando...' : 'Salvar proposta'}
             </button>
           )}
-          {items.length > 0 && (
+          {items.length > 0 && canCreateOrder && (
             <button className="btn btn-primary btn-sm" onClick={() => setShowNovaOS(true)}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
               Gerar OS agora
