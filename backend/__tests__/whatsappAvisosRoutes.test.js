@@ -59,6 +59,21 @@ const ordem = {
   deletedat: null,
 };
 
+const userCaixaWhatsapp = {
+  id: 9,
+  permissions: ['ordens.whatsapp', 'atendimento.ver'],
+};
+
+const userAdminWhatsapp = {
+  id: 2,
+  permissions: ['ordens.whatsapp', 'atendimento.ver'],
+};
+
+const userOficinaRedigida = {
+  id: 9,
+  permissions: ['oficina.ver', 'ordens.ver', 'ordens.whatsapp'],
+};
+
 describe('whatsapp avisos routes', () => {
   beforeEach(() => {
     db.getAll.mockReset();
@@ -87,7 +102,7 @@ describe('whatsapp avisos routes', () => {
 
     await handler({
       params: { id: '77', tipo: 'pedido_pronto' },
-      user: { id: 9, role: 'caixa' },
+      user: userCaixaWhatsapp,
       body: {
         telefone: '5511999999999',
         mensagem: 'mensagem atacada',
@@ -119,7 +134,7 @@ describe('whatsapp avisos routes', () => {
 
     await handler({
       params: { id: '77', tipo: 'pedido_pronto' },
-      user: { id: 9, role: 'oficina' },
+      user: userOficinaRedigida,
       body: {},
     }, res, vi.fn());
 
@@ -139,7 +154,7 @@ describe('whatsapp avisos routes', () => {
 
     await handler({
       params: { id: '77', tipo: 'pedido_pronto' },
-      user: { id: 9, role: 'caixa' },
+      user: userCaixaWhatsapp,
       body: {},
     }, res, next);
 
@@ -166,7 +181,7 @@ describe('whatsapp avisos routes', () => {
     await handler({
       params: { id: '77' },
       body: { status: 'Pronto' },
-      user: { id: 9, role: 'caixa' },
+      user: userCaixaWhatsapp,
     }, res, next);
 
     if (next.mock.calls.length) throw next.mock.calls[0][0];
@@ -192,7 +207,7 @@ describe('whatsapp avisos routes', () => {
 
     await handler({
       query: {},
-      user: { id: 9, role: 'oficina' },
+      user: userOficinaRedigida,
     }, res, next);
 
     if (next.mock.calls.length) throw next.mock.calls[0][0];
@@ -208,6 +223,29 @@ describe('whatsapp avisos routes', () => {
     expect(payload[0].whatsappAvisoPrincipal).toBeNull();
   });
 
+  it('redacts financial fields for structural oficina even with a custom order-only profile', async () => {
+    db.getAll
+      .mockReturnValueOnce([{ ...ordem, status: 'Aguardando' }])
+      .mockReturnValueOnce([]);
+
+    const handler = businessHandler('get', '/');
+    const res = makeRes();
+    const next = vi.fn();
+
+    await handler({
+      query: {},
+      user: { id: 10, role: 'oficina', permissions: ['ordens.ver'] },
+    }, res, next);
+
+    if (next.mock.calls.length) throw next.mock.calls[0][0];
+    const [payload] = res.json.mock.calls[0];
+    expect(payload).toHaveLength(1);
+    expect(payload[0].valortotal).toBeUndefined();
+    expect(payload[0].valorentrada).toBeUndefined();
+    expect(payload[0].saldoaberto).toBeUndefined();
+    expect(payload[0].pagamento).toBeUndefined();
+  });
+
   it('forbids oficina from opening financial confirmation notices', async () => {
     db.getOne.mockReturnValueOnce({ ...ordem, status: 'Aguardando' });
 
@@ -216,7 +254,7 @@ describe('whatsapp avisos routes', () => {
 
     await handler({
       params: { id: '77', tipo: 'confirmacao_pedido' },
-      user: { id: 9, role: 'oficina' },
+      user: userOficinaRedigida,
       body: {},
     }, res, vi.fn());
 
@@ -229,7 +267,7 @@ describe('whatsapp avisos routes', () => {
     const openRes = makeRes();
     await openHandler({
       params: { id: '77', tipo: 'http://evil.test' },
-      user: { id: 2, role: 'admin' },
+      user: userAdminWhatsapp,
       body: {},
     }, openRes, vi.fn());
     expect(openRes.status).toHaveBeenCalledWith(400);
@@ -242,7 +280,7 @@ describe('whatsapp avisos routes', () => {
     const next = vi.fn();
     await patchHandler({
       params: { id: '77', tipo: 'pedido_pronto' },
-      user: { id: 2, role: 'admin' },
+      user: userAdminWhatsapp,
       body: { status: 'ignorado' },
     }, patchRes, next);
     if (next.mock.calls.length) throw next.mock.calls[0][0];

@@ -93,7 +93,7 @@ function mergeClientes(current, incoming) {
 }
 
 // ------- Modal de OS -------
-function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEditFinanceiro }) {
+function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEditFinanceiro, canPrint }) {
   const navigate = useNavigate();
   const isNew = !os;
   const [form, setForm] = useState({
@@ -265,7 +265,7 @@ function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEd
           </div>
           <div style={{ padding:'var(--space-5) var(--space-6)', display:'grid', gap:'var(--space-3)' }}>
             <button type="button" className="btn btn-primary" onClick={visualizar} style={{ justifyContent:'center' }}>Visualizar OS</button>
-            <button type="button" className="btn btn-secondary" onClick={imprimir} style={{ justifyContent:'center' }}>Imprimir</button>
+            {canPrint && <button type="button" className="btn btn-secondary" onClick={imprimir} style={{ justifyContent:'center' }}>Imprimir</button>}
             <button type="button" className="btn btn-ghost" onClick={onClose} style={{ justifyContent:'center' }}>Fechar</button>
           </div>
         </div>
@@ -498,9 +498,13 @@ function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEd
 // ------- Página principal -------
 export default function Ordens() {
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const canEdit = user?.role === 'admin' || user?.role === 'caixa';
-  const canEditFinanceiro = user?.role === 'admin' || user?.role === 'caixa';
+  const { can } = useAuth();
+  const canCreate = typeof can === 'function' && can('ordens.criar');
+  const canEdit = typeof can === 'function' && can('ordens.editar');
+  const canDelete = typeof can === 'function' && can('ordens.excluir');
+  const canViewTrash = typeof can === 'function' && (can('ordens.excluir') || can('ordens.restaurar') || can('ordens.excluir_permanente'));
+  const canPrint = typeof can === 'function' && can('ordens.imprimir');
+  const canEditFinanceiro = canEdit;
 
   const [ordens,       setOrdens]       = useState([]);
   const [ordensMeta,   setOrdensMeta]   = useState({ page: 1, limit: 14, total: 0, totalPages: 1 });
@@ -542,8 +546,13 @@ export default function Ordens() {
 
   useEffect(() => { load(); }, [load]);
 
-  const openNew = () => { setModalOS(null); setShowModal(true); };
+  const openNew = () => {
+    if (!canCreate) return toast.error('Sem permissao para criar OS');
+    setModalOS(null);
+    setShowModal(true);
+  };
   const openEdit = useCallback(async (id) => {
+    if (!canEdit) return toast.error('Sem permissao para editar OS');
     try {
       const { data } = await api.get(`/ordens/${id}`);
       const o = data;
@@ -555,17 +564,18 @@ export default function Ordens() {
       });
       setShowModal(true);
     } catch { toast.error('Erro ao carregar OS'); }
-  }, []);
+  }, [canEdit]);
 
   const handleDelete = useCallback(async (id, e) => {
     e.stopPropagation();
+    if (!canDelete) return toast.error('Sem permissao para remover OS');
     if (!window.confirm('Mover esta OS para a lixeira?')) return;
     try {
       await api.delete(`/ordens/${id}`);
       toast.success('OS removida');
       load();
     } catch { toast.error('Erro ao remover'); }
-  }, [load]);
+  }, [canDelete, load]);
 
   const ordensFiltradas = ordens;
   const totalOrdens = ordensMeta.total ?? ordens.length;
@@ -602,7 +612,7 @@ export default function Ordens() {
           </p>
         </div>
         <div className="erp-page-actions" style={{ display:'flex', gap:'var(--space-2)' }}>
-          {canEdit && (
+          {canViewTrash && (
             <button className="btn btn-secondary" style={{ fontSize:'var(--text-xs)', display:'flex', alignItems:'center', gap:'var(--space-2)' }}
               onClick={() => navigate('/ordens/lixeira')}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -611,7 +621,7 @@ export default function Ordens() {
               Lixeira
             </button>
           )}
-          {canEdit && (
+          {canCreate && (
             <button className="btn btn-primary" onClick={openNew}
               style={{ fontSize:'var(--text-xs)', display:'flex', alignItems:'center', gap:'var(--space-2)' }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -710,12 +720,12 @@ export default function Ordens() {
                   Prazo {fmtD(o.prazoentrega)}
                 </div>
               </div>
-              {canEdit && (
+              {(canEdit || canDelete) && (
                 <div className="mobile-record-footer" onClick={e => e.stopPropagation()}>
                   <div />
                   <div className="mobile-record-actions">
-                    <button className="btn btn-secondary btn-sm" onClick={e=>{e.stopPropagation();openEdit(o.id);}}>Editar</button>
-                    <button className="btn btn-ghost btn-sm inline-danger" onClick={e=>handleDelete(o.id,e)}>Remover</button>
+                    {canEdit && <button className="btn btn-secondary btn-sm" onClick={e=>{e.stopPropagation();openEdit(o.id);}}>Editar</button>}
+                    {canDelete && <button className="btn btn-ghost btn-sm inline-danger" onClick={e=>handleDelete(o.id,e)}>Remover</button>}
                   </div>
                 </div>
               )}
@@ -788,7 +798,7 @@ export default function Ordens() {
                           </svg>
                         </button>
                       )}
-                      {canEdit && (
+                      {canDelete && (
                         <button onClick={e=>handleDelete(o.id,e)}
                           style={{ color:'var(--color-error)', padding:4, borderRadius:'var(--radius-sm)',
                             background:'none', border:'none', cursor:'pointer' }} title="Remover">
@@ -838,6 +848,7 @@ export default function Ordens() {
           todosProdutos={todosProdutos}
           canEdit={canEdit}
           canEditFinanceiro={canEditFinanceiro}
+          canPrint={canPrint}
         />
       )}
     </div>

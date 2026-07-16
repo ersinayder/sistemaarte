@@ -4,6 +4,9 @@ const {
   validarSenhaUsuario,
   validarAlteracaoProprioUsuario,
   validarSessaoUsuario,
+  validarAcaoProprioUsuario,
+  validarUltimoAdminDisponivel,
+  isAdminDisponivel,
 } = await import('../domain/userRules.js');
 
 describe('userRules', () => {
@@ -11,6 +14,11 @@ describe('userRules', () => {
     expect(validarSenhaUsuario('', { required: true })).toEqual({
       ok: false,
       error: 'Senha e obrigatoria',
+    });
+
+    expect(validarSenhaUsuario('        ', { required: true })).toEqual({
+      ok: false,
+      error: 'Senha nao pode conter apenas espacos',
     });
 
     expect(validarSenhaUsuario('1234567', { required: true })).toEqual({
@@ -23,6 +31,10 @@ describe('userRules', () => {
 
   it('allows blank password on edit but validates provided password', () => {
     expect(validarSenhaUsuario('', { required: false })).toEqual({ ok: true });
+    expect(validarSenhaUsuario('        ', { required: false })).toEqual({
+      ok: false,
+      error: 'Senha nao pode conter apenas espacos',
+    });
     expect(validarSenhaUsuario('curta', { required: false }).ok).toBe(false);
   });
 
@@ -87,5 +99,128 @@ describe('userRules', () => {
       status: 401,
       error: 'Sessao desatualizada. Entre novamente.',
     });
+  });
+
+  it("rejects sessions for archived users, inactive profiles, and stale access versions", () => {
+    expect(validarSessaoUsuario(
+      { id: 1, accessVersion: 2 },
+      { id: 1, role: "admin", active: 1, deletedat: null, profile_active: 1, access_version: 2 }
+    )).toEqual({ ok: true });
+
+    expect(validarSessaoUsuario(
+      { id: 1, accessVersion: 2 },
+      { id: 1, role: "admin", active: 1, deletedat: "2026-07-09 10:00:00", profile_active: 1, access_version: 2 }
+    )).toEqual({
+      ok: false,
+      status: 401,
+      error: "Usuario arquivado",
+    });
+
+    expect(validarSessaoUsuario(
+      { id: 1, accessVersion: 2 },
+      { id: 1, role: "admin", active: 1, deletedat: null, profile_active: 0, access_version: 2 }
+    )).toEqual({
+      ok: false,
+      status: 401,
+      error: "Perfil inativo",
+    });
+
+    expect(validarSessaoUsuario(
+      { id: 1, accessVersion: 1 },
+      { id: 1, role: "admin", active: 1, deletedat: null, profile_active: 1, access_version: 2 }
+    )).toEqual({
+      ok: false,
+      status: 401,
+      error: "Sessao desatualizada. Entre novamente.",
+    });
+
+    expect(validarSessaoUsuario(
+      { id: 1, role: "admin" },
+      { id: 1, role: "admin", active: 1, deletedat: null, profile_active: 1, access_version: 2 }
+    )).toEqual({
+      ok: false,
+      status: 401,
+      error: "Sessao desatualizada. Entre novamente.",
+    });
+  });
+});
+
+describe("regras de gestao de usuarios", () => {
+  it("bloqueia arquivamento, restauracao, reset e exclusao permanente do proprio usuario", () => {
+    [
+      ["archive", "Voce nao pode arquivar seu proprio usuario"],
+      ["restore", "Voce nao pode restaurar seu proprio usuario"],
+      ["reset_password", "Voce nao pode resetar sua propria senha por esta tela"],
+      ["delete_permanent", "Voce nao pode excluir permanentemente seu proprio usuario"],
+    ].forEach(([action, error]) => {
+      expect(validarAcaoProprioUsuario({
+        requesterId: 1,
+        targetId: 1,
+        action,
+      })).toEqual({ ok: false, error });
+    });
+
+    expect(validarAcaoProprioUsuario({
+      requesterId: 1,
+      targetId: 2,
+      action: "archive",
+    })).toEqual({ ok: true });
+  });
+
+  it("identifica administradores ativos e nao arquivados disponiveis", () => {
+    expect(isAdminDisponivel({ role: "admin", active: 1, deletedat: null })).toBe(true);
+    expect(isAdminDisponivel({ role: "admin", active: "1", deletedat: null })).toBe(true);
+    expect(isAdminDisponivel({ role: "admin", active: 0, deletedat: null })).toBe(false);
+    expect(isAdminDisponivel({ role: "admin", active: 1, deletedat: "2026-07-09 10:00:00" })).toBe(false);
+    expect(isAdminDisponivel({ role: "caixa", active: 1, deletedat: null })).toBe(false);
+  });
+
+  it("bloqueia acoes que removem o ultimo admin ativo nao arquivado", () => {
+    ["archive", "deactivate", "delete_permanent", "change_role"].forEach((action) => {
+      expect(validarUltimoAdminDisponivel({
+        targetRole: "admin",
+        targetActive: 1,
+        targetDeletedat: null,
+        activeAdminCount: 1,
+        action,
+      })).toEqual({
+        ok: false,
+        error: "Nao e possivel remover o ultimo administrador ativo",
+      });
+    });
+  });
+
+  it("permite acoes que nao removem o ultimo admin disponivel", () => {
+    expect(validarUltimoAdminDisponivel({
+      targetRole: "admin",
+      targetActive: 1,
+      targetDeletedat: null,
+      activeAdminCount: 1,
+      action: "restore",
+    })).toEqual({ ok: true });
+
+    expect(validarUltimoAdminDisponivel({
+      targetRole: "admin",
+      targetActive: 1,
+      targetDeletedat: null,
+      activeAdminCount: 2,
+      action: "archive",
+    })).toEqual({ ok: true });
+
+    expect(validarUltimoAdminDisponivel({
+      targetRole: "admin",
+      targetActive: 1,
+      targetDeletedat: "2026-07-09 10:00:00",
+      activeAdminCount: 1,
+      action: "delete_permanent",
+    })).toEqual({ ok: true });
+
+    expect(validarUltimoAdminDisponivel({
+      targetRole: "admin",
+      targetActive: 0,
+      targetDeletedat: null,
+      activeAdminCount: 1,
+      action: "delete_permanent",
+    })).toEqual({ ok: true });
   });
 });

@@ -38,15 +38,15 @@ describe('whatsappAvisosRules', () => {
     expect(rules.normalizarTelefoneWhatsapp('123')).toBeNull();
   });
 
-  it('allows admin and caixa to use customer whatsapp notices and blocks oficina', () => {
-    expect(rules.podeUsarAviso('admin', 'confirmacao_pedido')).toBe(true);
-    expect(rules.podeUsarAviso('caixa', 'confirmacao_pedido')).toBe(true);
-    expect(rules.podeUsarAviso('oficina', 'confirmacao_pedido')).toBe(false);
-    expect(rules.podeUsarAviso('oficina', 'pedido_pronto')).toBe(false);
+  it('allows customer whatsapp notices only when the caller has the capability', () => {
+    expect(rules.podeUsarAviso(true, 'confirmacao_pedido')).toBe(true);
+    expect(rules.podeUsarAviso(true, 'pedido_pronto')).toBe(true);
+    expect(rules.podeUsarAviso(false, 'confirmacao_pedido')).toBe(false);
+    expect(rules.podeUsarAviso(false, 'pedido_pronto')).toBe(false);
   });
 
-  it('builds confirmation messages with financial data only for admin and caixa', () => {
-    const msg = rules.montarMensagemAviso(ordemBase, 'confirmacao_pedido', { role: 'caixa' });
+  it('builds confirmation messages with financial data only for callers with the capability', () => {
+    const msg = rules.montarMensagemAviso(ordemBase, 'confirmacao_pedido', { canUseNotice: true });
 
     expect(msg.ok).toBe(true);
     expect(msg.text).toContain('Confirmacao de Pedido');
@@ -56,13 +56,13 @@ describe('whatsappAvisosRules', () => {
     expect(msg.text).toContain('R$ 200,00');
     expect(msg.text).toContain('R$ 1.034,50');
 
-    const oficina = rules.montarMensagemAviso(ordemBase, 'confirmacao_pedido', { role: 'oficina' });
-    expect(oficina.ok).toBe(false);
-    expect(oficina.error).toBe('forbidden_notice_type');
+    const denied = rules.montarMensagemAviso(ordemBase, 'confirmacao_pedido', { canUseNotice: false });
+    expect(denied.ok).toBe(false);
+    expect(denied.error).toBe('forbidden_notice_type');
   });
 
-  it('builds ready notices for caixa without exposing extra payment details in the basic text', () => {
-    const msg = rules.montarMensagemAviso({ ...ordemBase, status: 'Pronto' }, 'pedido_pronto', { role: 'caixa' });
+  it('builds ready notices without exposing extra payment details in the basic text', () => {
+    const msg = rules.montarMensagemAviso({ ...ordemBase, status: 'Pronto' }, 'pedido_pronto', { canUseNotice: true });
 
     expect(msg.ok).toBe(true);
     expect(msg.text).toContain('Pedido Pronto');
@@ -74,7 +74,7 @@ describe('whatsappAvisosRules', () => {
 
   it('renders configured message templates with order variables', () => {
     const msg = rules.montarMensagemAviso(ordemBase, 'confirmacao_pedido', {
-      role: 'caixa',
+      canUseNotice: true,
       templates: {
         confirmacaoPedido: [
           'Cliente: {cliente}',
@@ -99,10 +99,10 @@ describe('whatsappAvisosRules', () => {
   });
 
   it('validates notice availability by OS status', () => {
-    expect(rules.avisoDisponivelParaOrdem(ordemBase, 'confirmacao_pedido', 'caixa')).toEqual({ ok: true });
-    expect(rules.avisoDisponivelParaOrdem({ ...ordemBase, status: 'Cancelado' }, 'confirmacao_pedido', 'caixa').ok).toBe(false);
-    expect(rules.avisoDisponivelParaOrdem({ ...ordemBase, status: 'Pronto' }, 'pedido_pronto', 'caixa')).toEqual({ ok: true });
-    expect(rules.avisoDisponivelParaOrdem({ ...ordemBase, status: 'Pronto' }, 'pedido_pronto', 'oficina').ok).toBe(false);
+    expect(rules.avisoDisponivelParaOrdem(ordemBase, 'confirmacao_pedido', true)).toEqual({ ok: true });
+    expect(rules.avisoDisponivelParaOrdem({ ...ordemBase, status: 'Cancelado' }, 'confirmacao_pedido', true).ok).toBe(false);
+    expect(rules.avisoDisponivelParaOrdem({ ...ordemBase, status: 'Pronto' }, 'pedido_pronto', true)).toEqual({ ok: true });
+    expect(rules.avisoDisponivelParaOrdem({ ...ordemBase, status: 'Pronto' }, 'pedido_pronto', false).ok).toBe(false);
   });
 
   it('validates safe status transitions', () => {

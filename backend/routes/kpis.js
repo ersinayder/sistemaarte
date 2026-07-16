@@ -1,6 +1,6 @@
 const router = require("express").Router();
 const { getAll, getOne, getDB } = require("../database");
-const { auth } = require("../middlewares/auth");
+const { auth, authPermission } = require("../middlewares/auth");
 const { hoje } = require("../utils/dates");
 const { criarSseConnectionTracker } = require("../domain/sseConnectionRules");
 const { getResumoFinanceiroOS } = require("../domain/financeiroRules");
@@ -76,7 +76,7 @@ function calcKpis() {
   };
 }
 
-router.get("/", auth(["admin","caixa"]), (_req, res, next) => {
+router.get("/", auth(), authPermission("dashboard.ver"), (_req, res, next) => {
   try {
     res.json(calcKpis());
   } catch (e) {
@@ -84,7 +84,7 @@ router.get("/", auth(["admin","caixa"]), (_req, res, next) => {
   }
 });
 
-router.get("/integridade", auth(["admin"]), (_req, res, next) => {
+router.get("/integridade", auth(), authPermission("dashboard.integridade"), (_req, res, next) => {
   try {
     const ordens = getAll(
       "SELECT id, numero, clientenome, status, valortotal FROM ordens WHERE deletedat IS NULL ORDER BY id DESC"
@@ -123,7 +123,7 @@ const sseTracker = criarSseConnectionTracker({
   maxPerUser: MAX_SSE_PER_USER,
 });
 
-router.get("/stream", auth(["admin","caixa"]), (req, res) => {
+router.get("/stream", auth(), authPermission("dashboard.ver"), (req, res) => {
   const slot = sseTracker.tryAcquire(req.user?.id);
   if (!slot.ok) return res.status(429).json({ error: slot.message });
 

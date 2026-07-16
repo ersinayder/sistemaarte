@@ -4,7 +4,8 @@ const router        = express.Router();
 const path          = require('path');
 const fs            = require('fs');
 const { getDB }     = require('../database');
-const { auth }      = require('../middlewares/auth');
+const { auth, authPermission } = require('../middlewares/auth');
+const { hasPermission } = require('../domain/permissionRules');
 const {
   getNFEWizard,
   callSEFAZ,
@@ -433,7 +434,7 @@ const SELECT_ULTIMA_CONCILIACAO_INTEGRIDADE_NFE = `
 `;
 
 // GET /api/nfe
-router.get('/', auth(['admin', 'caixa']), (req, res) => {
+router.get('/', auth(), authPermission('nfe.ver'), (req, res) => {
   try {
     const rows = listarNotasFiscais(getDB(), { lixeira: false });
     const alvoHomologacao = Number(process.env.NFE_HOMOLOGACAO_ALVO || 10);
@@ -453,7 +454,7 @@ router.get('/', auth(['admin', 'caixa']), (req, res) => {
 });
 
 // GET /api/nfe/lixeira
-router.get('/lixeira', auth(['admin']), (req, res) => {
+router.get('/lixeira', auth(), authPermission('nfe.lixeira'), (req, res) => {
   try {
     const rows = listarNotasFiscais(getDB(), { lixeira: true });
     res.json({ notas: rows, meta: { ambiente: tpAmbAtual() } });
@@ -465,7 +466,7 @@ router.get('/lixeira', auth(['admin']), (req, res) => {
 
 // GET /api/nfe/status-servico
 // Diagnostico: consulta o status do webservice sem emitir nota nem consumir numeracao.
-router.get('/status-servico', auth(['admin', 'caixa']), async (req, res) => {
+router.get('/status-servico', auth(), authPermission('nfe.ver'), async (req, res) => {
   const ambiente = tpAmbAtual();
   const inicio = Date.now();
 
@@ -496,7 +497,7 @@ router.get('/status-servico', auth(['admin', 'caixa']), async (req, res) => {
 
 // POST /api/nfe/integridade-financeira/:ordemId/conciliar
 // Concilia localmente um apontamento fiscal-financeiro; nao consulta SEFAZ nem altera OS/caixa/XML.
-router.post('/integridade-financeira/:ordemId/conciliar', auth(['admin']), (req, res) => {
+router.post('/integridade-financeira/:ordemId/conciliar', auth(), authPermission('nfe.conciliar'), (req, res) => {
   const ordemId = Number(req.params.ordemId);
   if (!Number.isInteger(ordemId) || ordemId <= 0) {
     return res.status(400).json({ erro: 'OS invalida.' });
@@ -531,7 +532,7 @@ router.post('/integridade-financeira/:ordemId/conciliar', auth(['admin']), (req,
 
 // GET /api/nfe/integridade-financeira/:ordemId
 // Detalhe local read-only da auditoria fiscal-financeira.
-router.get('/integridade-financeira/:ordemId', auth(['admin', 'caixa']), (req, res) => {
+router.get('/integridade-financeira/:ordemId', auth(), authPermission('nfe.integridade'), (req, res) => {
   const ordemId = Number(req.params.ordemId);
   if (!Number.isInteger(ordemId) || ordemId <= 0) {
     return res.status(400).json({ erro: 'OS invalida.' });
@@ -557,7 +558,7 @@ router.get('/integridade-financeira/:ordemId', auth(['admin', 'caixa']), (req, r
 
 // GET /api/nfe/integridade-financeira
 // Auditoria local read-only: nao consulta SEFAZ, nao reenvia e nao altera dados.
-router.get('/integridade-financeira', auth(['admin', 'caixa']), (req, res) => {
+router.get('/integridade-financeira', auth(), authPermission('nfe.integridade'), (req, res) => {
   try {
     const notas = getDB().prepare(`
       SELECT o.id, o.numero, o.clientenome, o.status, o.valortotal, o.nfe_status, o.nfe_chave,
@@ -576,7 +577,7 @@ router.get('/integridade-financeira', auth(['admin', 'caixa']), (req, res) => {
 
 // GET /api/nfe/pendencias
 // Visao operacional read-only das tentativas fiscais ainda ativas.
-router.get('/pendencias', auth(['admin', 'caixa']), (req, res) => {
+router.get('/pendencias', auth(), authPermission('nfe.integridade'), (req, res) => {
   try {
     const pendencias = listarPendenciasFiscais(getDB());
     res.json({
@@ -594,7 +595,7 @@ router.get('/pendencias', auth(['admin', 'caixa']), (req, res) => {
 
 // GET /api/nfe/pendencias/:origem/:id/transicoes
 // Auditoria read-only de tentativa fiscal ativa. Nao consulta SEFAZ nem reenvia eventos.
-router.get('/pendencias/:origem/:id/transicoes', auth(['admin', 'caixa']), (req, res) => {
+router.get('/pendencias/:origem/:id/transicoes', auth(), authPermission('nfe.integridade'), (req, res) => {
   const origem = String(req.params.origem || '').trim();
   const id = Number(req.params.id);
   if (!['emissao', 'evento'].includes(origem) || !Number.isInteger(id) || id <= 0) {
@@ -614,7 +615,7 @@ router.get('/pendencias/:origem/:id/transicoes', auth(['admin', 'caixa']), (req,
 });
 
 // GET /api/nfe/inutilizacoes/contexto
-router.get('/inutilizacoes/contexto', auth(['admin']), (req, res) => {
+router.get('/inutilizacoes/contexto', auth(), authPermission('nfe.inutilizar'), (req, res) => {
   try {
     const contexto = obterContextoInutilizacao(getDB());
     const { cnpj, ...publico } = contexto;
@@ -626,7 +627,7 @@ router.get('/inutilizacoes/contexto', auth(['admin']), (req, res) => {
 });
 
 // GET /api/nfe/inutilizacoes
-router.get('/inutilizacoes', auth(['admin']), (req, res) => {
+router.get('/inutilizacoes', auth(), authPermission('nfe.inutilizar'), (req, res) => {
   try {
     const inutilizacoes = getInutilizacaoService(getDB()).listar();
     res.json({ inutilizacoes, meta: { ambiente: tpAmbAtual() } });
@@ -637,7 +638,7 @@ router.get('/inutilizacoes', auth(['admin']), (req, res) => {
 });
 
 // POST /api/nfe/inutilizacoes
-router.post('/inutilizacoes', auth(['admin']), async (req, res) => {
+router.post('/inutilizacoes', auth(), authPermission('nfe.inutilizar'), async (req, res) => {
   try {
     const result = await getInutilizacaoService(getDB()).solicitar(req.body || {}, req.user?.id || null);
     res.status(result.httpStatus).json({
@@ -656,7 +657,7 @@ router.post('/inutilizacoes', auth(['admin']), async (req, res) => {
 });
 
 // GET /api/nfe/inutilizacoes/:id/xml/:tipo
-router.get('/inutilizacoes/:id/xml/:tipo', auth(['admin']), (req, res) => {
+router.get('/inutilizacoes/:id/xml/:tipo', auth(), authPermission('nfe.inutilizar'), (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
     return res.status(400).json({ erro: 'Inutilizacao invalida.' });
@@ -675,7 +676,7 @@ router.get('/inutilizacoes/:id/xml/:tipo', auth(['admin']), (req, res) => {
 });
 
 // GET /api/nfe/avulsa/preview
-router.get('/avulsa/preview', auth(['admin', 'caixa']), (req, res) => {
+router.get('/avulsa/preview', auth(), authPermission('nfe.emitir'), (req, res) => {
   res.json(serializarPreviaAvulsa({
     documento: montarDocumentoFiscalAvulso({ cliente: clienteAvulsoBase(), itens: [], pagamento: 'Pix' }),
     cliente: clienteAvulsoBase(),
@@ -684,7 +685,7 @@ router.get('/avulsa/preview', auth(['admin', 'caixa']), (req, res) => {
 });
 
 // POST /api/nfe/avulsa/preview
-router.post('/avulsa/preview', auth(['admin', 'caixa']), (req, res) => {
+router.post('/avulsa/preview', auth(), authPermission('nfe.emitir'), (req, res) => {
   try {
     const informacoesComplementares = normalizarInformacoesComplementares(
       req.body?.informacoes_complementares ?? req.body?.informacoesComplementares
@@ -718,7 +719,7 @@ router.post('/avulsa/preview', auth(['admin', 'caixa']), (req, res) => {
 });
 
 // POST /api/nfe/avulsa
-router.post('/avulsa', auth(['admin', 'caixa']), async (req, res) => {
+router.post('/avulsa', auth(), authPermission('nfe.emitir'), async (req, res) => {
   let respondido = false;
   const db = getDB();
   let notaEmitindo = null;
@@ -1013,7 +1014,7 @@ router.post('/avulsa', auth(['admin', 'caixa']), async (req, res) => {
 });
 
 // GET /api/nfe/exportar?tipo=xml|danfe&inicio=YYYY-MM-DD&fim=YYYY-MM-DD
-router.get('/exportar', auth(['admin', 'caixa']), async (req, res) => {
+router.get('/exportar', auth(), authPermission('nfe.exportar'), async (req, res) => {
   try {
     const result = await gerarExportacaoNFe({
       db: getDB(),
@@ -1038,7 +1039,7 @@ router.get('/exportar', auth(['admin', 'caixa']), async (req, res) => {
 });
 
 // GET /api/nfe/:chave/eventos
-router.get('/:chave/eventos', auth(['admin', 'caixa']), (req, res) => {
+router.get('/:chave/eventos', auth(), authPermission('nfe.ver'), (req, res) => {
   const { chave } = req.params;
   if (!chave || !/^\d{44}$/.test(chave)) {
     return res.status(400).json({ erro: 'Chave NF-e invalida. Deve conter exatamente 44 digitos.' });
@@ -1061,7 +1062,7 @@ router.get('/:chave/eventos', auth(['admin', 'caixa']), (req, res) => {
 });
 
 // GET /api/nfe/ordem/:ordemId/eventos
-router.get('/ordem/:ordemId/eventos', auth(['admin', 'caixa']), (req, res) => {
+router.get('/ordem/:ordemId/eventos', auth(), authPermission('nfe.ver'), (req, res) => {
   const ordemId = Number(req.params.ordemId);
   if (!Number.isInteger(ordemId) || ordemId <= 0) {
     return res.status(400).json({ erro: 'OS invalida.' });
@@ -1090,7 +1091,7 @@ router.get('/ordem/:ordemId/eventos', auth(['admin', 'caixa']), (req, res) => {
 });
 
 // GET /api/nfe/:chave/xml/autorizacao
-router.get('/:chave/xml/autorizacao', auth(['admin', 'caixa']), (req, res) => {
+router.get('/:chave/xml/autorizacao', auth(), authPermission('nfe.xml'), (req, res) => {
   const { chave } = req.params;
   if (!chave || !/^\d{44}$/.test(chave)) {
     return res.status(400).json({ erro: 'Chave NF-e invalida. Deve conter exatamente 44 digitos.' });
@@ -1126,7 +1127,7 @@ router.get('/:chave/xml/autorizacao', auth(['admin', 'caixa']), (req, res) => {
 });
 
 // GET /api/nfe/:chave/danfe
-router.get('/:chave/danfe', auth(['admin', 'caixa']), async (req, res) => {
+router.get('/:chave/danfe', auth(), authPermission('nfe.danfe'), async (req, res) => {
   const { chave } = req.params;
   if (!chave || !/^\d{44}$/.test(chave)) {
     return res.status(400).json({ erro: 'Chave NF-e invalida. Deve conter exatamente 44 digitos.' });
@@ -1164,7 +1165,7 @@ router.get('/:chave/danfe', auth(['admin', 'caixa']), async (req, res) => {
 });
 
 // GET /api/nfe/eventos/:eventoId/xml
-router.get('/eventos/:eventoId/xml', auth(['admin', 'caixa']), (req, res) => {
+router.get('/eventos/:eventoId/xml', auth(), authPermission('nfe.xml'), (req, res) => {
   const eventoId = Number(req.params.eventoId);
   if (!Number.isInteger(eventoId) || eventoId <= 0) {
     return res.status(400).json({ erro: 'Evento fiscal invalido.' });
@@ -1200,7 +1201,7 @@ router.get('/eventos/:eventoId/xml', auth(['admin', 'caixa']), (req, res) => {
     if (!evento) {
       return res.status(404).json({ erro: 'Evento fiscal nao encontrado.' });
     }
-    if (req.user.role !== 'admin') {
+    if (!hasPermission(req.user, 'nfe.lixeira')) {
       const notaOculta = evento.nota_id && evento.nota_deletedat;
       const legadoOculto = !evento.nota_id && evento.ordemid && evento.ordem_deletedat;
       const semEscopoFiscal = !evento.nota_id && !evento.ordemid;
@@ -1229,7 +1230,7 @@ router.get('/eventos/:eventoId/xml', auth(['admin', 'caixa']), (req, res) => {
 });
 
 // GET /api/nfe/emitir/:id/preview
-router.get('/emitir/:id/preview', auth(['admin', 'caixa']), (req, res) => {
+router.get('/emitir/:id/preview', auth(), authPermission('nfe.emitir'), (req, res) => {
   try {
     const db = getDB();
     const os = buscarOrdemParaNFe(db, req.params.id);
@@ -1250,7 +1251,7 @@ router.get('/emitir/:id/preview', auth(['admin', 'caixa']), (req, res) => {
 });
 
 // DELETE /api/nfe/:id  (soft delete operacional da NF-e)
-router.delete('/:id', auth(['admin']), (req, res) => {
+router.delete('/:id', auth(), authPermission('nfe.lixeira'), (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
     return res.status(400).json({ erro: 'ID de NF-e invalido' });
@@ -1277,7 +1278,7 @@ router.delete('/:id', auth(['admin']), (req, res) => {
 });
 
 // POST /api/nfe/:id/restore
-router.post('/:id/restore', auth(['admin']), (req, res) => {
+router.post('/:id/restore', auth(), authPermission('nfe.lixeira'), (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
     return res.status(400).json({ erro: 'ID de NF-e invalido' });
@@ -1299,7 +1300,7 @@ router.post('/:id/restore', auth(['admin']), (req, res) => {
 });
 
 // POST /api/nfe/emitir/:id
-router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
+router.post('/emitir/:id', auth(), authPermission('nfe.emitir'), async (req, res) => {
   const db = getDB();
   const osId = Number(req.params.id);
 
@@ -1446,7 +1447,7 @@ router.post('/emitir/:id', auth(['admin', 'caixa']), async (req, res) => {
 });
 // POST /api/nfe/:chave/cce
 // Body: { correcao: string (15 a 1000 chars) }
-router.post('/:chave/cce', auth(['admin', 'caixa']), async (req, res) => {
+router.post('/:chave/cce', auth(), authPermission('nfe.cce'), async (req, res) => {
   const { chave } = req.params;
   const correcao = String(req.body?.correcao || req.body?.texto || '').trim();
 
@@ -1605,7 +1606,7 @@ router.post('/:chave/cce', auth(['admin', 'caixa']), async (req, res) => {
 
 // POST /api/nfe/:chave/cancelar
 // Body: { motivo: string (min 15 chars) }
-router.post('/:chave/cancelar', auth(['admin', 'caixa']), async (req, res) => {
+router.post('/:chave/cancelar', auth(), authPermission('nfe.cancelar'), async (req, res) => {
   const { chave } = req.params;
   const { motivo } = req.body || {};
 

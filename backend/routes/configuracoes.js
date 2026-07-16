@@ -3,7 +3,7 @@ const path = require("path");
 const multer = require("multer");
 const router = require("express").Router();
 const { getOne, getAll, run, runInsert, backup } = require("../database");
-const { auth } = require("../middlewares/auth");
+const { auth, authPermission } = require("../middlewares/auth");
 const {
   normalizarEmpresaConfig,
   validarEmpresaConfig,
@@ -281,21 +281,21 @@ function fiscalAtualComAutXml() {
   };
 }
 
-router.get("/", auth(["admin"]), (_req, res, next) => {
+router.get("/", auth(), authPermission("configuracoes.ver"), (_req, res, next) => {
   try {
     const empresa = empresaAtual();
     res.json({ empresa, status: statusConfiguracoes(empresa) });
   } catch (e) { next(e); }
 });
 
-router.get("/empresa", auth(["admin"]), (_req, res, next) => {
+router.get("/empresa", auth(), authPermission("configuracoes.ver"), (_req, res, next) => {
   try {
     const empresa = empresaAtual();
     res.json({ empresa, status: statusEmpresaConfig(empresa) });
   } catch (e) { next(e); }
 });
 
-router.put("/empresa", auth(["admin"]), (req, res, next) => {
+router.put("/empresa", auth(), authPermission("configuracoes.editar_empresa"), (req, res, next) => {
   try {
     const empresa = normalizarEmpresaConfig(req.body || {});
     const validacao = validarEmpresaConfig(empresa);
@@ -321,19 +321,19 @@ router.put("/empresa", auth(["admin"]), (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.get("/fiscal", auth(["admin"]), (_req, res, next) => {
+router.get("/fiscal", auth(), authPermission("configuracoes.editar_fiscal"), (_req, res, next) => {
   try {
     res.json(fiscalAtualComAutXml());
   } catch (e) { next(e); }
 });
 
-router.get("/whatsapp", auth(["admin"]), (_req, res, next) => {
+router.get("/whatsapp", auth(), authPermission("configuracoes.editar_whatsapp"), (_req, res, next) => {
   try {
     res.json({ whatsapp: getWhatsappPublicConfig() });
   } catch (e) { next(e); }
 });
 
-router.get("/whatsapp/web-status", auth(["admin"]), async (_req, res, next) => {
+router.get("/whatsapp/web-status", auth(), authPermission("configuracoes.editar_whatsapp"), async (_req, res, next) => {
   try {
     const runtime = getWhatsappRuntimeConfig();
     if (runtime.provider !== "web_local" || !runtime.webBaseUrl || !runtime.webInstance) {
@@ -353,13 +353,13 @@ router.get("/whatsapp/web-status", auth(["admin"]), async (_req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.get("/impressao", auth(["admin"]), (_req, res, next) => {
+router.get("/impressao", auth(), authPermission("configuracoes.editar_impressao"), (_req, res, next) => {
   try {
     res.json({ impressao: getImpressaoConfig() });
   } catch (e) { next(e); }
 });
 
-router.put("/impressao", auth(["admin"]), (req, res, next) => {
+router.put("/impressao", auth(), authPermission("configuracoes.editar_impressao"), (req, res, next) => {
   try {
     const config = normalizarImpressaoConfig(req.body || {});
     const validacao = validarImpressaoConfig(config);
@@ -389,7 +389,7 @@ router.put("/impressao", auth(["admin"]), (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.post("/impressao/teste", auth(["admin"]), async (_req, res, next) => {
+router.post("/impressao/teste", auth(), authPermission("configuracoes.editar_impressao"), async (_req, res, next) => {
   try {
     const impressao = getImpressaoConfig();
     if (!impressao.directPrintEnabled) {
@@ -433,7 +433,7 @@ router.post("/impressao/teste", auth(["admin"]), async (_req, res, next) => {
   }
 });
 
-router.post("/impressao/diagnostico", auth(["admin"]), async (_req, res, next) => {
+router.post("/impressao/diagnostico", auth(), authPermission("configuracoes.editar_impressao"), async (_req, res, next) => {
   try {
     const impressao = getImpressaoConfig();
     if (!impressao.directPrintEnabled) {
@@ -477,7 +477,7 @@ router.post("/impressao/diagnostico", auth(["admin"]), async (_req, res, next) =
   } catch (e) { next(e); }
 });
 
-router.put("/whatsapp", auth(["admin"]), (req, res, next) => {
+router.put("/whatsapp", auth(), authPermission("configuracoes.editar_whatsapp"), (req, res, next) => {
   try {
     const atual = whatsappRowAtual() || {};
     const config = normalizarWhatsappConfig(req.body || {});
@@ -532,32 +532,32 @@ router.put("/whatsapp", auth(["admin"]), (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.get("/backups", auth(["admin"]), (_req, res, next) => {
+router.get("/backups", auth(), authPermission("backups.ver"), (_req, res, next) => {
   try {
     res.json({ backups: backupAtual() });
   } catch (e) { next(e); }
 });
 
-router.post("/backups/manual", auth(["admin"]), async (_req, res, next) => {
+router.post("/backups/manual", auth(), authPermission("backups.executar"), async (_req, res, next) => {
   try {
     await backup();
     res.json({ ok: true, backups: backupAtual() });
   } catch (e) { next(e); }
 });
 
-router.get("/seguranca", auth(["admin"]), (_req, res, next) => {
+router.get("/seguranca", auth(), authPermission("configuracoes.seguranca"), (_req, res, next) => {
   try {
     res.json({ seguranca: segurancaAtual() });
   } catch (e) { next(e); }
 });
 
-router.get("/sistema", auth(["admin"]), (_req, res, next) => {
+router.get("/sistema", auth(), authPermission("configuracoes.ver"), (_req, res, next) => {
   try {
     res.json({ sistema: sistemaAtual() });
   } catch (e) { next(e); }
 });
 
-router.put("/fiscal", auth(["admin"]), (req, res, next) => {
+router.put("/fiscal", auth(), authPermission("configuracoes.editar_fiscal"), (req, res, next) => {
   try {
     const fiscal = normalizarFiscalConfig(req.body || {});
     const validacao = validarFiscalConfig(fiscal);
@@ -607,7 +607,7 @@ router.put("/fiscal", auth(["admin"]), (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.post("/fiscal/certificado", auth(["admin"]), uploadCertificado, (req, res, next) => {
+router.post("/fiscal/certificado", auth(), authPermission("configuracoes.editar_fiscal"), uploadCertificado, (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ error: "Nenhum arquivo enviado" });
 
@@ -628,7 +628,7 @@ router.post("/fiscal/certificado", auth(["admin"]), uploadCertificado, (req, res
   } catch (e) { next(e); }
 });
 
-router.put("/fiscal/certificado/senha", auth(["admin"]), (req, res, next) => {
+router.put("/fiscal/certificado/senha", auth(), authPermission("configuracoes.editar_fiscal"), (req, res, next) => {
   try {
     const senha = String(req.body?.senha ?? "");
     if (!senha.trim()) return res.status(400).json({ error: "Senha do certificado e obrigatoria" });
@@ -648,13 +648,13 @@ router.put("/fiscal/certificado/senha", auth(["admin"]), (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.get("/fiscal/autxml", auth(["admin"]), (_req, res, next) => {
+router.get("/fiscal/autxml", auth(), authPermission("configuracoes.editar_fiscal"), (_req, res, next) => {
   try {
     res.json({ autxml: listarAutXml() });
   } catch (e) { next(e); }
 });
 
-router.post("/fiscal/autxml", auth(["admin"]), (req, res, next) => {
+router.post("/fiscal/autxml", auth(), authPermission("configuracoes.editar_fiscal"), (req, res, next) => {
   try {
     const item = normalizarAutXml(req.body || {});
     const validacao = validarAutXml(item, {
@@ -682,7 +682,7 @@ router.post("/fiscal/autxml", auth(["admin"]), (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.put("/fiscal/autxml/:id", auth(["admin"]), (req, res, next) => {
+router.put("/fiscal/autxml/:id", auth(), authPermission("configuracoes.editar_fiscal"), (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id < 1) {
@@ -724,7 +724,7 @@ router.put("/fiscal/autxml/:id", auth(["admin"]), (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.delete("/fiscal/autxml/:id", auth(["admin"]), (req, res, next) => {
+router.delete("/fiscal/autxml/:id", auth(), authPermission("configuracoes.editar_fiscal"), (req, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id < 1) {

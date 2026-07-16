@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import { Calculator, CalendarDays, ClipboardList, FileText, PackagePlus, Printer, Save, Search, Send, Trash2, UserRound } from 'lucide-react'
 import api from '../services/api'
+import { useAuth } from '../context/AuthContext'
 
 const moeda = value => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const numero = value => Number(String(value ?? '').replace(',', '.')) || 0
@@ -328,7 +329,10 @@ function ItensPropostaEditor({ itens, onChange, produtos, onAdd, total }) {
 }
 
 export default function NovaProposta() {
+  const { can } = useAuth()
   const navigate = useNavigate()
+  const canPrintProposal = typeof can === 'function' && can('propostas.imprimir')
+  const canViewProposals = typeof can === 'function' && can('propostas.ver')
   const [clientes, setClientes] = useState([])
   const [produtos, setProdutos] = useState([])
   const [saving, setSaving] = useState(false)
@@ -415,7 +419,7 @@ export default function NovaProposta() {
 
       toast.success(mode === 'print' ? 'Proposta salva. Abrindo PDF...' : 'Proposta salva.')
       if (mode === 'print') window.open(`/api/propostas/${data.id}/pdf`, '_blank', 'noopener,noreferrer')
-      navigate('/propostas')
+      navigate(canViewProposals ? '/propostas' : '/orcamento/calculadora')
     } catch (error) {
       toast.error(error?.response?.data?.error || 'Erro ao salvar proposta')
     } finally {
@@ -438,9 +442,11 @@ export default function NovaProposta() {
             <Calculator size={14} />
             Calculadora
           </button>
-          <button className="btn btn-secondary btn-sm" onClick={() => navigate('/propostas')}>
-            Ver funil
-          </button>
+          {canViewProposals && (
+            <button className="btn btn-secondary btn-sm" onClick={() => navigate('/propostas')}>
+              Ver funil
+            </button>
+          )}
         </div>
       </div>
 
@@ -513,10 +519,12 @@ export default function NovaProposta() {
             <Save size={15} />
             {saving && saveMode === 'draft' ? 'Salvando...' : 'Salvar'}
           </button>
-          <button className="btn btn-secondary" onClick={() => salvar('print')} disabled={saving}>
-            <Printer size={15} />
-            {saving && saveMode === 'print' ? 'Salvando...' : 'Salvar e imprimir'}
-          </button>
+          {canPrintProposal && (
+            <button className="btn btn-secondary" onClick={() => salvar('print')} disabled={saving}>
+              <Printer size={15} />
+              {saving && saveMode === 'print' ? 'Salvando...' : 'Salvar e imprimir'}
+            </button>
+          )}
           <button className="btn btn-primary" onClick={() => salvar('send')} disabled={saving}>
             <Send size={15} />
             {saving && saveMode === 'send' ? 'Salvando...' : 'Salvar como enviada'}

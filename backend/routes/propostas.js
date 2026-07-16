@@ -1,6 +1,6 @@
 const router = require("express").Router();
 const { getAll, getOne, run, runInsert, transaction } = require("../database");
-const { auth } = require("../middlewares/auth");
+const { auth, authPermission } = require("../middlewares/auth");
 const {
   normalizarStatusProposta,
   validarStatusProposta,
@@ -79,7 +79,7 @@ function observacoesOSFromProposta(proposta) {
   return [obs, `Prazo previsto na proposta: ${prazo}`].filter(Boolean).join("\n\n");
 }
 
-router.get("/", auth(["admin", "caixa"]), (req, res, next) => {
+router.get("/", auth(), authPermission("propostas.ver"), (req, res, next) => {
   try {
     const { status, q } = req.query;
     const where = [];
@@ -98,7 +98,7 @@ router.get("/", auth(["admin", "caixa"]), (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.get("/:id", auth(["admin", "caixa"]), (req, res, next) => {
+router.get("/:id", auth(), authPermission("propostas.ver"), (req, res, next) => {
   try {
     const proposta = getOne(`${SEL_PROPOSTA} WHERE p.id=?`, [req.params.id]);
     if (!proposta) return res.status(404).json({ error: "Proposta nao encontrada" });
@@ -106,7 +106,7 @@ router.get("/:id", auth(["admin", "caixa"]), (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.get("/:id/pdf", auth(["admin", "caixa"]), (req, res, next) => {
+router.get("/:id/pdf", auth(), authPermission("propostas.imprimir"), (req, res, next) => {
   try {
     const proposta = getOne(`${SEL_PROPOSTA} WHERE p.id=?`, [req.params.id]);
     if (!proposta) return res.status(404).json({ error: "Proposta nao encontrada" });
@@ -115,7 +115,7 @@ router.get("/:id/pdf", auth(["admin", "caixa"]), (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.post("/", auth(["admin", "caixa"]), (req, res, next) => {
+router.post("/", auth(), authPermission("propostas.criar"), (req, res, next) => {
   try {
     const dados = validarDadosProposta(req.body || {});
     if (!dados.ok) return res.status(400).json({ error: dados.error });
@@ -151,7 +151,7 @@ router.post("/", auth(["admin", "caixa"]), (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.patch("/:id/status", auth(["admin", "caixa"]), (req, res, next) => {
+router.patch("/:id/status", auth(), authPermission("propostas.editar_status"), (req, res, next) => {
   try {
     const proposta = getOne("SELECT * FROM propostas WHERE id=?", [req.params.id]);
     if (!proposta) return res.status(404).json({ error: "Proposta nao encontrada" });
@@ -173,7 +173,7 @@ router.patch("/:id/status", auth(["admin", "caixa"]), (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.post("/:id/gerar-os", auth(["admin", "caixa"]), (req, res, next) => {
+router.post("/:id/gerar-os", auth(), authPermission("propostas.gerar_os"), (req, res, next) => {
   try {
     const proposta = getOne("SELECT * FROM propostas WHERE id=?", [req.params.id]);
     if (!proposta) return res.status(404).json({ error: "Proposta nao encontrada" });

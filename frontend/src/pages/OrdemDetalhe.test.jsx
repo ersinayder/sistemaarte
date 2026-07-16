@@ -17,7 +17,9 @@ vi.mock('../services/api', () => ({
 }))
 
 vi.mock('../context/AuthContext', () => ({
-  useAuth: () => ({ isAdmin: true, isCaixa: false, isOficina: false }),
+  useAuth: () => ({
+    can: (permission) => ['ordens.ver', 'nfe.danfe'].includes(permission),
+  }),
 }))
 
 vi.mock('react-router-dom', () => ({

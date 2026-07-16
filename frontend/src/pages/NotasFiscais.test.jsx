@@ -5,7 +5,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import api from '../services/api'
 import NotasFiscais from './NotasFiscais'
 
-let authState = { isAdmin: true }
+const adminPermissions = [
+  'nfe.emitir',
+  'nfe.cancelar',
+  'nfe.cce',
+  'nfe.xml',
+  'nfe.danfe',
+  'nfe.lixeira',
+  'nfe.inutilizar',
+  'nfe.integridade',
+  'nfe.exportar',
+  'nfe.conciliar',
+]
+
+let authState = {
+  can: (permission) => adminPermissions.includes(permission),
+}
 
 vi.mock('../services/api', () => ({
   default: {
@@ -29,7 +44,9 @@ vi.mock('../components/nfe/InutilizacaoModal', () => ({
 
 describe('NotasFiscais inutilizacao manual', () => {
   beforeEach(() => {
-    authState = { isAdmin: true }
+    authState = {
+      can: (permission) => adminPermissions.includes(permission),
+    }
     api.get.mockReset()
     api.post.mockReset()
     api.delete.mockReset()
@@ -51,7 +68,7 @@ describe('NotasFiscais inutilizacao manual', () => {
   })
 
   it('nao mostra acao de inutilizacao para caixa', async () => {
-    authState = { isAdmin: false }
+    authState = { can: () => false }
 
     render(<NotasFiscais />)
 

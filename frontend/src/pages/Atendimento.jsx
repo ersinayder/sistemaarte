@@ -19,6 +19,7 @@ import { emit } from '../services/eventBus'
 import { aplicarDescontoOS } from '../utils/descontoOS'
 import { buscarEnderecoPorCep, maskCep } from '../utils/cep'
 import { printOrdem } from '../utils/printOrdem'
+import { useAuth } from '../context/AuthContext'
 import {
   getDocumentoInputState,
   maskCNPJ,
@@ -639,6 +640,11 @@ function QuickClientModal({ open, cliente, initialName, onClose, onSaved }) {
 
 export default function Atendimento() {
   const navigate = useNavigate()
+  const { can } = useAuth()
+  const canCreateOS = typeof can === 'function' && can('ordens.criar')
+  const canReceive = typeof can === 'function' && can('caixa.criar_lancamento')
+  const canDeliver = typeof can === 'function' && can('ordens.alterar_status')
+  const canPrintOS = typeof can === 'function' && can('ordens.imprimir')
   const [mode, setMode] = useState('home')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -721,10 +727,10 @@ export default function Atendimento() {
   }, [ordens, caixaHoje])
 
   const modos = [
-    { key: 'new-os', label: 'Nova OS', icon: Plus },
-    { key: 'receive', label: 'Receber OS', icon: DollarSign },
-    { key: 'sale', label: 'Venda avulsa', icon: Package },
-  ]
+    canCreateOS && { key: 'new-os', label: 'Nova OS', icon: Plus },
+    canReceive && { key: 'receive', label: 'Receber OS', icon: DollarSign },
+    canReceive && { key: 'sale', label: 'Venda avulsa', icon: Package },
+  ].filter(Boolean)
 
   const clientesFiltrados = useMemo(() => {
     const q = clienteQuery.trim().toLowerCase()
@@ -784,6 +790,7 @@ export default function Atendimento() {
 
   const createOS = async e => {
     e.preventDefault()
+    if (!canCreateOS) return toast.error('Sem permissao para criar OS')
     const totalBruto = numero(osForm.valortotal) || totalItens(osForm.produtos)
     const desconto = aplicarDescontoOS(totalBruto, osForm.descontoinput)
     if (!osForm.clientenome.trim()) return toast.error('Informe o cliente.')
@@ -842,6 +849,7 @@ export default function Atendimento() {
 
   const receberOS = async e => {
     e.preventDefault()
+    if (!canReceive) return toast.error('Sem permissao para registrar recebimento')
     if (!selectedOs) return toast.error('Selecione uma OS.')
     const valor = numero(paymentForm.valor)
     const saldo = saldoOS(selectedOs)
@@ -872,6 +880,7 @@ export default function Atendimento() {
 
   const confirmarEntrega = async () => {
     if (!deliveryPrompt) return
+    if (!canDeliver) return toast.error('Sem permissao para entregar OS')
     setSaving(true)
     try {
       await api.patch(`/ordens/${deliveryPrompt.id}/status`, {
@@ -899,6 +908,7 @@ export default function Atendimento() {
 
   const printCreatedOS = async (copies) => {
     if (!createdOS?.id) return closeCreatedOSPrompt()
+    if (!canPrintOS) return toast.error('Sem permissao para imprimir OS')
     setPrintingCopies(copies)
     try {
       const res = await printOrdem(api, createdOS.id, copies)
@@ -919,6 +929,7 @@ export default function Atendimento() {
 
   const venderAvulso = async e => {
     e.preventDefault()
+    if (!canReceive) return toast.error('Sem permissao para registrar venda')
     const total = totalItens(saleItems)
     if (!saleItems.length) return toast.error('Inclua ao menos um item.')
     if (!(total > 0)) return toast.error('Informe o valor dos itens.')
@@ -1356,12 +1367,16 @@ export default function Atendimento() {
               <button type="button" className="btn btn-primary" onClick={viewCreatedOS} style={{ justifyContent: 'center' }}>
                 <Eye size={16} /> Visualizar OS
               </button>
-              <button type="button" className="btn btn-secondary" disabled={printingCopies !== null} onClick={() => printCreatedOS(1)} style={{ justifyContent: 'center' }}>
-                <Printer size={16} /> {printingCopies === 1 ? 'Imprimindo...' : 'Imprimir 1 via'}
-              </button>
-              <button type="button" className="btn btn-secondary" disabled={printingCopies !== null} onClick={() => printCreatedOS(2)} style={{ justifyContent: 'center' }}>
-                <Printer size={16} /> {printingCopies === 2 ? 'Imprimindo...' : 'Imprimir 2 vias'}
-              </button>
+              {canPrintOS && (
+                <>
+                  <button type="button" className="btn btn-secondary" disabled={printingCopies !== null} onClick={() => printCreatedOS(1)} style={{ justifyContent: 'center' }}>
+                    <Printer size={16} /> {printingCopies === 1 ? 'Imprimindo...' : 'Imprimir 1 via'}
+                  </button>
+                  <button type="button" className="btn btn-secondary" disabled={printingCopies !== null} onClick={() => printCreatedOS(2)} style={{ justifyContent: 'center' }}>
+                    <Printer size={16} /> {printingCopies === 2 ? 'Imprimindo...' : 'Imprimir 2 vias'}
+                  </button>
+                </>
+              )}
             </div>
             <div className="modal-footer">
               <button type="button" className="btn btn-ghost" onClick={closeCreatedOSPrompt}>Fechar</button>

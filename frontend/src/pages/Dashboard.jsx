@@ -206,7 +206,8 @@ const gradientPlugin = {
 export default function Dashboard() {
   const navigate = useNavigate()
   const { kpis: live, online } = useKpiStream()
-  const { isAdmin } = useAuth() || {}
+  const { can } = useAuth() || {}
+  const canViewIntegridade = typeof can === 'function' && can('dashboard.integridade')
 
   const [mesSel, setMesSel] = useState(getMesPadrao)
   const [dados, setDados]   = useState(null)
@@ -228,7 +229,7 @@ export default function Dashboard() {
       ])
       setDados(rRes.data)
       setOrdens(rOrdens.data?.ordens || rOrdens.data || [])
-      if (isAdmin) {
+      if (canViewIntegridade) {
         const rIntegridade = await api.get('/kpis/integridade', { skipGlobalErrorToast: true }).catch(() => ({ data: null }))
         setIntegridadeResumo(rIntegridade.data)
       } else {
@@ -239,7 +240,7 @@ export default function Dashboard() {
     } finally {
       setLoading(false)
     }
-  }, [isAdmin, mesSel])
+  }, [canViewIntegridade, mesSel])
 
   useEffect(() => { load() }, [load])
 
@@ -492,7 +493,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {isAdmin && integridadeResumo?.meta?.total > 0 && (
+      {canViewIntegridade && integridadeResumo?.meta?.total > 0 && (
         <IntegridadeResumoPanel resumo={integridadeResumo} onNavigate={navigate} />
       )}
 

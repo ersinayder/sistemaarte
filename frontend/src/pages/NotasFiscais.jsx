@@ -313,7 +313,7 @@ function IntegridadeFiscalFinanceiraPanel({ itens, onRefresh, onAudit }) {
   )
 }
 
-function ModalAuditoriaIntegridadeFiscalFinanceira({ apontamento, onClose, isAdmin, onConciliado }) {
+function ModalAuditoriaIntegridadeFiscalFinanceira({ apontamento, onClose, canConciliar, onConciliado }) {
   const [detalhe, setDetalhe] = useState(null)
   const [loading, setLoading] = useState(true)
   const [motivoConciliacao, setMotivoConciliacao] = useState('NF-e emitida sem impacto no caixa da OS.')
@@ -338,7 +338,7 @@ function ModalAuditoriaIntegridadeFiscalFinanceira({ apontamento, onClose, isAdm
   const ordem = detalhe?.ordem || {}
   const fiscal = detalhe?.fiscal || {}
   const apontamentos = detalhe?.apontamentos || []
-  const podeConciliar = isAdmin && apontamentos.some(item => item.tipo === 'nfe_total_divergente')
+  const podeConciliar = canConciliar && apontamentos.some(item => item.tipo === 'nfe_total_divergente')
 
   const handleConciliar = async () => {
     if (!podeConciliar) return
@@ -1587,7 +1587,7 @@ function ModalEmitirLegacy({ onClose, onSuccess }) {
   )
 }
 
-function ModalDetalhe({ nfe, onClose }) {
+function ModalDetalhe({ nfe, onClose, canXml, canDanfe }) {
   const [eventos, setEventos] = useState([])
   const [loadingEventos, setLoadingEventos] = useState(false)
 
@@ -1676,10 +1676,10 @@ function ModalDetalhe({ nfe, onClose }) {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-2)' }}>
                 <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Eventos fiscais</div>
                 <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                  {nfe.nfe_chave && nfe.nfe_status !== 'rejeitado' && (
+                  {canXml && nfe.nfe_chave && nfe.nfe_status !== 'rejeitado' && (
                     <button className="btn btn-ghost btn-sm" onClick={baixarXmlAutorizacao}>XML autorizacao</button>
                   )}
-                  {['autorizado', 'cancelado'].includes(nfe.nfe_status) && nfe.nfe_chave && (
+                  {canDanfe && ['autorizado', 'cancelado'].includes(nfe.nfe_status) && nfe.nfe_chave && (
                     <button className="btn btn-ghost btn-sm" onClick={() => baixarDanfe(nfe.nfe_chave)} title="Baixar DANFE em PDF">DANFE</button>
                   )}
                 </div>
@@ -1697,7 +1697,7 @@ function ModalDetalhe({ nfe, onClose }) {
                           <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800 }}>{EVENTO_LABEL[ev.tipo] || ev.tipo} {ev.tipo === 'cce' ? `#${ev.nseqevento}` : ''}</div>
                           <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: 2 }}>{fmtDate(ev.createdat)} · cStat {ev.cstat || '—'} · protocolo {ev.protocolo || '—'}</div>
                         </div>
-                        {ev.tem_xml ? (
+                        {canXml && ev.tem_xml ? (
                           <button className="btn btn-ghost btn-sm" onClick={() => baixarXmlEvento(ev)}>XML</button>
                         ) : null}
                       </div>
@@ -1939,7 +1939,17 @@ function ModalExportacaoNFe({ onClose }) {
 
 export default function NotasFiscais({ lixeira = false }) {
   const navigate = useNavigate()
-  const { isAdmin } = useAuth() || {}
+  const { can } = useAuth() || {}
+  const canEmitir = typeof can === 'function' && can('nfe.emitir')
+  const canCancelar = typeof can === 'function' && can('nfe.cancelar')
+  const canCce = typeof can === 'function' && can('nfe.cce')
+  const canXml = typeof can === 'function' && can('nfe.xml')
+  const canDanfe = typeof can === 'function' && can('nfe.danfe')
+  const canLixeira = typeof can === 'function' && can('nfe.lixeira')
+  const canInutilizar = typeof can === 'function' && can('nfe.inutilizar')
+  const canIntegridade = typeof can === 'function' && can('nfe.integridade')
+  const canExportar = typeof can === 'function' && can('nfe.exportar')
+  const canConciliar = typeof can === 'function' && can('nfe.conciliar')
   const [notas, setNotas]             = useState([])
   const [nfeMeta, setNfeMeta]         = useState({ ambiente: null, autorizadas_homologacao: 0, alvo_homologacao: HOMOLOGACAO_ALVO })
   const [loading, setLoading]         = useState(true)
@@ -1957,22 +1967,30 @@ export default function NotasFiscais({ lixeira = false }) {
   const [filtroStatus, setFiltroStatus] = useState('todos')
 
   const carregarPendenciasFiscais = useCallback(async () => {
+    if (!canIntegridade) {
+      setPendenciasFiscais([])
+      return
+    }
     try {
       const r = await api.get('/nfe/pendencias', { skipGlobalErrorToast: true })
       setPendenciasFiscais(r.data?.pendencias || [])
     } catch {
       setPendenciasFiscais([])
     }
-  }, [])
+  }, [canIntegridade])
 
   const carregarIntegridadeFiscalFinanceira = useCallback(async () => {
+    if (!canIntegridade) {
+      setIntegridadeFiscalFinanceira([])
+      return
+    }
     try {
       const r = await api.get('/nfe/integridade-financeira', { skipGlobalErrorToast: true })
       setIntegridadeFiscalFinanceira(r.data?.itens || [])
     } catch {
       setIntegridadeFiscalFinanceira([])
     }
-  }, [])
+  }, [canIntegridade])
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -1984,21 +2002,27 @@ export default function NotasFiscais({ lixeira = false }) {
         setPendenciasFiscais([])
         setIntegridadeFiscalFinanceira([])
       } else {
-        await carregarPendenciasFiscais()
-        await carregarIntegridadeFiscalFinanceira()
+        if (canIntegridade) {
+          await carregarPendenciasFiscais()
+          await carregarIntegridadeFiscalFinanceira()
+        }
       }
     } catch {
       toast.error(lixeira ? 'Erro ao carregar lixeira de NF-e' : 'Erro ao carregar notas fiscais')
     } finally {
       setLoading(false)
     }
-  }, [carregarIntegridadeFiscalFinanceira, carregarPendenciasFiscais, lixeira])
+  }, [canIntegridade, carregarIntegridadeFiscalFinanceira, carregarPendenciasFiscais, lixeira])
 
   useEffect(() => { carregar() }, [carregar])
 
-  const emitirNota = (nota) => setModalEmitir({ ordemInicial: nota })
+  const emitirNota = (nota) => {
+    if (!canEmitir) return toast.error('Sem permissao para emitir NF-e')
+    setModalEmitir({ ordemInicial: nota })
+  }
 
   const moverParaLixeira = async (nota) => {
+    if (!canLixeira) return toast.error('Sem permissao para mover NF-e para lixeira')
     if (nota.nfe_status !== 'rejeitado') {
       toast.error('Somente NF-e rejeitada pode ir para a lixeira')
       return
@@ -2014,6 +2038,7 @@ export default function NotasFiscais({ lixeira = false }) {
   }
 
   const restaurarNota = async (nota) => {
+    if (!canLixeira) return toast.error('Sem permissao para restaurar NF-e')
     try {
       await api.post(`/nfe/${nota.id}/restore`)
       toast.success('NF-e restaurada')
@@ -2024,6 +2049,7 @@ export default function NotasFiscais({ lixeira = false }) {
   }
 
   const baixarXmlAutorizacao = async (nota) => {
+    if (!canXml) return toast.error('Sem permissao para baixar XML')
     try {
       await baixarArquivo(`/nfe/${nota.nfe_chave}/xml/autorizacao`, `${nota.nfe_chave}.xml`)
     } catch (e) {
@@ -2075,22 +2101,22 @@ export default function NotasFiscais({ lixeira = false }) {
             </button>
           ) : (
             <>
-              <button className="btn btn-ghost" onClick={() => setModalExportacao(true)} style={{ gap: 'var(--space-2)' }}>
+              {canExportar && <button className="btn btn-ghost" onClick={() => setModalExportacao(true)} style={{ gap: 'var(--space-2)' }}>
                 <Download size={16} /> Exportar
-              </button>
-              {isAdmin && (
+              </button>}
+              {canLixeira && (
                 <button className="btn btn-ghost" onClick={() => navigate('/nfe/lixeira')} style={{ gap: 'var(--space-2)' }}>
                   <Trash2 size={16} /> Lixeira
                 </button>
               )}
-              {isAdmin && (
+              {canInutilizar && (
                 <button className="btn btn-ghost" onClick={() => setModalInutilizacao(true)} style={{ gap: 'var(--space-2)' }}>
                   <FileWarning size={16} /> Inutilizar numeração
                 </button>
               )}
-              <button className="btn btn-primary" onClick={() => setModalEmitir({})} style={{ gap: 'var(--space-2)' }}>
+              {canEmitir && <button className="btn btn-primary" onClick={() => setModalEmitir({})} style={{ gap: 'var(--space-2)' }}>
                 <Plus size={16} /> Emitir NF-e
-              </button>
+              </button>}
             </>
           )}
         </div>
@@ -2127,11 +2153,11 @@ export default function NotasFiscais({ lixeira = false }) {
         </div>
       </div>}
 
-      {!lixeira && pendenciasFiscais.length > 0 && (
+      {canIntegridade && !lixeira && pendenciasFiscais.length > 0 && (
         <PendenciasFiscaisPanel pendencias={pendenciasFiscais} onRefresh={carregarPendenciasFiscais} onAudit={setAuditoriaPendencia} />
       )}
 
-      {!lixeira && integridadeFiscalFinanceira.length > 0 && (
+      {canIntegridade && !lixeira && integridadeFiscalFinanceira.length > 0 && (
         <IntegridadeFiscalFinanceiraPanel itens={integridadeFiscalFinanceira} onRefresh={carregarIntegridadeFiscalFinanceira} onAudit={setAuditoriaIntegridadeFiscalFinanceira} />
       )}
 
@@ -2211,28 +2237,28 @@ export default function NotasFiscais({ lixeira = false }) {
                   </td>
                   <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
                     <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end', alignItems: 'center', whiteSpace: 'nowrap' }}>
-                      {lixeira ? (
+                      {lixeira && canLixeira ? (
                         <button className="btn btn-ghost btn-sm" onClick={() => restaurarNota(n)} title="Restaurar NF-e">
                           <RotateCcw size={14} /> Restaurar
                         </button>
                       ) : n.nfe_status === 'autorizado' && (
                         <>
-                          <button className="btn btn-ghost btn-sm" onClick={() => setCceNota(n)} title="Emitir CC-e">CC-e</button>
-                          <button className="btn btn-ghost btn-sm" onClick={() => baixarXmlAutorizacao(n)} title="Baixar XML autorizado">XML</button>
-                          <button className="btn btn-ghost btn-sm" onClick={() => baixarDanfe(n.nfe_chave)} title="Baixar DANFE em PDF">DANFE</button>
-                          <button className="btn btn-ghost btn-sm" onClick={() => setCancelarNota(n)} title="Cancelar NF-e">Cancelar</button>
+                          {canCce && <button className="btn btn-ghost btn-sm" onClick={() => setCceNota(n)} title="Emitir CC-e">CC-e</button>}
+                          {canXml && <button className="btn btn-ghost btn-sm" onClick={() => baixarXmlAutorizacao(n)} title="Baixar XML autorizado">XML</button>}
+                          {canDanfe && <button className="btn btn-ghost btn-sm" onClick={() => baixarDanfe(n.nfe_chave)} title="Baixar DANFE em PDF">DANFE</button>}
+                          {canCancelar && <button className="btn btn-ghost btn-sm" onClick={() => setCancelarNota(n)} title="Cancelar NF-e">Cancelar</button>}
                         </>
                       )}
                       {!lixeira && n.nfe_status === 'cancelado' && n.nfe_chave && (
                         <>
-                          <button className="btn btn-ghost btn-sm" onClick={() => baixarXmlAutorizacao(n)} title="Baixar XML autorizado">XML</button>
-                          <button className="btn btn-ghost btn-sm" onClick={() => baixarDanfe(n.nfe_chave)} title="Baixar DANFE em PDF">DANFE</button>
+                          {canXml && <button className="btn btn-ghost btn-sm" onClick={() => baixarXmlAutorizacao(n)} title="Baixar XML autorizado">XML</button>}
+                          {canDanfe && <button className="btn btn-ghost btn-sm" onClick={() => baixarDanfe(n.nfe_chave)} title="Baixar DANFE em PDF">DANFE</button>}
                         </>
                       )}
-                      {!lixeira && ['rejeitado', 'cancelado'].includes(n.nfe_status) && STATUS_NFE_EMISSAO.includes(n.status) && (
+                      {!lixeira && canEmitir && ['rejeitado', 'cancelado'].includes(n.nfe_status) && STATUS_NFE_EMISSAO.includes(n.status) && (
                         <button className="btn btn-ghost btn-sm" onClick={() => emitirNota(n)} title="Emitir novamente">Reemitir</button>
                       )}
-                      {!lixeira && n.nfe_status === 'rejeitado' && (
+                      {!lixeira && canLixeira && n.nfe_status === 'rejeitado' && (
                         <button className="btn btn-ghost btn-sm" onClick={() => moverParaLixeira(n)} title="Mover rejeicao para a lixeira">
                           <Trash2 size={14} /> Excluir
                         </button>
@@ -2254,14 +2280,14 @@ export default function NotasFiscais({ lixeira = false }) {
         )}
       </div>
 
-      {modalEmitir && <ModalEmitir ordemInicial={modalEmitir.ordemInicial} onClose={() => setModalEmitir(null)} onSuccess={carregar} />}
-      {detalhe && <ModalDetalhe nfe={detalhe} onClose={() => setDetalhe(null)} />}
-      {cancelarNota && <ModalCancelamento nfe={cancelarNota} onClose={() => setCancelarNota(null)} onSuccess={carregar} />}
-      {cceNota && <ModalCCE nfe={cceNota} onClose={() => setCceNota(null)} onSuccess={carregar} />}
+      {canEmitir && modalEmitir && <ModalEmitir ordemInicial={modalEmitir.ordemInicial} onClose={() => setModalEmitir(null)} onSuccess={carregar} />}
+      {detalhe && <ModalDetalhe nfe={detalhe} onClose={() => setDetalhe(null)} canXml={canXml} canDanfe={canDanfe} />}
+      {canCancelar && cancelarNota && <ModalCancelamento nfe={cancelarNota} onClose={() => setCancelarNota(null)} onSuccess={carregar} />}
+      {canCce && cceNota && <ModalCCE nfe={cceNota} onClose={() => setCceNota(null)} onSuccess={carregar} />}
       {auditoriaPendencia && <ModalAuditoriaPendenciaFiscal pendencia={auditoriaPendencia} onClose={() => setAuditoriaPendencia(null)} />}
-      {auditoriaIntegridadeFiscalFinanceira && <ModalAuditoriaIntegridadeFiscalFinanceira apontamento={auditoriaIntegridadeFiscalFinanceira} onClose={() => setAuditoriaIntegridadeFiscalFinanceira(null)} isAdmin={isAdmin} onConciliado={() => carregarIntegridadeFiscalFinanceira()} />}
-      {modalExportacao && <ModalExportacaoNFe onClose={() => setModalExportacao(false)} />}
-      <InutilizacaoModal open={modalInutilizacao} onClose={() => setModalInutilizacao(false)} onSuccess={carregar} />
+      {auditoriaIntegridadeFiscalFinanceira && <ModalAuditoriaIntegridadeFiscalFinanceira apontamento={auditoriaIntegridadeFiscalFinanceira} onClose={() => setAuditoriaIntegridadeFiscalFinanceira(null)} canConciliar={canConciliar} onConciliado={() => carregarIntegridadeFiscalFinanceira()} />}
+      {canExportar && modalExportacao && <ModalExportacaoNFe onClose={() => setModalExportacao(false)} />}
+      {canInutilizar && <InutilizacaoModal open={modalInutilizacao} onClose={() => setModalInutilizacao(false)} onSuccess={carregar} />}
     </div>
   )
 }

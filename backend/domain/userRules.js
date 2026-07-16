@@ -1,5 +1,6 @@
 function validarSenhaUsuario(password, { required = false } = {}) {
   const value = String(password ?? "");
+  const trimmed = value.trim();
 
   if (!value) {
     return required
@@ -7,7 +8,11 @@ function validarSenhaUsuario(password, { required = false } = {}) {
       : { ok: true };
   }
 
-  if (value.length < 8) {
+  if (!trimmed) {
+    return { ok: false, error: "Senha nao pode conter apenas espacos" };
+  }
+
+  if (trimmed.length < 8) {
     return { ok: false, error: "Senha deve ter pelo menos 8 caracteres" };
   }
 
@@ -19,16 +24,60 @@ function validarAlteracaoProprioUsuario({
   targetId,
   currentRole,
   nextRole,
+  currentProfileKey,
+  nextProfileKey,
   nextActive,
+  hasPassword = false,
 }) {
   if (Number(requesterId) !== Number(targetId)) return { ok: true };
+
+  if (hasPassword) {
+    return { ok: false, error: "Voce nao pode resetar sua propria senha por esta tela" };
+  }
 
   if (currentRole !== nextRole) {
     return { ok: false, error: "Voce nao pode alterar seu proprio perfil" };
   }
 
+  if (currentProfileKey && nextProfileKey && currentProfileKey !== nextProfileKey) {
+    return { ok: false, error: "Voce nao pode alterar seu proprio perfil de permissoes" };
+  }
+
   if (Number(nextActive) !== 1) {
     return { ok: false, error: "Voce nao pode desativar seu proprio usuario" };
+  }
+
+  return { ok: true };
+}
+
+const SELF_ACTION_ERRORS = {
+  archive: "Voce nao pode arquivar seu proprio usuario",
+  restore: "Voce nao pode restaurar seu proprio usuario",
+  reset_password: "Voce nao pode resetar sua propria senha por esta tela",
+  delete_permanent: "Voce nao pode excluir permanentemente seu proprio usuario",
+};
+
+function validarAcaoProprioUsuario({ requesterId, targetId, action }) {
+  if (Number(requesterId) !== Number(targetId)) return { ok: true };
+  return { ok: false, error: SELF_ACTION_ERRORS[action] || "Acao nao permitida para o proprio usuario" };
+}
+
+function isAdminDisponivel(user) {
+  return user?.role === "admin" && Number(user.active) === 1 && !user.deletedat;
+}
+
+function validarUltimoAdminDisponivel({
+  targetRole,
+  targetActive,
+  targetDeletedat,
+  activeAdminCount,
+  action,
+}) {
+  const targetIsAvailableAdmin = targetRole === "admin" && Number(targetActive) === 1 && !targetDeletedat;
+  const actionRemovesAvailability = ["archive", "deactivate", "delete_permanent", "change_role"].includes(action);
+
+  if (targetIsAvailableAdmin && actionRemovesAvailability && Number(activeAdminCount) <= 1) {
+    return { ok: false, error: "Nao e possivel remover o ultimo administrador ativo" };
   }
 
   return { ok: true };
@@ -43,7 +92,22 @@ function validarSessaoUsuario(payload, usuarioAtual) {
     return { ok: false, status: 401, error: "Usuario inativo" };
   }
 
-  if (usuarioAtual.role !== payload?.role) {
+  if (usuarioAtual.deletedat) {
+    return { ok: false, status: 401, error: "Usuario arquivado" };
+  }
+
+  if (usuarioAtual.profile_active != null && Number(usuarioAtual.profile_active) !== 1) {
+    return { ok: false, status: 401, error: "Perfil inativo" };
+  }
+
+  const currentAccessVersion = Number(usuarioAtual.access_version || 1);
+  const tokenAccessVersion = payload?.accessVersion == null ? 1 : Number(payload.accessVersion);
+
+  if (tokenAccessVersion !== currentAccessVersion) {
+    return { ok: false, status: 401, error: "Sessao desatualizada. Entre novamente." };
+  }
+
+  if (payload?.role && usuarioAtual.role !== payload.role) {
     return { ok: false, status: 401, error: "Sessao desatualizada. Entre novamente." };
   }
 
@@ -53,5 +117,8 @@ function validarSessaoUsuario(payload, usuarioAtual) {
 module.exports = {
   validarSenhaUsuario,
   validarAlteracaoProprioUsuario,
+  validarAcaoProprioUsuario,
+  validarUltimoAdminDisponivel,
+  isAdminDisponivel,
   validarSessaoUsuario,
 };

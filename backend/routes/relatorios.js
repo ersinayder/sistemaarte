@@ -1,6 +1,6 @@
 const router = require("express").Router();
 const { getAll, getOne } = require("../database");
-const { auth } = require("../middlewares/auth");
+const { auth, authPermission } = require("../middlewares/auth");
 const { hoje } = require("../utils/dates");
 const { toNumber } = require("../utils/numbers");
 const { normalizarPagamento } = require("../domain/pagamentosRules");
@@ -12,7 +12,7 @@ const FILTRO_ATIVO = `
   AND (l.ordemid IS NULL OR (SELECT deletedat FROM ordens WHERE id=l.ordemid) IS NULL)
 `;
 
-router.get("/resumo", auth(["admin","caixa"]), (req, res, next) => {
+router.get("/resumo", auth(), authPermission("relatorios.ver"), (req, res, next) => {
   try {
     const { mes } = req.query;
     if (!mes) return res.status(400).json({ error: "Informe o mês YYYY-MM" });
@@ -73,7 +73,7 @@ router.get("/resumo", auth(["admin","caixa"]), (req, res, next) => {
 });
 
 // GET /api/relatorios/producao?mes=YYYY-MM
-router.get("/producao", auth(["admin"]), (req, res, next) => {
+router.get("/producao", auth(), authPermission("relatorios.producao"), (req, res, next) => {
   try {
     const { mes } = req.query;
     if (!mes) return res.status(400).json({ error: "Informe o mes YYYY-MM" });
@@ -162,7 +162,7 @@ router.get("/producao", auth(["admin"]), (req, res, next) => {
   } catch(e) { next(e); }
 });
 
-router.get("/producao/pdf", auth(["admin"]), (req, res, next) => {
+router.get("/producao/pdf", auth(), authPermission("relatorios.producao"), (req, res, next) => {
   try {
     const { mes } = req.query;
     if (!mes) return res.status(400).json({ error: "Informe o mes YYYY-MM" });

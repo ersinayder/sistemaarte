@@ -90,10 +90,11 @@ function AvancarBtn({ ordem, colColor, onAvancar }) {
 }
 
 export default function Oficina() {
-  const { user } = useAuth();
+  const { can } = useAuth();
   const navigate  = useNavigate();
-  const canEdit    = user?.role === 'admin' || user?.role === 'oficina' || user?.role === 'caixa';
-  const showValor  = user?.role !== 'oficina';
+  const canEdit    = typeof can === 'function' && (can('oficina.alterar_status') || can('ordens.alterar_status'));
+  const canWhatsapp = typeof can === 'function' && can('ordens.whatsapp');
+  const showValor  = typeof can === 'function' && (can('atendimento.ver') || can('caixa.ver') || can('financeiro.ver') || can('nfe.ver'));
 
   const [ordens,      setOrdens]      = useState([]);
   const [loading,     setLoading]     = useState(true);
@@ -162,6 +163,7 @@ export default function Oficina() {
   const abrirAvisoWhatsapp = useCallback(async (e, ordem, aviso) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!canWhatsapp) return toast.error('Sem permissao para avisos de WhatsApp');
     if (!aviso?.tipo || openingAviso) return;
 
     setOpeningAviso(`${ordem.id}:${aviso.tipo}`);
@@ -184,11 +186,12 @@ export default function Oficina() {
     } finally {
       setOpeningAviso(null);
     }
-  }, [copiarMensagem, openingAviso, updateAvisoLocal]);
+  }, [canWhatsapp, copiarMensagem, openingAviso, updateAvisoLocal]);
 
   const marcarAvisoWhatsapp = useCallback(async (e, ordem, aviso, status) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!canWhatsapp) return toast.error('Sem permissao para avisos de WhatsApp');
     setWhatsappMenu(null);
     try {
       const { data } = await api.patch(`/ordens/${ordem.id}/whatsapp-avisos/${aviso.tipo}/status`, { status });
@@ -197,7 +200,7 @@ export default function Oficina() {
     } catch (err) {
       toast.error(err.response?.data?.error || 'Erro ao atualizar aviso');
     }
-  }, [updateAvisoLocal]);
+  }, [canWhatsapp, updateAvisoLocal]);
 
   const recover = useCallback(async () => {
     setLoading(true);
@@ -210,6 +213,7 @@ export default function Oficina() {
   }, []);
 
   const avancarStatus = useCallback(async (ordem) => {
+    if (!canEdit) return toast.error('Sem permissao para alterar status');
     const novoStatus = STATUSNEXT[ordem.status];
     if (!novoStatus) return;
     const snapshot = ordens;
@@ -221,7 +225,7 @@ export default function Oficina() {
       setOrdens(snapshot);
       alert(e?.response?.data?.error || 'Erro ao avançar status');
     }
-  }, [load, ordens, today]);
+  }, [canEdit, load, ordens, today]);
 
   const onDragStart = useCallback((e, id) => {
     setDraggingId(id);
@@ -259,6 +263,7 @@ export default function Oficina() {
 
   const onDrop = useCallback(async (e, novoStatus) => {
     e.preventDefault();
+    if (!canEdit) return toast.error('Sem permissao para alterar status');
     const id = e.dataTransfer.getData('ordemId');
     setDraggingId(null);
     setDragOverCol(null);
@@ -274,7 +279,7 @@ export default function Oficina() {
       setOrdens(snapshot);
       alert(e?.response?.data?.error || 'Erro ao mover');
     }
-  }, [ordens, load, today]);
+  }, [canEdit, ordens, load, today]);
 
   const porStatus = useCallback((col) => {
     return ordens.filter(o => {
@@ -291,6 +296,7 @@ export default function Oficina() {
   }, [ordens]);
 
   const WhatsappAvisoTag = ({ ordem }) => {
+    if (!canWhatsapp) return null;
     const aviso = ordem.whatsappAvisoPrincipal;
     if (!aviso) return null;
 

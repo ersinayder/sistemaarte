@@ -1,11 +1,11 @@
 const express = require('express');
 const router  = express.Router();
 const { getAll, getOne, run, runInsert } = require('../database');
-const { auth } = require('../middlewares/auth');
+const { auth, authPermission } = require('../middlewares/auth');
 const { toNumber } = require('../utils/numbers');
 
 // GET /api/produtos?q=termo
-router.get('/', auth(['admin','caixa']), (req, res, next) => {
+router.get('/', auth(), authPermission('produtos.ver'), (req, res, next) => {
   try {
     const { q } = req.query;
     let rows;
@@ -23,7 +23,7 @@ router.get('/', auth(['admin','caixa']), (req, res, next) => {
 });
 
 // GET /api/produtos/:id
-router.get('/:id', auth(['admin','caixa']), (req, res, next) => {
+router.get('/:id', auth(), authPermission('produtos.ver'), (req, res, next) => {
   try {
     const row = getOne('SELECT * FROM produtos WHERE id=? AND deletedat IS NULL', [req.params.id]);
     if (!row) return res.status(404).json({ error: 'Nao encontrado' });
@@ -32,7 +32,7 @@ router.get('/:id', auth(['admin','caixa']), (req, res, next) => {
 });
 
 // POST /api/produtos
-router.post('/', auth(['admin','caixa']), (req, res, next) => {
+router.post('/', auth(), authPermission('produtos.criar'), (req, res, next) => {
   try {
     const {
       nome, categoria, unidade, preco, estoque, estoquemin, descricao,
@@ -63,7 +63,7 @@ router.post('/', auth(['admin','caixa']), (req, res, next) => {
 });
 
 // PUT /api/produtos/:id
-router.put('/:id', auth(['admin','caixa']), (req, res, next) => {
+router.put('/:id', auth(), authPermission('produtos.editar'), (req, res, next) => {
   try {
     const {
       nome, categoria, unidade, preco, estoque, estoquemin, descricao,
@@ -96,7 +96,7 @@ router.put('/:id', auth(['admin','caixa']), (req, res, next) => {
 });
 
 // DELETE /api/produtos/:id  →  soft-delete com registro de quem deletou
-router.delete('/:id', auth(['admin']), (req, res, next) => {
+router.delete('/:id', auth(), authPermission('produtos.excluir'), (req, res, next) => {
   try {
     const result = run(
       `UPDATE produtos SET deletedat=datetime('now','localtime'), deletedpor=? WHERE id=? AND deletedat IS NULL`,

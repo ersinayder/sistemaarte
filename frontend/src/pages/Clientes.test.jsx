@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import api from '../services/api'
 import Clientes from './Clientes'
 
+let authState
+
 vi.mock('../services/api', () => ({
   default: {
     get: vi.fn(),
@@ -14,7 +16,7 @@ vi.mock('../services/api', () => ({
 }))
 
 vi.mock('../context/AuthContext', () => ({
-  useAuth: () => ({ user: { role: 'admin' } }),
+  useAuth: () => authState,
 }))
 
 vi.mock('react-router-dom', () => ({
@@ -70,6 +72,9 @@ function setupApi() {
 describe('Clientes', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    authState = {
+      can: () => true,
+    }
     setupApi()
   })
 
@@ -88,5 +93,18 @@ describe('Clientes', () => {
     expect(screen.getByPlaceholderText(/^Bairro$/i)).toHaveValue('IGUACU')
     expect(screen.getByPlaceholderText(/^Cidade$/i)).toHaveValue('IPATINGA')
     expect(screen.getByRole('combobox')).toHaveValue('MG')
+  })
+
+  it('esconde acoes de cadastro quando usuario tem apenas clientes.ver', async () => {
+    authState = {
+      can: (permission) => permission === 'clientes.ver',
+    }
+
+    render(<Clientes />)
+
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith('/clientes?page=1&limit=25')
+    })
+    expect(screen.queryByRole('button', { name: /novo cliente/i })).not.toBeInTheDocument()
   })
 })

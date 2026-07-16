@@ -1,6 +1,6 @@
 const router = require("express").Router();
 const { getAll, getOne, run, runInsert, transaction, getDB } = require("../database");
-const { auth } = require("../middlewares/auth");
+const { auth, authPermission } = require("../middlewares/auth");
 const { toNumber } = require("../utils/numbers");
 const { hoje } = require("../utils/dates");
 const {
@@ -18,7 +18,7 @@ const {
 const { sendPrintHtml } = require("../utils/print/base");
 
 // GET /api/caixa
-router.get("/", auth(["admin","caixa"]), (req, res, next) => {
+router.get("/", auth(), authPermission("caixa.ver"), (req, res, next) => {
   try {
     const { data, mes } = req.query;
     let sql = `SELECT l.*,
@@ -41,7 +41,7 @@ router.get("/", auth(["admin","caixa"]), (req, res, next) => {
 });
 
 // GET /api/caixa/fechamento?data=YYYY-MM-DD
-router.get("/fechamento", auth(["admin","caixa"]), (req, res, next) => {
+router.get("/fechamento", auth(), authPermission("caixa.fechamento"), (req, res, next) => {
   try {
     const data = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.data || ""))
       ? String(req.query.data)
@@ -69,7 +69,7 @@ router.get("/fechamento", auth(["admin","caixa"]), (req, res, next) => {
 });
 
 // POST /api/caixa
-router.post("/", auth(["admin","caixa"]), (req, res, next) => {
+router.post("/", auth(), authPermission("caixa.criar_lancamento"), (req, res, next) => {
   try {
     const { data, tipo, categoria, descricao, pagamento, valor, pago, ordemid, itens } = req.body ?? {};
     const itensVenda = normalizarItensVendaAvulsa(itens);
@@ -129,7 +129,7 @@ router.post("/", auth(["admin","caixa"]), (req, res, next) => {
 });
 
 // PUT /api/caixa/:id
-router.put("/:id", auth(["admin","caixa"]), (req, res, next) => {
+router.put("/:id", auth(), authPermission("caixa.editar_lancamento"), (req, res, next) => {
   try {
     const service = createCaixaLancamentoService({ db: getDB() });
     res.json(service.editar(req.params.id, req.body ?? {}, req.user));
@@ -145,7 +145,7 @@ router.put("/:id", auth(["admin","caixa"]), (req, res, next) => {
 });
 
 // DELETE /api/caixa/:id  — soft delete com auditoria
-router.delete("/:id", auth(["admin"]), (req, res, next) => {
+router.delete("/:id", auth(), authPermission("caixa.excluir_lancamento"), (req, res, next) => {
   try {
     const old = getOne("SELECT * FROM lancamentos WHERE id=? AND deletedat IS NULL", [req.params.id]);
     if (!old) return res.status(404).json({ error: "Lancamento nao encontrado." });

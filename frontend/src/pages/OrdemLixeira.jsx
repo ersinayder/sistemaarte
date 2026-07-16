@@ -2,11 +2,15 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 const fmtD = d => { if (!d) return '—'; const [y,m,dia]=d.slice(0,10).split('-'); return `${dia}/${m}/${y}`; };
 
 export default function OrdemLixeira() {
   const navigate = useNavigate();
+  const { can } = useAuth();
+  const canRestore = typeof can === 'function' && can('ordens.restaurar');
+  const canDeletePermanent = typeof can === 'function' && can('ordens.excluir_permanente');
   const [ordens,  setOrdens]  = useState([]);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(null);
@@ -125,24 +129,28 @@ export default function OrdemLixeira() {
                   </td>
                   <td style={{ padding:'var(--space-2) var(--space-3)' }}>
                     <div style={{ display:'flex', gap:'var(--space-2)', justifyContent:'flex-end' }}>
-                      <button
-                        className="btn btn-secondary"
-                        style={{ fontSize:'var(--text-xs)', display:'flex', alignItems:'center', gap:4 }}
-                        onClick={() => restaurar(o.id)}
-                        disabled={working === o.id}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-                          <path d="M3 3v5h5"/>
-                        </svg>
-                        Restaurar
-                      </button>
-                      <button
-                        className="btn btn-danger"
-                        style={{ fontSize:'var(--text-xs)' }}
-                        onClick={() => excluirPermanente(o.id)}
-                        disabled={working === o.id}>
-                        Excluir
-                      </button>
+                      {canRestore && (
+                        <button
+                          className="btn btn-secondary"
+                          style={{ fontSize:'var(--text-xs)', display:'flex', alignItems:'center', gap:4 }}
+                          onClick={() => restaurar(o.id)}
+                          disabled={working === o.id}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                            <path d="M3 3v5h5"/>
+                          </svg>
+                          Restaurar
+                        </button>
+                      )}
+                      {canDeletePermanent && (
+                        <button
+                          className="btn btn-danger"
+                          style={{ fontSize:'var(--text-xs)' }}
+                          onClick={() => excluirPermanente(o.id)}
+                          disabled={working === o.id}>
+                          Excluir
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

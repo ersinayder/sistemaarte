@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import QRCode from 'qrcode'
 import { CheckCircle2, FileSearch, MessageSquareText, QrCode as QrCodeIcon, RefreshCw, Smartphone, WifiOff } from 'lucide-react'
 import api from '../services/api'
+import { useAuth } from '../context/AuthContext'
 import { buscarEnderecoPorCep, maskCep } from '../utils/cep'
 
 const EMPTY_EMPRESA = {
@@ -111,13 +112,13 @@ const EMPTY_IMPRESSAO = {
 }
 
 const SECTIONS = [
-  { id: 'empresa', label: 'Empresa', desc: 'Dados cadastrais e endereco do emitente.' },
-  { id: 'fiscal', label: 'Fiscal', desc: 'Certificado, ambiente e numeracao fiscal.' },
-  { id: 'whatsapp', label: 'WhatsApp', desc: 'Provedor, token e mensagens automaticas.' },
-  { id: 'impressao', label: 'Impressao', desc: 'Destino da impressora de OS e testes A5.' },
-  { id: 'backups', label: 'Backups', desc: 'Rotina local, offsite e verificacao diaria.' },
-  { id: 'seguranca', label: 'Seguranca', desc: 'Acesso, limites e protecoes da aplicacao.' },
-  { id: 'sistema', label: 'Sistema', desc: 'Parametros gerais e saude operacional.' },
+  { id: 'empresa', label: 'Empresa', desc: 'Dados cadastrais e endereco do emitente.', permissions: ['configuracoes.ver'] },
+  { id: 'fiscal', label: 'Fiscal', desc: 'Certificado, ambiente e numeracao fiscal.', permissions: ['configuracoes.editar_fiscal'] },
+  { id: 'whatsapp', label: 'WhatsApp', desc: 'Provedor, token e mensagens automaticas.', permissions: ['configuracoes.editar_whatsapp'] },
+  { id: 'impressao', label: 'Impressao', desc: 'Destino da impressora de OS e testes A5.', permissions: ['configuracoes.editar_impressao'] },
+  { id: 'backups', label: 'Backups', desc: 'Rotina local, offsite e verificacao diaria.', permissions: ['backups.ver'] },
+  { id: 'seguranca', label: 'Seguranca', desc: 'Acesso, limites e protecoes da aplicacao.', permissions: ['configuracoes.seguranca'] },
+  { id: 'sistema', label: 'Sistema', desc: 'Parametros gerais e saude operacional.', permissions: ['configuracoes.ver'] },
 ]
 
 const digitFields = ['cnpj', 'inscricaoestadual', 'telefone', 'codigomunicipio', 'cep']
@@ -288,6 +289,7 @@ function formatJson(value) {
 }
 
 export default function Configuracoes() {
+  const { can } = useAuth()
   const [activeSection, setActiveSection] = useState('empresa')
   const [empresaForm, setEmpresaForm] = useState(EMPTY_EMPRESA)
   const [loadedEmpresa, setLoadedEmpresa] = useState(EMPTY_EMPRESA)
@@ -334,12 +336,30 @@ export default function Configuracoes() {
   const [sistemaInfo, setSistemaInfo] = useState(null)
   const [loadingSistema, setLoadingSistema] = useState(false)
 
+  const canViewEmpresa = can('configuracoes.ver')
+  const canEditEmpresa = can('configuracoes.editar_empresa')
+  const canEditFiscal = can('configuracoes.editar_fiscal')
+  const canEditWhatsapp = can('configuracoes.editar_whatsapp')
+  const canEditImpressao = can('configuracoes.editar_impressao')
+  const canViewBackups = can('backups.ver') || can('backups.executar')
+  const canRunBackup = can('backups.executar')
+  const canViewSeguranca = can('configuracoes.seguranca')
+  const canViewSistema = can('configuracoes.ver')
+  const visibleSections = useMemo(
+    () => SECTIONS.filter((section) => section.permissions.some((permission) => can(permission))),
+    [can]
+  )
+
   const active = useMemo(
-    () => SECTIONS.find((section) => section.id === activeSection) || SECTIONS[0],
-    [activeSection]
+    () => visibleSections.find((section) => section.id === activeSection) || visibleSections[0] || SECTIONS[0],
+    [activeSection, visibleSections]
   )
 
   const loadConfiguracoes = useCallback(async () => {
+    if (!canViewEmpresa) {
+      setLoading(false)
+      return
+    }
     setLoading(true)
     try {
       const res = await api.get('/configuracoes')
@@ -353,7 +373,7 @@ export default function Configuracoes() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [canViewEmpresa])
 
   const applyFiscalResponse = useCallback((data = {}) => {
     const fiscal = data.fiscal || {}
@@ -481,6 +501,12 @@ export default function Configuracoes() {
   }, [loadConfiguracoes])
 
   useEffect(() => {
+    if (visibleSections.length > 0 && !visibleSections.some((section) => section.id === activeSection)) {
+      setActiveSection(visibleSections[0].id)
+    }
+  }, [activeSection, visibleSections])
+
+  useEffect(() => {
     let mounted = true
     if (!whatsappWebStatus?.qr) {
       setWhatsappQrDataUrl('')
@@ -506,26 +532,32 @@ export default function Configuracoes() {
   }, [whatsappWebStatus?.qr])
 
   useEffect(() => {
-    if (activeSection === 'fiscal' && !fiscalInfo && !loadingFiscal) {
+    if (activeSection === 'fiscal' && canEditFiscal && !fiscalInfo && !loadingFiscal) {
       loadFiscal()
     }
-    if (activeSection === 'whatsapp' && !whatsappInfo && !loadingWhatsapp) {
+    if (activeSection === 'whatsapp' && canEditWhatsapp && !whatsappInfo && !loadingWhatsapp) {
       loadWhatsapp()
     }
-    if (activeSection === 'impressao' && !impressaoInfo && !loadingImpressao) {
+    if (activeSection === 'impressao' && canEditImpressao && !impressaoInfo && !loadingImpressao) {
       loadImpressao()
     }
-    if (activeSection === 'backups' && !backupsInfo && !loadingBackups) {
+    if (activeSection === 'backups' && canViewBackups && !backupsInfo && !loadingBackups) {
       loadBackups()
     }
-    if (activeSection === 'seguranca' && !segurancaInfo && !loadingSeguranca) {
+    if (activeSection === 'seguranca' && canViewSeguranca && !segurancaInfo && !loadingSeguranca) {
       loadSeguranca()
     }
-    if (activeSection === 'sistema' && !sistemaInfo && !loadingSistema) {
+    if (activeSection === 'sistema' && canViewSistema && !sistemaInfo && !loadingSistema) {
       loadSistema()
     }
   }, [
     activeSection,
+    canEditFiscal,
+    canEditImpressao,
+    canEditWhatsapp,
+    canViewBackups,
+    canViewSeguranca,
+    canViewSistema,
     fiscalInfo,
     loadingFiscal,
     loadFiscal,
@@ -549,6 +581,7 @@ export default function Configuracoes() {
   useEffect(() => {
     if (
       activeSection === 'whatsapp' &&
+      canEditWhatsapp &&
       whatsappInfo &&
       whatsappForm.provider === 'web_local' &&
       !whatsappWebStatus &&
@@ -558,6 +591,7 @@ export default function Configuracoes() {
     }
   }, [
     activeSection,
+    canEditWhatsapp,
     whatsappInfo,
     whatsappForm.provider,
     whatsappWebStatus,
@@ -576,6 +610,7 @@ export default function Configuracoes() {
   }
 
   const buscarCepEmpresa = async (value) => {
+    if (!canEditEmpresa) return
     if (digits(value).length !== 8) return
     setCepLoadingEmpresa(true)
     try {
@@ -645,6 +680,7 @@ export default function Configuracoes() {
 
   const saveEmpresa = async (event) => {
     event.preventDefault()
+    if (!canEditEmpresa) return
     setSaving(true)
     setErrors({})
 
@@ -667,6 +703,7 @@ export default function Configuracoes() {
 
   const saveFiscal = async (event, confirmarReducao = false, confirmarProducao = true) => {
     event.preventDefault()
+    if (!canEditFiscal) return
 
     if (confirmarProducao && String(fiscalForm.ambiente) === '1') {
       const ok = window.confirm('Voce esta selecionando ambiente de producao. Confirma que os dados fiscais estao corretos?')
@@ -700,6 +737,7 @@ export default function Configuracoes() {
   }
 
   const uploadCertificado = async () => {
+    if (!canEditFiscal) return
     if (!certFile) {
       toast.error('Selecione um arquivo .pfx')
       return
@@ -725,6 +763,7 @@ export default function Configuracoes() {
   }
 
   const salvarSenhaCertificado = async () => {
+    if (!canEditFiscal) return
     if (!certSenha.trim()) {
       toast.error('Digite a senha do certificado')
       return
@@ -755,6 +794,7 @@ export default function Configuracoes() {
 
   const saveAutXml = async (event) => {
     event.preventDefault()
+    if (!canEditFiscal) return
     setSavingAutXml(true)
     setAutXmlErrors({})
 
@@ -782,12 +822,14 @@ export default function Configuracoes() {
   }
 
   const editAutXml = (item) => {
+    if (!canEditFiscal) return
     setEditingAutXmlId(item.id)
     setAutXmlForm(normalizeAutXml(item))
     setAutXmlErrors({})
   }
 
   const toggleAutXml = async (item) => {
+    if (!canEditFiscal) return
     try {
       const payload = { ...normalizeAutXml(item), ativo: Number(item.ativo) !== 1 ? 1 : 0 }
       const res = await api.put(`/configuracoes/fiscal/autxml/${item.id}`, payload)
@@ -799,6 +841,7 @@ export default function Configuracoes() {
   }
 
   const deleteAutXml = async (item) => {
+    if (!canEditFiscal) return
     const ok = window.confirm(`Remover ${item.nome}?`)
     if (!ok) return
 
@@ -815,6 +858,7 @@ export default function Configuracoes() {
 
   const saveWhatsapp = async (event) => {
     event.preventDefault()
+    if (!canEditWhatsapp) return
     setSavingWhatsapp(true)
     setWhatsappErrors({})
 
@@ -846,6 +890,7 @@ export default function Configuracoes() {
 
   const saveImpressao = async (event) => {
     event.preventDefault()
+    if (!canEditImpressao) return
     setSavingImpressao(true)
     setImpressaoErrors({})
 
@@ -871,6 +916,7 @@ export default function Configuracoes() {
   }
 
   const testarImpressao = async () => {
+    if (!canEditImpressao) return
     setTestingImpressao(true)
     try {
       const res = await api.post('/configuracoes/impressao/teste', {}, { skipGlobalErrorToast: true })
@@ -889,6 +935,7 @@ export default function Configuracoes() {
   }
 
   const diagnosticarImpressao = async () => {
+    if (!canEditImpressao) return
     setDiagnosingImpressao(true)
     try {
       const res = await api.post('/configuracoes/impressao/diagnostico', {}, { skipGlobalErrorToast: true, timeout: 60000 })
@@ -910,6 +957,7 @@ export default function Configuracoes() {
   }
 
   const runBackupManual = async () => {
+    if (!canRunBackup) return
     const ok = window.confirm('Gerar um backup local agora?')
     if (!ok) return
 
@@ -1399,9 +1447,11 @@ export default function Configuracoes() {
 
               <div className="settings-actions">
                 <button type="button" className="btn btn-ghost" onClick={loadBackups} disabled={runningBackup}>Atualizar</button>
-                <button type="button" className="btn btn-primary" onClick={runBackupManual} disabled={runningBackup}>
-                  {runningBackup ? <><div className="spinner" style={{ width: 14, height: 14 }} /> Gerando...</> : 'Gerar backup agora'}
-                </button>
+                {canRunBackup && (
+                  <button type="button" className="btn btn-primary" onClick={runBackupManual} disabled={runningBackup}>
+                    {runningBackup ? <><div className="spinner" style={{ width: 14, height: 14 }} /> Gerando...</> : 'Gerar backup agora'}
+                  </button>
+                )}
               </div>
 
               <div className="settings-planned-grid">
@@ -1572,7 +1622,7 @@ export default function Configuracoes() {
 
       <div className="settings-layout">
         <aside className="settings-menu card" aria-label="Secoes de configuracao">
-          {SECTIONS.map((section) => (
+          {visibleSections.map((section) => (
             <button
               type="button"
               key={section.id}
@@ -1647,9 +1697,11 @@ export default function Configuracoes() {
                     <button type="button" className="btn btn-ghost" onClick={resetEmpresa} disabled={saving}>
                       Cancelar
                     </button>
-                    <button type="submit" className="btn btn-primary" disabled={saving}>
-                      {saving ? <><div className="spinner" style={{ width: 14, height: 14 }} /> Salvando...</> : 'Salvar empresa'}
-                    </button>
+                    {canEditEmpresa && (
+                      <button type="submit" className="btn btn-primary" disabled={saving}>
+                        {saving ? <><div className="spinner" style={{ width: 14, height: 14 }} /> Salvando...</> : 'Salvar empresa'}
+                      </button>
+                    )}
                   </div>
                 </>
               )}
