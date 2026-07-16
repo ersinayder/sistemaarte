@@ -48,6 +48,7 @@ app.use("/api", globalLimiter);
 // ── Rotas ──────────────────────────────────────────────────────────────────────
 app.use("/api/auth",        require("./routes/auth"));
 app.use("/api/users",       require("./routes/users"));
+app.use("/api/permission-profiles", require("./routes/permissionProfiles"));
 app.use("/api/clientes",    require("./routes/clientes"));
 app.use("/api/ordens",      require("./routes/ordens"));
 app.use("/api/ordens",      require("./routes/pdf"));

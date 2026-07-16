@@ -18,6 +18,44 @@ const ROLE_SUMMARY = {
   caixa: 'Atendimento, clientes, ordens, caixa, propostas, produtos e rotinas operacionais do balcao.',
   oficina: 'Fila da oficina e atualizacao de status das ordens, com dados sensiveis limitados.',
 }
+const PERMISSION_ACTION_LABEL = {
+  ver: 'Ver',
+  criar: 'Criar',
+  editar: 'Editar',
+  alterar_status: 'Alterar status',
+  cancelar: 'Cancelar',
+  excluir: 'Excluir',
+  restaurar: 'Restaurar',
+  excluir_permanente: 'Excluir permanente',
+  imprimir: 'Imprimir',
+  whatsapp: 'WhatsApp',
+  fechamento: 'Fechamento',
+  consultar_documentos: 'Consultar documentos',
+  editar_status: 'Editar status',
+  gerar_os: 'Gerar OS',
+  emitir: 'Emitir',
+  cce: 'CC-e',
+  xml: 'XML',
+  danfe: 'DANFE',
+  lixeira: 'Lixeira',
+  inutilizar: 'Inutilizar',
+  integridade: 'Integridade',
+  exportar: 'Exportar',
+  conciliar: 'Conciliar',
+  producao: 'Producao',
+  resetar_senha: 'Resetar senha',
+  editar_empresa: 'Editar empresa',
+  editar_fiscal: 'Editar fiscal',
+  editar_whatsapp: 'Editar WhatsApp',
+  editar_impressao: 'Editar impressao',
+  seguranca: 'Seguranca',
+  executar: 'Executar',
+  relatorios: 'Relatorios',
+  contas_pagar: 'Contas a pagar',
+  criar_lancamento: 'Criar lancamento',
+  editar_lancamento: 'Editar lancamento',
+  excluir_lancamento: 'Excluir lancamento',
+}
 
 function Portal({ children }) {
   return ReactDOM.createPortal(children, document.body)
@@ -57,6 +95,20 @@ function formatDate(value) {
   if (!value) return '-'
   const date = new Date(String(value).includes('T') ? value : `${value}T00:00:00`)
   return Number.isNaN(date.getTime()) ? '-' : date.toLocaleDateString('pt-BR')
+}
+
+function permissionTitle(permission) {
+  const parts = String(permission || '').split('.')
+  const action = parts.slice(1).join('.')
+  return PERMISSION_ACTION_LABEL[action] || action.replace(/[._]/g, ' ').replace(/\b\w/g, char => char.toUpperCase())
+}
+
+function sortedPermissions(permissions) {
+  return [...new Set(Array.isArray(permissions) ? permissions : [])].sort()
+}
+
+function samePermissions(a, b) {
+  return JSON.stringify(sortedPermissions(a)) === JSON.stringify(sortedPermissions(b))
 }
 
 function ModalShell({ title, onClose, children, footer, maxWidth = 520 }) {
@@ -422,8 +474,283 @@ function StatusBadge({ user }) {
   return <span className={`badge ${status.badge}`}>{status.label}</span>
 }
 
-function RoleBadge({ role }) {
-  return <span className={`badge ${ROLE_BADGE[role] || 'badge-secondary'}`}>{ROLE_LABEL[role] || role || '-'}</span>
+function RoleBadge({ role, label }) {
+  return <span className={`badge ${ROLE_BADGE[role] || 'badge-secondary'}`}>{label || ROLE_LABEL[role] || role || '-'}</span>
+}
+
+function PerfilEditor({ data, loading, canEdit, currentProfileKey, onReload }) {
+  const profiles = data?.profiles || []
+  const permissionGroups = data?.permissionGroups || []
+  const [selectedKey, setSelectedKey] = useState('')
+  const [draft, setDraft] = useState(null)
+  const [saving, setSaving] = useState(false)
+
+  const selected = useMemo(
+    () => profiles.find(profile => profile.key === selectedKey) || profiles[0] || null,
+    [profiles, selectedKey]
+  )
+
+  useEffect(() => {
+    if (!selectedKey && profiles[0]?.key) setSelectedKey(profiles[0].key)
+  }, [profiles, selectedKey])
+
+  useEffect(() => {
+    if (!selected) {
+      setDraft(null)
+      return
+    }
+    setDraft({
+      name: selected.name || '',
+      description: selected.description || '',
+      active: Boolean(selected.active),
+      permissions: selected.permissions || [],
+    })
+  }, [selected])
+
+  const selectedPermissions = selected?.permissions || []
+  const draftPermissions = draft?.permissions || []
+  const isAdminProfile = selected?.key === 'admin'
+  const isCurrentProfile = selected?.key && selected.key === currentProfileKey
+  const dirty = Boolean(selected && draft) && (
+    draft.name !== (selected.name || '') ||
+    draft.description !== (selected.description || '') ||
+    Boolean(draft.active) !== Boolean(selected.active) ||
+    !samePermissions(draftPermissions, selectedPermissions)
+  )
+  const editable = canEdit && selected && !isAdminProfile
+
+  const setDraftValue = (key, value) => setDraft(current => ({ ...(current || {}), [key]: value }))
+  const hasPermission = (permission) => draftPermissions.includes(permission)
+  const togglePermission = (permission) => {
+    if (!editable) return
+    setDraft(current => {
+      const set = new Set(current?.permissions || [])
+      if (set.has(permission)) set.delete(permission)
+      else set.add(permission)
+      return { ...(current || {}), permissions: [...set] }
+    })
+  }
+
+  const setGroup = (group, checked) => {
+    if (!editable) return
+    setDraft(current => {
+      const set = new Set(current?.permissions || [])
+      for (const permission of group.permissions || []) {
+        if (checked) set.add(permission)
+        else set.delete(permission)
+      }
+      return { ...(current || {}), permissions: [...set] }
+    })
+  }
+
+  const save = async () => {
+    if (!selected || !draft || !editable) return
+    if (!draft.name.trim()) {
+      toast.error('Nome do perfil e obrigatorio')
+      return
+    }
+    setSaving(true)
+    try {
+      await api.put(`/permission-profiles/${selected.key}`, {
+        name: draft.name.trim(),
+        description: draft.description.trim(),
+        active: draft.active,
+        permissions: sortedPermissions(draft.permissions),
+      })
+      toast.success(isCurrentProfile ? 'Perfil salvo. A sessao deste perfil sera renovada no proximo acesso.' : 'Perfil salvo')
+      await onReload()
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Erro ao salvar perfil'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const restoreDefaults = async () => {
+    if (!selected || !canEdit) return
+    const confirmed = window.confirm(`Restaurar o perfil ${selected.name} para as permissoes padrao?`)
+    if (!confirmed) return
+    setSaving(true)
+    try {
+      await api.post(`/permission-profiles/${selected.key}/restore-defaults`)
+      toast.success('Perfil restaurado para o padrao')
+      await onReload()
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Erro ao restaurar perfil'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="loading-center" style={{ minHeight: 280 }}>
+        <div className="spinner" />
+      </div>
+    )
+  }
+
+  if (!profiles.length) {
+    return (
+      <div className="empty-state">
+        <h3>Nenhum perfil encontrado</h3>
+        <p>Os perfis padrao serao criados pela migracao do banco.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: 'var(--space-4)', height: '100%', minHeight: 0, overflow: 'auto', alignContent: 'start' }}>
+      <div className="card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: 'var(--space-4)', borderBottom: '1px solid var(--color-border)' }}>
+          <h2 style={{ margin: 0, fontSize: 'var(--text-base)', fontWeight: 800 }}>Perfis</h2>
+          <p style={{ margin: '4px 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+            {profiles.length} perfil{profiles.length === 1 ? '' : 's'} configurado{profiles.length === 1 ? '' : 's'}
+          </p>
+        </div>
+        <div style={{ overflowY: 'auto', padding: 'var(--space-2)' }}>
+          {profiles.map(profile => (
+            <button
+              key={profile.key}
+              className={`btn ${profile.key === selected?.key ? 'btn-secondary' : 'btn-ghost'}`}
+              type="button"
+              onClick={() => setSelectedKey(profile.key)}
+              style={{ width: '100%', justifyContent: 'space-between', marginBottom: 'var(--space-1)' }}
+            >
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profile.name}</span>
+              <span className="badge badge-secondary">{profile.permissions?.length || 0}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="card" style={{ minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: 'var(--space-4)', borderBottom: '1px solid var(--color-border)', display: 'flex', gap: 'var(--space-3)', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+          <div style={{ minWidth: 0, flex: '1 1 260px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+              <h2 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 800 }}>{selected?.name}</h2>
+              {selected?.system && <span className="badge badge-secondary">Sistema</span>}
+              {isAdminProfile && <span className="badge badge-primary">Protegido</span>}
+              {!selected?.active && <span className="badge badge-warning">Inativo</span>}
+            </div>
+            <p style={{ margin: '4px 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+              {selected?.active_user_count || 0} usuario{Number(selected?.active_user_count || 0) === 1 ? '' : 's'} ativo{Number(selected?.active_user_count || 0) === 1 ? '' : 's'} usando este perfil
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            {selected?.default_permissions?.length > 0 && canEdit && (
+              <button className="btn btn-ghost" type="button" onClick={restoreDefaults} disabled={saving}>
+                Restaurar padrao
+              </button>
+            )}
+            {editable && (
+              <button className="btn btn-primary" type="button" onClick={save} disabled={!dirty || saving}>
+                {saving ? 'Salvando...' : 'Salvar perfil'}
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div style={{ overflowY: 'auto', padding: 'var(--space-4)' }}>
+          <div className="form-grid-2" style={{ marginBottom: 'var(--space-4)' }}>
+            <div className="form-group">
+              <label className="form-label" htmlFor="perfil-name">Nome do perfil</label>
+              <input
+                id="perfil-name"
+                className="form-input"
+                value={draft?.name || ''}
+                onChange={event => setDraftValue('name', event.target.value)}
+                disabled={!editable}
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label" htmlFor="perfil-active">Status</label>
+              <select
+                id="perfil-active"
+                className="form-input"
+                value={draft?.active ? '1' : '0'}
+                onChange={event => setDraftValue('active', event.target.value === '1')}
+                disabled={!editable || selected?.system}
+              >
+                <option value="1">Ativo</option>
+                <option value="0">Inativo</option>
+              </select>
+            </div>
+            <div className="form-group col-span-2">
+              <label className="form-label" htmlFor="perfil-description">Descricao operacional</label>
+              <textarea
+                id="perfil-description"
+                className="form-input"
+                rows={2}
+                value={draft?.description || ''}
+                onChange={event => setDraftValue('description', event.target.value)}
+                disabled={!editable}
+              />
+            </div>
+          </div>
+
+          {isAdminProfile && (
+            <div className="badge badge-primary" style={{ marginBottom: 'var(--space-3)' }}>
+              O perfil Administrador mantem acesso total por seguranca.
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gap: 'var(--space-3)' }}>
+            {permissionGroups.map(group => {
+              const groupPermissions = group.permissions || []
+              const checkedCount = groupPermissions.filter(permission => hasPermission(permission)).length
+              const allChecked = checkedCount === groupPermissions.length && groupPermissions.length > 0
+              return (
+                <section key={group.key} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+                  <div style={{ padding: 'var(--space-3)', background: 'var(--color-surface-offset)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: 'var(--text-sm)', fontWeight: 800 }}>{group.label}</h3>
+                      <p style={{ margin: '2px 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                        {checkedCount} de {groupPermissions.length} permissoes
+                      </p>
+                    </div>
+                    {editable && (
+                      <button className="btn btn-ghost btn-xs" type="button" onClick={() => setGroup(group, !allChecked)}>
+                        {allChecked ? 'Limpar grupo' : 'Marcar grupo'}
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 'var(--space-2)', padding: 'var(--space-3)' }}>
+                    {groupPermissions.map(permission => (
+                      <label
+                        key={permission}
+                        style={{
+                          display: 'flex',
+                          gap: 'var(--space-2)',
+                          alignItems: 'flex-start',
+                          padding: 'var(--space-2)',
+                          border: '1px solid var(--color-border)',
+                          borderRadius: 'var(--radius-sm)',
+                          background: hasPermission(permission) ? 'var(--color-surface-offset)' : 'var(--color-surface)',
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={hasPermission(permission)}
+                          onChange={() => togglePermission(permission)}
+                          disabled={!editable}
+                          style={{ marginTop: 2 }}
+                        />
+                        <span style={{ minWidth: 0 }}>
+                          <span style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 700 }}>{permissionTitle(permission)}</span>
+                          <span style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', overflowWrap: 'anywhere' }}>{permission}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </section>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export default function Usuarios() {
@@ -441,6 +768,9 @@ export default function Usuarios() {
   const [restoreUser, setRestoreUser] = useState(null)
   const [deleteCheck, setDeleteCheck] = useState(null)
   const [checkingDeleteId, setCheckingDeleteId] = useState(null)
+  const [activeTab, setActiveTab] = useState('usuarios')
+  const [profilesData, setProfilesData] = useState({ profiles: [], permissionGroups: [], permissions: [] })
+  const [profilesLoading, setProfilesLoading] = useState(false)
 
   const hasPermission = useCallback((permission) => (
     typeof can === 'function' ? Boolean(can(permission)) : false
@@ -475,6 +805,22 @@ export default function Usuarios() {
 
   useEffect(() => { load() }, [load])
 
+  const loadProfiles = useCallback(async () => {
+    setProfilesLoading(true)
+    try {
+      const r = await api.get('/permission-profiles')
+      setProfilesData(r.data || { profiles: [], permissionGroups: [], permissions: [] })
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Erro ao carregar perfis'))
+    } finally {
+      setProfilesLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (activeTab === 'perfis') loadProfiles()
+  }, [activeTab, loadProfiles])
+
   const checkPermanentDelete = async (targetUser) => {
     setCheckingDeleteId(targetUser.id)
     try {
@@ -492,6 +838,7 @@ export default function Usuarios() {
 
   const canCreate = hasPermission('usuarios.criar')
   const canEdit = hasPermission('usuarios.editar')
+  const canManageProfiles = hasPermission('configuracoes.seguranca')
   const canArchive = hasPermission('usuarios.arquivar')
   const canRestore = hasPermission('usuarios.restaurar')
   const canDeletePermanent = hasPermission('usuarios.excluir_permanente')
@@ -571,7 +918,7 @@ export default function Usuarios() {
           </p>
         </div>
         <div className="erp-page-actions">
-          {canCreate && (
+          {activeTab === 'usuarios' && canCreate && (
             <button className="btn btn-primary" type="button" onClick={() => setFormModal({})}>
               Novo usuario
             </button>
@@ -579,6 +926,24 @@ export default function Usuarios() {
         </div>
       </div>
 
+      <div className="erp-filter-bar" style={{ marginBottom: 0, flexShrink: 0 }}>
+        <button
+          className={`btn ${activeTab === 'usuarios' ? 'btn-secondary' : 'btn-ghost'}`}
+          type="button"
+          onClick={() => setActiveTab('usuarios')}
+        >
+          Usuarios
+        </button>
+        <button
+          className={`btn ${activeTab === 'perfis' ? 'btn-secondary' : 'btn-ghost'}`}
+          type="button"
+          onClick={() => setActiveTab('perfis')}
+        >
+          Perfis
+        </button>
+      </div>
+
+      {activeTab === 'usuarios' && (
       <div className="erp-filter-bar" style={{ marginBottom: 0, flexShrink: 0 }}>
         <input
           className="form-input"
@@ -613,8 +978,18 @@ export default function Usuarios() {
           </select>
         </div>
       </div>
+      )}
 
       <div style={{ flex: 1, overflow: 'hidden', minHeight: 0, padding: 'var(--space-4)' }}>
+        {activeTab === 'perfis' ? (
+          <PerfilEditor
+            data={profilesData}
+            loading={profilesLoading}
+            canEdit={canManageProfiles}
+            currentProfileKey={user?.profile_key || user?.profile?.key || user?.role}
+            onReload={loadProfiles}
+          />
+        ) : (
         <div className="card" style={{ height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           {loading ? (
             <div className="loading-center" style={{ flex: 1 }}>
@@ -638,7 +1013,7 @@ export default function Usuarios() {
                           <div className="mobile-record-title">{item.name}</div>
                           <div className="mobile-record-sub">@{item.username}</div>
                         </div>
-                        <RoleBadge role={item.role} />
+                        <RoleBadge role={item.role} label={item.profile_name} />
                       </div>
                       <div className="mobile-record-row">
                         <div className="mobile-record-meta">
@@ -678,7 +1053,7 @@ export default function Usuarios() {
                             {reason && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>Motivo: {reason}</div>}
                           </td>
                           <td style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>@{item.username}</td>
-                          <td><RoleBadge role={item.role} /></td>
+                          <td><RoleBadge role={item.role} label={item.profile_name} /></td>
                           <td><StatusBadge user={item} /></td>
                           <td style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
                             {formatDate(item.createdat || item.createdAt || item.created_at)}
@@ -695,6 +1070,7 @@ export default function Usuarios() {
             </>
           )}
         </div>
+        )}
       </div>
 
       {formModal && (

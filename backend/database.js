@@ -627,12 +627,7 @@ function seedPermissionProfiles(targetDb) {
   const insertProfile = targetDb.prepare(`
     INSERT INTO permission_profiles (key, name, description, system, active, updatedat)
     VALUES (?, ?, ?, ?, ?, datetime('now','localtime'))
-    ON CONFLICT(key) DO UPDATE SET
-      name=excluded.name,
-      description=excluded.description,
-      system=excluded.system,
-      active=excluded.active,
-      updatedat=datetime('now','localtime')
+    ON CONFLICT(key) DO NOTHING
   `);
   const getProfile = targetDb.prepare("SELECT id FROM permission_profiles WHERE key=?");
   const insertPermission = targetDb.prepare(`

@@ -140,6 +140,23 @@ const DEFAULT_PROFILES = [
 
 const PERMISSION_SET = new Set(PERMISSIONS);
 
+const PERMISSION_GROUPS = [
+  { key: "dashboard", label: "Dashboard" },
+  { key: "atendimento", label: "Atendimento" },
+  { key: "ordens", label: "Ordens de servico" },
+  { key: "oficina", label: "Oficina" },
+  { key: "caixa", label: "Caixa" },
+  { key: "clientes", label: "Clientes" },
+  { key: "produtos", label: "Produtos" },
+  { key: "propostas", label: "Propostas" },
+  { key: "financeiro", label: "Financeiro" },
+  { key: "nfe", label: "Notas fiscais" },
+  { key: "relatorios", label: "Relatorios" },
+  { key: "usuarios", label: "Usuarios" },
+  { key: "configuracoes", label: "Configuracoes" },
+  { key: "backups", label: "Backups" },
+];
+
 function isKnownPermission(permission) {
   return PERMISSION_SET.has(permission);
 }
@@ -161,6 +178,18 @@ function normalizePermissions(permissions) {
   return Array.from(new Set(permissions.filter(Boolean)));
 }
 
+function sortPermissionsByCatalog(permissions) {
+  const normalized = new Set(normalizePermissions(permissions));
+  return PERMISSIONS.filter((permission) => normalized.has(permission));
+}
+
+function getPermissionCatalog() {
+  return PERMISSION_GROUPS.map((group) => ({
+    ...group,
+    permissions: PERMISSIONS.filter((permission) => permission.startsWith(`${group.key}.`)),
+  })).filter((group) => group.permissions.length > 0);
+}
+
 function hasPermission(user, permission) {
   if (!permission) return false;
   const permissions = normalizePermissions(user?.permissions);
@@ -174,9 +203,12 @@ function hasAnyPermission(user, permissions) {
 exports.PERMISSIONS = PERMISSIONS;
 exports.DEFAULT_PROFILE_PERMISSIONS = DEFAULT_PROFILE_PERMISSIONS;
 exports.DEFAULT_PROFILES = DEFAULT_PROFILES;
+exports.PERMISSION_GROUPS = PERMISSION_GROUPS;
 exports.isKnownPermission = isKnownPermission;
 exports.assertKnownPermissions = assertKnownPermissions;
 exports.getDefaultPermissionsForProfile = getDefaultPermissionsForProfile;
 exports.normalizePermissions = normalizePermissions;
+exports.sortPermissionsByCatalog = sortPermissionsByCatalog;
+exports.getPermissionCatalog = getPermissionCatalog;
 exports.hasPermission = hasPermission;
 exports.hasAnyPermission = hasAnyPermission;

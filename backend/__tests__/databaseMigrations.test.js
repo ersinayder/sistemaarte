@@ -100,6 +100,11 @@ describe('database migrations', () => {
       const before = db.prepare("SELECT COUNT(*) AS total FROM profile_permissions WHERE profile_id=? AND permission='usuarios.ver'").get(admin.id);
       expect(before.total).toBe(1);
 
+      db.prepare("UPDATE permission_profiles SET name='Admin customizado', description='Descricao ajustada' WHERE key='admin'").run();
+      database.seedPermissionProfiles(db);
+      const preserved = db.prepare("SELECT name, description FROM permission_profiles WHERE key='admin'").get();
+      expect(preserved).toMatchObject({ name: 'Admin customizado', description: 'Descricao ajustada' });
+
       db.prepare('INSERT INTO profile_permissions (profile_id, permission) VALUES (?, ?)').run(admin.id, 'custom.future_permission');
       database.seedPermissionProfiles(db);
 

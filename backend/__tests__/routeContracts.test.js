@@ -83,6 +83,17 @@ describe('route authorization contracts', () => {
     expect(source).toMatch(/router\.delete\(["']\/:id["'],\s*auth\(\),\s*authPermission\(["']usuarios\.excluir_permanente["']\)/);
   });
 
+  it('protects permission profile routes with fine-grained RBAC permissions', () => {
+    const serverSource = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+    const source = fs.readFileSync(new URL('../routes/permissionProfiles.js', import.meta.url), 'utf8');
+
+    expect(serverSource).toMatch(/app\.use\(["']\/api\/permission-profiles["'],\s*require\(["']\.\/routes\/permissionProfiles["']\)\)/);
+    expect(source).toMatch(/router\.get\(["']\/["'],\s*auth\(\),\s*authPermission\(["']usuarios\.ver["']\)/);
+    expect(source).toMatch(/router\.get\(["']\/:key["'],\s*auth\(\),\s*authPermission\(["']usuarios\.ver["']\)/);
+    expect(source).toMatch(/router\.put\(["']\/:key["'],\s*auth\(\),\s*authPermission\(["']configuracoes\.seguranca["']\)/);
+    expect(source).toMatch(/router\.post\(["']\/:key\/restore-defaults["'],\s*auth\(\),\s*authPermission\(["']configuracoes\.seguranca["']\)/);
+  });
+
   it('protects clientes and produtos routes with fine-grained RBAC permissions', () => {
     const clientesSource = fs.readFileSync(new URL('../routes/clientes.js', import.meta.url), 'utf8');
     const produtosSource = fs.readFileSync(new URL('../routes/produtos.js', import.meta.url), 'utf8');

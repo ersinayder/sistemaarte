@@ -76,6 +76,37 @@ const usersEnvelope = {
   meta: { total: 4 },
 }
 
+const profilesEnvelope = {
+  profiles: [
+    {
+      key: 'admin',
+      name: 'Administrador',
+      description: 'Acesso total ao sistema.',
+      system: true,
+      active: true,
+      active_user_count: 1,
+      permissions: ['ordens.ver', 'clientes.ver', 'clientes.excluir', 'usuarios.ver', 'usuarios.editar'],
+      default_permissions: ['ordens.ver', 'clientes.ver', 'clientes.excluir', 'usuarios.ver', 'usuarios.editar'],
+    },
+    {
+      key: 'caixa',
+      name: 'Caixa',
+      description: 'Atendimento do balcao.',
+      system: true,
+      active: true,
+      active_user_count: 2,
+      permissions: ['ordens.ver', 'clientes.ver'],
+      default_permissions: ['ordens.ver', 'clientes.ver'],
+    },
+  ],
+  permissions: ['ordens.ver', 'clientes.ver', 'clientes.excluir', 'usuarios.ver', 'usuarios.editar'],
+  permissionGroups: [
+    { key: 'ordens', label: 'Ordens de servico', permissions: ['ordens.ver'] },
+    { key: 'clientes', label: 'Clientes', permissions: ['clientes.ver', 'clientes.excluir'] },
+    { key: 'usuarios', label: 'Usuarios', permissions: ['usuarios.ver', 'usuarios.editar'] },
+  ],
+}
+
 function mockUsersApi() {
   api.get.mockImplementation((url) => {
     if (url === '/users') {
@@ -88,6 +119,9 @@ function mockUsersApi() {
           blockers: ['lancamentos criados'],
         },
       })
+    }
+    if (url === '/permission-profiles') {
+      return Promise.resolve({ data: profilesEnvelope })
     }
     return Promise.reject(new Error(`GET inesperado: ${url}`))
   })
@@ -194,5 +228,31 @@ describe('Usuarios', () => {
 
     expect(screen.queryByRole('button', { name: /redefinir senha de admin loja/i })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /redefinir senha de caixa ativa/i })).toBeInTheDocument()
+  })
+
+  it('edits profile permissions from the Perfis tab', async () => {
+    const user = userEvent.setup()
+    render(<Usuarios />)
+
+    await user.click(screen.getByRole('button', { name: /^perfis$/i }))
+
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith('/permission-profiles')
+    })
+    await user.click(await screen.findByRole('button', { name: /caixa/i }))
+    const checkbox = screen.getByLabelText(/clientes\.excluir/i)
+
+    expect(checkbox).not.toBeChecked()
+    await user.click(checkbox)
+    await user.click(screen.getByRole('button', { name: /salvar perfil/i }))
+
+    await waitFor(() => {
+      expect(api.put).toHaveBeenCalledWith('/permission-profiles/caixa', expect.objectContaining({
+        name: 'Caixa',
+        description: 'Atendimento do balcao.',
+        active: true,
+        permissions: expect.arrayContaining(['ordens.ver', 'clientes.ver', 'clientes.excluir']),
+      }))
+    })
   })
 })
