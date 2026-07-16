@@ -33,9 +33,6 @@ export function AuthProvider({ children }) {
     setUser(null);
   }, []);
 
-  const isAdmin   = user?.role === "admin";
-  const isCaixa   = user?.role === "caixa"   || user?.role === "admin";
-  const isOficina = user?.role === "oficina" || user?.role === "admin";
   const permissions = useMemo(
     () => (Array.isArray(user?.permissions) ? user.permissions : []),
     [user?.permissions]
@@ -54,7 +51,7 @@ export function AuthProvider({ children }) {
   }, [can]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, switchUser, isAdmin, isCaixa, isOficina, permissions, profile, can, canAny }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, switchUser, permissions, profile, can, canAny }}>
       {children}
     </AuthContext.Provider>
   );

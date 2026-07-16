@@ -4,14 +4,15 @@ import Sidebar from './Sidebar'
 import { useTheme } from '../hooks/useTheme'
 import { useAuth } from '../context/AuthContext'
 
-const ROLE_LABEL = { admin: 'Admin', caixa: 'Caixa', oficina: 'Oficina' }
-const ROLE_COLOR = { admin: 'var(--color-purple)', caixa: 'var(--color-primary)', oficina: 'var(--color-orange)' }
+const PROFILE_COLOR = { admin: 'var(--color-purple)', caixa: 'var(--color-primary)', oficina: 'var(--color-orange)' }
 
 export default function Layout() {
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const { theme, toggle } = useTheme()
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
+  const profileKey = profile?.key || user?.profile_key
+  const profileName = profile?.name || profileKey || 'Perfil'
 
   return (
     <div className="app-layout">
@@ -56,8 +57,8 @@ export default function Layout() {
 
           <div style={{ flex: 1 }} />
 
-          <span className="topbar-role-pill" style={{ color: ROLE_COLOR[user?.role] }}>
-            {ROLE_LABEL[user?.role]}
+          <span className="topbar-profile-pill" style={{ color: PROFILE_COLOR[profileKey] || 'var(--color-primary)' }}>
+            {profileName}
             <span className="topbar-username"> · {user?.name}</span>
           </span>
 

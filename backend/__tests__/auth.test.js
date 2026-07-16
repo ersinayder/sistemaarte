@@ -170,7 +170,7 @@ describe('auth middleware', () => {
         permissions: ['usuarios.ver', 'usuarios.editar'],
       }));
 
-      auth(['admin'])(req, makeRes(), next);
+      auth()(req, makeRes(), next);
 
       expect(next).toHaveBeenCalledOnce();
       expect(req.user).toMatchObject({
@@ -184,24 +184,24 @@ describe('auth middleware', () => {
     });
   });
 
-  describe('autorizacao por roles', () => {
-    it('permite acesso quando role esta na lista', () => {
+  describe('autenticacao sem autorizacao por roles', () => {
+    it('autentica usuario ativo independentemente da role', () => {
       const token = makeToken({ id: 1, role: 'admin' });
       const req = makeReq({ cookies: { token } });
-      auth(['admin', 'user'])(req, makeRes(), next);
+      auth()(req, makeRes(), next);
       expect(next).toHaveBeenCalledOnce();
     });
 
-    it('retorna 403 quando role nao esta na lista', () => {
+    it('nao bloqueia por role; permissoes devem ser validadas por authPermission', () => {
       const token = makeToken({ id: 1, role: 'user' });
       const req = makeReq({ cookies: { token } });
       const res = makeRes();
-      auth(['admin'])(req, res, next);
-      expect(res.status).toHaveBeenCalledWith(403);
-      expect(next).not.toHaveBeenCalled();
+      auth()(req, res, next);
+      expect(res.status).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledOnce();
     });
 
-    it('retorna 403 usando a role atual do banco quando token antigo nao tem role', () => {
+    it('usa a role atual do banco apenas como dado de sessao quando token antigo nao tem role', () => {
       const token = makeToken({ id: 6 });
       const req = makeReq({ cookies: { token } });
       const res = makeRes();
@@ -218,16 +218,17 @@ describe('auth middleware', () => {
         permissions: [],
       }));
 
-      auth(['admin'])(req, res, next);
+      auth()(req, res, next);
 
-      expect(res.status).toHaveBeenCalledWith(403);
-      expect(next).not.toHaveBeenCalled();
+      expect(res.status).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledOnce();
+      expect(req.user.role).toBe('caixa');
     });
 
-    it('permite qualquer role autenticado quando roles vazio', () => {
+    it('permite qualquer usuario autenticado', () => {
       const token = makeToken({ id: 1, role: 'qualquer' });
       const req = makeReq({ cookies: { token } });
-      auth([])(req, makeRes(), next);
+      auth()(req, makeRes(), next);
       expect(next).toHaveBeenCalledOnce();
     });
   });
@@ -344,7 +345,7 @@ describe('auth middleware', () => {
         permissions: [],
       }));
 
-      auth(['admin'])(req, makeRes(), next);
+      auth()(req, makeRes(), next);
 
       expect(next).toHaveBeenCalledOnce();
     });
@@ -363,7 +364,7 @@ describe('auth middleware', () => {
         permissions: [],
       }));
 
-      auth(['admin'])(req, res, next);
+      auth()(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(401);
       expect(res.json).toHaveBeenCalledWith({ error: 'Sessao desatualizada. Entre novamente.' });
@@ -412,7 +413,7 @@ describe('auth middleware', () => {
       const token = makeToken({ id: 13, role: 'admin' });
       const req = makeReq({ cookies: { token } });
 
-      auth(['admin'])(req, makeRes(), next);
+      auth()(req, makeRes(), next);
 
       expect(next).toHaveBeenCalledOnce();
       const [sql, params] = dbMock.getOne.mock.calls[0];

@@ -108,9 +108,9 @@ function IconNFe() {
 export default function OrdemDetalhe({ context }) {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { isOficina, can } = useAuth()
+  const { can } = useAuth()
 
-  const isOficinaContext = context === 'oficina' || isOficina
+  const isOficinaContext = context === 'oficina'
   const backPath = isOficinaContext ? '/oficina' : '/ordens'
 
   const [ordem, setOrdem]                 = useState(null)

@@ -81,10 +81,9 @@ function normalizarUsuarioSessao(row) {
 
 /**
  * Le o token do cookie HttpOnly (preferencial) ou do header Authorization (fallback).
- * Middleware de autenticacao e autorizacao por roles.
- * @param {string[]} roles - Roles permitidas (vazio = qualquer autenticado)
+ * Middleware de autenticacao. Autorizacao deve usar authPermission/authAnyPermission.
  */
-function auth(roles = []) {
+function auth() {
   const middleware = (req, res, next) => {
     let token = req.cookies?.token;
 
@@ -109,9 +108,6 @@ function auth(roles = []) {
         return res.status(sessao.status || 401).json({ error: sessao.error });
       }
 
-      if (roles.length && !roles.includes(usuarioAtual.role)) {
-        return res.status(403).json({ error: "Sem permissao" });
-      }
       req.user = usuarioAtual;
       next();
     } catch (error) {
@@ -119,7 +115,6 @@ function auth(roles = []) {
     }
   };
 
-  middleware._roles = roles;
   return middleware;
 }
 

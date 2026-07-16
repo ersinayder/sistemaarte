@@ -21,11 +21,10 @@ const Produtos     = React.lazy(() => import('./pages/Produtos'))
 const NotasFiscais = React.lazy(() => import('./pages/NotasFiscais'))
 const Configuracoes = React.lazy(() => import('./pages/Configuracoes'))
 
-function PrivateRoute({ children, roles, permissions }) {
+function PrivateRoute({ children, permissions }) {
   const { user, loading, canAny } = useAuth()
   if (loading) return <div className="loading-center"><div className="spinner"/></div>
   if (!user)   return <Navigate to="/login" replace />
-  if (roles && !roles.includes(user.role)) return <Navigate to="/" replace />
   if (permissions && !canAny(permissions)) return <Navigate to="/" replace />
   return children
 }
@@ -47,8 +46,8 @@ function AppRoutes() {
   if (!user)   return <Routes><Route path="*" element={<LoginPage />} /></Routes>
 
   const firstAllowedRoute = [
-    [user.role === 'oficina' && canAny(['oficina.ver']), '/oficina'],
     [canAny(['atendimento.ver']), '/atendimento'],
+    [canAny(['oficina.ver']), '/oficina'],
     [canAny(['dashboard.ver']), '/dashboard'],
     [canAny(['ordens.ver']), '/ordens'],
     [canAny(['caixa.ver']), '/caixa'],

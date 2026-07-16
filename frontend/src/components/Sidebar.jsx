@@ -26,8 +26,7 @@ const ICONS = {
   config:    { d: 'M12 15.5A3.5 3.5 0 1012 8a3.5 3.5 0 000 7.5z', d2: 'M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51h.08a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9c.23.61.81 1 1.47 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z' },
 }
 
-const ROLE_LABEL = { admin: 'Administrador', caixa: 'Caixa', oficina: 'Oficina' }
-const ROLE_COLOR = { admin: 'var(--color-purple)', caixa: 'var(--color-primary)', oficina: 'var(--color-orange)' }
+const PROFILE_COLOR = { admin: 'var(--color-purple)', caixa: 'var(--color-primary)', oficina: 'var(--color-orange)' }
 
 function useTheme() {
   const getTheme = () =>
@@ -46,32 +45,30 @@ function useTheme() {
 }
 
 export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }) {
-  const { user, logout, switchUser, can } = useAuth()
+  const { user, logout, switchUser, can, profile } = useAuth()
   const [vencidas, setVencidas] = useState(0)
   const theme = useTheme()
   const logoSrc = theme === 'light' ? '/logo preta.png' : '/logo.png'
   const location = useLocation()
   const navigate = useNavigate()
+  const profileKey = profile?.key || user?.profile_key
+  const profileName = profile?.name || profileKey || 'Perfil'
 
-  const hasCan = typeof can === 'function'
-  const isAdmin = user?.role === 'admin'
-  const isCaixa = user?.role === 'caixa'
-  const isOficina = user?.role === 'oficina'
-  const hasPermission = (permission, legacyAllowed = false) => hasCan ? can(permission) : legacyAllowed
+  const hasPermission = (permission) => typeof can === 'function' && can(permission)
 
-  const canViewAtendimento = hasPermission('atendimento.ver', isAdmin || isCaixa)
-  const canViewDashboard = hasPermission('dashboard.ver', isAdmin || isCaixa)
-  const canViewCaixa = hasPermission('caixa.ver', isAdmin || isCaixa)
-  const canViewOrdens = hasPermission('ordens.ver', isAdmin || isCaixa)
-  const canViewOrcamento = hasPermission('propostas.criar', isAdmin || isCaixa) || hasPermission('ordens.criar', isAdmin || isCaixa)
-  const canViewPropostas = hasPermission('propostas.ver', isAdmin || isCaixa)
-  const canViewOficina = hasPermission('oficina.ver', isAdmin || isCaixa || isOficina)
-  const canViewNfe = hasPermission('nfe.ver', isAdmin || isCaixa)
-  const canViewClientes = hasPermission('clientes.ver', isAdmin || isCaixa)
-  const canViewProdutos = hasPermission('produtos.ver', isAdmin || isCaixa)
-  const canViewUsuarios = hasPermission('usuarios.ver', isAdmin)
-  const canViewFinanceiro = hasPermission('financeiro.ver', isAdmin) || hasPermission('financeiro.contas_pagar.ver', isAdmin) || hasPermission('financeiro.relatorios', isAdmin)
-  const canViewConfiguracoes = hasPermission('configuracoes.ver', isAdmin) || hasPermission('configuracoes.editar_empresa', isAdmin) || hasPermission('configuracoes.editar_fiscal', isAdmin) || hasPermission('configuracoes.editar_whatsapp', isAdmin) || hasPermission('configuracoes.editar_impressao', isAdmin) || hasPermission('configuracoes.seguranca', isAdmin) || hasPermission('backups.ver', isAdmin) || hasPermission('backups.executar', isAdmin)
+  const canViewAtendimento = hasPermission('atendimento.ver')
+  const canViewDashboard = hasPermission('dashboard.ver')
+  const canViewCaixa = hasPermission('caixa.ver')
+  const canViewOrdens = hasPermission('ordens.ver')
+  const canViewOrcamento = hasPermission('propostas.criar') || hasPermission('ordens.criar')
+  const canViewPropostas = hasPermission('propostas.ver')
+  const canViewOficina = hasPermission('oficina.ver')
+  const canViewNfe = hasPermission('nfe.ver')
+  const canViewClientes = hasPermission('clientes.ver')
+  const canViewProdutos = hasPermission('produtos.ver')
+  const canViewUsuarios = hasPermission('usuarios.ver')
+  const canViewFinanceiro = hasPermission('financeiro.ver') || hasPermission('financeiro.contas_pagar.ver') || hasPermission('financeiro.relatorios')
+  const canViewConfiguracoes = hasPermission('configuracoes.ver') || hasPermission('configuracoes.editar_empresa') || hasPermission('configuracoes.editar_fiscal') || hasPermission('configuracoes.editar_whatsapp') || hasPermission('configuracoes.editar_impressao') || hasPermission('configuracoes.seguranca') || hasPermission('backups.ver') || hasPermission('backups.executar')
   const canViewCadastros = canViewClientes || canViewProdutos || canViewUsuarios
   const canViewOperacao = canViewAtendimento || canViewDashboard || canViewCaixa || canViewOrdens || canViewOrcamento || canViewPropostas
 
@@ -184,13 +181,13 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
 
         <div className="sidebar-footer">
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', padding: 'var(--space-2) var(--space-3)', background: 'var(--color-surface-offset)', borderRadius: 'var(--radius-lg)', marginBottom: 'var(--space-2)' }}>
-            <div style={{ width: 28, height: 28, borderRadius: '50%', background: ROLE_COLOR[user?.role] || 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: 12, flexShrink: 0 }}>
+            <div style={{ width: 28, height: 28, borderRadius: '50%', background: PROFILE_COLOR[profileKey] || 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: 12, flexShrink: 0 }}>
               {user?.name?.[0]?.toUpperCase() || '?'}
             </div>
             {!collapsed && (
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontWeight: 700, fontSize: 'var(--text-xs)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name}</div>
-                <div style={{ fontSize: 10, color: ROLE_COLOR[user?.role], fontWeight: 600 }}>{ROLE_LABEL[user?.role] || user?.role}</div>
+                <div style={{ fontSize: 10, color: PROFILE_COLOR[profileKey] || 'var(--color-primary)', fontWeight: 600 }}>{profileName}</div>
               </div>
             )}
           </div>

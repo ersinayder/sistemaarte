@@ -636,7 +636,7 @@ main > .page-narrow {
   flex-shrink: 0;
 }
 
-.topbar-role-pill {
+.topbar-profile-pill {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
@@ -984,9 +984,6 @@ textarea.form-input { resize: vertical; min-height: 80px; }
 .badge-link     { background: var(--color-purple-hl);  color: var(--color-purple); }
 
 .badge-admin        { background: var(--color-purple-hl); color: var(--color-purple); }
-.badge-caixa-role   { background: var(--color-gold-hl);   color: var(--color-gold); }
-.badge-oficina-role { background: var(--color-orange-hl); color: var(--color-orange); }
-
 .badge-urgente { background: var(--color-error-hl); color: var(--color-error); }
 .badge-normal  { background: var(--color-surface-dynamic); color: var(--color-text-muted); }
 
@@ -2498,7 +2495,7 @@ textarea.form-input { resize: vertical; min-height: 80px; }
     min-height: 34px;
   }
 
-  .topbar-role-pill {
+  .topbar-profile-pill {
     max-width: 48vw;
     overflow: hidden;
     text-overflow: ellipsis;

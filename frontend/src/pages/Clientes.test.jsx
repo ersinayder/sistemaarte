@@ -73,7 +73,6 @@ describe('Clientes', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     authState = {
-      user: { role: 'admin' },
       can: () => true,
     }
     setupApi()
@@ -98,7 +97,6 @@ describe('Clientes', () => {
 
   it('esconde acoes de cadastro quando usuario tem apenas clientes.ver', async () => {
     authState = {
-      user: { role: 'admin' },
       can: (permission) => permission === 'clientes.ver',
     }
 

@@ -67,17 +67,16 @@ function fmtVal(value) {
     .replace(/\u00a0/g, ' ');
 }
 
-function podeUsarAviso(role, tipo) {
+function podeUsarAviso(canUseNotice, tipo) {
   const normalized = normalizarTipoAviso(tipo);
   if (!normalized) return false;
-  if (role === 'admin' || role === 'caixa') return true;
-  return false;
+  return canUseNotice === true;
 }
 
-function avisoDisponivelParaOrdem(ordem = {}, tipo, role) {
+function avisoDisponivelParaOrdem(ordem = {}, tipo, canUseNotice) {
   const normalized = normalizarTipoAviso(tipo);
   if (!normalized) return { ok: false, error: 'invalid_notice_type' };
-  if (!podeUsarAviso(role, normalized)) return { ok: false, error: 'forbidden_notice_type' };
+  if (!podeUsarAviso(canUseNotice, normalized)) return { ok: false, error: 'forbidden_notice_type' };
   if (!ordem || ordem.deletedat) return { ok: false, error: 'order_not_found' };
 
   if (normalized === 'confirmacao_pedido') {
@@ -141,9 +140,9 @@ function escolherTemplate(tipo, templates = {}) {
   ) || DEFAULT_TEMPLATE_PRONTO;
 }
 
-function montarMensagemAviso(ordem = {}, tipo, { role = null, templates = {} } = {}) {
+function montarMensagemAviso(ordem = {}, tipo, { canUseNotice = false, templates = {} } = {}) {
   const normalized = normalizarTipoAviso(tipo);
-  const disponibilidade = avisoDisponivelParaOrdem(ordem, normalized, role);
+  const disponibilidade = avisoDisponivelParaOrdem(ordem, normalized, canUseNotice);
   if (!disponibilidade.ok) return disponibilidade;
 
   return {

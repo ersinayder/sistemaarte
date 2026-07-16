@@ -220,11 +220,10 @@ const CATBADGE = {
 }
 
 export default function Produtos() {
-  const { isAdmin, isCaixa, can } = useAuth()
-  const hasCan = typeof can === 'function'
-  const canCreate = hasCan ? can('produtos.criar') : (isAdmin || isCaixa)
-  const canEdit = hasCan ? can('produtos.editar') : (isAdmin || isCaixa)
-  const canDelete = hasCan ? can('produtos.excluir') : isAdmin
+  const { can } = useAuth()
+  const canCreate = typeof can === 'function' && can('produtos.criar')
+  const canEdit = typeof can === 'function' && can('produtos.editar')
+  const canDelete = typeof can === 'function' && can('produtos.excluir')
   const [produtos, setProdutos]   = useState([])
   const [loading, setLoading]     = useState(false)
   const [search, setSearch]       = useState('')

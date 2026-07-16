@@ -25,9 +25,11 @@ describe('Sidebar', () => {
   beforeEach(() => {
     api.get.mockResolvedValue({ data: [] })
     authState = {
-      user: { id: 2, name: 'Caixa RBAC', role: 'caixa' },
+      user: { id: 2, name: 'Caixa RBAC', profile_key: 'caixa' },
       logout: vi.fn(),
       switchUser: vi.fn(),
+      profile: { key: 'caixa', name: 'Caixa' },
+      can: (permission) => ['atendimento.ver', 'caixa.ver'].includes(permission),
     }
     window.matchMedia = vi.fn().mockImplementation(() => ({
       matches: false,
@@ -36,7 +38,7 @@ describe('Sidebar', () => {
     }))
   })
 
-  it('renders for caixa auth shapes without a can helper', () => {
+  it('renders navigation from explicit permissions', () => {
     render(
       <MemoryRouter>
         <Sidebar collapsed={false} />
@@ -49,9 +51,10 @@ describe('Sidebar', () => {
 
   it('shows Usuarios for non-admin users with usuarios.ver permission', () => {
     authState = {
-      user: { id: 3, name: 'Oficina Gestora', role: 'oficina' },
+      user: { id: 3, name: 'Oficina Gestora', profile_key: 'oficina' },
       logout: vi.fn(),
       switchUser: vi.fn(),
+      profile: { key: 'oficina', name: 'Oficina' },
       can: (permission) => ['oficina.ver', 'usuarios.ver'].includes(permission),
     }
 
@@ -67,9 +70,10 @@ describe('Sidebar', () => {
 
   it('shows Clientes and Produtos for non-caixa users with matching permissions', () => {
     authState = {
-      user: { id: 3, name: 'Oficina Cadastros', role: 'oficina' },
+      user: { id: 3, name: 'Oficina Cadastros', profile_key: 'oficina' },
       logout: vi.fn(),
       switchUser: vi.fn(),
+      profile: { key: 'oficina', name: 'Oficina' },
       can: (permission) => ['oficina.ver', 'clientes.ver', 'produtos.ver'].includes(permission),
     }
 
@@ -86,9 +90,10 @@ describe('Sidebar', () => {
 
   it('hides Clientes and Produtos from caixa when permissions are absent', () => {
     authState = {
-      user: { id: 2, name: 'Caixa Sem Cadastro', role: 'caixa' },
+      user: { id: 2, name: 'Caixa Sem Cadastro', profile_key: 'caixa' },
       logout: vi.fn(),
       switchUser: vi.fn(),
+      profile: { key: 'caixa', name: 'Caixa' },
       can: () => false,
     }
 

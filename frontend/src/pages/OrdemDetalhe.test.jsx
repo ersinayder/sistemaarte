@@ -18,9 +18,6 @@ vi.mock('../services/api', () => ({
 
 vi.mock('../context/AuthContext', () => ({
   useAuth: () => ({
-    isAdmin: true,
-    isCaixa: false,
-    isOficina: false,
     can: (permission) => ['ordens.ver', 'nfe.danfe'].includes(permission),
   }),
 }))

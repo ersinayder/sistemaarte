@@ -313,7 +313,7 @@ function IntegridadeFiscalFinanceiraPanel({ itens, onRefresh, onAudit }) {
   )
 }
 
-function ModalAuditoriaIntegridadeFiscalFinanceira({ apontamento, onClose, isAdmin, onConciliado }) {
+function ModalAuditoriaIntegridadeFiscalFinanceira({ apontamento, onClose, canConciliar, onConciliado }) {
   const [detalhe, setDetalhe] = useState(null)
   const [loading, setLoading] = useState(true)
   const [motivoConciliacao, setMotivoConciliacao] = useState('NF-e emitida sem impacto no caixa da OS.')
@@ -338,7 +338,7 @@ function ModalAuditoriaIntegridadeFiscalFinanceira({ apontamento, onClose, isAdm
   const ordem = detalhe?.ordem || {}
   const fiscal = detalhe?.fiscal || {}
   const apontamentos = detalhe?.apontamentos || []
-  const podeConciliar = isAdmin && apontamentos.some(item => item.tipo === 'nfe_total_divergente')
+  const podeConciliar = canConciliar && apontamentos.some(item => item.tipo === 'nfe_total_divergente')
 
   const handleConciliar = async () => {
     if (!podeConciliar) return
@@ -2285,7 +2285,7 @@ export default function NotasFiscais({ lixeira = false }) {
       {canCancelar && cancelarNota && <ModalCancelamento nfe={cancelarNota} onClose={() => setCancelarNota(null)} onSuccess={carregar} />}
       {canCce && cceNota && <ModalCCE nfe={cceNota} onClose={() => setCceNota(null)} onSuccess={carregar} />}
       {auditoriaPendencia && <ModalAuditoriaPendenciaFiscal pendencia={auditoriaPendencia} onClose={() => setAuditoriaPendencia(null)} />}
-      {auditoriaIntegridadeFiscalFinanceira && <ModalAuditoriaIntegridadeFiscalFinanceira apontamento={auditoriaIntegridadeFiscalFinanceira} onClose={() => setAuditoriaIntegridadeFiscalFinanceira(null)} isAdmin={canConciliar} onConciliado={() => carregarIntegridadeFiscalFinanceira()} />}
+      {auditoriaIntegridadeFiscalFinanceira && <ModalAuditoriaIntegridadeFiscalFinanceira apontamento={auditoriaIntegridadeFiscalFinanceira} onClose={() => setAuditoriaIntegridadeFiscalFinanceira(null)} canConciliar={canConciliar} onConciliado={() => carregarIntegridadeFiscalFinanceira()} />}
       {canExportar && modalExportacao && <ModalExportacaoNFe onClose={() => setModalExportacao(false)} />}
       {canInutilizar && <InutilizacaoModal open={modalInutilizacao} onClose={() => setModalInutilizacao(false)} onSuccess={carregar} />}
     </div>

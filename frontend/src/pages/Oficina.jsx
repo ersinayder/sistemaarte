@@ -90,11 +90,11 @@ function AvancarBtn({ ordem, colColor, onAvancar }) {
 }
 
 export default function Oficina() {
-  const { user, can } = useAuth();
+  const { can } = useAuth();
   const navigate  = useNavigate();
   const canEdit    = typeof can === 'function' && (can('oficina.alterar_status') || can('ordens.alterar_status'));
   const canWhatsapp = typeof can === 'function' && can('ordens.whatsapp');
-  const showValor  = user?.role !== 'oficina';
+  const showValor  = typeof can === 'function' && (can('atendimento.ver') || can('caixa.ver') || can('financeiro.ver') || can('nfe.ver'));
 
   const [ordens,      setOrdens]      = useState([]);
   const [loading,     setLoading]     = useState(true);

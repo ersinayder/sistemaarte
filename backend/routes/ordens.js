@@ -144,7 +144,7 @@ function getWhatsappMessageTemplates() {
 
 function enfileirarAvisoWhatsapp(ordem, tipo) {
   const phone = normalizarTelefoneWhatsapp(ordem.clientetelefone || ordem.clientecontato);
-  const message = montarMensagemAviso(ordem, tipo, { role: 'caixa', templates: getWhatsappMessageTemplates() });
+  const message = montarMensagemAviso(ordem, tipo, { canUseNotice: true, templates: getWhatsappMessageTemplates() });
   if (!message.ok) return;
   marcarAvisoParaEnvio({
     ordemId: ordem.id,
@@ -219,22 +219,35 @@ function projetarAviso(row) {
   };
 }
 
-function avisoVirtual(ordem, tipo, role, avisosPorChave) {
+function avisoVirtual(ordem, tipo, canUseNotice, avisosPorChave) {
   const existente = avisosPorChave.get(`${ordem.id}:${tipo}`);
-  if (!podeUsarAviso(role, tipo)) return null;
+  if (!podeUsarAviso(canUseNotice, tipo)) return null;
   if (existente) {
     const projetado = projetarAviso(existente);
     if (['enviado', 'ignorado'].includes(projetado.status)) return projetado;
-    const disponibilidade = avisoDisponivelParaOrdem(ordem, tipo, role);
+    const disponibilidade = avisoDisponivelParaOrdem(ordem, tipo, canUseNotice);
     return disponibilidade.ok ? projetado : null;
   }
-  const disponibilidade = avisoDisponivelParaOrdem(ordem, tipo, role);
+  const disponibilidade = avisoDisponivelParaOrdem(ordem, tipo, canUseNotice);
   if (!disponibilidade.ok) return null;
   return { ordemid: ordem.id, tipo, status: 'pendente', virtual: true };
 }
 
-function redactOrdemForRole(row, role) {
-  if (role !== 'oficina') return row;
+function deveRedigirDadosOperacionais(user) {
+  return hasPermission(user, "oficina.ver") && !hasAnyPermission(user, [
+    "atendimento.ver",
+    "caixa.ver",
+    "financeiro.ver",
+    "nfe.ver",
+  ]);
+}
+
+function podeUsarAvisosWhatsapp(user) {
+  return hasPermission(user, "ordens.whatsapp") && !deveRedigirDadosOperacionais(user);
+}
+
+function redactOrdemForPermissions(row, shouldRedact) {
+  if (!shouldRedact) return row;
   const {
     clientetelefone,
     clientecontato,
@@ -264,19 +277,21 @@ function redactOrdemForRole(row, role) {
   return safe;
 }
 
-function redactItensForRole(itens, role) {
-  if (role !== 'oficina') return itens;
+function redactItensForPermissions(itens, shouldRedact) {
+  if (!shouldRedact) return itens;
   return itens.map(({ preco_unitario, subtotal, ...item }) => item);
 }
 
-function anexarAvisosWhatsApp(rows, role) {
+function anexarAvisosWhatsApp(rows, user) {
+  const canUseNotice = podeUsarAvisosWhatsapp(user);
+  const shouldRedact = deveRedigirDadosOperacionais(user);
   const ordemIds = rows.map((row) => row.id).filter(Boolean);
   const avisos = listarAvisos(ordemIds);
   const avisosPorChave = new Map(avisos.map((aviso) => [`${aviso.ordemid}:${aviso.tipo}`, aviso]));
 
   return rows.map((row) => {
-    const confirmacao = avisoVirtual(row, 'confirmacao_pedido', role, avisosPorChave);
-    const pronto = avisoVirtual(row, 'pedido_pronto', role, avisosPorChave);
+    const confirmacao = avisoVirtual(row, 'confirmacao_pedido', canUseNotice, avisosPorChave);
+    const pronto = avisoVirtual(row, 'pedido_pronto', canUseNotice, avisosPorChave);
     const whatsappAvisos = {
       confirmacao_pedido: confirmacao,
       pedido_pronto: pronto,
@@ -286,7 +301,7 @@ function anexarAvisosWhatsApp(rows, role) {
       : confirmacao && ['pendente', 'aberto'].includes(confirmacao.status)
         ? confirmacao
         : pronto || confirmacao;
-    return { ...redactOrdemForRole(row, role), whatsappAvisos, whatsappAvisoPrincipal };
+    return { ...redactOrdemForPermissions(row, shouldRedact), whatsappAvisos, whatsappAvisoPrincipal };
   });
 }
 
@@ -343,12 +358,12 @@ router.get("/", auth(), authPermission("ordens.ver"), (req, res, next) => {
     const whereSql = ` WHERE ${where.join(" AND ")}`;
     if (!querPaginacao) {
       const rows = getAll(`${SEL_ORDEM}${whereSql} ORDER BY o.id DESC`, p);
-      return res.json(anexarAvisosWhatsApp(rows, req.user.role));
+      return res.json(anexarAvisosWhatsApp(rows, req.user));
     }
     const total = getOne(`SELECT COUNT(*) AS total FROM ordens o${whereSql}`, p)?.total ?? 0;
     const rows = getAll(`${SEL_ORDEM}${whereSql} ORDER BY o.id DESC LIMIT ? OFFSET ?`, [...p, limit, offset]);
     res.json({
-      data: anexarAvisosWhatsApp(rows, req.user.role),
+      data: anexarAvisosWhatsApp(rows, req.user),
       meta: montarMetaPaginacao({ page, limit, total }),
     });
   } catch(e) { next(e); }
@@ -375,10 +390,10 @@ router.get("/:id", auth(), authPermission("ordens.ver"), (req, res, next) => {
       [req.params.id]
     );
     res.json({
-      ...redactOrdemForRole(o, req.user.role),
+      ...redactOrdemForPermissions(o, deveRedigirDadosOperacionais(req.user)),
       logs,
-      itens: redactItensForRole(itens, req.user.role),
-      lancamentos: req.user.role === 'oficina' ? [] : lancamentos,
+      itens: redactItensForPermissions(itens, deveRedigirDadosOperacionais(req.user)),
+      lancamentos: deveRedigirDadosOperacionais(req.user) ? [] : lancamentos,
     });
   } catch(e) { next(e); }
 });
@@ -645,20 +660,21 @@ router.post("/:id/whatsapp-avisos/:tipo/abrir", auth(), authPermission("ordens.w
   try {
     const tipo = normalizarTipoAviso(req.params.tipo);
     if (!tipo) return res.status(400).json({ error: "Tipo de aviso invalido." });
-    if (!podeUsarAviso(req.user.role, tipo)) {
+    const canUseNotice = podeUsarAvisosWhatsapp(req.user);
+    if (!podeUsarAviso(canUseNotice, tipo)) {
       return res.status(403).json({ error: "Aviso nao permitido para este usuario." });
     }
 
     const os = buscarOrdemAviso(req.params.id);
     if (!os) return res.status(404).json({ error: "OS nao encontrada" });
 
-    const disponibilidade = avisoDisponivelParaOrdem(os, tipo, req.user.role);
+    const disponibilidade = avisoDisponivelParaOrdem(os, tipo, canUseNotice);
     if (!disponibilidade.ok) {
       return res.status(409).json({ error: "Aviso indisponivel para o status atual da OS." });
     }
 
     const phone = normalizarTelefoneWhatsapp(os.clientetelefone || os.clientecontato);
-    const message = montarMensagemAviso(os, tipo, { role: req.user.role, templates: getWhatsappMessageTemplates() });
+    const message = montarMensagemAviso(os, tipo, { canUseNotice, templates: getWhatsappMessageTemplates() });
     if (!message.ok) return res.status(403).json({ error: "Aviso nao permitido para este usuario." });
 
     const aviso = salvarAvisoAberto(os.id, tipo, phone, message.text, req.user.id);
@@ -682,14 +698,15 @@ router.patch("/:id/whatsapp-avisos/:tipo/status", auth(), authPermission("ordens
     if (!status || !['enviado', 'ignorado'].includes(status)) {
       return res.status(400).json({ error: "Status de aviso invalido." });
     }
-    if (!podeUsarAviso(req.user.role, tipo)) {
+    const canUseNotice = podeUsarAvisosWhatsapp(req.user);
+    if (!podeUsarAviso(canUseNotice, tipo)) {
       return res.status(403).json({ error: "Aviso nao permitido para este usuario." });
     }
 
     const os = buscarOrdemAviso(req.params.id);
     if (!os) return res.status(404).json({ error: "OS nao encontrada" });
 
-    const disponibilidade = avisoDisponivelParaOrdem(os, tipo, req.user.role);
+    const disponibilidade = avisoDisponivelParaOrdem(os, tipo, canUseNotice);
     if (!disponibilidade.ok) {
       return res.status(409).json({ error: "Aviso indisponivel para o status atual da OS." });
     }

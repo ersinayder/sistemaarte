@@ -5,6 +5,7 @@ const path          = require('path');
 const fs            = require('fs');
 const { getDB }     = require('../database');
 const { auth, authPermission } = require('../middlewares/auth');
+const { hasPermission } = require('../domain/permissionRules');
 const {
   getNFEWizard,
   callSEFAZ,
@@ -1200,7 +1201,7 @@ router.get('/eventos/:eventoId/xml', auth(), authPermission('nfe.xml'), (req, re
     if (!evento) {
       return res.status(404).json({ erro: 'Evento fiscal nao encontrado.' });
     }
-    if (req.user.role !== 'admin') {
+    if (!hasPermission(req.user, 'nfe.lixeira')) {
       const notaOculta = evento.nota_id && evento.nota_deletedat;
       const legadoOculto = !evento.nota_id && evento.ordemid && evento.ordem_deletedat;
       const semEscopoFiscal = !evento.nota_id && !evento.ordemid;

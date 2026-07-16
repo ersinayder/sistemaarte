@@ -402,13 +402,16 @@ describe('route persistence contracts', () => {
   it('redacts financial fields from oficina OS responses on the backend', () => {
     const source = fs.readFileSync(new URL('../routes/ordens.js', import.meta.url), 'utf8');
 
-    expect(source).toMatch(/function redactOrdemForRole/);
-    expect(source).toMatch(/role !== 'oficina'/);
+    expect(source).toMatch(/function deveRedigirDadosOperacionais/);
+    expect(source).toMatch(/hasPermission\(user,\s*["']oficina\.ver["']\)/);
+    expect(source).toMatch(/!hasAnyPermission\(user,\s*\[/);
+    expect(source).toMatch(/function redactOrdemForPermissions/);
+    expect(source).toMatch(/if \(!shouldRedact\) return row/);
     expect(source).toMatch(/saldoaberto/);
     expect(source).toMatch(/descontoinput,\s*\n\s*descontovalor,/);
-    expect(source).toMatch(/function redactItensForRole/);
+    expect(source).toMatch(/function redactItensForPermissions/);
     expect(source).toMatch(/\{\s*preco_unitario,\s*subtotal,\s*\.\.\.item\s*\}/);
-    expect(source).toMatch(/lancamentos:\s*req\.user\.role === 'oficina' \? \[\] : lancamentos/);
+    expect(source).toMatch(/lancamentos:\s*deveRedigirDadosOperacionais\(req\.user\) \? \[\] : lancamentos/);
   });
 
   it('redacts fiscal and customer PII fields from oficina OS responses on the backend', () => {
@@ -544,12 +547,12 @@ describe('security configuration contracts', () => {
     expect(source).not.toMatch(/Ambiente atual: producao/);
   });
 
-  it('keeps fiscal event XML downloads scoped to active canonical notes for non-admin users', () => {
+  it('keeps fiscal event XML downloads scoped to active canonical notes without trash permission', () => {
     const source = fs.readFileSync(new URL('../routes/nfe.js', import.meta.url), 'utf8');
 
     expect(source).toMatch(/FROM nfe_eventos e[\s\S]+LEFT JOIN nfe_notas n[\s\S]+n\.id = e\.nfeid/);
     expect(source).toMatch(/LEFT JOIN ordens o ON o\.id = COALESCE\(e\.ordemid,\s*n\.ordemid\)/);
-    expect(source).toMatch(/req\.user\.role !== 'admin'[\s\S]+notaOculta[\s\S]+legadoOculto[\s\S]+semEscopoFiscal/);
+    expect(source).toMatch(/!hasPermission\(req\.user,\s*['"]nfe\.lixeira['"]\)[\s\S]+notaOculta[\s\S]+legadoOculto[\s\S]+semEscopoFiscal/);
   });
 
   it('does not log NF-e payloads or event payloads with fiscal PII', () => {
@@ -820,13 +823,13 @@ describe('security configuration contracts', () => {
     expect(modalSource).not.toMatch(/Reemitir|Cancelar|Corrigir|Consultar SEFAZ|Editar OS|Emitir CC-e/);
   });
 
-  it('offers admin-only local reconciliation for divergent fiscal-financial findings', () => {
+  it('offers permission-gated local reconciliation for divergent fiscal-financial findings', () => {
     const source = fs.readFileSync(new URL('../../frontend/src/pages/NotasFiscais.jsx', import.meta.url), 'utf8');
     const modalStart = source.indexOf('function ModalAuditoriaIntegridadeFiscalFinanceira');
     const nextFunction = source.indexOf('function ModalAuditoriaPendenciaFiscal', modalStart);
     const modalSource = source.slice(modalStart, nextFunction);
 
-    expect(source).toMatch(/isAdmin && apontamentos\.some\(item => item\.tipo === 'nfe_total_divergente'\)/);
+    expect(source).toMatch(/canConciliar && apontamentos\.some\(item => item\.tipo === 'nfe_total_divergente'\)/);
     expect(source).toMatch(/api\.post\(`\/nfe\/integridade-financeira\/\$\{ordem\.id \|\| apontamento\?\.ordemId\}\/conciliar`,\s*\{\s*motivo: motivoConciliacao/);
     expect(source).toMatch(/onConciliado=\{\(\) => carregarIntegridadeFiscalFinanceira\(\)\}/);
     expect(modalSource).not.toMatch(/Conciliar.*SEFAZ|Corrigir.*XML|Editar.*OS/s);
@@ -1043,7 +1046,7 @@ describe('pagination route contracts', () => {
     expect(source).toMatch(/montarMetaPaginacao/);
     expect(source).toMatch(/COUNT\(\*\) AS total[\s\S]+FROM ordens o/);
     expect(source).toMatch(/LIMIT \? OFFSET \?/);
-    expect(source).toMatch(/res\.json\(\{\s*data:\s*anexarAvisosWhatsApp\(rows,\s*req\.user\.role\),\s*meta:/);
+    expect(source).toMatch(/res\.json\(\{\s*data:\s*anexarAvisosWhatsApp\(rows,\s*req\.user\),\s*meta:/);
   });
 
   it('exposes latest status movement timestamp for Oficina ordering', () => {

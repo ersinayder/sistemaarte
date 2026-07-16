@@ -42,9 +42,7 @@ describe('Produtos RBAC', () => {
     vi.clearAllMocks()
     api.get.mockResolvedValue({ data: [produto] })
     authState = {
-      user: { id: 3, role: 'oficina' },
-      isAdmin: false,
-      isCaixa: false,
+      user: { id: 3, profile_key: 'oficina' },
       can: (permission) => [
         'produtos.ver',
         'produtos.criar',

@@ -354,10 +354,10 @@ Objetivo: remover dependencia visual de roles.
 
 Entregas:
 
-- `PrivateRoute` baseado em permissao;
+- `PrivateRoute` baseado somente em permissao;
 - sidebar baseada em permissao;
 - paginas usando `can(...)`;
-- remocao gradual de `isAdmin`, `isCaixa`, `isOficina` onde nao forem mais necessarios;
+- remocao de `isAdmin`, `isCaixa`, `isOficina` do `AuthContext`;
 - documentacao atualizada.
 
 Validacao:
@@ -473,4 +473,6 @@ O projeto sera considerado completo quando:
 - Fase 3 fechamento simples: `/api/kpis`, rota `/dashboard`, link Resumo, painel de integridade do Dashboard e `/api/consulta` usam permissoes `dashboard.*` e `clientes.consultar_documentos`.
 - Fase 4 concluida: `/api/caixa`, `/api/ordens`, impressao/PDF de OS, `/api/propostas` e `/api/nfe` usam permissoes granulares; rotas e acoes frontend de Atendimento, Ordens, Oficina, Caixa, Propostas e NF-e tambem foram migradas para `can(...)`.
 - Regras criticas preservadas na Fase 4: oficina nao cancela OS, cancelamento de OS exige `ordens.cancelar`, entrega continua dependente de saldo oficial, lixeira fiscal segue restrita e NF-e autorizada/cancelada nao entra em lixeira.
-- Edicao visual de perfis, matriz de permissoes e limpeza final de helpers legados seguem reservadas para fase posterior.
+- Fase 5 concluida: `PrivateRoute` removeu suporte a `roles`, `AuthContext` deixou de expor helpers `isAdmin/isCaixa/isOficina`, Sidebar/Layout exibem perfil em vez de role, paginas Clientes/Produtos/Oficina/OrdemDetalhe/NF-e usam permissoes/contexto explicito, e `auth()` no backend deixou de aceitar roles.
+- WhatsApp de OS foi limpo para usar capacidade calculada por permissoes; usuarios em visualizacao redigida de oficina continuam sem acesso a mensagens com telefone/valores.
+- Edicao visual de perfis e matriz de permissoes segue reservada para fase posterior; a tela de Usuarios ainda usa `role` como dado legado de cadastro/perfil ate essa etapa.

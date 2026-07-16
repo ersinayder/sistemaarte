@@ -26,7 +26,7 @@ vi.mock('./pages/Login', () => ({ default: () => <div>Login</div> }))
 describe('App permission routes', () => {
   beforeEach(() => {
     authState = {
-      user: { id: 2, name: 'Caixa RBAC', role: 'caixa', permissions: [] },
+      user: { id: 2, name: 'Caixa RBAC', profile_key: 'caixa', permissions: [] },
       loading: false,
       canAny: (permissions) => permissions.some((permission) => authState.user.permissions.includes(permission)),
     }
@@ -69,7 +69,7 @@ describe('App permission routes', () => {
   })
 
   it('renders clientes for non-caixa users with clientes.ver permission', async () => {
-    authState.user.role = 'oficina'
+    authState.user.profile_key = 'oficina'
     authState.user.permissions = ['clientes.ver']
 
     render(
@@ -95,7 +95,7 @@ describe('App permission routes', () => {
   })
 
   it('renders produtos for non-caixa users with produtos.ver permission', async () => {
-    authState.user.role = 'oficina'
+    authState.user.profile_key = 'oficina'
     authState.user.permissions = ['produtos.ver']
 
     render(

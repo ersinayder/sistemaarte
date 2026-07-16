@@ -35,12 +35,11 @@ const STATUS_COLOR = {
 
 export default function Clientes() {
   const navigate = useNavigate();
-  const { user, can } = useAuth();
-  const hasCan = typeof can === 'function';
-  const canCreate = hasCan ? can('clientes.criar') : user?.role !== 'viewer';
-  const canEdit = hasCan ? can('clientes.editar') : user?.role !== 'viewer';
-  const canDelete = hasCan ? can('clientes.excluir') : user?.role === 'admin';
-  const canConsultDocuments = hasCan ? can('clientes.consultar_documentos') : user?.role !== 'viewer';
+  const { can } = useAuth();
+  const canCreate = typeof can === 'function' && can('clientes.criar');
+  const canEdit = typeof can === 'function' && can('clientes.editar');
+  const canDelete = typeof can === 'function' && can('clientes.excluir');
+  const canConsultDocuments = typeof can === 'function' && can('clientes.consultar_documentos');
 
   const blank = {
     tipo:'PF', nome:'', cpf:'', cnpj:'', ie:'', contato:'', email:'',
