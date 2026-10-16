@@ -4,6 +4,7 @@ import { toast } from 'react-hot-toast'
 import { Calculator, CalendarDays, ClipboardList, FileText, PackagePlus, Printer, Save, Search, Send, Trash2, UserRound } from 'lucide-react'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
+import { hojeMaisDiasBrt } from '../utils/dates'
 
 const moeda = value => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const numero = value => Number(String(value ?? '').replace(',', '.')) || 0
@@ -23,12 +24,6 @@ function mergeClientes(current, incoming) {
     byId.set(cliente.id, { ...(byId.get(cliente.id) || {}), ...cliente })
   }
   return Array.from(byId.values())
-}
-
-function hojeMaisDias(days) {
-  const d = new Date()
-  d.setDate(d.getDate() + days)
-  return d.toISOString().slice(0, 10)
 }
 
 function Campo({ label, children }) {
@@ -341,7 +336,7 @@ export default function NovaProposta({ onSaved, onCancel, embedded = false }) {
   const [form, setForm] = useState({
     titulo: '',
     prazoentrega: '',
-    validade: hojeMaisDias(7),
+    validade: hojeMaisDiasBrt(7),
     condicoes: 'Valores sujeitos a confirmacao de medidas, materiais e disponibilidade. Producao inicia apos aprovacao da proposta.',
     observacoes: '',
   })

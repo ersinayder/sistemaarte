@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'react-hot-toast';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { hojeBrt, mesAtualBrt } from '../utils/dates';
 
 const TABS = [
   { id: 'resumo', label: 'Resumo mensal', permissions: ['financeiro.ver'] },
@@ -14,8 +15,8 @@ const CATEGORIAS = ['Fornecedor', 'Aluguel', 'Energia', 'Internet', 'Impostos', 
 const PAGAMENTOS = ['Pix', 'Dinheiro', 'Cartao de Debito', 'Cartao de Credito', 'Transferencia', 'Boleto', 'Outros'];
 
 const fmt = (v) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-const today = () => new Date().toISOString().slice(0, 10);
-const mesAtual = () => today().slice(0, 7);
+const today = () => hojeBrt();
+const mesAtual = () => mesAtualBrt();
 const fmtD = (d) => d ? new Date(`${String(d).slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR') : '-';
 
 function StatCard({ label, value, color = 'var(--color-primary)' }) {

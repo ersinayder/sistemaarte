@@ -4,6 +4,7 @@ import { Download, FileWarning, Plus, RotateCcw, Trash2, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import { buscarEnderecoPorCep, maskCep } from '../utils/cep'
+import { hojeBrt } from '../utils/dates'
 import { useAuth } from '../context/AuthContext'
 import InutilizacaoModal from '../components/nfe/InutilizacaoModal'
 
@@ -1898,7 +1899,7 @@ function ModalCCE({ nfe, onClose, onSuccess }) {
 }
 
 function ModalExportacaoNFe({ onClose }) {
-  const hoje = new Date().toISOString().slice(0, 10)
+  const hoje = hojeBrt()
   const primeiroDiaMes = `${hoje.slice(0, 8)}01`
   const [tipo, setTipo] = useState('xml')
   const [inicio, setInicio] = useState(primeiroDiaMes)
