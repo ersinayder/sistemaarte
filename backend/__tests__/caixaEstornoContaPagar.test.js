@@ -130,8 +130,53 @@ describe('caixa DELETE /api/caixa/:id - estorno de conta a pagar', () => {
     expect(lancamento.deletedpor).toBe(99);
 
     // Verify contas_pagar status was reverted to 'Pendente' and datapagamento cleared
-    const conta = sqlite.prepare('SELECT status, datapagamento, pagoem FROM contas_pagar WHERE id = 42').get();
+    const conta = sqlite.prepare('SELECT status, datapagamento, pagoem, lancamentoid FROM contas_pagar WHERE id = 42').get();
     expect(conta.status).toBe('Pendente');
     expect(conta.datapagamento).toBeNull();
+    expect(conta.pagoem).toBeNull();
+    expect(conta.lancamentoid).toBeNull();
+  });
+
+  it('reverts legacy contas_pagar where lancamentos.conta_pagar_id is null via contas_pagar.lancamentoid fallback', async () => {
+    // 1. Create a conta a pagar and mark it as Pago with lancamentoid=20
+    sqlite.prepare(`
+      INSERT INTO contas_pagar (id, fornecedor, descricao, valor, vencimento, status, datapagamento, pagoem, lancamentoid)
+      VALUES (43, 'Fornecedor Vidro', 'Vidro Comum', 180.00, '2026-10-20', 'Pago', '2026-10-15', '2026-10-15', 20)
+    `).run();
+
+    // 2. Create the associated legacy lancamento (conta_pagar_id is NULL, origem is 'conta-pagar')
+    sqlite.prepare(`
+      INSERT INTO lancamentos (id, data, tipo, categoria, descricao, pagamento, valor, pago, criadopor, origem, conta_pagar_id)
+      VALUES (20, '2026-10-15', 'Saída', 'Insumos', 'Fornecedor Vidro - Vidro Comum', 'Pix', 180.00, 1, 1, 'conta-pagar', NULL)
+    `).run();
+
+    const handler = businessHandler('delete', '/:id');
+    const res = makeRes();
+    const next = vi.fn();
+
+    await handler(
+      {
+        params: { id: '20' },
+        user: { id: 99, role: 'admin', permissions: ['caixa.excluir_lancamento'] },
+      },
+      res,
+      next
+    );
+
+    if (next.mock.calls.length) throw next.mock.calls[0][0];
+
+    expect(res.json).toHaveBeenCalledWith({ ok: true });
+
+    // Verify lancamento was soft-deleted
+    const lancamento = sqlite.prepare('SELECT deletedat, deletedpor FROM lancamentos WHERE id = 20').get();
+    expect(lancamento.deletedat).not.toBeNull();
+    expect(lancamento.deletedpor).toBe(99);
+
+    // Verify contas_pagar status was reverted to 'Pendente', datapagamento cleared, pagoem cleared, lancamentoid cleared
+    const conta = sqlite.prepare('SELECT status, datapagamento, pagoem, lancamentoid FROM contas_pagar WHERE id = 43').get();
+    expect(conta.status).toBe('Pendente');
+    expect(conta.datapagamento).toBeNull();
+    expect(conta.pagoem).toBeNull();
+    expect(conta.lancamentoid).toBeNull();
   });
 });

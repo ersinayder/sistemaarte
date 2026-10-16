@@ -177,10 +177,11 @@ router.delete("/:id", auth(), authPermission("caixa.excluir_lancamento"), (req, 
           [old.ordemid]
         );
       }
-      if (old.origem === "conta-pagar" && old.conta_pagar_id) {
+      const contaPagarId = old.conta_pagar_id || (old.origem === "conta-pagar" ? getOne("SELECT id FROM contas_pagar WHERE lancamentoid=?", [old.id])?.id : null);
+      if (contaPagarId) {
         run(
           "UPDATE contas_pagar SET status='Pendente', datapagamento=NULL, pagoem=NULL, lancamentoid=NULL, updatedat=datetime('now','localtime') WHERE id=?",
-          [old.conta_pagar_id]
+          [contaPagarId]
         );
       }
     });
