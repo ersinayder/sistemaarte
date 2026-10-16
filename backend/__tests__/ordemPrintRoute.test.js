@@ -55,9 +55,19 @@ require.cache[require.resolve('../utils/impressaoConfig.js')] = {
 };
 
 function makeRes() {
-  const res = {};
+  const res = {
+    headers: {},
+  };
   res.status = vi.fn().mockReturnValue(res);
   res.json = vi.fn().mockReturnValue(res);
+  res.setHeader = vi.fn((key, val) => {
+    res.headers[key.toLowerCase()] = val;
+    return res;
+  });
+  res.send = vi.fn((body) => {
+    res.body = body;
+    return res;
+  });
   return res;
 }
 
@@ -65,6 +75,18 @@ async function loadPrintHandler() {
   const mod = await import('../routes/pdf.js');
   const router = mod.default || mod;
   const layer = router.stack.find((entry) => entry.route?.path === '/:id/print' && entry.route?.methods?.post);
+  return {
+    layer,
+    handler: layer?.route?.stack?.at(-1)?.handle,
+    roles: layer?.route?.stack?.map((entry) => entry.handle?._roles).find(Array.isArray),
+    permission: layer?.route?.stack?.map((entry) => entry.handle?._permission).find(Boolean),
+  };
+}
+
+async function loadPdfHandler() {
+  const mod = await import('../routes/pdf.js');
+  const router = mod.default || mod;
+  const layer = router.stack.find((entry) => entry.route?.path === '/:id/pdf' && entry.route?.methods?.get);
   return {
     layer,
     handler: layer?.route?.stack?.at(-1)?.handle,
@@ -172,5 +194,15 @@ describe('ordem service order server printing route', () => {
     expect(res.status).toHaveBeenCalledWith(404);
     expect(res.json).toHaveBeenCalledWith({ error: 'OS nao encontrada' });
     expect(printHtml).not.toHaveBeenCalled();
+  });
+
+  it('define CSP com frame-ancestors self para permitir impressao via iframe mesma origem', async () => {
+    const { handler } = await loadPdfHandler();
+    const res = makeRes();
+
+    await handler({ params: { id: '42' }, query: { embedded: '1' } }, res);
+
+    expect(res.headers['content-security-policy']).toContain("frame-ancestors 'self'");
+    expect(res.headers['content-security-policy']).not.toContain("frame-ancestors 'none'");
   });
 });

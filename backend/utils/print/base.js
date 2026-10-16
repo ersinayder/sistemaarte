@@ -12,7 +12,7 @@ let logoCache = null;
  * - O risco é completamente mitigado porque:
  *   1. O HTML é gerado no backend pelo sistema (sem injeção arbitrária de código de terceiros);
  *   2. É servido apenas a usuários autenticados para impressão interna;
- *   3. Diretivas complementares de contenção estão ativas ('default-src none', 'object-src none', 'base-uri none', 'frame-ancestors none', 'form-action none').
+ *   3. Diretivas complementares de contenção estão ativas ('default-src none', 'object-src none', 'base-uri none', 'frame-ancestors self', 'form-action none').
  */
 const PRINT_CONTENT_SECURITY_POLICY = [
   "default-src 'none'",
@@ -22,7 +22,7 @@ const PRINT_CONTENT_SECURITY_POLICY = [
   "script-src 'unsafe-inline'",
   "base-uri 'none'",
   "form-action 'none'",
-  "frame-ancestors 'none'",
+  "frame-ancestors 'self'",
 ].join('; ');
 
 function esc(value) {
