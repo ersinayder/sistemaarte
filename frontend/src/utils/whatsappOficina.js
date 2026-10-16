@@ -1,11 +1,19 @@
+export function formatarNumero(phone) {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('55') && digits.length >= 12) return digits;
+  if (digits.length === 10 || digits.length === 11) return `55${digits}`;
+  return digits;
+}
+
 export function buildWhatsappDesktopUrl({ phone, text }) {
-  const normalizedPhone = String(phone || '').replace(/\D/g, '');
+  const normalizedPhone = formatarNumero(phone);
   if (!normalizedPhone) return null;
   return `whatsapp://send?phone=${normalizedPhone}&text=${encodeURIComponent(String(text || ''))}`;
 }
 
 export function buildWhatsappWebUrl({ phone, text }) {
-  const normalizedPhone = String(phone || '').replace(/\D/g, '');
+  const normalizedPhone = formatarNumero(phone);
   if (!normalizedPhone) return null;
   return `https://web.whatsapp.com/send?phone=${normalizedPhone}&text=${encodeURIComponent(String(text || ''))}`;
 }
@@ -47,7 +55,7 @@ export function launchWhatsappDesktop(url) {
 
 function navigateWhatsappWeb(url) {
   try {
-    window.location.assign(url);
+    window.open(url, '_blank', 'noopener,noreferrer');
     return true;
   } catch {
     return false;

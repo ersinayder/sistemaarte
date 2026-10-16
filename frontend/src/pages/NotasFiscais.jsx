@@ -2272,7 +2272,7 @@ export default function NotasFiscais({ lixeira = false }) {
               </thead>
               <tbody>
                 {filtradas.map((n, i) => (
-                  <tr key={n.id}
+                  <tr key={n.id || n.nfe_chave || n.chave || `${n.origem}-${n.ordemid || n.nfe_numero || i}`}
                     style={{ borderBottom: '1px solid var(--color-divider)', background: i % 2 === 0 ? 'transparent' : 'oklch(from var(--color-surface-offset) l c h / 0.3)', transition: 'background var(--transition-interactive)' }}
                   >
                     <td style={{ padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-xs)', fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{n.nfe_numero ? `${n.nfe_numero}/${n.nfe_serie}` : '—'}</td>

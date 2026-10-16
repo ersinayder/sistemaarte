@@ -94,7 +94,7 @@ function AppRoutes() {
           <Route path="/produtos" element={<PrivateRoute permissions={['produtos.ver']}><Produtos /></PrivateRoute>}/>
           <Route path="/usuarios" element={<PrivateRoute permissions={['usuarios.ver']}><Usuarios /></PrivateRoute>}/>
           <Route path="/configuracoes" element={<PrivateRoute permissions={['configuracoes.ver', 'configuracoes.editar_fiscal', 'configuracoes.editar_whatsapp', 'configuracoes.editar_impressao', 'configuracoes.seguranca', 'backups.ver']}><Configuracoes /></PrivateRoute>}/>
-          <Route path="/servidor" element={<PrivateRoute permissions={['configuracoes.ver', 'backups.ver']}><Servidor /></PrivateRoute>}/>
+          <Route path="/servidor" element={<PrivateRoute permissions={['servidor.ver', 'configuracoes.ver']}><Servidor /></PrivateRoute>}/>
           <Route path="/nfe" element={<PrivateRoute permissions={['nfe.ver']}><NotasFiscais /></PrivateRoute>}/>
           <Route path="/nfe/lixeira" element={<PrivateRoute permissions={['nfe.lixeira']}><NotasFiscais lixeira /></PrivateRoute>}/>
           <Route path="/sem-acesso" element={<SemAcesso />}/>
