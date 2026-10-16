@@ -223,6 +223,7 @@ Rotas montadas em `backend/server.js`:
 /api/backup
 /api/produtos
 /api/configuracoes
+/api/servidor
 /api/kpis
 /api/nfe
 /api/health
@@ -274,6 +275,7 @@ Rotas reais em `frontend/src/App.jsx`:
 /produtos
 /usuarios
 /configuracoes
+/servidor
 /nfe
 /nfe/lixeira
 ```
