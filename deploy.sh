@@ -36,7 +36,7 @@ cd "$REPO_DIR"
 PM2_BIN="$(find_pm2 || true)"
 if [ -z "$PM2_BIN" ]; then
   echo "ERRO: pm2 nao encontrado no PATH deste shell. O backend nao foi reiniciado."
-  echo "Abra o terminal como Administrator ou adicione o npm global/bin ao PATH."
+  echo "Instale o pm2 globalmente (npm i -g pm2) ou adicione o binario do npm/pm2 ao PATH."
   exit 1
 fi
 

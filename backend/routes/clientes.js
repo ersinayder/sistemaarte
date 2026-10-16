@@ -3,6 +3,7 @@ const { getAll, getOne, run, runInsert, transaction } = require("../database");
 const { auth, authPermission } = require("../middlewares/auth");
 const { normalizarPaginacao, montarMetaPaginacao } = require("../domain/paginationRules");
 const { consultarCnpj } = require("../services/cnpjLookupService");
+const { hoje } = require("../utils/dates");
 
 const SEL_CLIENTE = `
   SELECT c.*,
@@ -74,14 +75,14 @@ router.get("/:id", auth(), authPermission("clientes.ver"), (req, res, next) => {
     const total = ordens.reduce((s, o) => s + Number(o.valortotal || 0), 0);
     const ticketMedio = ordens.length ? total / ordens.length : 0;
 
-    const hoje = new Date().toISOString().slice(0, 10);
+    const dataHoje = hoje();
     const statusAberto = ['Aguardando', 'Em Produção', 'Pronto'];
     const osEmAberto = ordens.filter(o => statusAberto.includes(o.status)).length;
 
     const osVencidas = ordens.filter(o =>
       statusAberto.includes(o.status) &&
       o.prazoentrega &&
-      o.prazoentrega.slice(0, 10) < hoje
+      o.prazoentrega.slice(0, 10) < dataHoje
     ).length;
 
     const ultimaOs = ordens[0] || null;
@@ -117,13 +118,18 @@ router.get("/:id/ordens", auth(), authPermission("clientes.ver"), (req, res, nex
 
 router.post("/", auth(), authPermission("clientes.criar"), (req, res, next) => {
   try {
-    const { name, phone, email, cpf, ie, logradouro, numero, bairro, cidade, uf, cep, notes } = req.body ?? {};
+    const { name, phone, email, cpf, ie, ind_ie_dest, logradouro, numero, bairro, cidade, uf, cep, notes } = req.body ?? {};
     if (!name) return res.status(400).json({ error: "Nome obrigatorio" });
+    // ind_ie_dest so faz sentido para CNPJ (PJ); para CPF e sempre null
+    const docDigits = (cpf || '').replace(/\D/g, '');
+    const indIeDest = docDigits.length === 14 && ['1','2','9'].includes(String(ind_ie_dest||'').trim())
+      ? String(ind_ie_dest).trim()
+      : null;
     const id = runInsert(
       `INSERT INTO clientes
-        (name, phone, email, cpf, ie, logradouro, numero, bairro, cidade, uf, cep, notes)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [name, phone||null, email||null, cpf||null, ie||null,
+        (name, phone, email, cpf, ie, ind_ie_dest, logradouro, numero, bairro, cidade, uf, cep, notes)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [name, phone||null, email||null, cpf||null, ie||null, indIeDest,
        logradouro||null, numero||null, bairro||null,
        cidade||null, uf||null, cep||null, notes||null]
     );
@@ -133,17 +139,21 @@ router.post("/", auth(), authPermission("clientes.criar"), (req, res, next) => {
 
 router.put("/:id", auth(), authPermission("clientes.editar"), (req, res, next) => {
   try {
-    const { name, phone, email, cpf, ie, logradouro, numero, bairro, cidade, uf, cep, notes } = req.body ?? {};
+    const { name, phone, email, cpf, ie, ind_ie_dest, logradouro, numero, bairro, cidade, uf, cep, notes } = req.body ?? {};
     if (!name) return res.status(400).json({ error: "Nome obrigatorio" });
     if (!getOne("SELECT id FROM clientes WHERE id=? AND deletedat IS NULL", [req.params.id]))
       return res.status(404).json({ error: "Cliente nao encontrado" });
+    const docDigits = (cpf || '').replace(/\D/g, '');
+    const indIeDest = docDigits.length === 14 && ['1','2','9'].includes(String(ind_ie_dest||'').trim())
+      ? String(ind_ie_dest).trim()
+      : null;
     run(
       `UPDATE clientes
-       SET name=?, phone=?, email=?, cpf=?, ie=?,
+       SET name=?, phone=?, email=?, cpf=?, ie=?, ind_ie_dest=?,
            logradouro=?, numero=?, bairro=?,
            cidade=?, uf=?, cep=?, notes=?
        WHERE id=?`,
-      [name, phone||null, email||null, cpf||null, ie||null,
+      [name, phone||null, email||null, cpf||null, ie||null, indIeDest,
        logradouro||null, numero||null, bairro||null,
        cidade||null, uf||null, cep||null, notes||null,
        req.params.id]

@@ -13,6 +13,10 @@ backend/.env
 
 # Certificado digital NF-e — NUNCA versionar o .pfx
 backend/certs/
+*.pfx
+
+# Scratch scripts and temporary tools
+scratch/
 
 # XMLs de NF-e emitidas (obrigação legal 5 anos — backup separado)
 backend/data/nfe_xmls/
@@ -36,6 +40,11 @@ backend/data/*.db-wal
 # Legacy/generated local fiscal artifacts
 backend/xmls/
 deploy-restart.ps1
+
+# Deploy trigger sentinels
+.deploy-trigger
+backend/.deploy-trigger
+*.deploy-trigger
 
 # OS/Editor
 .DS_Store

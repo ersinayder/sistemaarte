@@ -95,6 +95,8 @@ function mergeClientes(current, incoming) {
 // ------- Modal de OS -------
 function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEditFinanceiro, canPrint }) {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const isNew = !os;
   const [form, setForm] = useState({
     clienteid:'', clientenome:'', clientetelefone:'', clientecpf:'',
@@ -252,18 +254,20 @@ function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEd
     };
 
     return ReactDOM.createPortal(
-      <div style={{ position:'fixed', inset:0, zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center',
-        background:'oklch(from var(--color-bg) l c h / 0.7)', backdropFilter:'blur(2px)' }} {...overlayProps}>
-        <div style={{ background:'var(--color-surface)', borderRadius:'var(--radius-xl)',
-          boxShadow:'var(--shadow-lg)', width:'100%', maxWidth:460,
-          border:'1px solid var(--color-border)', overflow:'hidden' }}>
-          <div style={{ padding:'var(--space-5) var(--space-6)', borderBottom:'1px solid var(--color-border)' }}>
-            <h2 style={{ fontWeight:800, fontSize:'var(--text-lg)', margin:0 }}>OS {createdOS.numero} criada</h2>
-            <p style={{ fontSize:'var(--text-sm)', color:'var(--color-text-muted)', margin:'var(--space-2) 0 0' }}>
-              O que deseja fazer agora?
-            </p>
+      <div className="modal-overlay" {...overlayProps}>
+        <div className="modal modal-sm">
+          <div className="modal-header">
+            <div>
+              <h2 className="modal-title" style={{ fontWeight:800, fontSize:'var(--text-base)', margin:0 }}>OS {createdOS.numero} criada</h2>
+              <p style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', margin:'2px 0 0' }}>
+                O que deseja fazer agora?
+              </p>
+            </div>
+            <button className="btn btn-icon btn-ghost" onClick={onClose} aria-label="Fechar">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
           </div>
-          <div style={{ padding:'var(--space-5) var(--space-6)', display:'grid', gap:'var(--space-3)' }}>
+          <div className="modal-body modal-body-dense" style={{ display:'grid', gap:'var(--space-2)' }}>
             <button type="button" className="btn btn-primary" onClick={visualizar} style={{ justifyContent:'center' }}>Visualizar OS</button>
             {canPrint && <button type="button" className="btn btn-secondary" onClick={imprimir} style={{ justifyContent:'center' }}>Imprimir</button>}
             <button type="button" className="btn btn-ghost" onClick={onClose} style={{ justifyContent:'center' }}>Fechar</button>
@@ -275,37 +279,32 @@ function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEd
   }
 
   const modalContent = (
-    <div style={{ position:'fixed', inset:0, zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center',
-      background:'oklch(from var(--color-bg) l c h / 0.7)', backdropFilter:'blur(2px)' }}
-      {...overlayProps}>
-      <div style={{ background:'var(--color-surface)', borderRadius:'var(--radius-xl)',
-        boxShadow:'var(--shadow-lg)', width:'100%', maxWidth:980, maxHeight:'90vh',
-        display:'flex', flexDirection:'column', border:'1px solid var(--color-border)' }}>
+    <div className="modal-overlay" {...overlayProps}>
+      <div className="modal modal-2xl">
         {/* Header */}
-        <div style={{ padding:'var(--space-4) var(--space-6)', borderBottom:'1px solid var(--color-border)',
-          display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
+        <div className="modal-header">
           <div>
-            <h2 style={{ fontWeight:700, fontSize:'var(--text-lg)', margin:0 }}>
+            <h2 className="modal-title" style={{ fontWeight:700, fontSize:'var(--text-base)', margin:0 }}>
               {isNew ? 'Nova Ordem de Serviço' : `Editar OS ${os?.numero}`}
             </h2>
             {!isNew && <p style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', margin:0 }}>
               Cliente: {os?.clientenome}
             </p>}
           </div>
-          <button onClick={onClose} style={{ color:'var(--color-text-muted)', padding:'var(--space-1)' }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <button className="btn btn-icon btn-ghost" onClick={onClose} aria-label="Fechar">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M18 6 6 18M6 6l12 12"/>
             </svg>
           </button>
         </div>
 
         {/* Body */}
-        <form onSubmit={handleSubmit} style={{ overflowY:'auto', flex:1 }}>
-          <div style={{ padding:'var(--space-5) var(--space-6)', display:'grid',
-            gridTemplateColumns:'repeat(auto-fit, minmax(320px, 1fr))', gap:'var(--space-4)', alignItems:'start' }}>
+        <form onSubmit={handleSubmit} style={{ display:'flex', flexDirection:'column', flex:1, minHeight:0 }}>
+          <div className="modal-body modal-body-dense" style={{ display:'grid',
+            gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 340px), 1fr))', gap:'var(--space-3)', alignItems:'start' }}>
 
-          <section className="card" style={{ padding:'var(--space-4)', display:'grid', gap:'var(--space-4)' }}>
-            <div style={{ fontWeight:800, fontSize:'var(--text-sm)' }}>Cliente e servico</div>
+          <section className="card" style={{ padding:'var(--space-3)', display:'grid', gap:'var(--space-3)' }}>
+            <div style={{ fontWeight:800, fontSize:'var(--text-xs)', textTransform:'uppercase', color:'var(--color-text-muted)' }}>Cliente e serviço</div>
             {/* Cliente */}
             <div ref={clienteRef} style={{ position:'relative' }}>
               <label className="form-label">Cliente *</label>
@@ -335,7 +334,7 @@ function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEd
             </div>
 
             {/* Telefone + CPF */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'var(--space-3)' }}>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'var(--space-2)' }}>
               <div>
                 <label className="form-label">Telefone</label>
                 <input className="form-input" value={form.clientetelefone}
@@ -349,7 +348,7 @@ function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEd
             </div>
 
             {/* Serviço + Prioridade */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'var(--space-3)' }}>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'var(--space-2)' }}>
               <div>
                 <label className="form-label">Serviço *</label>
                 <select className="form-input" value={form.servico} onChange={e=>set('servico',e.target.value)} required>
@@ -365,7 +364,7 @@ function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEd
             </div>
 
             {/* Data Recebimento + Prazo de Entrega */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'var(--space-3)' }}>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'var(--space-2)' }}>
               <div>
                 <label className="form-label">Data de Recebimento</label>
                 <input className="form-input" type="date" value={form.dataRecebimento}
@@ -383,7 +382,14 @@ function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEd
               <div>
                 <label className="form-label">Status</label>
                 <select className="form-input" value={form.status} onChange={e=>set('status',e.target.value)}>
-                  {STATUS_OPTS.map(s=><option key={s}>{s}</option>)}
+                  {STATUS_OPTS.map(s => {
+                    const disabled = os?.status === 'Entregue' && s !== 'Entregue' && (!isAdmin || s !== 'Pronto');
+                    return (
+                      <option key={s} value={s} disabled={disabled}>
+                        {s} {disabled ? '(não permitido)' : ''}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
             )}
@@ -393,96 +399,96 @@ function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEd
               <label className="form-label">Observações</label>
               <textarea className="form-input" rows={2} value={form.observacoes}
                 onChange={e=>set('observacoes',e.target.value)}
-                placeholder="Medidas, cores, detalhes do pedido…" />
+                placeholder="Medidas, cores, detalhes do pedido…"
+                style={{ resize:'vertical', minHeight:44, maxHeight:90 }} />
             </div>
           </section>
 
-          <section style={{ display:'grid', gap:'var(--space-4)' }}>
-            <div className="card" style={{ padding:'var(--space-4)', display:'grid', gap:'var(--space-4)' }}>
-              <div style={{ fontWeight:800, fontSize:'var(--text-sm)' }}>Itens</div>
-            <ProdutoInput produtos={produtosSugestoes} onAdd={addProduto} />
-            {form.produtos && form.produtos.length > 0 && (
-              <div style={{ display:'flex', flexDirection:'column', gap:'var(--space-2)' }}>
-                {form.produtos.map((p, i) => (
-                  <div key={i} style={{ display:'grid', gridTemplateColumns:'1fr 80px 100px 32px',
-                    gap:'var(--space-2)', alignItems:'center',
-                    background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)',
-                    padding:'var(--space-2) var(--space-3)' }}>
-                    <span style={{ fontSize:'var(--text-xs)', fontWeight:500, overflow:'hidden',
-                      textOverflow:'ellipsis', whiteSpace:'nowrap' }}
-                      title={p.nome}>{p.nome}{p.avulso && <span style={{ marginLeft:4, fontSize:9, color:'var(--color-text-faint)' }}>avulso</span>}</span>
-                    <input type="number" className="form-input" value={p.quantidade} min={1}
-                      onChange={e=>updateProd(i,'quantidade',Number(e.target.value))}
-                      style={{ fontSize:'var(--text-xs)', padding:'var(--space-1) var(--space-2)', textAlign:'center' }} />
-                    <input type="number" className="form-input" value={p.preco_unitario} min={0} step="0.01"
-                      onChange={e=>updateProd(i,'preco_unitario',Number(e.target.value))}
-                      style={{ fontSize:'var(--text-xs)', padding:'var(--space-1) var(--space-2)', textAlign:'right' }} />
-                    <button type="button" onClick={()=>removeProduto(i)}
-                      style={{ color:'var(--color-error)', padding:'var(--space-1)', background:'none', border:'none', cursor:'pointer' }}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                        <path d="M18 6 6 18M6 6l12 12"/>
-                      </svg>
-                    </button>
+          <section style={{ display:'grid', gap:'var(--space-3)' }}>
+            <div className="card" style={{ padding:'var(--space-3)', display:'grid', gap:'var(--space-2)' }}>
+              <div style={{ fontWeight:800, fontSize:'var(--text-xs)', textTransform:'uppercase', color:'var(--color-text-muted)' }}>Itens</div>
+              <ProdutoInput produtos={produtosSugestoes} onAdd={addProduto} />
+              {form.produtos && form.produtos.length > 0 && (
+                <div style={{ display:'flex', flexDirection:'column', gap:'var(--space-1)', maxHeight:160, overflowY:'auto' }}>
+                  {form.produtos.map((p, i) => (
+                    <div key={i} style={{ display:'grid', gridTemplateColumns:'1fr 70px 88px 28px',
+                      gap:'var(--space-2)', alignItems:'center',
+                      background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)',
+                      padding:'var(--space-1) var(--space-2)' }}>
+                      <span style={{ fontSize:'var(--text-xs)', fontWeight:500, overflow:'hidden',
+                        textOverflow:'ellipsis', whiteSpace:'nowrap' }}
+                        title={p.nome}>{p.nome}{p.avulso && <span style={{ marginLeft:4, fontSize:9, color:'var(--color-text-faint)' }}>avulso</span>}</span>
+                      <input type="number" className="form-input" value={p.quantidade} min={1}
+                        onChange={e=>updateProd(i,'quantidade',Number(e.target.value))}
+                        style={{ fontSize:'var(--text-xs)', padding:'2px 4px', textAlign:'center', height:26 }} />
+                      <input type="number" className="form-input" value={p.preco_unitario} min={0} step="0.01"
+                        onChange={e=>updateProd(i,'preco_unitario',Number(e.target.value))}
+                        style={{ fontSize:'var(--text-xs)', padding:'2px 4px', textAlign:'right', height:26 }} />
+                      <button type="button" onClick={()=>removeProduto(i)}
+                        style={{ color:'var(--color-error)', padding:2, background:'none', border:'none', cursor:'pointer' }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                          <path d="M18 6 6 18M6 6l12 12"/>
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                  <div style={{ textAlign:'right', fontWeight:700, fontSize:'var(--text-xs)', color:'var(--color-primary)',
+                    padding:'var(--space-1) var(--space-2)' }}>
+                    Total: {fmt(form.produtos.reduce((s,p)=>s+(Number(p.quantidade||1)*Number(p.preco_unitario||0)),0))}
                   </div>
-                ))}
-                <div style={{ textAlign:'right', fontWeight:700, fontSize:'var(--text-sm)', color:'var(--color-primary)',
-                  padding:'var(--space-2) var(--space-3)' }}>
-                  Total: {fmt(form.produtos.reduce((s,p)=>s+(Number(p.quantidade||1)*Number(p.preco_unitario||0)),0))}
-                </div>
-              </div>
-            )}
-            </div>
-
-            <div className="card" style={{ padding:'var(--space-4)', display:'grid', gap:'var(--space-4)' }}>
-              <div style={{ fontWeight:800, fontSize:'var(--text-sm)' }}>Pagamento</div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'var(--space-3)' }}>
-              <div>
-                <label className="form-label">Valor Total *</label>
-                <input className="form-input" type="number" step="0.01" value={form.valortotal}
-                  onChange={e=>set('valortotal',e.target.value)} required min={0} />
-              </div>
-              {isNew && (
-                <div>
-                  <label className="form-label">Desconto</label>
-                  <input className="form-input" value={form.descontoinput}
-                    onChange={e=>set('descontoinput',e.target.value)} placeholder="10% ou 10,00" />
                 </div>
               )}
-              <div>
-                <label className="form-label">Forma de Pagamento</label>
-                <select className="form-input" value={form.pagamento} onChange={e=>set('pagamento',e.target.value)}>
-                  {PAGAMENTOS.map(p=><option key={p}>{p}</option>)}
-                </select>
-              </div>
             </div>
-            {isNew && form.descontoinput && (
-              <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginTop:-6 }}>
-                Desconto: {fmt(descontoOS.desconto)} · Total final: <strong style={{ color:'var(--color-primary)' }}>{fmt(descontoOS.totalLiquido)}</strong>
-              </div>
-            )}
-            {isNew && (
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'var(--space-3)' }}>
+
+            <div className="card" style={{ padding:'var(--space-3)', display:'grid', gap:'var(--space-2)' }}>
+              <div style={{ fontWeight:800, fontSize:'var(--text-xs)', textTransform:'uppercase', color:'var(--color-text-muted)' }}>Pagamento</div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'var(--space-2)' }}>
                 <div>
-                  <label className="form-label">Entrada</label>
-                  <input className="form-input" type="number" step="0.01" value={form.valorentrada}
-                    onChange={e=>set('valorentrada',e.target.value)} min={0} />
+                  <label className="form-label">Valor Total *</label>
+                  <input className="form-input" type="number" step="0.01" value={form.valortotal}
+                    onChange={e=>set('valortotal',e.target.value)} required min={0} />
                 </div>
+                {isNew && (
+                  <div>
+                    <label className="form-label">Desconto</label>
+                    <input className="form-input" value={form.descontoinput}
+                      onChange={e=>set('descontoinput',e.target.value)} placeholder="10% ou 10,00" />
+                  </div>
+                )}
                 <div>
-                  <label className="form-label">Data da Entrada</label>
-                  <input className="form-input" type="date" value={form.dataEntrada}
-                    onChange={e=>set('dataEntrada',e.target.value)} />
+                  <label className="form-label">Forma de Pagamento</label>
+                  <select className="form-input" value={form.pagamento} onChange={e=>set('pagamento',e.target.value)}>
+                    {PAGAMENTOS.map(p=><option key={p}>{p}</option>)}
+                  </select>
                 </div>
               </div>
-            )}
+              {isNew && form.descontoinput && (
+                <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', marginTop:-2 }}>
+                  Desconto: {fmt(descontoOS.desconto)} · Total final: <strong style={{ color:'var(--color-primary)' }}>{fmt(descontoOS.totalLiquido)}</strong>
+                </div>
+              )}
+              {isNew && (
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'var(--space-2)' }}>
+                  <div>
+                    <label className="form-label">Entrada</label>
+                    <input className="form-input" type="number" step="0.01" value={form.valorentrada}
+                      onChange={e=>set('valorentrada',e.target.value)} min={0} />
+                  </div>
+                  <div>
+                    <label className="form-label">Data da Entrada</label>
+                    <input className="form-input" type="date" value={form.dataEntrada}
+                      onChange={e=>set('dataEntrada',e.target.value)} />
+                  </div>
+                </div>
+              )}
             </div>
           </section>
 
           </div>
 
           {/* Footer */}
-          <div style={{ padding:'var(--space-4) var(--space-6)', borderTop:'1px solid var(--color-border)',
-            display:'flex', justifyContent:'flex-end', gap:'var(--space-3)', flexShrink:0 }}>
-            <button type="button" className="btn btn-secondary" onClick={onClose}>Cancelar</button>
+          <div className="modal-footer">
+            <button type="button" className="btn btn-ghost" onClick={onClose}>Cancelar</button>
             <button type="submit" className="btn btn-primary" disabled={saving}>
               {saving ? 'Salvando…' : isNew ? 'Criar OS' : 'Salvar alterações'}
             </button>

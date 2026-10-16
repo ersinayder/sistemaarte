@@ -90,13 +90,19 @@ router.post("/:id/print", auth(), authPermission("ordens.imprimir"), async (req,
         printUrl: `/api/ordens/${os.id}/pdf?embedded=1`,
       });
     }
-    const html = renderOrdemServicoHtml({ ordem: os, itens, logs, resumo });
+    const html = renderOrdemServicoHtml({
+      ordem: os,
+      itens,
+      logs,
+      resumo,
+      autoPrint: true,
+    });
     const result = await printHtml({
       html,
       jobName: `ordem-${os.numero || os.id}`,
       copies,
       printerConfig,
-      settleMs: 4000,
+      settleMs: 6000,
     });
 
     res.json({

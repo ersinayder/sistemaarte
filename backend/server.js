@@ -7,7 +7,7 @@ const helmet       = require("helmet");
 const path         = require("path");
 const fs           = require("fs");
 
-const { initDB, backup }     = require("./database");
+const { initDB, backup, shouldRunBackup, setBackupDate } = require("./database");
 const { auth }               = require("./middlewares/auth");
 const { errorHandler }       = require("./middlewares/errorHandler");
 const { csrfOriginGuard }    = require("./middlewares/csrfOriginGuard");
@@ -25,11 +25,12 @@ const allowedOrigins = process.env.CORS_ORIGINS
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
+const HOST = process.env.HOST || "127.0.0.1";
 
 const TRUST_PROXY = process.env.TRUST_PROXY === "1" || process.env.TRUST_PROXY === "true" ? 1 : false;
 app.set("trust proxy", TRUST_PROXY);
 
-app.use(helmet());
+app.use(helmet({ contentSecurityPolicy: { directives: { ...helmet.contentSecurityPolicy.getDefaultDirectives(), "upgrade-insecure-requests": null } } }));
 app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json());
 app.use(cookieParser());
@@ -60,6 +61,7 @@ app.use("/api/consulta",    require("./routes/consulta"));
 app.use("/api/backup",      require("./routes/backup"));
 app.use("/api/produtos",    require("./routes/produtos"));
 app.use("/api/configuracoes", require("./routes/configuracoes"));
+app.use("/api/servidor",      require("./routes/servidor"));
 app.use("/api/kpis",        require("./routes/kpis"));
 // ── NF-e ──────────────────────────────────────────────────────────────────────
 app.use("/api/nfe",         require("./routes/nfe"));
@@ -67,16 +69,9 @@ app.use("/api/nfe",         require("./routes/nfe"));
 app.get("/api/health", (_req, res) => res.json({ ok: true, ts: Date.now() }));
 
 // Backup automático diário — verifica a cada 5min às 2h BRT (Intl, DST-safe)
-let _backupDate = "";
 setInterval(() => {
-  const hj = hoje(); // BRT correto via utils/dates
-  const h  = parseInt(
-    new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: 'numeric', hour12: false })
-      .format(new Date()),
-    10
-  );
-  if (h >= 2 && _backupDate !== hj) {
-    _backupDate = hj;
+  if (shouldRunBackup()) {
+    setBackupDate(hoje());
     backup()
       .then(() => console.log("[Backup] Concluido:", new Date().toISOString()))
       .catch(err => console.error("[Backup] FALHOU:", err.message));
@@ -102,6 +97,7 @@ app.use(errorHandler);
 
 initDB();
 
+// WhatsApp: worker de background somente se expressamente habilitado por env (desativado por padrao para evitar bloqueio)
 if (process.env.WHATSAPP_WEB_ENABLED === "true") {
   const { getWhatsappRuntimeConfig } = require("./utils/whatsappConfig");
   const { createWhatsappWebProvider } = require("./utils/whatsappWebProvider");
@@ -118,9 +114,9 @@ if (process.env.WHATSAPP_WEB_ENABLED === "true") {
   }
 }
 
-app.listen(PORT, "0.0.0.0", () => {
+app.listen(PORT, HOST, () => {
   console.log("\n╔══════════════════════════════════════╗");
   console.log(`║  Sistema Oficina — Servidor OK       ║`);
-  console.log(`║  http://0.0.0.0:${PORT}                 ║`);
+  console.log(`║  http://${HOST}:${PORT}                 ║`);
   console.log("╚══════════════════════════════════════╝\n");
 });

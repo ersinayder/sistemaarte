@@ -30,6 +30,7 @@ const {
   getWhatsappPublicConfig,
   getWhatsappRuntimeConfig,
   prepararWhatsappSecretsParaPersistencia,
+  isWhatsappWebEnabled,
 } = require("../utils/whatsappConfig");
 const {
   normalizarImpressaoConfig,
@@ -335,9 +336,18 @@ router.get("/whatsapp", auth(), authPermission("configuracoes.editar_whatsapp"),
 
 router.get("/whatsapp/web-status", auth(), authPermission("configuracoes.editar_whatsapp"), async (_req, res, next) => {
   try {
+    if (!isWhatsappWebEnabled()) {
+      return res.json({
+        state: "manual_mode",
+        message: "Envio manual assistido ativo via navegador/desktop (automacao desativada)",
+      });
+    }
     const runtime = getWhatsappRuntimeConfig();
     if (runtime.provider !== "web_local" || !runtime.webBaseUrl || !runtime.webInstance) {
-      return res.json({ connected: false, state: "not_configured", qr: null });
+      return res.json({
+        state: "manual_mode",
+        message: "Envio manual assistido ativo via navegador/desktop (automacao desativada)",
+      });
     }
     const { createWhatsappWebProvider, providerStatusFromError } = require("../utils/whatsappWebProvider");
     const provider = createWhatsappWebProvider({
@@ -355,19 +365,32 @@ router.get("/whatsapp/web-status", auth(), authPermission("configuracoes.editar_
 
 router.get("/impressao", auth(), authPermission("configuracoes.editar_impressao"), (_req, res, next) => {
   try {
-    res.json({ impressao: getImpressaoConfig() });
+    const impressao = getImpressaoConfig();
+    res.json({
+      impressao: {
+        ...impressao,
+        serverPlatform: process.platform,
+        directPrintSupported: process.platform === "win32",
+      },
+    });
   } catch (e) { next(e); }
 });
 
 router.put("/impressao", auth(), authPermission("configuracoes.editar_impressao"), (req, res, next) => {
   try {
     const config = normalizarImpressaoConfig(req.body || {});
-    const validacao = validarImpressaoConfig(config);
+    const validacao = validarImpressaoConfig(config, { platform: process.platform });
 
     if (!validacao.ok) {
       return res.status(400).json({
-        error: "Verifique a configuracao de impressao",
+        error: validacao.errors.directPrintEnabled || "Verifique a configuracao de impressao",
         errors: validacao.errors,
+      });
+    }
+
+    if (process.platform !== "win32" && config.directPrintEnabled) {
+      return res.status(400).json({
+        error: "Impressao direta no servidor esta disponivel apenas no Windows Server. Utilize o modo Navegador.",
       });
     }
 
@@ -385,12 +408,24 @@ router.put("/impressao", auth(), authPermission("configuracoes.editar_impressao"
     );
 
     const impressao = getImpressaoConfig();
-    res.json({ impressao, status: statusImpressaoConfig(impressao) });
+    res.json({
+      impressao: {
+        ...impressao,
+        serverPlatform: process.platform,
+        directPrintSupported: process.platform === "win32",
+      },
+      status: statusImpressaoConfig(impressao),
+    });
   } catch (e) { next(e); }
 });
 
 router.post("/impressao/teste", auth(), authPermission("configuracoes.editar_impressao"), async (_req, res, next) => {
   try {
+    if (process.platform !== "win32") {
+      return res.status(400).json({
+        error: "Impressao direta no servidor esta disponivel apenas no Windows Server. Utilize o modo Navegador.",
+      });
+    }
     const impressao = getImpressaoConfig();
     if (!impressao.directPrintEnabled) {
       return res.status(400).json({
@@ -435,6 +470,11 @@ router.post("/impressao/teste", auth(), authPermission("configuracoes.editar_imp
 
 router.post("/impressao/diagnostico", auth(), authPermission("configuracoes.editar_impressao"), async (_req, res, next) => {
   try {
+    if (process.platform !== "win32") {
+      return res.status(400).json({
+        error: "Impressao direta no servidor esta disponivel apenas no Windows Server. Utilize o modo Navegador.",
+      });
+    }
     const impressao = getImpressaoConfig();
     if (!impressao.directPrintEnabled) {
       return res.status(400).json({
@@ -632,7 +672,7 @@ router.put("/fiscal/certificado/senha", auth(), authPermission("configuracoes.ed
   try {
     const senha = String(req.body?.senha ?? "");
     if (!senha.trim()) return res.status(400).json({ error: "Senha do certificado e obrigatoria" });
-    const senhaProtegida = encryptSecret(senha);
+    const senhaProtegida = encryptSecret(senha, 'nfe');
 
     run(
       `INSERT INTO fiscal_config (id, certificado_senha, updatedat)

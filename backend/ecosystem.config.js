@@ -11,13 +11,14 @@ module.exports = {
     {
       name: 'sistemaarte-backend',
       script: './server.js',
-      cwd: 'C:\\\\sistemaarte\\\\backend',
+      cwd: '/var/www/sistemaarte/backend',
       instances: 1,
       exec_mode: 'fork',
       watch: false,
       max_memory_restart: '300M',
       env_production: {
         NODE_ENV:           'production',
+        TZ:                 'America/Sao_Paulo',
         PORT:               process.env.PORT               || 3001,
         JWT_SECRET:         process.env.JWT_SECRET,
         CONFIG_SECRET_KEY:  process.env.CONFIG_SECRET_KEY,
@@ -40,8 +41,8 @@ module.exports = {
         NFE_CNPJ_EMITENTE:  process.env.NFE_CNPJ_EMITENTE,
         NFE_IE_EMITENTE:    process.env.NFE_IE_EMITENTE,
       },
-      error_file: 'C:\\\\Users\\\\Administrator\\\\.pm2\\\\logs\\\\sistemaarte-backend-error.log',
-      out_file:   'C:\\\\Users\\\\Administrator\\\\.pm2\\\\logs\\\\sistemaarte-backend-out.log',
+      error_file: '/var/log/sistemaarte/sistemaarte-backend-error.log',
+      out_file:   '/var/log/sistemaarte/sistemaarte-backend-out.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
     },
 
@@ -49,8 +50,8 @@ module.exports = {
     //  DEV/HOMOLOGACAO NF-e — porta 3003 — branch feat/nfe-sprint-*
     //
     //  Setup inicial no servidor:
-    //    git clone https://github.com/ersinayder/sistemaarte C:\\sistemaarte-dev
-    //    cd C:\\sistemaarte-dev && git checkout feat/nfe-sprint-1
+    //    git clone https://github.com/ersinayder/sistemaarte /var/www/sistemaarte-dev
+    //    cd /var/www/sistemaarte-dev && git checkout feat/nfe-sprint-1
     //    cd backend && npm install
     //    copy .env.example .env   (editar: PORT=3003, NFE_AMBIENTE=homologacao)
     //
@@ -61,13 +62,14 @@ module.exports = {
     {
       name: 'sistemaarte-dev',
       script: './server.js',
-      cwd: 'C:\\\\sistemaarte-dev\\\\backend',
+      cwd: '/var/www/sistemaarte-dev/backend',
       instances: 1,
       exec_mode: 'fork',
       watch: false,
       max_memory_restart: '200M',
       env_dev: {
         NODE_ENV:           'production',
+        TZ:                 'America/Sao_Paulo',
         PORT:               3003,
         JWT_SECRET:         process.env.JWT_SECRET,
         CONFIG_SECRET_KEY:  process.env.CONFIG_SECRET_KEY,
@@ -90,8 +92,8 @@ module.exports = {
         NFE_CNPJ_EMITENTE:  process.env.NFE_CNPJ_EMITENTE,
         NFE_IE_EMITENTE:    process.env.NFE_IE_EMITENTE,
       },
-      error_file: 'C:\\\\Users\\\\Administrator\\\\.pm2\\\\logs\\\\sistemaarte-dev-error.log',
-      out_file:   'C:\\\\Users\\\\Administrator\\\\.pm2\\\\logs\\\\sistemaarte-dev-out.log',
+      error_file: '/var/log/sistemaarte/sistemaarte-dev-error.log',
+      out_file:   '/var/log/sistemaarte/sistemaarte-dev-out.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
     },
   ],

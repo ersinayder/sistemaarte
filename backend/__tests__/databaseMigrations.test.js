@@ -218,4 +218,29 @@ describe('database migrations', () => {
       db.close();
     }
   });
+
+  it('configures busy_timeout to 5000ms, WAL and foreign keys in initDB', () => {
+    const source = fs.readFileSync(path.join(__dirname, "..", "database.js"), "utf8");
+    expect(source).toMatch(/db\.pragma\(["']busy_timeout\s*=\s*5000["']\)/);
+    expect(source).toMatch(/db\.pragma\(["']journal_mode\s*=\s*WAL["']\)/);
+    expect(source).toMatch(/db\.pragma\(["']foreign_keys\s*=\s*ON["']\)/);
+
+    const testDb = database.initDB(':memory:');
+    try {
+      const busyTimeout = testDb.pragma('busy_timeout', { simple: true });
+      expect(busyTimeout).toBeGreaterThanOrEqual(5000);
+      const foreignKeys = testDb.pragma('foreign_keys', { simple: true });
+      expect(foreignKeys).toBe(1);
+    } finally {
+      testDb.close();
+    }
+  });
+
+  it('configures TZ America/Sao_Paulo and Unix paths in ecosystem.config.js', () => {
+    const ecosystemSource = fs.readFileSync(path.join(__dirname, "..", "ecosystem.config.js"), "utf8");
+    expect(ecosystemSource).not.toMatch(/C:\\\\/);
+    expect(ecosystemSource).toMatch(/TZ:\s*['"]America\/Sao_Paulo['"]/);
+    expect(ecosystemSource).toMatch(/cwd:\s*['"]\/var\/www\/sistemaarte\/backend['"]/);
+  });
 });
+

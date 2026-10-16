@@ -3,13 +3,26 @@ const path = require('path');
 
 let logoCache = null;
 
+/**
+ * Content Security Policy para documentos HTML de impressão (OS, Proposta, Relatórios, etc.).
+ *
+ * NOTA DE SEGURANÇA (SEC-06):
+ * - 'script-src unsafe-inline' é estritamente necessário para acionar 'window.print()' no evento onload
+ *   do navegador do operador. O uso de nonces não é viável sem refatorar toda a pipeline de renderização HTML.
+ * - O risco é completamente mitigado porque:
+ *   1. O HTML é gerado no backend pelo sistema (sem injeção arbitrária de código de terceiros);
+ *   2. É servido apenas a usuários autenticados para impressão interna;
+ *   3. Diretivas complementares de contenção estão ativas ('default-src none', 'object-src none', 'base-uri none', 'frame-ancestors none', 'form-action none').
+ */
 const PRINT_CONTENT_SECURITY_POLICY = [
   "default-src 'none'",
+  "object-src 'none'",
   "img-src data:",
   "style-src 'unsafe-inline'",
   "script-src 'unsafe-inline'",
   "base-uri 'none'",
   "form-action 'none'",
+  "frame-ancestors 'none'",
 ].join('; ');
 
 function esc(value) {

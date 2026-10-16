@@ -24,6 +24,14 @@ describe('validarStatus', () => {
   it('aceita status valido sem transicao', () => expect(validarStatus('Aguardando')).toBeNull())
   it('transicao valida: Aguardando -> Em Producao', () => expect(validarStatus('Em Produção', 'Aguardando')).toBeNull())
   it('transicao valida: Pronto -> Entregue', () => expect(validarStatus('Entregue', 'Pronto')).toBeNull())
+  it('transicao Entregue -> Pronto bloqueada para nao-admin', () => {
+    expect(validarStatus('Pronto', 'Entregue')).toMatch(/Apenas administradores/)
+    expect(validarStatus('Pronto', 'Entregue', { isAdmin: false })).toMatch(/Apenas administradores/)
+  })
+  it('transicao Entregue -> Pronto permitida para admin', () => {
+    expect(validarStatus('Pronto', 'Entregue', { isAdmin: true })).toBeNull()
+    expect(validarStatus('Pronto', 'Entregue', { role: 'admin' })).toBeNull()
+  })
   it('transicao invalida: Entregue -> Aguardando', () => expect(validarStatus('Aguardando', 'Entregue')).toMatch(/invalida/))
   it('transicao invalida: Cancelado -> Em Producao', () => expect(validarStatus('Em Produção', 'Cancelado')).toMatch(/invalida/))
   it('rejeita status desconhecido', () => expect(validarStatus('Finalizado')).toMatch(/invalido/))

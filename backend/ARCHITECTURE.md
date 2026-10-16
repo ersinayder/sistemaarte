@@ -20,17 +20,20 @@ server.js     Boot Express, rotas, CORS, health, backup agendado e SPA fallback
 
 | Ponto | Decisão | Motivo |
 |---|---|---|
-| SQLite | `better-sqlite3` | WAL nativo, persistência imediata e transações síncronas simples |
-| Concorrência | PM2 fork com 1 instância | SQLite é single-writer |
+| Ambiente de Produção | VPS Ubuntu 24.04 LTS | Estabilidade, isolamento e performance sob Linux |
+| Reverse Proxy | Nginx + Cloudflare WAF | Terminação SSL, compressão gzip, SSE sem buffer e proteção de borda |
+| SQLite | `better-sqlite3`, WAL, `busy_timeout=5000` | WAL nativo, persistência imediata, tolerância a concorrência e transações síncronas |
+| Concorrência | PM2 fork com 1 instância (`TZ: 'America/Sao_Paulo'`) | SQLite é single-writer |
 | Operações compostas | `transaction()` | Atomicidade em OS, itens, logs e lançamentos |
 | Regras de negócio | `domain/` | Evita validação duplicada em rotas |
 | Serviços longos | `services/` | Isola fluxos como inutilização NF-e |
-| Auth | JWT em cookie HttpOnly, Bearer como fallback | Segurança no browser e teste manual viável |
+| Auth | JWT em cookie HttpOnly, Bearer como fallback | Segurança no browser e flexibilidade para testes de API |
 | CORS | Lista via `CORS_ORIGINS` | Evita `origin: "*"` com credenciais |
 | CSRF | `csrfOriginGuard` em `/api` | Bloqueia mutações cross-site por `Origin/Referer` |
 | Seed | Só em `NODE_ENV=development` ou `SEED_DEV=1` | Impede usuário padrão em produção |
-| Backup | `better-sqlite3.backup()` | Cópia quente sem travar o banco |
-| Impressão | HTML imprimível pelo backend | Layout controlado sem PDF binário |
+| Backup | `wal_checkpoint(PASSIVE)` + `backup()` | Cópia consistente sem travar leituras e escritas |
+| Impressão | HTML imprimível via navegador do usuário | Layout fiel sem depender de spooler no Linux ou PDF binário |
+| WhatsApp | Envio manual assistido (`wa.me` / app desktop) | Confiabilidade sem risco de banimento de número ou desautenticação de socket |
 
 ## Boot do Servidor
 
@@ -43,8 +46,8 @@ server.js     Boot Express, rotas, CORS, health, backup agendado e SPA fallback
 - monta rotas `/api/*`;
 - agenda backup diário às 2h BRT;
 - serve `frontend/dist` quando existe;
-- inicializa o banco com `initDB()`;
-- inicia o worker WhatsApp quando `WHATSAPP_WEB_ENABLED=true` e a configuração runtime está completa.
+- inicializa o banco com `initDB()` (WAL, `busy_timeout=5000`, `foreign_keys=ON`);
+- disponibiliza endpoints de health e status operacional do VPS.
 
 ## Fluxo de Criação de OS
 
@@ -124,7 +127,7 @@ Armadilhas:
 - `montarNFe()` retorna `{ infNFe }`.
 - `NFE_CERT_PASSWORD` é o env correto para senha do certificado.
 - `config.nfe.ambiente` deve ser número.
-- `useOpenSSL=false` é obrigatório no Windows.
+- `config.lib.useOpenSSL = false` é padrão seguro adotado no runtime.
 - XML fiscal deve ser salvo como XML real.
 - Não transmitir inutilização em produção por script automatizado.
 
@@ -134,5 +137,7 @@ Armadilhas:
 - Nunca usar `Em Producao` sem acento.
 - Nunca recalcular saldo de OS fora de `getResumoFinanceiroOS()`.
 - Nunca recriar tabela existente em produção.
-- Nunca versionar `.env`, `*.db`, `backend/data/`, XMLs fiscais, certificados ou sessões WhatsApp.
+- Nunca versionar `.env`, `*.db`, `backend/data/`, XMLs fiscais ou certificados.
+- Nunca ativar microserviço Baileys em segundo plano em produção (usar WhatsApp assistido).
+- Não utilizar impressão direta por spooler SMB em Linux; utilizar o modo navegador do usuário.
 - Nunca ativar PM2 cluster sem redesenhar a camada de persistência.

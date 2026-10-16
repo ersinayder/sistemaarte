@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import toast from 'react-hot-toast'
 import { Download, FileWarning, Plus, RotateCcw, Trash2, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
@@ -19,8 +19,10 @@ const fmtDate = (s) => {
 const BADGE = {
   autorizado: { bg: 'var(--color-success)', text: '#fff', label: 'Autorizado' },
   rejeitado:  { bg: 'var(--color-error)',   text: '#fff', label: 'Rejeitado'  },
+  rejeitada:  { bg: 'var(--color-error)',   text: '#fff', label: 'Rejeitado'  },
   emitindo:   { bg: 'var(--color-gold)',    text: '#fff', label: 'Emitindo…'  },
   cancelado:  { bg: 'var(--color-text-muted)', text: '#fff', label: 'Cancelado' },
+  cancelada:  { bg: 'var(--color-text-muted)', text: '#fff', label: 'Cancelado' },
 }
 
 const EVENTO_LABEL = {
@@ -35,6 +37,21 @@ const PENDENCIA_STATUS_LABEL = {
   processando: 'Processando',
   incerto: 'Incerto',
 }
+
+const statusColor = s => ({
+  'Aguardando': 'aguardando',
+  'Em Produção': 'emproducao',
+  'Pronto': 'pronto',
+  'Entregue': 'entregue',
+  'Cancelado': 'cancelado',
+}[s] || 'secondary')
+
+const tipoBadge = t => ({
+  'Quadro': 'primary',
+  'Corte a Laser': 'blue',
+  'Sublimacao': 'warning',
+  'Diversos': 'secondary',
+}[t] || 'secondary')
 
 const HOMOLOGACAO_ALVO = 10
 const STATUS_NFE_EMISSAO = ['Aguardando', 'Em Produção', 'Pronto', 'Entregue']
@@ -132,7 +149,13 @@ async function baixarDanfe(chave) {
   try {
     await baixarArquivo(`/nfe/${chave}/danfe`, `danfe-${chave}.pdf`)
   } catch (e) {
-    toast.error(await mensagemErroBlob(e, 'DANFE indisponivel'))
+    const msg = await mensagemErroBlob(e, 'DANFE indisponivel')
+    if (msg.includes('Chrome') || msg.includes('DANFE_PDF_CHROME_PATH') || e?.response?.status === 500) {
+      toast('Motor de PDF indisponivel no servidor. Abrindo DANFE para impressao...', { icon: '🖨️' })
+      window.open(`/api/nfe/${chave}/danfe?formato=html`, '_blank', 'noopener,noreferrer')
+      return
+    }
+    toast.error(msg)
   }
 }
 
@@ -356,27 +379,12 @@ function ModalAuditoriaIntegridadeFiscalFinanceira({ apontamento, onClose, canCo
   }
 
   return (
-    <div
-      style={{
-        position: 'fixed', inset: 0, zIndex: 1000,
-        background: 'oklch(from var(--color-text) l c h / 0.4)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 'var(--space-4)',
-      }}
-      onClick={e => e.target === e.currentTarget && onClose()}
-    >
-      <div style={{
-        width: '100%', maxWidth: 720,
-        background: 'var(--color-surface)',
-        borderRadius: 'var(--radius-xl)',
-        boxShadow: 'var(--shadow-lg)',
-        display: 'flex', flexDirection: 'column',
-        maxHeight: '86vh', overflow: 'hidden',
-      }}>
-        <div style={{ padding: 'var(--space-4) var(--space-5)', borderBottom: '1px solid var(--color-divider)', display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', alignItems: 'flex-start' }}>
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal modal-lg">
+        <div className="modal-header">
           <div>
-            <h2 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 800 }}>Auditoria fiscal-financeira</h2>
-            <p style={{ margin: '2px 0 0', fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
+            <h2 style={{ margin: 0, fontSize: 'var(--text-base)', fontWeight: 800 }}>Auditoria fiscal-financeira</h2>
+            <p style={{ margin: '2px 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
               {ordem.numero || apontamento?.numero || `OS ${apontamento?.ordemId}`}
             </p>
           </div>
@@ -385,7 +393,7 @@ function ModalAuditoriaIntegridadeFiscalFinanceira({ apontamento, onClose, canCo
           </button>
         </div>
 
-        <div style={{ padding: 'var(--space-4) var(--space-5)', overflow: 'auto', display: 'grid', gap: 'var(--space-4)' }}>
+        <div className="modal-body modal-body-dense">
           {loading ? (
             <div style={{ padding: 'var(--space-6)', textAlign: 'center', color: 'var(--color-text-muted)' }}>
               <div className="spinner" style={{ margin: '0 auto var(--space-3)' }} />Carregando auditoria...
@@ -405,15 +413,15 @@ function ModalAuditoriaIntegridadeFiscalFinanceira({ apontamento, onClose, canCo
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 'var(--space-2)' }}>
-                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3)', background: 'var(--color-surface-offset)' }}>
+                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-2) var(--space-3)', background: 'var(--color-surface-offset)' }}>
                   <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>Total OS</div>
                   <strong>{fmt(ordem.valorTotal)}</strong>
                 </div>
-                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3)', background: 'var(--color-surface-offset)' }}>
+                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-2) var(--space-3)', background: 'var(--color-surface-offset)' }}>
                   <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>Total NF-e</div>
                   <strong>{fiscal.valorNFe === undefined ? 'Indisponivel' : fmt(fiscal.valorNFe)}</strong>
                 </div>
-                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3)', background: 'var(--color-surface-offset)' }}>
+                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-2) var(--space-3)', background: 'var(--color-surface-offset)' }}>
                   <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>Apontamentos</div>
                   <strong>{apontamentos.length}</strong>
                 </div>
@@ -426,11 +434,6 @@ function ModalAuditoriaIntegridadeFiscalFinanceira({ apontamento, onClose, canCo
                       {item.tipo}
                     </div>
                     <div style={{ marginTop: 4, fontSize: 'var(--text-sm)' }}>{item.mensagem}</div>
-                    <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginTop: 6, fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
-                      {item.valorOS !== undefined && <span>OS {fmt(item.valorOS)}</span>}
-                      {item.valorNFe !== undefined && <span>NF-e {fmt(item.valorNFe)}</span>}
-                      {item.diferenca !== undefined && <span>Dif. {fmt(item.diferenca)}</span>}
-                    </div>
                   </div>
                 ))}
               </div>
@@ -445,8 +448,8 @@ function ModalAuditoriaIntegridadeFiscalFinanceira({ apontamento, onClose, canCo
                   <textarea
                     value={motivoConciliacao}
                     onChange={e => setMotivoConciliacao(e.target.value)}
-                    rows={3}
-                    style={{ width: '100%', resize: 'vertical', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-surface)', color: 'var(--color-text)', padding: 'var(--space-3)', fontSize: 'var(--text-sm)' }}
+                    rows={2}
+                    style={{ width: '100%', resize: 'vertical', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-surface)', color: 'var(--color-text)', padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-xs)', minHeight: 48 }}
                   />
                   <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                     <button className="btn btn-primary btn-sm" onClick={handleConciliar} disabled={conciliando || motivoConciliacao.trim().length < 10}>
@@ -463,9 +466,11 @@ function ModalAuditoriaIntegridadeFiscalFinanceira({ apontamento, onClose, canCo
   )
 }
 
-function ModalAuditoriaPendenciaFiscal({ pendencia, onClose }) {
+function ModalAuditoriaPendenciaFiscal({ pendencia, onClose, onLiberada }) {
   const [detalhe, setDetalhe] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [motivoLiberacao, setMotivoLiberacao] = useState('')
+  const [liberando, setLiberando] = useState(false)
 
   const carregarAuditoria = useCallback(async () => {
     if (!pendencia?.origem || !pendencia?.id) return
@@ -473,6 +478,10 @@ function ModalAuditoriaPendenciaFiscal({ pendencia, onClose }) {
     try {
       const r = await api.get(`/nfe/pendencias/${pendencia.origem}/${pendencia.id}/transicoes`, { skipGlobalErrorToast: true })
       setDetalhe(r.data)
+      const motivoPadrao = r.data?.pendencia?.motivo?.includes('Isento')
+        ? 'Rejeicao SEFAZ conferida pelo operador. Destinatario ajustado para nao contribuinte.'
+        : 'Rejeicao SEFAZ conferida pelo operador. Liberado para correcao e reemissao.'
+      setMotivoLiberacao(prev => prev || motivoPadrao)
     } catch (e) {
       toast.error(e.response?.data?.erro || 'Erro ao carregar auditoria da pendencia fiscal')
       setDetalhe(null)
@@ -485,29 +494,35 @@ function ModalAuditoriaPendenciaFiscal({ pendencia, onClose }) {
 
   const p = detalhe?.pendencia || pendencia
   const transicoes = detalhe?.transicoes || []
+  const pendente = ['incerto', 'processando'].includes(p?.status)
+
+  const handleLiberar = async () => {
+    if (!p?.origem || !p?.id) return
+    const texto = (motivoLiberacao || '').trim()
+    if (texto.length < 5) {
+      toast.error('Informe um motivo para a liberacao (pelo menos 5 caracteres)')
+      return
+    }
+    setLiberando(true)
+    try {
+      const r = await api.post(`/nfe/pendencias/${p.origem}/${p.id}/liberar`, { motivo: texto }, { skipGlobalErrorToast: true })
+      toast.success(r.data?.mensagem || 'Pendencia fiscal liberada com sucesso! A OS esta pronta para reemissao.')
+      if (typeof onLiberada === 'function') onLiberada()
+      onClose()
+    } catch (e) {
+      toast.error(e.response?.data?.erro || 'Erro ao liberar pendencia fiscal')
+    } finally {
+      setLiberando(false)
+    }
+  }
 
   return (
-    <div
-      style={{
-        position: 'fixed', inset: 0, zIndex: 1000,
-        background: 'oklch(from var(--color-text) l c h / 0.4)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 'var(--space-4)',
-      }}
-      onClick={e => e.target === e.currentTarget && onClose()}
-    >
-      <div style={{
-        width: '100%', maxWidth: 720,
-        background: 'var(--color-surface)',
-        borderRadius: 'var(--radius-xl)',
-        boxShadow: 'var(--shadow-lg)',
-        display: 'flex', flexDirection: 'column',
-        maxHeight: '86vh', overflow: 'hidden',
-      }}>
-        <div style={{ padding: 'var(--space-4) var(--space-5)', borderBottom: '1px solid var(--color-divider)', display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', alignItems: 'flex-start' }}>
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal modal-lg">
+        <div className="modal-header">
           <div>
-            <h2 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 800 }}>Auditoria da pendencia fiscal</h2>
-            <p style={{ margin: '2px 0 0', fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
+            <h2 style={{ margin: 0, fontSize: 'var(--text-base)', fontWeight: 800 }}>Auditoria da pendencia fiscal</h2>
+            <p style={{ margin: '2px 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
               {EVENTO_LABEL[p?.tipo] || p?.tipo || 'Pendencia'} - {p?.numero_os || 'OS nao vinculada'}
             </p>
           </div>
@@ -516,7 +531,7 @@ function ModalAuditoriaPendenciaFiscal({ pendencia, onClose }) {
           </button>
         </div>
 
-        <div style={{ padding: 'var(--space-4) var(--space-5)', overflow: 'auto', display: 'grid', gap: 'var(--space-4)' }}>
+        <div className="modal-body modal-body-dense">
           <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-3)', background: 'var(--color-surface-offset)', display: 'grid', gap: 'var(--space-2)' }}>
             <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', alignItems: 'center' }}>
               <span style={{ fontSize: 'var(--text-xs)', fontWeight: 800, color: p?.status === 'incerto' ? 'var(--color-error)' : 'var(--color-gold)' }}>
@@ -538,6 +553,44 @@ function ModalAuditoriaPendenciaFiscal({ pendencia, onClose }) {
               </div>
             )}
           </div>
+
+          {pendente && (
+            <div style={{ border: '1px solid var(--color-gold)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-3)', background: 'var(--color-surface-offset)', display: 'grid', gap: 'var(--space-2)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-2)' }}>
+                <span style={{ fontSize: 'var(--text-sm)', fontWeight: 800, color: 'var(--color-gold)' }}>
+                  Liberar para Reemissao
+                </span>
+                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                  Desbloqueia a OS
+                </span>
+              </div>
+              <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', lineHeight: 1.4 }}>
+                Confira na SEFAZ se a nota nao foi autorizada. Ao liberar, a tentativa e encerrada como rejeicao e a OS e desbloqueada para edicao e nova emissao segura.
+              </p>
+              <div>
+                <label style={{ display: 'block', fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: 4 }}>
+                  Motivo da liberacao
+                </label>
+                <textarea
+                  className="form-input"
+                  value={motivoLiberacao}
+                  onChange={e => setMotivoLiberacao(e.target.value)}
+                  rows={2}
+                  style={{ width: '100%', resize: 'vertical', fontSize: 'var(--text-xs)', minHeight: 46 }}
+                  placeholder="Informe o motivo da liberacao operacional..."
+                />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={handleLiberar}
+                  disabled={liberando || (motivoLiberacao || '').trim().length < 5}
+                >
+                  {liberando ? 'Liberando...' : 'Liberar para Reemissao'}
+                </button>
+              </div>
+            </div>
+          )}
 
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
@@ -573,6 +626,9 @@ function ModalAuditoriaPendenciaFiscal({ pendencia, onClose }) {
             )}
           </div>
         </div>
+        <div className="modal-footer">
+          <button className="btn btn-ghost" onClick={onClose}>Fechar</button>
+        </div>
       </div>
     </div>
   )
@@ -580,12 +636,12 @@ function ModalAuditoriaPendenciaFiscal({ pendencia, onClose }) {
 
 function CampoFiscal({ item, index, field, width, onChange }) {
   return (
-    <td style={{ padding: 'var(--space-2) var(--space-2)' }}>
+    <td style={{ padding: 'var(--space-1) var(--space-2)' }}>
       <input
         className="form-input"
         value={item[field] || ''}
         onChange={e => onChange(index, field, e.target.value)}
-        style={{ width, height: 34, padding: '6px 8px', fontSize: 'var(--text-xs)', fontVariantNumeric: 'tabular-nums' }}
+        style={{ width: width || 64, height: 30, padding: '3px 6px', fontSize: 'var(--text-xs)', fontVariantNumeric: 'tabular-nums' }}
       />
     </td>
   )
@@ -593,14 +649,14 @@ function CampoFiscal({ item, index, field, width, onChange }) {
 
 function CampoNCM({ item, index, onChange }) {
   return (
-    <td style={{ padding: 'var(--space-2) var(--space-2)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+    <td style={{ padding: 'var(--space-1) var(--space-2)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         <input
           className="form-input"
           value={item.ncm || ''}
           onChange={e => onChange(index, 'ncm', e.target.value)}
           placeholder="NCM"
-          style={{ width: 88, height: 34, padding: '6px 8px', fontSize: 'var(--text-xs)', fontVariantNumeric: 'tabular-nums' }}
+          style={{ width: 80, height: 30, padding: '3px 6px', fontSize: 'var(--text-xs)', fontVariantNumeric: 'tabular-nums' }}
         />
         <select
           className="form-input"
@@ -610,7 +666,7 @@ function CampoNCM({ item, index, onChange }) {
           onChange={e => {
             if (e.target.value) onChange(index, 'ncm', e.target.value)
           }}
-          style={{ width: 34, height: 34, padding: '4px 2px', fontSize: 'var(--text-xs)', cursor: 'pointer' }}
+          style={{ width: 28, height: 30, padding: '2px', fontSize: 'var(--text-xs)', cursor: 'pointer' }}
         >
           <option value=""></option>
           {NCM_SUGESTOES_NFE.map(opcao => (
@@ -626,13 +682,13 @@ function CampoNCM({ item, index, onChange }) {
 
 function CampoClienteEmissao({ label, field, value, onChange }) {
   return (
-    <label style={{ display: 'grid', gap: 4, minWidth: 0 }}>
-      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>{label}</span>
+    <label style={{ display: 'grid', gap: 2, minWidth: 0 }}>
+      <span style={{ fontSize: '11px', color: 'var(--color-text-muted)', fontWeight: 700 }}>{label}</span>
       <input
         className="form-input"
         value={value || ''}
         onChange={e => onChange(field, e.target.value)}
-        style={{ width: '100%', height: 36, padding: '7px 9px', fontSize: 'var(--text-xs)' }}
+        style={{ width: '100%', height: 30, padding: '4px 8px', fontSize: 'var(--text-xs)' }}
       />
     </label>
   )
@@ -660,15 +716,25 @@ function erroItemFiscal(item) {
   return ''
 }
 
-function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
+export function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
+  const ordemInicialResolvida = useMemo(() => {
+    if (!ordemInicial) return null
+    const targetId = ordemInicial.ordemid || ordemInicial.id
+    return {
+      ...ordemInicial,
+      id: targetId,
+      numero: ordemInicial.numero_os || ordemInicial.numero,
+    }
+  }, [ordemInicial])
+
   const [modo, setModo]                       = useState(ordemInicial ? 'ordem' : 'ordem')
   const [ordens, setOrdens]               = useState([])
   const [loadingOS, setLoadingOS]         = useState(true)
   const [q, setQ]                         = useState('')
-  const [ordemSel, setOrdemSel]           = useState(ordemInicial || null)
-  const [etapa, setEtapa]                 = useState(ordemInicial ? 'revisar' : 'selecionar')
+  const [ordemSel, setOrdemSel]           = useState(ordemInicialResolvida || null)
+  const [etapa, setEtapa]                 = useState(ordemInicialResolvida ? 'revisar' : 'selecionar')
   const [previa, setPrevia]               = useState(null)
-  const [loadingPrevia, setLoadingPrevia] = useState(Boolean(ordemInicial))
+  const [loadingPrevia, setLoadingPrevia] = useState(Boolean(ordemInicialResolvida))
   const [produtos, setProdutos]             = useState([])
   const [clientes, setClientes]             = useState([])
   const [produtoBusca, setProdutoBusca]     = useState('')
@@ -680,13 +746,14 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
   const inputRef = useRef(null)
 
   const carregarPrevia = useCallback(async (ordem) => {
-    if (!ordem?.id) return
+    const targetId = ordem?.ordemid || ordem?.id
+    if (!targetId) return
     setLoadingPrevia(true)
     setErroFiscal('')
     try {
-      const r = await api.get(`/nfe/emitir/${ordem.id}/preview`, { skipGlobalErrorToast: true })
+      const r = await api.get(`/nfe/emitir/${targetId}/preview`, { skipGlobalErrorToast: true })
       setPrevia(r.data)
-      setOrdemSel(ordem)
+      setOrdemSel(r.data?.ordem || { ...ordem, id: targetId, numero: ordem.numero_os || ordem.numero })
       setEtapa('revisar')
     } catch (e) {
       toast.error(e.response?.data?.erro || 'Erro ao montar previa da NF-e')
@@ -744,8 +811,8 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
   }, [])
 
   useEffect(() => {
-    if (ordemInicial?.id) carregarPrevia(ordemInicial)
-  }, [carregarPrevia, ordemInicial])
+    if (ordemInicialResolvida?.id) carregarPrevia(ordemInicialResolvida)
+  }, [carregarPrevia, ordemInicialResolvida])
 
   const filtradas = q.trim()
     ? ordens.filter(o =>
@@ -787,6 +854,7 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
               nome: cliente.name || cliente.nome || '',
               documento: cliente.cpf || '',
               ie: cliente.ie || '',
+              ind_ie_dest: cliente.ind_ie_dest || '',
               logradouro: cliente.logradouro || '',
               numero: cliente.numero || '',
               bairro: cliente.bairro || '',
@@ -794,7 +862,7 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
               uf: cliente.uf || '',
               cep: cliente.cep || '',
             }
-          : { nome: '', documento: '', ie: '', logradouro: '', numero: '', bairro: '', cidade: '', uf: '', cep: '' },
+          : { nome: '', documento: '', ie: '', ind_ie_dest: '', logradouro: '', numero: '', bairro: '', cidade: '', uf: '', cep: '' },
       }
     })
   }
@@ -1026,26 +1094,14 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
 
   return (
     <div
-      style={{
-        position: 'fixed', inset: 0, zIndex: 1000,
-        background: 'oklch(from var(--color-text) l c h / 0.4)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 'var(--space-4)',
-      }}
+      className="modal-overlay"
       onClick={e => e.target === e.currentTarget && onClose()}
     >
-      <div style={{
-        width: 'min(1180px, calc(100vw - 40px))', maxWidth: 'none',
-        background: 'var(--color-surface)',
-        borderRadius: 'var(--radius-xl)',
-        boxShadow: 'var(--shadow-lg)',
-        display: 'flex', flexDirection: 'column',
-        maxHeight: '92vh', overflow: 'hidden',
-      }}>
-        <div style={{ padding: 'var(--space-4) var(--space-5)', borderBottom: '1px solid var(--color-divider)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-4)' }}>
+      <div className="modal modal-2xl">
+        <div className="modal-header">
           <div>
-            <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, margin: 0 }}>Emitir NF-e</h2>
-            <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
+            <h2 style={{ fontSize: 'var(--text-base)', fontWeight: 700, margin: 0 }}>Emitir NF-e</h2>
+            <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
               {etapa === 'selecionar'
                 ? `Selecione uma OS com status ${STATUS_NFE_EMISSAO_LABEL}`
                 : etapa === 'avulsa'
@@ -1058,11 +1114,11 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
           </button>
         </div>
 
-        {!ordemInicial && (
-          <div style={{ padding: 'var(--space-3) var(--space-5)', borderBottom: '1px solid var(--color-divider)', display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+        {!ordemInicial && etapa !== 'revisar' && (
+          <div style={{ padding: 'var(--space-2) var(--space-4)', borderBottom: '1px solid var(--color-divider)', display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', background: 'var(--color-surface-offset)' }}>
             <button
               type="button"
-              className={`btn ${modo === 'ordem' ? 'btn-primary' : 'btn-ghost'}`}
+              className={`btn btn-sm ${modo === 'ordem' ? 'btn-primary' : 'btn-ghost'}`}
               onClick={entrarModoOrdem}
               disabled={emitindo || loadingPrevia}
             >
@@ -1070,7 +1126,7 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
             </button>
             <button
               type="button"
-              className={`btn ${modo === 'avulsa' ? 'btn-primary' : 'btn-ghost'}`}
+              className={`btn btn-sm ${modo === 'avulsa' ? 'btn-primary' : 'btn-ghost'}`}
               onClick={entrarModoAvulsa}
               disabled={emitindo || loadingCatalogo}
             >
@@ -1081,30 +1137,30 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
 
         {etapa === 'selecionar' && (
           <>
-            <div style={{ padding: 'var(--space-4) var(--space-6)', borderBottom: '1px solid var(--color-divider)' }}>
+            <div style={{ padding: 'var(--space-3) var(--space-4)', borderBottom: '1px solid var(--color-divider)' }}>
               <div style={{ position: 'relative' }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
                   style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-muted)', pointerEvents: 'none' }}>
                   <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
                 </svg>
                 <input ref={inputRef} type="text" value={q} onChange={e => setQ(e.target.value)}
                   placeholder="Buscar por OS, cliente ou servico..."
-                  style={{ width: '100%', padding: '8px 12px 8px 34px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-offset)', fontSize: 'var(--text-sm)', color: 'var(--color-text)' }}
+                  style={{ width: '100%', padding: '6px 12px 6px 32px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-offset)', fontSize: 'var(--text-xs)', color: 'var(--color-text)' }}
                 />
               </div>
             </div>
 
-            <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--space-2) var(--space-4)' }}>
+            <div className="modal-body" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 'var(--space-3)' }}>
               {loadingOS ? (
-                <div style={{ textAlign: 'center', padding: 'var(--space-8)', color: 'var(--color-text-muted)' }}>
+                <div style={{ textAlign: 'center', padding: 'var(--space-6)', color: 'var(--color-text-muted)' }}>
                   <div className="spinner" style={{ margin: '0 auto var(--space-3)' }}/>Carregando ordens...
                 </div>
               ) : filtradas.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: 'var(--space-8)', color: 'var(--color-text-muted)' }}>
-                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3" style={{ margin: '0 auto var(--space-3)', display: 'block', opacity: 0.4 }}>
+                <div style={{ textAlign: 'center', padding: 'var(--space-6)', color: 'var(--color-text-muted)' }}>
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3" style={{ margin: '0 auto var(--space-2)', display: 'block', opacity: 0.4 }}>
                     <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/>
                   </svg>
-                  {q ? 'Nenhuma OS encontrada' : 'Nenhuma OS elegivel para emissao'}
+                  <div style={{ fontSize: 'var(--text-sm)' }}>{q ? 'Nenhuma OS encontrada' : 'Nenhuma OS elegivel para emissao'}</div>
                 </div>
               ) : (
                 filtradas.map(o => {
@@ -1113,98 +1169,82 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
                     <button key={o.id} onClick={() => setOrdemSel(sel ? null : o)}
                       style={{
                         width: '100%', textAlign: 'left',
-                        padding: 'var(--space-3) var(--space-4)', marginBottom: 'var(--space-2)',
-                        borderRadius: 'var(--radius-lg)',
-                        border: `2px solid ${sel ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                        padding: 'var(--space-2) var(--space-3)', marginBottom: 'var(--space-2)',
+                        borderRadius: 'var(--radius-md)',
+                        border: `1.5px solid ${sel ? 'var(--color-primary)' : 'var(--color-border)'}`,
                         background: sel ? 'var(--color-primary-highlight)' : 'var(--color-surface-offset)',
                         cursor: 'pointer', transition: 'all var(--transition-interactive)',
                         display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 'var(--space-2)', alignItems: 'start',
                       }}
                     >
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>{o.numero} - {o.clientenome}</div>
-                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: 2 }}>{o.servico} - {fmt(o.valortotal)}</div>
-                        {o.itens_resumo && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.itens_resumo}</div>}
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 2 }}>
+                          <span style={{ fontWeight: 800, fontSize: 'var(--text-sm)', color: 'var(--color-text)' }}>OS {o.numero}</span>
+                          <span className={`badge badge-${tipoBadge(o.servico)}`}>{o.servico}</span>
+                          <span className={`badge badge-${statusColor(o.status)}`}>{o.status}</span>
+                        </div>
+                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                          Cliente: <b>{o.clientenome}</b> · Criada em {fmtDate(o.createdat)}
+                        </div>
+                        {o.itens_resumo && (
+                          <div style={{ fontSize: '11px', color: 'var(--color-text-faint)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {o.itens_resumo}
+                          </div>
+                        )}
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, minWidth: 86 }}>
-                        <span style={{
-                          fontSize: 'var(--text-xs)', fontWeight: 700, padding: '2px 8px', borderRadius: 'var(--radius-full)',
-                          background: o.status === 'Aguardando' ? 'var(--color-warning-highlight, var(--color-surface-offset))' : o.status === 'Em Produção' ? 'var(--status-producao-hl)' : o.status === 'Pronto' ? 'var(--color-primary-highlight)' : 'var(--color-success-highlight)',
-                          color: o.status === 'Aguardando' ? 'var(--color-warning)' : o.status === 'Em Produção' ? 'var(--status-producao)' : o.status === 'Pronto' ? 'var(--color-primary)' : 'var(--color-success)'
-                        }}>{o.status}</span>
-                        {sel && <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" strokeWidth="2.5"><path d="M20 6L9 17l-5-5"/></svg>}
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontWeight: 800, fontSize: 'var(--text-sm)', color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>{fmt(o.valortotal)}</div>
+                        <div style={{ fontSize: '10px', color: 'var(--color-text-faint)' }}>{o.formapagamento || '—'}</div>
                       </div>
                     </button>
                   )
                 })
               )}
             </div>
-
-            {ordemSel && (
-              <div style={{ margin: 'var(--space-2) var(--space-4)', padding: 'var(--space-3) var(--space-4)', background: 'var(--color-primary-highlight)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-primary)', fontSize: 'var(--text-xs)' }}>
-                <div style={{ fontWeight: 700, color: 'var(--color-primary)', marginBottom: 4 }}>OS selecionada</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '2px 16px' }}>
-                  <span><b>OS:</b> {ordemSel.numero}</span>
-                  <span><b>Cliente:</b> {ordemSel.clientenome}</span>
-                  <span><b>Servico:</b> {ordemSel.servico}</span>
-                  <span><b>Total:</b> {fmt(ordemSel.valortotal)}</span>
-                </div>
-              </div>
-            )}
           </>
         )}
 
         {etapa === 'avulsa' && (
-          <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--space-4) var(--space-5)', display: 'grid', gap: 'var(--space-3)' }}>
-            {loadingCatalogo || loadingPrevia ? (
-              <div style={{ minHeight: 260, display: 'grid', placeItems: 'center', color: 'var(--color-text-muted)' }}>
-                <div style={{ display: 'grid', justifyItems: 'center', gap: 'var(--space-3)' }}><div className="spinner"/>Carregando dados da NF-e avulsa...</div>
+          <div className="modal-body modal-body-dense" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+            {loadingCatalogo ? (
+              <div style={{ minHeight: 220, display: 'grid', placeItems: 'center', color: 'var(--color-text-muted)' }}>
+                <div style={{ display: 'grid', justifyItems: 'center', gap: 'var(--space-3)' }}><div className="spinner"/>Carregando catalogo...</div>
               </div>
-            ) : previa && (
+            ) : (
               <>
-                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 0.8fr) minmax(0, 1.2fr)', gap: 'var(--space-3)' }}>
-                  <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-3)', display: 'grid', gap: 'var(--space-2)' }}>
-                    <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800 }}>NF-e avulsa</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))', gap: 'var(--space-3)' }}>
+                  <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3)', display: 'grid', gap: 'var(--space-2)', background: 'var(--color-surface)' }}>
+                    <div style={{ fontSize: 'var(--text-xs)', fontWeight: 800, textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>NF-e avulsa</div>
                     <label style={{ display: 'grid', gap: 4 }}>
-                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>Cliente cadastrado</span>
-                      <select
-                        className="form-input"
-                        aria-label="Cliente cadastrado"
-                        value={previa.cliente?.id || ''}
-                        onChange={e => selecionarClienteAvulsa(e.target.value)}
-                        style={{ height: 36, fontSize: 'var(--text-sm)' }}
-                      >
-                        <option value="">Consumidor final</option>
-                        {clientes.map(cliente => (
-                          <option key={cliente.id} value={cliente.id}>{cliente.name || cliente.nome}</option>
+                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>Selecionar cliente</span>
+                      <select className="form-input" style={{ fontSize: 'var(--text-xs)', height: 32 }} value={previa?.cliente?.id || ''} onChange={e => selecionarClienteAvulso(e.target.value)}>
+                        <option value="">Selecione um cliente cadastrado ou preencha abaixo</option>
+                        {clientes.map(c => (
+                          <option key={c.id} value={c.id}>{c.name || c.nome} {c.cpf || c.cnpj ? `(${c.cpf || c.cnpj})` : ''}</option>
                         ))}
                       </select>
                     </label>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 'var(--space-2)', alignItems: 'end' }}>
-                      <CampoClienteEmissao label="Nome no documento" field="nome" value={previa.cliente?.nome} onChange={atualizarCliente} />
-                      <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800, color: 'var(--color-primary)', paddingBottom: 8 }}>{fmt(previa.ordem?.valortotal)}</div>
-                    </div>
                   </div>
 
-                  <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-3)', display: 'grid', gap: 'var(--space-2)' }}>
-                    <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800 }}>Produto cadastrado</div>
+                  <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3)', display: 'grid', gap: 'var(--space-2)', background: 'var(--color-surface)' }}>
+                    <div style={{ fontSize: 'var(--text-xs)', fontWeight: 800, textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>Adicionar do catalogo</div>
                     <input
                       className="form-input"
+                      placeholder="Buscar produto cadastrado..."
                       value={produtoBusca}
                       onChange={e => setProdutoBusca(e.target.value)}
-                      placeholder="Buscar produto cadastrado..."
-                      style={{ height: 36, fontSize: 'var(--text-sm)' }}
+                      style={{ fontSize: 'var(--text-xs)', height: 32 }}
                     />
-                    <div style={{ display: 'grid', gap: 'var(--space-2)', maxHeight: 170, overflowY: 'auto' }}>
+                    <div style={{ display: 'grid', gap: 'var(--space-1)', maxHeight: 130, overflowY: 'auto' }}>
                       {produtosFiltrados.length === 0 ? (
                         <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', padding: 'var(--space-2)' }}>Nenhum produto encontrado</div>
                       ) : produtosFiltrados.map(produto => (
                         <button
                           key={produto.id}
                           type="button"
-                          className="btn btn-ghost"
+                          className="btn btn-ghost btn-sm"
                           onClick={() => adicionarProdutoAvulsa(produto)}
-                          style={{ justifyContent: 'space-between', fontSize: 'var(--text-sm)' }}
+                          style={{ justifyContent: 'space-between', fontSize: 'var(--text-xs)' }}
                         >
                           <span>{produto.nome || produto.name}</span>
                           <span style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt(produto.preco || produto.valor || produto.preco_unitario)}</span>
@@ -1214,55 +1254,55 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
                   </div>
                 </div>
 
-                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-3)', display: 'grid', gap: 'var(--space-2)' }}>
-                  <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800 }}>Item avulso</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 1fr) 96px 120px auto', gap: 'var(--space-2)', alignItems: 'end' }}>
-                    <label style={{ display: 'grid', gap: 4 }}>
-                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>Descricao</span>
-                      <input className="form-input" value={itemManual.nome} onChange={e => setItemManual(prev => ({ ...prev, nome: e.target.value }))} style={{ height: 36 }} />
+                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3)', display: 'grid', gap: 'var(--space-2)', background: 'var(--color-surface)' }}>
+                  <div style={{ fontSize: 'var(--text-xs)', fontWeight: 800, textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>Item avulso</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 120px), 1fr)) auto', gap: 'var(--space-2)', alignItems: 'end' }}>
+                    <label style={{ display: 'grid', gap: 2, gridColumn: 'span 2' }}>
+                      <span style={{ fontSize: '11px', color: 'var(--color-text-muted)', fontWeight: 700 }}>Descricao</span>
+                      <input className="form-input" value={itemManual.nome} onChange={e => setItemManual(prev => ({ ...prev, nome: e.target.value }))} style={{ height: 30, fontSize: 'var(--text-xs)' }} />
                     </label>
-                    <label style={{ display: 'grid', gap: 4 }}>
-                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>Qtd.</span>
-                      <input className="form-input" type="number" min="1" value={itemManual.quantidade} onChange={e => setItemManual(prev => ({ ...prev, quantidade: e.target.value }))} style={{ height: 36 }} />
+                    <label style={{ display: 'grid', gap: 2 }}>
+                      <span style={{ fontSize: '11px', color: 'var(--color-text-muted)', fontWeight: 700 }}>Qtd.</span>
+                      <input className="form-input" type="number" min="1" value={itemManual.quantidade} onChange={e => setItemManual(prev => ({ ...prev, quantidade: e.target.value }))} style={{ height: 30, fontSize: 'var(--text-xs)' }} />
                     </label>
-                    <label style={{ display: 'grid', gap: 4 }}>
-                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700 }}>Unit.</span>
-                      <input className="form-input" type="number" min="0" step="0.01" value={itemManual.preco_unitario} onChange={e => setItemManual(prev => ({ ...prev, preco_unitario: e.target.value }))} style={{ height: 36 }} />
+                    <label style={{ display: 'grid', gap: 2 }}>
+                      <span style={{ fontSize: '11px', color: 'var(--color-text-muted)', fontWeight: 700 }}>Unit.</span>
+                      <input className="form-input" type="number" min="0" step="0.01" value={itemManual.preco_unitario} onChange={e => setItemManual(prev => ({ ...prev, preco_unitario: e.target.value }))} style={{ height: 30, fontSize: 'var(--text-xs)' }} />
                     </label>
-                    <button type="button" className="btn btn-primary" onClick={adicionarItemManual}>Adicionar</button>
+                    <button type="button" className="btn btn-primary btn-sm" onClick={adicionarItemManual} style={{ height: 30 }}>Adicionar</button>
                   </div>
                 </div>
 
-                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
-                  <div style={{ padding: 'var(--space-2) var(--space-3)', borderBottom: '1px solid var(--color-divider)', display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
-                    <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800 }}>Itens selecionados</div>
+                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', overflow: 'hidden', background: 'var(--color-surface)' }}>
+                  <div style={{ padding: 'var(--space-2) var(--space-3)', borderBottom: '1px solid var(--color-divider)', background: 'var(--color-surface-offset)', display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div style={{ fontSize: 'var(--text-xs)', fontWeight: 800, textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>Itens selecionados</div>
                     {erroFiscal && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-error)', fontWeight: 700 }}>{erroFiscal}</div>}
                   </div>
-                  {(previa.itens || []).length === 0 ? (
-                    <div style={{ padding: 'var(--space-4)', color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>Nenhum item adicionado.</div>
+                  {(previa?.itens || []).length === 0 ? (
+                    <div style={{ padding: 'var(--space-4)', color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)', textAlign: 'center' }}>Nenhum item adicionado.</div>
                   ) : (
-                    <div style={{ overflowX: 'auto' }}>
-                      <table style={{ width: '100%', minWidth: 680, borderCollapse: 'collapse' }}>
-                        <thead>
-                          <tr style={{ background: 'var(--color-surface-offset)', borderBottom: '1px solid var(--color-divider)' }}>
+                    <div style={{ overflowX: 'auto', maxHeight: 180, overflowY: 'auto' }}>
+                      <table style={{ width: '100%', minWidth: 540, borderCollapse: 'collapse' }}>
+                        <thead style={{ position: 'sticky', top: 0, zIndex: 2, background: 'var(--color-surface-offset)' }}>
+                          <tr style={{ borderBottom: '1px solid var(--color-divider)' }}>
                             {['Produto', 'Qtd.', 'Unit.', 'Total', ''].map(h => (
-                              <th key={h} style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'left', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 800 }}>{h}</th>
+                              <th key={h} style={{ padding: '6px 8px', textAlign: 'left', fontSize: '11px', color: 'var(--color-text-muted)', fontWeight: 800 }}>{h}</th>
                             ))}
                           </tr>
                         </thead>
                         <tbody>
                           {previa.itens.map((item, index) => (
                             <tr key={item.id || index} style={{ borderBottom: '1px solid var(--color-divider)' }}>
-                              <td style={{ padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-sm)', fontWeight: 700 }}>{item.nome}</td>
-                              <td style={{ padding: 'var(--space-2) var(--space-3)' }}>
-                                <input className="form-input" type="number" min="1" value={item.quantidade} onChange={e => atualizarItemAvulso(index, 'quantidade', e.target.value)} style={{ width: 76, height: 34 }} />
+                              <td style={{ padding: '4px 8px', fontSize: 'var(--text-xs)', fontWeight: 700 }}>{item.nome}</td>
+                              <td style={{ padding: '4px 8px' }}>
+                                <input className="form-input" type="number" min="1" value={item.quantidade} onChange={e => atualizarItemAvulso(index, 'quantidade', e.target.value)} style={{ width: 64, height: 28, padding: '2px 6px', fontSize: 'var(--text-xs)' }} />
                               </td>
-                              <td style={{ padding: 'var(--space-2) var(--space-3)' }}>
-                                <input className="form-input" type="number" min="0" step="0.01" value={item.preco_unitario} onChange={e => atualizarItemAvulso(index, 'preco_unitario', e.target.value)} style={{ width: 110, height: 34 }} />
+                              <td style={{ padding: '4px 8px' }}>
+                                <input className="form-input" type="number" min="0" step="0.01" value={item.preco_unitario} onChange={e => atualizarItemAvulso(index, 'preco_unitario', e.target.value)} style={{ width: 88, height: 28, padding: '2px 6px', fontSize: 'var(--text-xs)' }} />
                               </td>
-                              <td style={{ padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-sm)', fontWeight: 800, whiteSpace: 'nowrap' }}>{fmt(Number(item.quantidade || 1) * Number(item.preco_unitario || 0))}</td>
-                              <td style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'right' }}>
-                                <button type="button" className="btn btn-ghost btn-sm" onClick={() => removerItemAvulso(index)}>Remover</button>
+                              <td style={{ padding: '4px 8px', fontSize: 'var(--text-xs)', fontWeight: 800, whiteSpace: 'nowrap' }}>{fmt(Number(item.quantidade || 1) * Number(item.preco_unitario || 0))}</td>
+                              <td style={{ padding: '4px 8px', textAlign: 'right' }}>
+                                <button type="button" className="btn btn-ghost btn-sm" onClick={() => removerItemAvulso(index)} style={{ padding: '2px 6px', height: 24, fontSize: '11px' }}>Remover</button>
                               </td>
                             </tr>
                           ))}
@@ -1277,38 +1317,88 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
         )}
 
         {etapa === 'revisar' && (
-          <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--space-4) var(--space-5)', display: 'grid', gap: 'var(--space-3)' }}>
+          <div className="modal-body modal-body-dense" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
             {loadingPrevia ? (
-              <div style={{ minHeight: 260, display: 'grid', placeItems: 'center', color: 'var(--color-text-muted)' }}>
+              <div style={{ minHeight: 220, display: 'grid', placeItems: 'center', color: 'var(--color-text-muted)' }}>
                 <div style={{ display: 'grid', justifyItems: 'center', gap: 'var(--space-3)' }}><div className="spinner"/>Montando previa...</div>
               </div>
             ) : previa && (
               <>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 'var(--space-3)' }}>
+                {/* 1. Resumo Rápido */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 'var(--space-2)' }}>
                   {[
                     ['OS', previa.ordem?.numero, previa.ordem?.servico],
                     ['Cliente', previa.cliente?.nome, previa.cliente?.documento || 'Sem documento'],
                     ['Emitente', previa.emitente?.xNome, `Serie ${previa.fiscal?.serie || '1'} - ${previa.fiscal?.ambiente === 1 ? 'Producao' : 'Homologacao'}`],
                     ['Total', fmt(previa.ordem?.valortotal), previa.ordem?.pagamento || 'Pagamento nao informado'],
                   ].map(([label, value, detail]) => (
-                    <div key={label} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', background: 'var(--color-surface-offset)', padding: 'var(--space-2) var(--space-3)', minWidth: 0 }}>
-                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>{label}</div>
-                      <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value || '-'}</div>
-                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{detail || '-'}</div>
+                    <div key={label} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-offset)', padding: '4px var(--space-2)', minWidth: 0 }}>
+                      <div style={{ fontSize: '9px', color: 'var(--color-text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</div>
+                      <div style={{ fontSize: 'var(--text-xs)', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value || '-'}</div>
+                      <div style={{ fontSize: '10px', color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{detail || '-'}</div>
                     </div>
                   ))}
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.55fr) minmax(300px, 0.85fr)', gap: 'var(--space-3)' }}>
-                  <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-3)', display: 'grid', gap: 'var(--space-2)' }}>
-                    <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800 }}>Dados do cliente</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 'var(--space-2)' }}>
+                {/* 2. ITENS DA NF-E (PRODUTOS) - Diretamente no topo para visibilidade imediata */}
+                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', overflow: 'hidden', background: 'var(--color-surface)' }}>
+                  <div style={{ padding: '4px var(--space-3)', borderBottom: '1px solid var(--color-divider)', background: 'var(--color-surface-offset)', display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div>
+                      <span style={{ fontSize: 'var(--text-xs)', fontWeight: 800, textTransform: 'uppercase', color: 'var(--color-text)', letterSpacing: '0.04em' }}>Itens da NF-e</span>
+                      <span style={{ fontSize: '10px', color: 'var(--color-text-faint)', marginLeft: 8 }}>Edicao fiscal por item</span>
+                    </div>
+                    {erroFiscal && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-error)', fontWeight: 700 }}>{erroFiscal}</div>}
+                  </div>
+                  <div style={{ overflowX: 'auto', maxHeight: 220, overflowY: 'auto' }}>
+                    <table style={{ width: '100%', minWidth: 700, borderCollapse: 'collapse' }}>
+                      <thead style={{ position: 'sticky', top: 0, zIndex: 2, background: 'var(--color-surface-offset)' }}>
+                        <tr style={{ borderBottom: '1px solid var(--color-divider)' }}>
+                          {['Produto', 'Qtd.', 'Unit.', 'Total', 'NCM', 'CFOP', 'CSOSN', 'Origem', 'Un.'].map(h => (
+                            <th key={h} style={{ padding: '4px 8px', textAlign: 'left', fontSize: '10px', color: 'var(--color-text-muted)', fontWeight: 800, whiteSpace: 'nowrap' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {previa.itens.map((item, index) => (
+                          <tr key={item.id || index} style={{ borderBottom: index === previa.itens.length - 1 ? 'none' : '1px solid var(--color-divider)' }}>
+                            <td style={{ padding: '4px 8px', fontSize: 'var(--text-xs)', fontWeight: 700, minWidth: 160 }}>{item.nome}</td>
+                            <td style={{ padding: '4px 8px', fontSize: 'var(--text-xs)', whiteSpace: 'nowrap' }}>{item.quantidade}</td>
+                            <td style={{ padding: '4px 8px', fontSize: 'var(--text-xs)', whiteSpace: 'nowrap' }}>{fmt(item.preco_unitario)}</td>
+                            <td style={{ padding: '4px 8px', fontSize: 'var(--text-xs)', fontWeight: 700, whiteSpace: 'nowrap' }}>{fmt(item.subtotal)}</td>
+                            <CampoNCM item={item} index={index} onChange={atualizarItemFiscal} />
+                            <CampoFiscal item={item} index={index} field="cfop" width={64} onChange={atualizarItemFiscal} />
+                            <CampoFiscal item={item} index={index} field="csosn" width={64} onChange={atualizarItemFiscal} />
+                            <CampoFiscal item={item} index={index} field="origem_fiscal" width={52} onChange={atualizarItemFiscal} />
+                            <CampoFiscal item={item} index={index} field="unidade" width={56} onChange={atualizarItemFiscal} />
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* 3. Dados do Cliente e Emitente */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: 'var(--space-2)' }}>
+                  <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-2)', display: 'grid', gap: 'var(--space-1)', background: 'var(--color-surface)' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--color-text-muted)', letterSpacing: '0.04em' }}>Dados do cliente</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 'var(--space-1)' }}>
                       <div style={{ gridColumn: 'span 2' }}>
                         <CampoClienteEmissao label="Nome" field="nome" value={previa.cliente?.nome} onChange={atualizarCliente} />
                       </div>
                       <CampoClienteEmissao label="CPF/CNPJ" field="documento" value={previa.cliente?.documento} onChange={atualizarCliente} />
                       <CampoClienteEmissao label="IE" field="ie" value={previa.cliente?.ie} onChange={atualizarCliente} />
-                      <CampoClienteEmissao label={cepLoading ? 'CEP buscando...' : 'CEP'} field="cep" value={previa.cliente?.cep} onChange={atualizarCliente} />
+                      {(previa.cliente?.documento || '').replace(/\D/g, '').length >= 14 && (
+                        <div>
+                          <label style={{ fontSize: '10px', fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: 1, display: 'block' }}>Tipo Contribuinte</label>
+                          <select className="form-input" style={{ fontSize: '11px', padding: '2px 4px', height: 26 }} value={previa.cliente?.ind_ie_dest || ''} onChange={e => atualizarCliente('ind_ie_dest', e.target.value)}>
+                            <option value="">Auto</option>
+                            <option value="1">Contribuinte com IE</option>
+                            <option value="2">Contribuinte Isento</option>
+                            <option value="9">Nao Contribuinte</option>
+                          </select>
+                        </div>
+                      )}
+                      <CampoClienteEmissao label={cepLoading ? 'Buscando...' : 'CEP'} field="cep" value={previa.cliente?.cep} onChange={atualizarCliente} />
                       <div style={{ gridColumn: 'span 2' }}>
                         <CampoClienteEmissao label="Logradouro" field="logradouro" value={previa.cliente?.logradouro} onChange={atualizarCliente} />
                       </div>
@@ -1321,68 +1411,29 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
                     </div>
                   </div>
 
-                  {[
-                    ['Dados do emitente', [
+                  <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-2)', display: 'grid', gap: 2, background: 'var(--color-surface)', alignContent: 'start' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--color-text-muted)', letterSpacing: '0.04em' }}>Dados do emitente</div>
+                    {[
                       ['Razao', previa.emitente?.xNome],
                       ['Fantasia', previa.emitente?.xFant],
                       ['CNPJ', previa.emitente?.CNPJ],
                       ['IE', previa.emitente?.IE],
                       ['Endereco', [previa.emitente?.enderEmit?.xLgr, previa.emitente?.enderEmit?.nro, previa.emitente?.enderEmit?.xBairro].filter(Boolean).join(', ')],
-                    ]],
-                  ].map(([title, rows]) => (
-                    <div key={title} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-3)', display: 'grid', gap: 4 }}>
-                      <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800 }}>{title}</div>
-                      {rows.map(([label, value]) => (
-                        <div key={label} style={{ display: 'grid', gridTemplateColumns: '86px minmax(0, 1fr)', gap: 'var(--space-2)', fontSize: 'var(--text-xs)' }}>
-                          <span style={{ color: 'var(--color-text-muted)', fontWeight: 700 }}>{label}</span>
-                          <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value || '-'}</span>
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-
-                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
-                  <div style={{ padding: 'var(--space-2) var(--space-3)', borderBottom: '1px solid var(--color-divider)', display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
-                    <div>
-                      <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800 }}>Itens da NF-e</div>
-                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>Campos fiscais editaveis nesta emissao</div>
-                    </div>
-                    {erroFiscal && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-error)', fontWeight: 700 }}>{erroFiscal}</div>}
-                  </div>
-                  <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', minWidth: 860, borderCollapse: 'collapse' }}>
-                      <thead>
-                        <tr style={{ background: 'var(--color-surface-offset)', borderBottom: '1px solid var(--color-divider)' }}>
-                          {['Produto', 'Qtd.', 'Unit.', 'Total', 'NCM', 'CFOP', 'CSOSN', 'Origem', 'Un.'].map(h => (
-                            <th key={h} style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'left', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 800 }}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {previa.itens.map((item, index) => (
-                          <tr key={item.id || index} style={{ borderBottom: index === previa.itens.length - 1 ? 'none' : '1px solid var(--color-divider)' }}>
-                            <td style={{ padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-sm)', fontWeight: 700, minWidth: 220 }}>{item.nome}</td>
-                            <td style={{ padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap' }}>{item.quantidade}</td>
-                            <td style={{ padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap' }}>{fmt(item.preco_unitario)}</td>
-                            <td style={{ padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-sm)', fontWeight: 700, whiteSpace: 'nowrap' }}>{fmt(item.subtotal)}</td>
-                            <CampoNCM item={item} index={index} onChange={atualizarItemFiscal} />
-                            <CampoFiscal item={item} index={index} field="cfop" width={70} onChange={atualizarItemFiscal} />
-                            <CampoFiscal item={item} index={index} field="csosn" width={70} onChange={atualizarItemFiscal} />
-                            <CampoFiscal item={item} index={index} field="origem_fiscal" width={58} onChange={atualizarItemFiscal} />
-                            <CampoFiscal item={item} index={index} field="unidade" width={66} onChange={atualizarItemFiscal} />
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    ].map(([label, value]) => (
+                      <div key={label} style={{ display: 'grid', gridTemplateColumns: '64px minmax(0, 1fr)', gap: 'var(--space-1)', fontSize: '11px', padding: '1px 0', borderBottom: '1px solid var(--color-divider)' }}>
+                        <span style={{ color: 'var(--color-text-muted)', fontWeight: 700 }}>{label}</span>
+                        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value || '-'}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
 
-                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-2) var(--space-3)', display: 'grid', gap: 6 }}>
-                  <label style={{ display: 'grid', gap: 6 }}>
-                    <span style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', alignItems: 'center', fontSize: 'var(--text-sm)', fontWeight: 800 }}>
+                {/* 4. Informações complementares */}
+                <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-2)', display: 'grid', gap: 2, background: 'var(--color-surface)' }}>
+                  <label style={{ display: 'grid', gap: 2 }}>
+                    <span style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', alignItems: 'center', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
                       <span>Informacoes complementares</span>
-                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                      <span style={{ fontSize: '10px', color: 'var(--color-text-muted)', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
                         {String(previa.informacoes_complementares || '').length}/{MAX_INFORMACOES_COMPLEMENTARES_NFE}
                       </span>
                     </span>
@@ -1393,7 +1444,7 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
                       onChange={e => atualizarInformacoesComplementares(e.target.value)}
                       maxLength={MAX_INFORMACOES_COMPLEMENTARES_NFE}
                       rows={2}
-                      style={{ width: '100%', minHeight: 52, maxHeight: 110, resize: 'vertical', padding: '7px 10px', fontSize: 'var(--text-sm)', lineHeight: 1.35 }}
+                      style={{ width: '100%', minHeight: 52, maxHeight: 100, resize: 'vertical', padding: '4px 8px', fontSize: '11px', lineHeight: 1.3 }}
                     />
                   </label>
                 </div>
@@ -1402,7 +1453,7 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
           </div>
         )}
 
-        <div style={{ padding: 'var(--space-3) var(--space-5)', borderTop: '1px solid var(--color-divider)', display: 'flex', gap: 'var(--space-3)', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="modal-footer">
           <button
             className="btn btn-ghost"
             onClick={etapa === 'revisar' && !ordemInicial ? () => setEtapa(modo === 'avulsa' ? 'avulsa' : 'selecionar') : onClose}
@@ -1411,18 +1462,18 @@ function ModalEmitir({ ordemInicial, onClose, onSuccess }) {
             {etapa === 'revisar' && !ordemInicial ? 'Voltar' : 'Cancelar'}
           </button>
           {etapa === 'selecionar' ? (
-            <button className="btn btn-primary" onClick={() => carregarPrevia(ordemSel)} disabled={!ordemSel || loadingPrevia} style={{ minWidth: 170 }}>
-              {loadingPrevia ? <><div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }}/> Carregando...</> : 'Revisar dados'}
+            <button className="btn btn-primary" onClick={() => carregarPrevia(ordemSel)} disabled={!ordemSel || loadingPrevia} style={{ minWidth: 150 }}>
+              {loadingPrevia ? <><div className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }}/> Carregando...</> : 'Revisar dados'}
             </button>
           ) : etapa === 'avulsa' ? (
-            <button className="btn btn-primary" onClick={criarPreviaAvulsa} disabled={!previa?.itens?.length || loadingPrevia || loadingCatalogo} style={{ minWidth: 170 }}>
-              {loadingPrevia ? <><div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }}/> Carregando...</> : 'Revisar dados'}
+            <button className="btn btn-primary" onClick={criarPreviaAvulsa} disabled={!previa?.itens?.length || loadingPrevia || loadingCatalogo} style={{ minWidth: 150 }}>
+              {loadingPrevia ? <><div className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }}/> Carregando...</> : 'Revisar dados'}
             </button>
           ) : (
-            <button className="btn btn-primary" onClick={handleEmitir} disabled={!previa || emitindo || loadingPrevia} style={{ minWidth: 160 }}>
+            <button className="btn btn-primary" onClick={handleEmitir} disabled={!previa || emitindo || loadingPrevia} style={{ minWidth: 150 }}>
               {emitindo
-                ? <><div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }}/> Emitindo...</>
-                : <><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg> Emitir NF-e</>
+                ? <><div className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }}/> Emitindo...</>
+                : <><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg> Emitir NF-e</>
               }
             </button>
           )}
@@ -1476,56 +1527,44 @@ function ModalEmitirLegacy({ onClose, onSuccess }) {
 
   return (
     <div
-      style={{
-        position: 'fixed', inset: 0, zIndex: 1000,
-        background: 'oklch(from var(--color-text) l c h / 0.4)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 'var(--space-4)',
-      }}
+      className="modal-overlay"
       onClick={e => e.target === e.currentTarget && onClose()}
     >
-      <div style={{
-        width: '100%', maxWidth: 580,
-        background: 'var(--color-surface)',
-        borderRadius: 'var(--radius-xl)',
-        boxShadow: 'var(--shadow-lg)',
-        display: 'flex', flexDirection: 'column',
-        maxHeight: '80vh', overflow: 'hidden',
-      }}>
-        <div style={{ padding: 'var(--space-5) var(--space-6)', borderBottom: '1px solid var(--color-divider)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div className="modal modal-lg">
+        <div className="modal-header">
           <div>
-            <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, margin: 0 }}>Emitir NF-e</h2>
-            <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>Selecione uma OS com status {STATUS_NFE_EMISSAO_LABEL}</p>
+            <h2 style={{ fontSize: 'var(--text-base)', fontWeight: 700, margin: 0 }}>Emitir NF-e</h2>
+            <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>Selecione uma OS com status {STATUS_NFE_EMISSAO_LABEL}</p>
           </div>
           <button className="btn btn-icon btn-ghost" onClick={onClose} aria-label="Fechar">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
         </div>
 
-        <div style={{ padding: 'var(--space-4) var(--space-6)', borderBottom: '1px solid var(--color-divider)' }}>
+        <div style={{ padding: 'var(--space-3) var(--space-4)', borderBottom: '1px solid var(--color-divider)' }}>
           <div style={{ position: 'relative' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
               style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-muted)', pointerEvents: 'none' }}>
               <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
             </svg>
             <input ref={inputRef} type="text" value={q} onChange={e => setQ(e.target.value)}
               placeholder="Buscar por OS, cliente ou serviço…"
-              style={{ width: '100%', padding: '8px 12px 8px 34px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-offset)', fontSize: 'var(--text-sm)', color: 'var(--color-text)' }}
+              style={{ width: '100%', padding: '6px 12px 6px 32px', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-offset)', fontSize: 'var(--text-xs)', color: 'var(--color-text)' }}
             />
           </div>
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--space-2) var(--space-4)' }}>
+        <div className="modal-body" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 'var(--space-3)' }}>
           {loadingOS ? (
-            <div style={{ textAlign: 'center', padding: 'var(--space-8)', color: 'var(--color-text-muted)' }}>
-              <div className="spinner" style={{ margin: '0 auto var(--space-3)' }}/>Carregando ordens…
+            <div style={{ textAlign: 'center', padding: 'var(--space-6)', color: 'var(--color-text-muted)' }}>
+              <div className="spinner" style={{ margin: '0 auto var(--space-3)' }}/>Carregando ordens...
             </div>
           ) : filtradas.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 'var(--space-8)', color: 'var(--color-text-muted)' }}>
-              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3" style={{ margin: '0 auto var(--space-3)', display: 'block', opacity: 0.4 }}>
+            <div style={{ textAlign: 'center', padding: 'var(--space-6)', color: 'var(--color-text-muted)' }}>
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3" style={{ margin: '0 auto var(--space-2)', display: 'block', opacity: 0.4 }}>
                 <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/>
               </svg>
-              {q ? 'Nenhuma OS encontrada' : 'Nenhuma OS elegível para emissão'}
+              <div style={{ fontSize: 'var(--text-sm)' }}>{q ? 'Nenhuma OS encontrada' : 'Nenhuma OS elegivel para emissao'}</div>
             </div>
           ) : (
             filtradas.map(o => {
@@ -1534,26 +1573,22 @@ function ModalEmitirLegacy({ onClose, onSuccess }) {
                 <button key={o.id} onClick={() => setOrdemSel(sel ? null : o)}
                   style={{
                     width: '100%', textAlign: 'left',
-                    padding: 'var(--space-3) var(--space-4)', marginBottom: 'var(--space-2)',
-                    borderRadius: 'var(--radius-lg)',
-                    border: `2px solid ${sel ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                    padding: 'var(--space-2) var(--space-3)', marginBottom: 'var(--space-2)',
+                    borderRadius: 'var(--radius-md)',
+                    border: `1.5px solid ${sel ? 'var(--color-primary)' : 'var(--color-border)'}`,
                     background: sel ? 'var(--color-primary-highlight)' : 'var(--color-surface-offset)',
                     cursor: 'pointer', transition: 'all var(--transition-interactive)',
                     display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 'var(--space-2)', alignItems: 'start',
                   }}
                 >
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>{o.numero} — {o.clientenome}</div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: 2 }}>{o.servico} · {fmt(o.valortotal)}</div>
-                    {o.itens_resumo && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.itens_resumo}</div>}
+                    <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>{o.numero} - {o.clientenome}</div>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: 2 }}>{o.servico} - {fmt(o.valortotal)}</div>
+                    {o.itens_resumo && <div style={{ fontSize: '11px', color: 'var(--color-text-faint)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.itens_resumo}</div>}
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, minWidth: 86 }}>
-                    <span style={{
-                      fontSize: 'var(--text-xs)', fontWeight: 700, padding: '2px 8px', borderRadius: 'var(--radius-full)',
-                      background: o.status === 'Aguardando' ? 'var(--color-warning-highlight, var(--color-surface-offset))' : o.status === 'Em Produção' ? 'var(--status-producao-hl)' : o.status === 'Pronto' ? 'var(--color-primary-highlight)' : 'var(--color-success-highlight)',
-                      color: o.status === 'Aguardando' ? 'var(--color-warning)' : o.status === 'Em Produção' ? 'var(--status-producao)' : o.status === 'Pronto' ? 'var(--color-primary)' : 'var(--color-success)'
-                    }}>{o.status}</span>
-                    {sel && <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" strokeWidth="2.5"><path d="M20 6L9 17l-5-5"/></svg>}
+                    <span className={`badge badge-${statusColor(o.status)}`}>{o.status}</span>
+                    {sel && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" strokeWidth="2.5"><path d="M20 6L9 17l-5-5"/></svg>}
                   </div>
                 </button>
               )
@@ -1561,24 +1596,12 @@ function ModalEmitirLegacy({ onClose, onSuccess }) {
           )}
         </div>
 
-        {ordemSel && (
-          <div style={{ margin: 'var(--space-2) var(--space-4)', padding: 'var(--space-3) var(--space-4)', background: 'var(--color-primary-highlight)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-primary)', fontSize: 'var(--text-xs)' }}>
-            <div style={{ fontWeight: 700, color: 'var(--color-primary)', marginBottom: 4 }}>OS selecionada</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 16px' }}>
-              <span><b>OS:</b> {ordemSel.numero}</span>
-              <span><b>Cliente:</b> {ordemSel.clientenome}</span>
-              <span><b>Serviço:</b> {ordemSel.servico}</span>
-              <span><b>Total:</b> {fmt(ordemSel.valortotal)}</span>
-            </div>
-          </div>
-        )}
-
-        <div style={{ padding: 'var(--space-4) var(--space-6)', borderTop: '1px solid var(--color-divider)', display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end' }}>
+        <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose} disabled={emitindo}>Cancelar</button>
           <button className="btn btn-primary" onClick={handleEmitir} disabled={!ordemSel || emitindo} style={{ minWidth: 140 }}>
             {emitindo
-              ? <><div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }}/> Emitindo…</>
-              : <><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg> Emitir NF-e</>
+              ? <><div className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }}/> Emitindo…</>
+              : <><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg> Emitir NF-e</>
             }
           </button>
         </div>
@@ -1587,7 +1610,7 @@ function ModalEmitirLegacy({ onClose, onSuccess }) {
   )
 }
 
-function ModalDetalhe({ nfe, onClose, canXml, canDanfe }) {
+function ModalDetalhe({ nfe, onClose, canXml, canDanfe, onAudit, pendenciasFiscais = [] }) {
   const [eventos, setEventos] = useState([])
   const [loadingEventos, setLoadingEventos] = useState(false)
 
@@ -1630,13 +1653,13 @@ function ModalDetalhe({ nfe, onClose, canXml, canDanfe }) {
 
   return (
     <div
-      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'oklch(from var(--color-text) l c h / 0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-4)' }}
+      className="modal-overlay"
       onClick={e => e.target === e.currentTarget && onClose()}
     >
-      <div style={{ width: '100%', maxWidth: 680, background: 'var(--color-surface)', borderRadius: 'var(--radius-xl)', boxShadow: 'var(--shadow-lg)', overflow: 'hidden', maxHeight: '86vh', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: 'var(--space-5) var(--space-6)', borderBottom: '1px solid var(--color-divider)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div className="modal modal-lg">
+        <div className="modal-header">
           <div>
-            <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, margin: 0 }}>NF-e Nº {nfe.nfe_numero || '—'}</h2>
+            <h2 style={{ fontSize: 'var(--text-base)', fontWeight: 700, margin: 0 }}>NF-e Nº {nfe.nfe_numero || '—'}</h2>
             <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>Série {nfe.nfe_serie || '—'}</p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
@@ -1646,7 +1669,7 @@ function ModalDetalhe({ nfe, onClose, canXml, canDanfe }) {
             </button>
           </div>
         </div>
-        <div style={{ padding: 'var(--space-5) var(--space-6)', overflowY: 'auto' }}>
+        <div className="modal-body modal-body-dense">
           <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
             {[
               ['OS',          nfe.numero || '—'],
@@ -1661,18 +1684,18 @@ function ModalDetalhe({ nfe, onClose, canXml, canDanfe }) {
               ['Cancelada em', fmtDate(nfe.nfe_cancelado_em)],
               ['Protocolo cancelamento', nfe.nfe_cancel_protocolo || '—'],
             ].map(([label, value]) => (
-              <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: 'var(--space-2) 0', borderBottom: '1px solid var(--color-divider)', gap: 'var(--space-4)' }}>
+              <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: 'var(--space-1) 0', borderBottom: '1px solid var(--color-divider)', gap: 'var(--space-4)' }}>
                 <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 600, flexShrink: 0 }}>{label}</span>
                 <span style={{ fontSize: 'var(--text-sm)', textAlign: 'right', wordBreak: 'break-word' }}>{value}</span>
               </div>
             ))}
             {nfe.nfe_chave && (
-              <div style={{ paddingTop: 'var(--space-2)' }}>
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 600, marginBottom: 4 }}>Chave de Acesso</div>
-                <div style={{ fontSize: 11, fontFamily: 'monospace', background: 'var(--color-surface-offset)', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-md)', wordBreak: 'break-all', color: 'var(--color-text-muted)', lineHeight: 1.6 }}>{nfe.nfe_chave}</div>
+              <div style={{ paddingTop: 'var(--space-1)' }}>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 600, marginBottom: 2 }}>Chave de Acesso</div>
+                <div style={{ fontSize: 11, fontFamily: 'monospace', background: 'var(--color-surface-offset)', padding: 'var(--space-2)', borderRadius: 'var(--radius-md)', wordBreak: 'break-all', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>{nfe.nfe_chave}</div>
               </div>
             )}
-            <div style={{ paddingTop: 'var(--space-3)' }}>
+            <div style={{ paddingTop: 'var(--space-2)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-2)' }}>
                 <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Eventos fiscais</div>
                 <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
@@ -1685,29 +1708,26 @@ function ModalDetalhe({ nfe, onClose, canXml, canDanfe }) {
                 </div>
               </div>
               {loadingEventos ? (
-                <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', padding: 'var(--space-3)', background: 'var(--color-surface-offset)', borderRadius: 'var(--radius-md)' }}>Carregando eventos...</div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', padding: 'var(--space-3)', background: 'var(--color-surface-offset)', borderRadius: 'var(--radius-md)' }}>Carregando eventos...</div>
               ) : eventos.length === 0 ? (
-                <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', padding: 'var(--space-3)', background: 'var(--color-surface-offset)', borderRadius: 'var(--radius-md)' }}>Nenhum evento fiscal registrado.</div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', padding: 'var(--space-3)', background: 'var(--color-surface-offset)', borderRadius: 'var(--radius-md)' }}>Nenhum evento fiscal registrado.</div>
               ) : (
                 <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
                   {eventos.map(ev => (
-                    <div key={ev.id} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3)', background: 'var(--color-surface-offset)' }}>
+                    <div key={ev.id} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-2) var(--space-3)', background: 'var(--color-surface-offset)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', alignItems: 'flex-start' }}>
                         <div>
-                          <div style={{ fontSize: 'var(--text-sm)', fontWeight: 800 }}>{EVENTO_LABEL[ev.tipo] || ev.tipo} {ev.tipo === 'cce' ? `#${ev.nseqevento}` : ''}</div>
-                          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: 2 }}>{fmtDate(ev.createdat)} · cStat {ev.cstat || '—'} · protocolo {ev.protocolo || '—'}</div>
+                          <div style={{ fontSize: 'var(--text-xs)', fontWeight: 800 }}>{EVENTO_LABEL[ev.tipo] || ev.tipo} {ev.tipo === 'cce' ? `#${ev.nseqevento}` : ''}</div>
+                          <div style={{ fontSize: '11px', color: 'var(--color-text-muted)', marginTop: 2 }}>{fmtDate(ev.createdat)} · cStat {ev.cstat || '—'} · protocolo {ev.protocolo || '—'}</div>
                         </div>
                         {canXml && ev.tem_xml ? (
                           <button className="btn btn-ghost btn-sm" onClick={() => baixarXmlEvento(ev)}>XML</button>
                         ) : null}
                       </div>
                       {(ev.texto || ev.motivo) && (
-                        <div style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-xs)', color: 'var(--color-text)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                        <div style={{ marginTop: 'var(--space-1)', fontSize: 'var(--text-xs)', color: 'var(--color-text)', lineHeight: 1.4, whiteSpace: 'pre-wrap' }}>
                           {ev.texto || ev.motivo}
                         </div>
-                      )}
-                      {ev.motivo && ev.texto && (
-                        <div style={{ marginTop: 4, fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>{ev.motivo}</div>
                       )}
                     </div>
                   ))}
@@ -1716,7 +1736,30 @@ function ModalDetalhe({ nfe, onClose, canXml, canDanfe }) {
             </div>
           </div>
         </div>
-        <div style={{ padding: 'var(--space-4) var(--space-6)', borderTop: '1px solid var(--color-divider)', display: 'flex', justifyContent: 'flex-end' }}>
+        <div className="modal-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            {nfe.nfe_status === 'incerto' && typeof onAudit === 'function' && (
+              <button
+                className="btn btn-warning btn-sm"
+                onClick={() => {
+                  onClose()
+                  const pMatch = (pendenciasFiscais || []).find(p => p.origem === 'emissao' && p.ordemid === nfe.ordemid)
+                  onAudit(pMatch || {
+                    origem: 'emissao',
+                    id: nfe.id,
+                    numero_os: nfe.numero,
+                    cliente: nfe.clientenome,
+                    status: 'incerto',
+                    motivo: nfe.nfe_rejeicao_motivo,
+                    numero_nfe: nfe.nfe_numero,
+                    serie: nfe.nfe_serie,
+                  })
+                }}
+              >
+                Auditar / Liberar Pendencia
+              </button>
+            )}
+          </div>
           <button className="btn btn-ghost" onClick={onClose}>Fechar</button>
         </div>
       </div>
@@ -1754,36 +1797,36 @@ function ModalCancelamento({ nfe, onClose, onSuccess }) {
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'oklch(from var(--color-text) l c h / 0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-4)' }}
-      onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ width: '100%', maxWidth: 520, background: 'var(--color-surface)', borderRadius: 'var(--radius-xl)', boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }}>
-        <div style={{ padding: 'var(--space-5) var(--space-6)', borderBottom: '1px solid var(--color-divider)', display: 'flex', justifyContent: 'space-between', gap: 'var(--space-4)' }}>
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal modal-sm">
+        <div className="modal-header">
           <div>
-            <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, margin: 0 }}>Cancelar NF-e</h2>
+            <h2 style={{ fontSize: 'var(--text-base)', fontWeight: 700, margin: 0 }}>Cancelar NF-e</h2>
             <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>NF-e {nfe.nfe_numero}/{nfe.nfe_serie}</p>
           </div>
           <button className="btn btn-icon btn-ghost" onClick={onClose} aria-label="Fechar">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
         </div>
-        <div style={{ padding: 'var(--space-5) var(--space-6)', display: 'grid', gap: 'var(--space-3)' }}>
-          <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-offset)', padding: 'var(--space-3)', display: 'grid', gap: 4, fontSize: 'var(--text-xs)' }}>
+        <div className="modal-body modal-body-dense">
+          <div style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-offset)', padding: 'var(--space-2) var(--space-3)', display: 'grid', gap: 2, fontSize: 'var(--text-xs)' }}>
             <div><b>OS:</b> {nfe.numero || '---'} · <b>Cliente:</b> {nfe.clientenome || '---'}</div>
-            <div><b>Valor:</b> {fmt(nfe.valortotal)} · <b>Chave:</b> <span style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>{nfe.nfe_chave}</span></div>
-            <div style={{ color: 'var(--color-error)', fontWeight: 700, marginTop: 4 }}>Cancelamento e um evento fiscal enviado a SEFAZ e nao deve ser usado como teste em nota real.</div>
+            <div><b>Valor:</b> {fmt(nfe.valortotal)}</div>
+            <div style={{ color: 'var(--color-error)', fontWeight: 700, marginTop: 2 }}>Cancelamento e um evento fiscal enviado a SEFAZ.</div>
           </div>
           <label style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)' }}>Motivo do cancelamento</label>
-          <textarea value={motivo} onChange={e => setMotivo(e.target.value)} rows={5}
+          <textarea value={motivo} onChange={e => setMotivo(e.target.value)} rows={3}
             placeholder="Ex.: Nota emitida com dados incorretos, sera substituida por nova emissao."
-            style={{ width: '100%', resize: 'vertical', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-offset)', color: 'var(--color-text)', padding: 'var(--space-3)', fontSize: 'var(--text-sm)' }}
+            className="form-input"
+            style={{ width: '100%', resize: 'vertical', minHeight: 48, maxHeight: 100, fontSize: 'var(--text-xs)' }}
           />
-          <div style={{ fontSize: 'var(--text-xs)', color: motivo.trim().length < 30 ? 'var(--color-warning)' : 'var(--color-text-muted)' }}>{motivo.trim().length}/30 caracteres minimos</div>
-          <label style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', lineHeight: 1.45 }}>
+          <div style={{ fontSize: '11px', color: motivo.trim().length < 30 ? 'var(--color-warning)' : 'var(--color-text-muted)' }}>{motivo.trim().length}/30 caracteres minimos</div>
+          <label style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', lineHeight: 1.4 }}>
             <input type="checkbox" checked={confirmado} onChange={e => setConfirmado(e.target.checked)} style={{ marginTop: 2 }} />
-            Confirmo que esta NF-e deve ser cancelada e que o evento sera registrado fiscalmente.
+            Confirmo que esta NF-e deve ser cancelada na SEFAZ.
           </label>
         </div>
-        <div style={{ padding: 'var(--space-4) var(--space-6)', borderTop: '1px solid var(--color-divider)', display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)' }}>
+        <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose} disabled={enviando}>Voltar</button>
           <button className="btn btn-danger" onClick={handleSubmit} disabled={enviando || motivo.trim().length < 30 || !confirmado}>
             {enviando ? 'Cancelando...' : 'Confirmar cancelamento'}
@@ -1819,31 +1862,31 @@ function ModalCCE({ nfe, onClose, onSuccess }) {
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'oklch(from var(--color-text) l c h / 0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-4)' }}
-      onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ width: '100%', maxWidth: 560, background: 'var(--color-surface)', borderRadius: 'var(--radius-xl)', boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }}>
-        <div style={{ padding: 'var(--space-5) var(--space-6)', borderBottom: '1px solid var(--color-divider)', display: 'flex', justifyContent: 'space-between', gap: 'var(--space-4)' }}>
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal modal-lg">
+        <div className="modal-header">
           <div>
-            <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, margin: 0 }}>Carta de Correcao</h2>
+            <h2 style={{ fontSize: 'var(--text-base)', fontWeight: 700, margin: 0 }}>Carta de Correcao</h2>
             <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>NF-e {nfe.nfe_numero}/{nfe.nfe_serie}</p>
           </div>
           <button className="btn btn-icon btn-ghost" onClick={onClose} aria-label="Fechar">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
         </div>
-        <div style={{ padding: 'var(--space-5) var(--space-6)', display: 'grid', gap: 'var(--space-3)' }}>
-          <div style={{ border: '1px solid var(--color-warning)', borderRadius: 'var(--radius-md)', background: 'var(--color-warning-highlight, var(--color-surface-offset))', padding: 'var(--space-3)', fontSize: 'var(--text-xs)', lineHeight: 1.5 }}>
-            <div style={{ fontWeight: 800, marginBottom: 4 }}>Antes de emitir a CC-e</div>
-            <div>A CC-e nao pode corrigir valor, imposto, quantidade, destinatario, data de emissao ou data de saida. Use apenas para ajustes descritivos permitidos pela SEFAZ.</div>
+        <div className="modal-body modal-body-dense">
+          <div style={{ border: '1px solid var(--color-warning)', borderRadius: 'var(--radius-md)', background: 'var(--color-warning-highlight, var(--color-surface-offset))', padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-xs)', lineHeight: 1.4 }}>
+            <div style={{ fontWeight: 800, marginBottom: 2 }}>Antes de emitir a CC-e</div>
+            <div>A CC-e nao pode corrigir valor, imposto, quantidade, destinatario ou datas. Use apenas para ajustes descritivos.</div>
           </div>
           <label style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)' }}>Texto da correcao</label>
-          <textarea value={correcao} onChange={e => setCorrecao(e.target.value)} rows={7}
-            placeholder="Ex.: Corrige-se a descricao do item para Moldura em madeira, sem alteracao de valores, impostos, destinatario, datas ou quantidades."
-            style={{ width: '100%', resize: 'vertical', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-offset)', color: 'var(--color-text)', padding: 'var(--space-3)', fontSize: 'var(--text-sm)' }}
+          <textarea value={correcao} onChange={e => setCorrecao(e.target.value)} rows={4}
+            placeholder="Ex.: Corrige-se a descricao do item para Moldura em madeira..."
+            className="form-input"
+            style={{ width: '100%', resize: 'vertical', minHeight: 60, maxHeight: 140, fontSize: 'var(--text-xs)' }}
           />
-          <div style={{ fontSize: 'var(--text-xs)', color: correcao.trim().length > 1000 ? 'var(--color-error)' : 'var(--color-text-muted)' }}>{correcao.trim().length}/1000 caracteres</div>
+          <div style={{ fontSize: '11px', color: correcao.trim().length > 1000 ? 'var(--color-error)' : 'var(--color-text-muted)' }}>{correcao.trim().length}/1000 caracteres</div>
         </div>
-        <div style={{ padding: 'var(--space-4) var(--space-6)', borderTop: '1px solid var(--color-divider)', display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)' }}>
+        <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose} disabled={enviando}>Voltar</button>
           <button className="btn btn-primary" onClick={handleSubmit} disabled={enviando || correcao.trim().length < 15 || correcao.trim().length > 1000}>
             {enviando ? 'Enviando...' : 'Emitir CC-e'}
@@ -1894,41 +1937,41 @@ function ModalExportacaoNFe({ onClose }) {
       role="dialog"
       aria-modal="true"
       aria-labelledby="exportar-nfe-title"
-      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'oklch(from var(--color-text) l c h / 0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-4)' }}
+      className="modal-overlay"
       onClick={e => e.target === e.currentTarget && !baixando && onClose()}
     >
-      <div style={{ width: 'min(460px, calc(100vw - 32px))', background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }}>
-        <div style={{ padding: 'var(--space-4) var(--space-5)', borderBottom: '1px solid var(--color-divider)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-4)' }}>
+      <div className="modal modal-sm">
+        <div className="modal-header">
           <div>
-            <h2 id="exportar-nfe-title" style={{ fontSize: 'var(--text-lg)', fontWeight: 700, margin: 0 }}>Exportar NF-e</h2>
-            <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>Baixe XML ou DANFE PDF por periodo de emissao.</p>
+            <h2 id="exportar-nfe-title" style={{ fontSize: 'var(--text-base)', fontWeight: 700, margin: 0 }}>Exportar NF-e</h2>
+            <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>Baixe XML ou DANFE PDF por periodo de emissao.</p>
           </div>
           <button className="btn btn-icon btn-ghost" onClick={onClose} disabled={baixando} aria-label="Fechar">
             <X size={18} />
           </button>
         </div>
 
-        <div style={{ padding: 'var(--space-5)', display: 'grid', gap: 'var(--space-4)' }}>
-          <label style={{ display: 'grid', gap: 6 }}>
+        <div className="modal-body modal-body-dense">
+          <label style={{ display: 'grid', gap: 4 }}>
             <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)' }}>Tipo</span>
-            <select className="form-input" value={tipo} onChange={e => setTipo(e.target.value)} disabled={baixando}>
+            <select className="form-input" value={tipo} onChange={e => setTipo(e.target.value)} disabled={baixando} style={{ height: 32, fontSize: 'var(--text-xs)' }}>
               <option value="xml">XML</option>
               <option value="danfe">DANFE PDF</option>
             </select>
           </label>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 'var(--space-3)' }}>
-            <label style={{ display: 'grid', gap: 6 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 'var(--space-2)' }}>
+            <label style={{ display: 'grid', gap: 4 }}>
               <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)' }}>Data inicial</span>
-              <input className="form-input" type="date" value={inicio} onChange={e => setInicio(e.target.value)} disabled={baixando} />
+              <input className="form-input" type="date" value={inicio} onChange={e => setInicio(e.target.value)} disabled={baixando} style={{ height: 32, fontSize: 'var(--text-xs)' }} />
             </label>
-            <label style={{ display: 'grid', gap: 6 }}>
+            <label style={{ display: 'grid', gap: 4 }}>
               <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)' }}>Data final</span>
-              <input className="form-input" type="date" value={fim} onChange={e => setFim(e.target.value)} disabled={baixando} />
+              <input className="form-input" type="date" value={fim} onChange={e => setFim(e.target.value)} disabled={baixando} style={{ height: 32, fontSize: 'var(--text-xs)' }} />
             </label>
           </div>
         </div>
 
-        <div style={{ padding: 'var(--space-4) var(--space-5)', borderTop: '1px solid var(--color-divider)', display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)' }}>
+        <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose} disabled={baixando}>Cancelar</button>
           <button className="btn btn-primary" onClick={handleSubmit} disabled={baixando}>{baixando ? 'Exportando...' : 'Exportar'}</button>
         </div>
@@ -2018,7 +2061,14 @@ export default function NotasFiscais({ lixeira = false }) {
 
   const emitirNota = (nota) => {
     if (!canEmitir) return toast.error('Sem permissao para emitir NF-e')
-    setModalEmitir({ ordemInicial: nota })
+    const ordemId = nota.ordemid || nota.id
+    setModalEmitir({
+      ordemInicial: {
+        ...nota,
+        id: ordemId,
+        numero: nota.numero_os || nota.numero,
+      },
+    })
   }
 
   const moverParaLixeira = async (nota) => {
@@ -2079,10 +2129,10 @@ export default function NotasFiscais({ lixeira = false }) {
   const mostraHomologacao = Number(nfeMeta.ambiente) === 2
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 'var(--space-4)', padding: 'var(--space-4) var(--space-5)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, gap: 'var(--space-4)' }}>
 
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 'var(--space-4)', flexWrap: 'wrap', flexShrink: 0 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 'var(--text-xl)', fontWeight: 800 }}>{lixeira ? 'Lixeira de NF-e' : 'Notas Fiscais'}</h1>
           <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', display: lixeira ? 'none' : undefined }}>
@@ -2123,7 +2173,7 @@ export default function NotasFiscais({ lixeira = false }) {
       </div>
 
       {/* KPIs */}
-      {!lixeira && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 'var(--space-3)' }}>
+      {!lixeira && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 'var(--space-3)', flexShrink: 0 }}>
         {[
           { label: 'Total emitidas', value: totais.total,      color: 'var(--color-text)' },
           { label: 'Autorizadas',    value: totais.autorizado, color: 'var(--color-success)' },
@@ -2138,7 +2188,7 @@ export default function NotasFiscais({ lixeira = false }) {
         ))}
       </div>}
 
-      {mostraHomologacao && !lixeira && <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4)', display: 'grid', gap: 'var(--space-2)' }}>
+      {mostraHomologacao && !lixeira && <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-4)', display: 'grid', gap: 'var(--space-2)', flexShrink: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
           <div>
             <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Homologacao NF-e</div>
@@ -2154,15 +2204,19 @@ export default function NotasFiscais({ lixeira = false }) {
       </div>}
 
       {canIntegridade && !lixeira && pendenciasFiscais.length > 0 && (
-        <PendenciasFiscaisPanel pendencias={pendenciasFiscais} onRefresh={carregarPendenciasFiscais} onAudit={setAuditoriaPendencia} />
+        <div style={{ flexShrink: 0 }}>
+          <PendenciasFiscaisPanel pendencias={pendenciasFiscais} onRefresh={carregarPendenciasFiscais} onAudit={setAuditoriaPendencia} />
+        </div>
       )}
 
       {canIntegridade && !lixeira && integridadeFiscalFinanceira.length > 0 && (
-        <IntegridadeFiscalFinanceiraPanel itens={integridadeFiscalFinanceira} onRefresh={carregarIntegridadeFiscalFinanceira} onAudit={setAuditoriaIntegridadeFiscalFinanceira} />
+        <div style={{ flexShrink: 0 }}>
+          <IntegridadeFiscalFinanceiraPanel itens={integridadeFiscalFinanceira} onRefresh={carregarIntegridadeFiscalFinanceira} onAudit={setAuditoriaIntegridadeFiscalFinanceira} />
+        </div>
       )}
 
       {/* Filtros */}
-      <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', alignItems: 'center', flexShrink: 0 }}>
         <div style={{ position: 'relative', flex: '1 1 220px', minWidth: 180 }}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
             style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-muted)', pointerEvents: 'none' }}>
@@ -2188,103 +2242,125 @@ export default function NotasFiscais({ lixeira = false }) {
         </button>
       </div>
 
-      {/* Tabela */}
-      <div style={{ flex: 1, overflow: 'auto', background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border)' }}>
+      {/* Tabela / Lista responsiva */}
+      <div className="card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
         {loading ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 220, gap: 'var(--space-3)', color: 'var(--color-text-muted)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, minHeight: 200, gap: 'var(--space-3)', color: 'var(--color-text-muted)' }}>
             <div className="spinner"/>Carregando notas fiscais…
           </div>
         ) : filtradas.length === 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 220, gap: 'var(--space-3)', color: 'var(--color-text-muted)' }}>
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" style={{ opacity: 0.35 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, minHeight: 200, gap: 'var(--space-3)', color: 'var(--color-text-muted)' }}>
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" style={{ opacity: 0.35 }}>
               <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
               <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
             </svg>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontWeight: 700, marginBottom: 4 }}>{notas.length === 0 ? 'Nenhuma NF-e emitida ainda' : 'Nenhum resultado'}</div>
+              <div style={{ fontWeight: 700, marginBottom: 2, fontSize: 'var(--text-sm)' }}>{notas.length === 0 ? 'Nenhuma NF-e emitida ainda' : 'Nenhum resultado'}</div>
               <div style={{ fontSize: 'var(--text-xs)' }}>{notas.length === 0 ? (lixeira ? 'Registros movidos para a lixeira aparecem aqui.' : 'Clique em "Emitir NF-e" para emitir a primeira nota.') : 'Tente ajustar os filtros.'}</div>
             </div>
           </div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ borderBottom: '2px solid var(--color-divider)' }}>
-                {['NF-e', 'Origem', 'Cliente', 'Serviço', 'Valor', 'Emitida em', 'Status', ''].map(h => (
-                  <th key={h} style={{ padding: 'var(--space-3) var(--space-4)', textAlign: 'left', fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-text-muted)', whiteSpace: 'nowrap', background: 'var(--color-surface-offset)' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtradas.map((n, i) => (
-                <tr key={n.id}
-                  style={{ borderBottom: '1px solid var(--color-divider)', background: i % 2 === 0 ? 'transparent' : 'oklch(from var(--color-surface-offset) l c h / 0.5)', transition: 'background var(--transition-interactive)' }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'var(--color-surface-offset)'}
-                  onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? 'transparent' : 'oklch(from var(--color-surface-offset) l c h / 0.5)'}
-                >
-                  <td style={{ padding: 'var(--space-3) var(--space-4)', fontSize: 'var(--text-sm)', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{n.nfe_numero ? `${n.nfe_numero}/${n.nfe_serie}` : '—'}</td>
-                  <td style={{ padding: 'var(--space-3) var(--space-4)', fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--color-primary)' }}>{n.origem === 'avulsa' ? 'Avulsa' : (n.numero || n.numero_os || '-')}</td>
-                  <td style={{ padding: 'var(--space-3) var(--space-4)', fontSize: 'var(--text-sm)' }}>{n.clientenome}</td>
-                  <td style={{ padding: 'var(--space-3) var(--space-4)', fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.servico}</td>
-                  <td style={{ padding: 'var(--space-3) var(--space-4)', fontSize: 'var(--text-sm)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{fmt(n.valortotal)}</td>
-                  <td style={{ padding: 'var(--space-3) var(--space-4)', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>{fmtDate(n.nfe_emitida_em)}</td>
-                  <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
-                    <StatusBadge status={n.nfe_status} />
-                    {n.nfe_status === 'rejeitado' && n.nfe_rejeicao_motivo && (
-                      <div title={n.nfe_rejeicao_motivo} style={{ marginTop: 4, fontSize: 'var(--text-xs)', color: 'var(--color-error)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {n.nfe_rejeicao_motivo}
-                      </div>
-                    )}
-                  </td>
-                  <td style={{ padding: 'var(--space-3) var(--space-4)' }}>
-                    <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end', alignItems: 'center', whiteSpace: 'nowrap' }}>
-                      {lixeira && canLixeira ? (
-                        <button className="btn btn-ghost btn-sm" onClick={() => restaurarNota(n)} title="Restaurar NF-e">
-                          <RotateCcw size={14} /> Restaurar
-                        </button>
-                      ) : n.nfe_status === 'autorizado' && (
-                        <>
-                          {canCce && <button className="btn btn-ghost btn-sm" onClick={() => setCceNota(n)} title="Emitir CC-e">CC-e</button>}
-                          {canXml && <button className="btn btn-ghost btn-sm" onClick={() => baixarXmlAutorizacao(n)} title="Baixar XML autorizado">XML</button>}
-                          {canDanfe && <button className="btn btn-ghost btn-sm" onClick={() => baixarDanfe(n.nfe_chave)} title="Baixar DANFE em PDF">DANFE</button>}
-                          {canCancelar && <button className="btn btn-ghost btn-sm" onClick={() => setCancelarNota(n)} title="Cancelar NF-e">Cancelar</button>}
-                        </>
-                      )}
-                      {!lixeira && n.nfe_status === 'cancelado' && n.nfe_chave && (
-                        <>
-                          {canXml && <button className="btn btn-ghost btn-sm" onClick={() => baixarXmlAutorizacao(n)} title="Baixar XML autorizado">XML</button>}
-                          {canDanfe && <button className="btn btn-ghost btn-sm" onClick={() => baixarDanfe(n.nfe_chave)} title="Baixar DANFE em PDF">DANFE</button>}
-                        </>
-                      )}
-                      {!lixeira && canEmitir && ['rejeitado', 'cancelado'].includes(n.nfe_status) && STATUS_NFE_EMISSAO.includes(n.status) && (
-                        <button className="btn btn-ghost btn-sm" onClick={() => emitirNota(n)} title="Emitir novamente">Reemitir</button>
-                      )}
-                      {!lixeira && canLixeira && n.nfe_status === 'rejeitado' && (
-                        <button className="btn btn-ghost btn-sm" onClick={() => moverParaLixeira(n)} title="Mover rejeicao para a lixeira">
-                          <Trash2 size={14} /> Excluir
-                        </button>
-                      )}
-                      {!lixeira && n.nfe_status === 'emitindo' && (
-                        <button className="btn btn-ghost btn-sm" onClick={carregar} title="Atualizar andamento">Atualizar</button>
-                      )}
-                      <button className="btn btn-ghost btn-sm" onClick={() => setDetalhe(n)} title="Ver detalhes">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                        </svg>
-                      </button>
-                    </div>
-                  </td>
+          <div className="table-wrap" style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+            <table style={{ width: '100%', minWidth: 760, borderCollapse: 'collapse' }}>
+              <thead style={{ position: 'sticky', top: 0, zIndex: 5, background: 'var(--color-surface-offset)' }}>
+                <tr style={{ borderBottom: '1px solid var(--color-divider)', background: 'var(--color-surface-offset)' }}>
+                  {['NF-e', 'Origem', 'Cliente', 'Serviço', 'Valor', 'Emitida em', 'Status', ''].map(h => (
+                    <th key={h} style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'left', fontSize: 'var(--text-xs)', fontWeight: 800, color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filtradas.map((n, i) => (
+                  <tr key={n.id}
+                    style={{ borderBottom: '1px solid var(--color-divider)', background: i % 2 === 0 ? 'transparent' : 'oklch(from var(--color-surface-offset) l c h / 0.3)', transition: 'background var(--transition-interactive)' }}
+                  >
+                    <td style={{ padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-xs)', fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{n.nfe_numero ? `${n.nfe_numero}/${n.nfe_serie}` : '—'}</td>
+                    <td style={{ padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-primary)' }}>{n.origem === 'avulsa' ? 'Avulsa' : (n.numero || n.numero_os || '-')}</td>
+                    <td style={{ padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-xs)', fontWeight: 600 }}>{n.clientenome}</td>
+                    <td style={{ padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.servico}</td>
+                    <td style={{ padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-xs)', fontWeight: 700, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{fmt(n.valortotal)}</td>
+                    <td style={{ padding: 'var(--space-2) var(--space-3)', fontSize: '11px', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>{fmtDate(n.nfe_emitida_em)}</td>
+                    <td style={{ padding: 'var(--space-2) var(--space-3)' }}>
+                      <StatusBadge status={n.nfe_status} />
+                      {n.nfe_status === 'rejeitado' && n.nfe_rejeicao_motivo && (
+                        <div title={n.nfe_rejeicao_motivo} style={{ marginTop: 2, fontSize: '11px', color: 'var(--color-error)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {n.nfe_rejeicao_motivo}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ padding: 'var(--space-2) var(--space-3)' }}>
+                      <div style={{ display: 'flex', gap: 'var(--space-1)', justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'nowrap' }}>
+                        {lixeira && canLixeira ? (
+                          <button className="btn btn-ghost btn-sm" onClick={() => restaurarNota(n)} title="Restaurar NF-e" style={{ padding: '3px 8px', fontSize: '11px' }}>
+                            <RotateCcw size={13} /> Restaurar
+                          </button>
+                        ) : n.nfe_status === 'autorizado' && (
+                          <>
+                            {canCce && <button className="btn btn-ghost btn-sm" onClick={() => setCceNota(n)} title="Emitir CC-e" style={{ padding: '3px 6px', fontSize: '11px' }}>CC-e</button>}
+                            {canXml && <button className="btn btn-ghost btn-sm" onClick={() => baixarXmlAutorizacao(n)} title="Baixar XML autorizado" style={{ padding: '3px 6px', fontSize: '11px' }}>XML</button>}
+                            {canDanfe && <button className="btn btn-ghost btn-sm" onClick={() => baixarDanfe(n.nfe_chave)} title="Baixar DANFE em PDF" style={{ padding: '3px 6px', fontSize: '11px' }}>DANFE</button>}
+                            {canCancelar && <button className="btn btn-ghost btn-sm" onClick={() => setCancelarNota(n)} title="Cancelar NF-e" style={{ padding: '3px 6px', fontSize: '11px' }}>Cancelar</button>}
+                          </>
+                        )}
+                        {!lixeira && n.nfe_status === 'cancelado' && n.nfe_chave && (
+                          <>
+                            {canXml && <button className="btn btn-ghost btn-sm" onClick={() => baixarXmlAutorizacao(n)} title="Baixar XML autorizado" style={{ padding: '3px 6px', fontSize: '11px' }}>XML</button>}
+                            {canDanfe && <button className="btn btn-ghost btn-sm" onClick={() => baixarDanfe(n.nfe_chave)} title="Baixar DANFE em PDF" style={{ padding: '3px 6px', fontSize: '11px' }}>DANFE</button>}
+                          </>
+                        )}
+                        {!lixeira && canEmitir && ['rejeitado', 'rejeitada', 'cancelado', 'cancelada'].includes(n.nfe_status) && STATUS_NFE_EMISSAO.includes(n.status) && (
+                          <button className="btn btn-ghost btn-sm" onClick={() => emitirNota(n)} title="Emitir novamente" style={{ padding: '3px 6px', fontSize: '11px' }}>Reemitir</button>
+                        )}
+                        {!lixeira && canLixeira && ['rejeitado', 'rejeitada'].includes(n.nfe_status) && (
+                          <button className="btn btn-ghost btn-sm" onClick={() => moverParaLixeira(n)} title="Mover rejeicao para a lixeira" style={{ padding: '3px 6px', fontSize: '11px' }}>
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                        {!lixeira && n.nfe_status === 'emitindo' && (
+                          <button className="btn btn-ghost btn-sm" onClick={carregar} title="Atualizar andamento" style={{ padding: '3px 6px', fontSize: '11px' }}>Atualizar</button>
+                        )}
+                        {!lixeira && n.nfe_status === 'incerto' && (
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => {
+                              const pMatch = pendenciasFiscais.find(p => p.origem === 'emissao' && p.ordemid === n.ordemid)
+                              setAuditoriaPendencia(pMatch || {
+                                origem: 'emissao',
+                                id: n.id,
+                                numero_os: n.numero,
+                                cliente: n.clientenome,
+                                status: 'incerto',
+                                motivo: n.nfe_rejeicao_motivo,
+                                numero_nfe: n.nfe_numero,
+                                serie: n.nfe_serie,
+                              })
+                            }}
+                            title="Auditar e liberar OS para reemissao"
+                            style={{ padding: '3px 6px', fontSize: '11px', color: 'var(--color-gold)' }}
+                          >
+                            Auditar
+                          </button>
+                        )}
+                        <button className="btn btn-ghost btn-sm" onClick={() => setDetalhe(n)} title="Ver detalhes" style={{ padding: '3px 6px' }}>
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                          </svg>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
       {canEmitir && modalEmitir && <ModalEmitir ordemInicial={modalEmitir.ordemInicial} onClose={() => setModalEmitir(null)} onSuccess={carregar} />}
-      {detalhe && <ModalDetalhe nfe={detalhe} onClose={() => setDetalhe(null)} canXml={canXml} canDanfe={canDanfe} />}
+      {detalhe && <ModalDetalhe nfe={detalhe} onClose={() => setDetalhe(null)} canXml={canXml} canDanfe={canDanfe} onAudit={setAuditoriaPendencia} pendenciasFiscais={pendenciasFiscais} />}
       {canCancelar && cancelarNota && <ModalCancelamento nfe={cancelarNota} onClose={() => setCancelarNota(null)} onSuccess={carregar} />}
       {canCce && cceNota && <ModalCCE nfe={cceNota} onClose={() => setCceNota(null)} onSuccess={carregar} />}
-      {auditoriaPendencia && <ModalAuditoriaPendenciaFiscal pendencia={auditoriaPendencia} onClose={() => setAuditoriaPendencia(null)} />}
+      {auditoriaPendencia && <ModalAuditoriaPendenciaFiscal pendencia={auditoriaPendencia} onClose={() => setAuditoriaPendencia(null)} onLiberada={carregar} />}
       {auditoriaIntegridadeFiscalFinanceira && <ModalAuditoriaIntegridadeFiscalFinanceira apontamento={auditoriaIntegridadeFiscalFinanceira} onClose={() => setAuditoriaIntegridadeFiscalFinanceira(null)} canConciliar={canConciliar} onConciliado={() => carregarIntegridadeFiscalFinanceira()} />}
       {canExportar && modalExportacao && <ModalExportacaoNFe onClose={() => setModalExportacao(false)} />}
       {canInutilizar && <InutilizacaoModal open={modalInutilizacao} onClose={() => setModalInutilizacao(false)} onSuccess={carregar} />}

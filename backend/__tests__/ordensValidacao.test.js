@@ -153,6 +153,17 @@ describe('validarStatus', () => {
     expect(validarStatus('Aguardando', 'Entregue')).not.toBeNull();
   });
 
+  it('Entregue -> Pronto (invalida para nao-admin)', () => {
+    expect(validarStatus('Pronto', 'Entregue')).not.toBeNull();
+    expect(validarStatus('Pronto', 'Entregue', { isAdmin: false })).not.toBeNull();
+  });
+
+  it('Entregue -> Pronto (valida para admin)', () => {
+    expect(validarStatus('Pronto', 'Entregue', { isAdmin: true })).toBeNull();
+    expect(validarStatus('Pronto', 'Entregue', { role: 'admin' })).toBeNull();
+    expect(validarStatus('Pronto', 'Entregue', true)).toBeNull();
+  });
+
   it('Cancelado -> Em Produção (invalida)', () => {
     expect(validarStatus('Em Produção', 'Cancelado')).not.toBeNull();
   });

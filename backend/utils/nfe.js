@@ -191,6 +191,10 @@ const REJEICOES_SEFAZ_CATALOGADAS = {
     campo: 'NCM',
     mensagem: 'NCM invalido ou inexistente na tabela oficial; corrija o NCM no item da emissao e tente novamente.',
   },
+  805: {
+    campo: 'IE do destinatario',
+    mensagem: 'A SEFAZ do destinatario nao permite Contribuinte Isento de Inscricao Estadual. Ajuste o cliente para Nao Contribuinte ou informe a IE valida.',
+  },
   806: {
     campo: 'Operacao interestadual',
     mensagem: 'Operacao com destinatario nao contribuinte exige revisao dos campos interestaduais. Confira UF, CFOP e tributacao.',
@@ -428,10 +432,12 @@ function getSefazErrorInfo(err) {
   }
 
   if (isXmlValidationError) {
+    console.error('[NF-e Validacao XML Falha]:', rawMessage);
     return {
       tipo: 'validacao_xml',
       cstat: 'xml_schema',
-      mensagem: 'XML da NF-e ficou invalido por dados fiscais ausentes ou incorretos. Revise cliente, emitente e itens antes de emitir.',
+      mensagem: rawMessage.length > 250 ? rawMessage.slice(0, 250) + '...' : rawMessage,
+      motivoOriginal: rawMessage,
     };
   }
 
@@ -449,10 +455,14 @@ function getSefazErrorInfo(err) {
   const rejeicaoMatch = rawMessage.match(/rejei[cç][aã]o\s*:?\s*(.+)$/i);
   if (rejeicaoMatch) {
     const motivo = rejeicaoMatch[1] || rawMessage;
-    const rejeicao = formatarRejeicaoSefaz({ cStat: 'rejeicao', xMotivo: motivo, contexto: 'autorizacao' });
+    const cStatExtraido = rawMessage.match(/\b(?:cStat\s*[:=]?\s*|rejei[cç][aã]o\s*\(?|\[)(\d{3})\b/i)?.[1]
+      || rawMessage.match(/\b(\d{3})\s*[-:]\s*rejei[cç][aã]o\b/i)?.[1]
+      || (motivo.toLowerCase().includes('isento de inscricao estadual') ? '805' : null)
+      || 'rejeicao';
+    const rejeicao = formatarRejeicaoSefaz({ cStat: cStatExtraido, xMotivo: motivo, contexto: 'autorizacao' });
     return {
       tipo: 'rejeicao',
-      cstat: 'rejeicao',
+      cstat: cStatExtraido,
       mensagem: rejeicao.mensagem,
       campo: rejeicao.campo,
       item: rejeicao.item,

@@ -298,11 +298,9 @@ function anexarAvisosWhatsApp(rows, user) {
       confirmacao_pedido: confirmacao,
       pedido_pronto: pronto,
     };
-    const whatsappAvisoPrincipal = pronto && ['pendente', 'aberto'].includes(pronto.status)
-      ? pronto
-      : confirmacao && ['pendente', 'aberto'].includes(confirmacao.status)
-        ? confirmacao
-        : pronto || confirmacao;
+    // pronto sempre tem prioridade: se existe (pendente, aberto, enviado ou ignorado),
+    // é mais relevante para a oficina do que confirmacao_pedido.
+    const whatsappAvisoPrincipal = pronto || confirmacao;
     return { ...redactOrdemForPermissions(row, shouldRedact), whatsappAvisos, whatsappAvisoPrincipal };
   });
 }
@@ -505,7 +503,7 @@ router.put("/:id", auth(), authAnyPermission(["ordens.editar", "ordens.alterar_s
       if (!canAlterarStatus) return res.status(403).json({ error: "Sem permissao" });
       if (!status) return res.status(400).json({ error: "Informe o status" });
       if (status === 'Cancelado' && !hasPermission(req.user, "ordens.cancelar")) return res.status(403).json({ error: "Sem permissao para cancelar OS." });
-      const erroStatus = validarStatus(status, old.status);
+      const erroStatus = validarStatus(status, old.status, { isAdmin: req.user?.role === 'admin' });
       if (erroStatus) return res.status(400).json({ error: erroStatus });
       if (status === 'Entregue') {
         const resumo = getResumoFinanceiroOS(req.params.id);
@@ -555,7 +553,7 @@ router.put("/:id", auth(), authAnyPermission(["ordens.editar", "ordens.alterar_s
     }
 
     if (status && status !== old.status) {
-      const erroStatus = validarStatus(status, old.status);
+      const erroStatus = validarStatus(status, old.status, { isAdmin: req.user?.role === 'admin' });
       if (erroStatus) return res.status(400).json({ error: erroStatus });
     }
 
@@ -640,7 +638,7 @@ router.patch("/:id/status", auth(), authAnyPermission(["ordens.alterar_status", 
     transaction(() => {
       const current = getOne("SELECT status FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);
       if (!current) throw new Error("OS nao encontrada");
-      const erroStatus = validarStatus(status, current.status);
+      const erroStatus = validarStatus(status, current.status, { isAdmin: req.user?.role === 'admin' });
       if (erroStatus) throw new Error(erroStatus);
       statusAnterior = current.status;
       run("UPDATE ordens SET status=?,updatedat=datetime('now','localtime') WHERE id=?", [status, req.params.id]);
@@ -686,7 +684,7 @@ router.post("/:id/whatsapp-avisos/:tipo/abrir", auth(), authPermission("ordens.w
     res.json({
       aviso: projetarAviso(aviso),
       whatsapp: {
-        mode: "web",
+        mode: "desktop",
         phone,
         text: message.text,
       },

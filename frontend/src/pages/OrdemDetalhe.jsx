@@ -5,6 +5,9 @@ import { useParams, useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
+import { printOrdem } from '../utils/printOrdem'
+import { getWhatsappClientMode, launchWhatsappDesktop, buildWhatsappDesktopUrl, buildWhatsappWebUrl } from '../utils/whatsappOficina'
+import { ModalEmitir } from './NotasFiscais'
 
 const fmt   = v => 'R$ ' + Number(v||0).toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.')
 const fmtDT = iso => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
@@ -71,7 +74,11 @@ function buildWppUrl(ordem) {
     msg += `_Arte e Molduras_ 🎨`
   }
 
-  return `https://wa.me/${tel}?text=${encodeURIComponent(msg)}`
+  const mode = getWhatsappClientMode();
+  if (mode === 'desktop') {
+    return buildWhatsappDesktopUrl({ phone: tel, text: msg });
+  }
+  return buildWhatsappWebUrl({ phone: tel, text: msg });
 }
 
 async function baixarArquivo(url, nomeArquivo) {
@@ -84,6 +91,19 @@ async function baixarArquivo(url, nomeArquivo) {
   a.click()
   a.remove()
   URL.revokeObjectURL(href)
+}
+
+async function mensagemErroBlob(e, fallback) {
+  const data = e?.response?.data
+  if (data?.erro) return data.erro
+  if (data instanceof Blob && data.type?.includes('application/json')) {
+    try {
+      const parsed = JSON.parse(await data.text())
+      if (parsed?.erro) return parsed.erro
+      if (parsed?.error) return parsed.error
+    } catch (_) {}
+  }
+  return fallback
 }
 
 function IconWhatsApp() {
@@ -108,7 +128,8 @@ function IconNFe() {
 export default function OrdemDetalhe({ context }) {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { can } = useAuth()
+  const { user, can } = useAuth()
+  const isAdmin = user?.role === 'admin'
 
   const isOficinaContext = context === 'oficina'
   const backPath = isOficinaContext ? '/oficina' : '/ordens'
@@ -122,7 +143,8 @@ export default function OrdemDetalhe({ context }) {
   const [savingObs, setSavingObs]         = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   // NF-e
-  const [emitindo, setEmitindo]           = useState(false)
+  const [modalEmitirAberto, setModalEmitirAberto] = useState(false)
+  const [imprimindo, setImprimindo]       = useState(false)
 
   useEffect(() => {
     document.body.style.overflow = confirmDelete ? 'hidden' : ''
@@ -212,8 +234,25 @@ export default function OrdemDetalhe({ context }) {
     }
   }
 
-  const imprimirOS = () => {
+  const imprimirOS = async () => {
     if (!(typeof can === 'function' && can('ordens.imprimir'))) return toast.error('Sem permissao para imprimir OS')
+    setImprimindo(true)
+    try {
+      const res = await printOrdem(api, id, 1)
+      if (res.data?.mode === 'browser') {
+        toast.success('Impressao aberta no navegador.')
+      } else {
+        toast.success('1 via enviada para impressao')
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.error || err.response?.data?.detail || err.message || 'Erro ao imprimir OS')
+    } finally {
+      setImprimindo(false)
+    }
+  }
+
+  const visualizarOS = () => {
+    if (!(typeof can === 'function' && can('ordens.imprimir'))) return toast.error('Sem permissao para visualizar OS')
     window.open(`/api/ordens/${id}/pdf`, '_blank', 'noopener,noreferrer')
   }
   const baixarDanfe = async () => {
@@ -225,24 +264,20 @@ export default function OrdemDetalhe({ context }) {
     try {
       await baixarArquivo(`/nfe/${ordem.nfe_chave}/danfe`, `danfe-${ordem.nfe_chave}.pdf`)
     } catch (e) {
-      toast.error(e.response?.data?.erro || 'DANFE indisponivel')
+      const msg = await mensagemErroBlob(e, 'DANFE indisponivel')
+      if (msg.includes('Chrome') || msg.includes('DANFE_PDF_CHROME_PATH') || e?.response?.status === 500) {
+        toast('Motor de PDF indisponivel no servidor. Abrindo DANFE para impressao...', { icon: '🖨️' })
+        window.open(`/api/nfe/${ordem.nfe_chave}/danfe?formato=html`, '_blank', 'noopener,noreferrer')
+        return
+      }
+      toast.error(msg)
     }
   }
 
   // ── NF-e ──────────────────────────────────────────────────────────────────
-  const handleEmitirNFe = async () => {
+  const handleEmitirNFe = () => {
     if (!(typeof can === 'function' && can('nfe.emitir'))) return toast.error('Sem permissao para emitir NF-e')
-    if (!window.confirm('Emitir NF-e para esta OS? A nota será enviada à SEFAZ.')) return
-    setEmitindo(true)
-    try {
-      const res = await api.post(`/nfe/emitir/${id}`)
-      toast.success(`NF-e nº ${res.data.numero} autorizada pela SEFAZ! ✅`)
-      load()
-    } catch (e) {
-      toast.error(e.response?.data?.erro || 'Erro ao emitir NF-e')
-    } finally {
-      setEmitindo(false)
-    }
+    setModalEmitirAberto(true)
   }
   // ──────────────────────────────────────────────────────────────────────────
 
@@ -306,10 +341,9 @@ export default function OrdemDetalhe({ context }) {
           <button
             className="btn btn-sm"
             onClick={handleEmitirNFe}
-            disabled={emitindo}
             style={{
-              background: emitindo ? 'var(--color-surface-dynamic)' : 'var(--color-primary)',
-              color: emitindo ? 'var(--color-text-muted)' : '#fff',
+              background: 'var(--color-primary)',
+              color: '#fff',
               border: 'none',
               display: 'inline-flex',
               alignItems: 'center',
@@ -319,19 +353,26 @@ export default function OrdemDetalhe({ context }) {
             }}
             title="Emitir Nota Fiscal Eletrônica para esta OS"
           >
-            {emitindo
-              ? <><div className="spinner" style={{width:14,height:14}}/> Emitindo...</>
-              : <><IconNFe /> Emitir NF-e</>
-            }
+            <IconNFe /> Emitir NF-e
           </button>
         )}
 
         {canSendWpp && (
           <a
             href={wppUrl || undefined}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={!wppUrl ? (e) => { e.preventDefault(); toast.error('Cliente sem telefone cadastrado.') } : undefined}
+            target={wppUrl?.startsWith('whatsapp://') ? undefined : '_blank'}
+            rel={wppUrl?.startsWith('whatsapp://') ? undefined : 'noopener noreferrer'}
+            onClick={(e) => {
+              if (!wppUrl) {
+                e.preventDefault();
+                toast.error('Cliente sem telefone cadastrado.');
+                return;
+              }
+              if (wppUrl.startsWith('whatsapp://')) {
+                e.preventDefault();
+                launchWhatsappDesktop(wppUrl);
+              }
+            }}
             className="btn btn-sm"
             style={{
               background:'#25D366', color:'#fff', border:'none',
@@ -348,12 +389,29 @@ export default function OrdemDetalhe({ context }) {
         )}
 
         {canPrint && (
-          <button className="btn btn-ghost btn-sm" onClick={imprimirOS}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><path d="M6 14h12v8H6z"/>
-            </svg>
-            Imprimir OS
-          </button>
+          <>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={imprimirOS}
+              disabled={imprimindo}
+              title="Disparar impressão de 1 via direto na impressora"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><path d="M6 14h12v8H6z"/>
+              </svg>
+              {imprimindo ? 'Enviando...' : 'Imprimir OS'}
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={visualizarOS}
+              title="Visualizar documento da OS em nova aba"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+              </svg>
+              Visualizar OS
+            </button>
+          </>
         )}
 
         {canDelete && (
@@ -423,15 +481,38 @@ export default function OrdemDetalhe({ context }) {
             )}
           </div>
         )}
+        {isAdmin && ordem.status === 'Entregue' && (
+          <div style={{ display:'flex', gap:'var(--space-2)', flexWrap:'wrap', marginTop:'var(--space-2)' }}>
+            <button
+              className="btn btn-ghost btn-sm"
+              style={{ borderColor: STATUS_COLOR['Pronto'], color: STATUS_COLOR['Pronto'] }}
+              onClick={() => {
+                if (window.confirm(`Retornar a OS #${ordem.numero} de Entregue para Pronto?`)) {
+                  mudarStatus('Pronto');
+                }
+              }}
+            >
+              ↩ Voltar para Pronto
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Grid: info + financeiro */}
-      <div style={{
-        display:'grid',
-        gridTemplateColumns: isOficinaContext ? '1fr' : 'minmax(0,1fr) minmax(260px,300px)',
-        gap:'var(--space-4)',
-        marginBottom:'var(--space-4)'
-      }}>
+      <style>{`
+        .ordem-detalhe-grid {
+          display: grid;
+          grid-template-columns: ${isOficinaContext ? '1fr' : 'minmax(0, 1fr) minmax(260px, 300px)'};
+          gap: var(--space-4);
+          margin-bottom: var(--space-4);
+        }
+        @media (max-width: 960px) {
+          .ordem-detalhe-grid {
+            grid-template-columns: 1fr !important;
+          }
+        }
+      `}</style>
+      <div className="ordem-detalhe-grid">
         <div className="card card-pad">
           <div style={{ fontWeight:700, fontSize:'var(--text-sm)', marginBottom:'var(--space-4)' }}>Detalhes da OS</div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'var(--space-3)' }}>
@@ -563,12 +644,11 @@ export default function OrdemDetalhe({ context }) {
               <button
                 className="btn btn-sm"
                 onClick={handleEmitirNFe}
-                disabled={emitindo}
                 style={{
                   width: '100%',
                   marginTop: 'var(--space-4)',
-                  background: emitindo ? 'var(--color-surface-dynamic)' : 'var(--color-primary)',
-                  color: emitindo ? 'var(--color-text-muted)' : '#fff',
+                  background: 'var(--color-primary)',
+                  color: '#fff',
                   border: 'none',
                   display: 'flex',
                   alignItems: 'center',
@@ -576,10 +656,7 @@ export default function OrdemDetalhe({ context }) {
                   gap: 'var(--space-2)',
                 }}
               >
-                {emitindo
-                  ? <><div className="spinner" style={{width:14,height:14}}/> Emitindo...</>
-                  : <><IconNFe /> Emitir NF-e</>
-                }
+                <IconNFe /> Emitir NF-e
               </button>
             )}
             {/* ────────────────────────────────────────────────────────── */}
@@ -725,8 +802,8 @@ export default function OrdemDetalhe({ context }) {
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
               </button>
             </div>
-            <div style={{ padding:'var(--space-4) var(--space-5)', display:'flex', flexDirection:'column', gap:'var(--space-3)' }}>
-              <p style={{ color:'var(--color-text-muted)', fontSize:'var(--text-sm)' }}>
+            <div className="modal-body modal-body-dense" style={{ display:'flex', flexDirection:'column', gap:'var(--space-3)' }}>
+              <p style={{ color:'var(--color-text-muted)', fontSize:'var(--text-sm)', margin: 0 }}>
                 Esta ação é <strong>permanente e irreversível</strong>.
               </p>
               <div style={{ fontSize:'var(--text-xs)', padding:'var(--space-2) var(--space-3)', background:'var(--color-warning-hl)', borderRadius:'var(--radius-md)', color:'var(--color-warning)' }}>
@@ -740,6 +817,14 @@ export default function OrdemDetalhe({ context }) {
           </div>
         </div>,
         document.body
+      )}
+
+      {modalEmitirAberto && (
+        <ModalEmitir
+          ordemInicial={ordem}
+          onClose={() => setModalEmitirAberto(false)}
+          onSuccess={() => { setModalEmitirAberto(false); load() }}
+        />
       )}
     </div>
   )

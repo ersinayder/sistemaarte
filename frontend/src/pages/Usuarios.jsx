@@ -145,7 +145,7 @@ function profilesForRole(profiles, role, currentProfileKey = '', currentProfileN
   ))
 }
 
-function ModalShell({ title, onClose, children, footer, maxWidth = 520 }) {
+function ModalShell({ title, onClose, children, footer, maxWidth = 520, className = '' }) {
   const titleId = useId()
 
   useEffect(() => {
@@ -153,24 +153,25 @@ function ModalShell({ title, onClose, children, footer, maxWidth = 520 }) {
     return () => { document.body.style.overflow = '' }
   }, [])
 
+  const sizeClass = maxWidth >= 800 ? 'modal-xl' : maxWidth >= 600 ? 'modal-lg' : 'modal-sm'
+
   return (
     <Portal>
       <div className="modal-overlay" onClick={event => event.target === event.currentTarget && onClose()}>
         <div
-          className="modal"
+          className={`modal ${sizeClass} ${className}`.trim()}
           role="dialog"
           aria-modal="true"
           aria-labelledby={titleId}
-          style={{ maxWidth }}
           onClick={event => event.stopPropagation()}
         >
           <div className="modal-header">
             <h2 className="modal-title" id={titleId}>{title}</h2>
             <button className="btn btn-ghost btn-sm" type="button" onClick={onClose} aria-label="Fechar">
-              X
+              ✕
             </button>
           </div>
-          <div className="modal-body">{children}</div>
+          <div className="modal-body modal-body-dense">{children}</div>
           {footer && <div className="modal-footer">{footer}</div>}
         </div>
       </div>

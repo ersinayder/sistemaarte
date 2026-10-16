@@ -82,7 +82,7 @@ describe('montarNFe', () => {
     expect(infNFe.dest.xNome).toBe('CONSUMIDOR');
   });
 
-  it('dest aceita CNPJ de pessoa juridica', () => {
+  it('dest aceita CNPJ de pessoa juridica com IE — indIEDest=1', () => {
     const { infNFe } = montarNFe({
       ordem,
       itens,
@@ -95,6 +95,59 @@ describe('montarNFe', () => {
     expect(infNFe.dest.IE).toBe('123456789');
     expect(infNFe.dest.indIEDest).toBe('1');
     expect(Object.keys(infNFe.dest).indexOf('indIEDest')).toBeLessThan(Object.keys(infNFe.dest).indexOf('IE'));
+  });
+
+  it('dest CNPJ sem IE — indIEDest=2 (contribuinte isento)', () => {
+    const { infNFe } = montarNFe({
+      ordem,
+      itens,
+      cliente: { name: 'EMPRESA SEM IE LTDA', cpf: '07.500.718/0001-96', ie: '' },
+      emitente,
+      numero: 5,
+      serie: '1',
+    });
+    expect(infNFe.dest.CNPJCPF).toBe('07500718000196');
+    expect(infNFe.dest.indIEDest).toBe('2');
+    expect(infNFe.dest.IE).toBeUndefined();
+  });
+
+  it('dest CNPJ com IE=ISENTO — indIEDest=2', () => {
+    const { infNFe } = montarNFe({
+      ordem,
+      itens,
+      cliente: { name: 'EMPRESA ISENTA LTDA', cpf: '07.500.718/0001-96', ie: 'ISENTO' },
+      emitente,
+      numero: 5,
+      serie: '1',
+    });
+    expect(infNFe.dest.indIEDest).toBe('2');
+    expect(infNFe.dest.IE).toBeUndefined();
+  });
+
+  it('dest CPF sem IE — indIEDest=9 (nao contribuinte)', () => {
+    const { infNFe } = montarNFe({
+      ordem,
+      itens,
+      cliente: { name: 'JOAO PESSOA', cpf: '123.456.789-09', ie: '' },
+      emitente,
+      numero: 5,
+      serie: '1',
+    });
+    expect(infNFe.dest.indIEDest).toBe('9');
+    expect(infNFe.dest.IE).toBeUndefined();
+  });
+
+  it('dest CNPJ com ind_ie_dest explicito=9 — respeita override (associacao nao contribuinte)', () => {
+    const { infNFe } = montarNFe({
+      ordem,
+      itens,
+      cliente: { name: 'ASSOCIACAO CULTURAL XYZ', cpf: '07.500.718/0001-96', ie: '', ind_ie_dest: '9' },
+      emitente,
+      numero: 5,
+      serie: '1',
+    });
+    expect(infNFe.dest.indIEDest).toBe('9');
+    expect(infNFe.dest.IE).toBeUndefined();
   });
 
   it('calcula vNF corretamente', () => {

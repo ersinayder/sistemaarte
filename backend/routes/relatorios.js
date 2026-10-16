@@ -9,8 +9,11 @@ const { sendPrintHtml } = require("../utils/print/base");
 
 const FILTRO_ATIVO = `
   l.deletedat IS NULL
-  AND (l.ordemid IS NULL OR (SELECT deletedat FROM ordens WHERE id=l.ordemid) IS NULL)
+  AND NOT EXISTS (SELECT 1 FROM ordens o WHERE o.id = l.ordemid AND o.deletedat IS NOT NULL)
 `;
+
+const COND_SAIDA = `l.tipo IN ('Saída', 'Saida', 'saida', 'saída')`;
+const COND_ENTRADA = `l.tipo NOT IN ('Saída', 'Saida', 'saida', 'saída')`;
 
 router.get("/resumo", auth(), authPermission("relatorios.ver"), (req, res, next) => {
   try {
@@ -19,38 +22,78 @@ router.get("/resumo", auth(), authPermission("relatorios.ver"), (req, res, next)
 
     const hj = hoje();
 
-    const total = getOne(
-      `SELECT COALESCE(SUM(l.valor),0) AS v FROM lancamentos l WHERE strftime('%Y-%m',l.data)=? AND l.valor > 0 AND ${FILTRO_ATIVO}`,
+    const totaisMes = getOne(
+      `SELECT
+         COALESCE(SUM(CASE WHEN ${COND_SAIDA} THEN -l.valor ELSE l.valor END), 0) AS total,
+         COALESCE(SUM(CASE WHEN ${COND_ENTRADA} THEN l.valor ELSE 0 END), 0) AS entradas,
+         COALESCE(SUM(CASE WHEN ${COND_SAIDA} THEN l.valor ELSE 0 END), 0) AS saidas
+       FROM lancamentos l
+       WHERE strftime('%Y-%m',l.data)=? AND ${FILTRO_ATIVO}`,
       [mes]
-    )?.v ?? 0;
+    );
 
-    const hojeV = getOne(
-      `SELECT COALESCE(SUM(l.valor),0) AS v FROM lancamentos l WHERE l.data=? AND ${FILTRO_ATIVO}`,
+    const total = Math.round((totaisMes?.total ?? 0) * 100) / 100;
+    const entradas = Math.round((totaisMes?.entradas ?? 0) * 100) / 100;
+    const saidas = Math.round((totaisMes?.saidas ?? 0) * 100) / 100;
+
+    const hojeTotais = getOne(
+      `SELECT
+         COALESCE(SUM(CASE WHEN ${COND_SAIDA} THEN -l.valor ELSE l.valor END), 0) AS total,
+         COALESCE(SUM(CASE WHEN ${COND_ENTRADA} THEN l.valor ELSE 0 END), 0) AS entradas,
+         COALESCE(SUM(CASE WHEN ${COND_SAIDA} THEN l.valor ELSE 0 END), 0) AS saidas
+       FROM lancamentos l
+       WHERE l.data=? AND ${FILTRO_ATIVO}`,
       [hj]
-    )?.v ?? 0;
+    );
+
+    const hojeV = Math.round((hojeTotais?.total ?? 0) * 100) / 100;
 
     const count = getOne(
-      `SELECT COUNT(*) AS c FROM lancamentos l WHERE strftime('%Y-%m',l.data)=? AND l.valor > 0 AND ${FILTRO_ATIVO}`,
+      `SELECT COUNT(*) AS c FROM lancamentos l WHERE strftime('%Y-%m',l.data)=? AND ${FILTRO_ATIVO}`,
+      [mes]
+    )?.c ?? 0;
+
+    const countEntradas = getOne(
+      `SELECT COUNT(*) AS c FROM lancamentos l WHERE strftime('%Y-%m',l.data)=? AND ${COND_ENTRADA} AND ${FILTRO_ATIVO}`,
       [mes]
     )?.c ?? 0;
 
     const porPag = {};
     getAll(
-      `SELECT l.pagamento, SUM(l.valor) AS v FROM lancamentos l WHERE strftime('%Y-%m',l.data)=? AND ${FILTRO_ATIVO} GROUP BY l.pagamento`,
+      `SELECT l.pagamento,
+              SUM(CASE WHEN ${COND_ENTRADA} THEN l.valor ELSE 0 END) AS v
+       FROM lancamentos l
+       WHERE strftime('%Y-%m',l.data)=? AND ${FILTRO_ATIVO}
+       GROUP BY l.pagamento`,
       [mes]
     ).forEach(r => {
       const key = normalizarPagamento(r.pagamento);
-      porPag[key] = (porPag[key] || 0) + r.v;
+      porPag[key] = (porPag[key] || 0) + Number(r.v || 0);
     });
 
     const porTipo = {};
     getAll(
-      `SELECT l.tipo, SUM(l.valor) AS v FROM lancamentos l WHERE strftime('%Y-%m',l.data)=? AND ${FILTRO_ATIVO} GROUP BY l.tipo`,
+      `SELECT
+         CASE WHEN ${COND_SAIDA} THEN 'Saída' ELSE 'Entrada' END AS tipo_norm,
+         SUM(l.valor) AS v
+       FROM lancamentos l
+       WHERE strftime('%Y-%m',l.data)=? AND ${FILTRO_ATIVO}
+       GROUP BY tipo_norm`,
       [mes]
-    ).forEach(r => { porTipo[r.tipo] = r.v; });
+    ).forEach(r => {
+      porTipo[r.tipo_norm] = Math.round(Number(r.v || 0) * 100) / 100;
+    });
 
     const dias = getAll(
-      `SELECT l.data, SUM(l.valor) AS total FROM lancamentos l WHERE strftime('%Y-%m',l.data)=? AND ${FILTRO_ATIVO} GROUP BY l.data ORDER BY l.data`,
+      `SELECT
+         l.data,
+         ROUND(SUM(CASE WHEN ${COND_SAIDA} THEN -l.valor ELSE l.valor END), 2) AS total,
+         ROUND(SUM(CASE WHEN ${COND_ENTRADA} THEN l.valor ELSE 0 END), 2) AS entradas,
+         ROUND(SUM(CASE WHEN ${COND_SAIDA} THEN l.valor ELSE 0 END), 2) AS saidas
+       FROM lancamentos l
+       WHERE strftime('%Y-%m',l.data)=? AND ${FILTRO_ATIVO}
+       GROUP BY l.data
+       ORDER BY l.data`,
       [mes]
     );
 
@@ -62,12 +105,27 @@ router.get("/resumo", auth(), authPermission("relatorios.ver"), (req, res, next)
       [mes]
     );
 
+    const ticketmedio = countEntradas > 0
+      ? Math.round((entradas / countEntradas) * 100) / 100
+      : (count > 0 ? Math.round((toNumber(total) / count) * 100) / 100 : 0);
+
     res.json({
-      total, hoje: hojeV, count,
-      ticketmedio: count > 0 ? toNumber(total) / count : 0,
-      ordensabertas, ordensvencidas,
-      porpagamento: porPag, portipo: porTipo,
-      dias, lancamentos
+      total,
+      entradas,
+      saidas,
+      hoje: hojeV,
+      hoje_entradas: Math.round((hojeTotais?.entradas ?? 0) * 100) / 100,
+      hoje_saidas: Math.round((hojeTotais?.saidas ?? 0) * 100) / 100,
+      count,
+      count_entradas: countEntradas,
+      ticketmedio,
+      ticket_medio: ticketmedio,
+      ordensabertas,
+      ordensvencidas,
+      porpagamento: porPag,
+      portipo: porTipo,
+      dias,
+      lancamentos
     });
   } catch(e) { next(e); }
 });

@@ -28,6 +28,13 @@ function isNotaAtivaParaOrdem(nota) {
   return STATUS_ATIVOS_ORDEM.has(String(nota.status || '').trim());
 }
 
+function normalizarStatusNfe(status) {
+  const s = String(status || '').trim().toLowerCase();
+  if (s === 'rejeitada') return 'rejeitado';
+  if (s === 'cancelada') return 'cancelado';
+  return s || null;
+}
+
 function buildNfeListRow(row = {}) {
   const cliente = parseJsonSnapshot(row.cliente_snapshot);
   const origem = row.origem || 'ordem';
@@ -50,7 +57,7 @@ function buildNfeListRow(row = {}) {
     nfe_serie: row.serie || row.nfe_serie || '1',
     nfe_chave: row.chave || row.nfe_chave || null,
     nfe_protocolo: row.protocolo || row.nfe_protocolo || null,
-    nfe_status: row.status || row.nfe_status || null,
+    nfe_status: normalizarStatusNfe(row.status || row.nfe_status),
     nfe_emitida_em: row.emitida_em || row.nfe_emitida_em || row.createdat || null,
     nfe_cancelado_em: row.cancelado_em || row.nfe_cancelado_em || null,
     nfe_cancel_protocolo: row.cancel_protocolo || row.nfe_cancel_protocolo || null,

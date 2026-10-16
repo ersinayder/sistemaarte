@@ -171,7 +171,8 @@ function backfillNfeNotasFromOrdens(db) {
 
   const exists = db.prepare(`
     SELECT id FROM nfe_notas
-    WHERE origem = 'ordem' AND ordemid = ? AND imported_legacy = 1
+    WHERE (origem = 'ordem' AND ordemid = ?)
+       OR (chave IS NOT NULL AND chave <> '' AND chave = ?)
     LIMIT 1
   `);
   const insert = db.prepare(`
@@ -190,7 +191,7 @@ function backfillNfeNotasFromOrdens(db) {
 
   const run = db.transaction(() => {
     for (const row of rows) {
-      if (exists.get(row.id)) {
+      if (exists.get(row.id, row.nfe_chave || '')) {
         skipped += 1;
         continue;
       }
@@ -404,15 +405,21 @@ function resolverNotaPorId(db, id, options = {}) {
       WHERE ${clause}
       LIMIT 1
     `).get(id) || null;
-    return includeDeleted ? normalizarLixeiraEfetiva(row) : row;
+    const result = includeDeleted ? normalizarLixeiraEfetiva(row) : row;
+    if (result && result.status === 'rejeitada') result.status = 'rejeitado';
+    if (result && result.status === 'cancelada') result.status = 'cancelado';
+    return result;
   }
   const clause = includeDeleted ? 'id = ?' : 'id = ? AND deletedat IS NULL';
-  return db.prepare(`
+  const row = db.prepare(`
     SELECT *
     FROM nfe_notas
     WHERE ${clause}
     LIMIT 1
   `).get(id) || null;
+  if (row && row.status === 'rejeitada') row.status = 'rejeitado';
+  if (row && row.status === 'cancelada') row.status = 'cancelado';
+  return row;
 }
 
 function listarEventosNota(db, nota) {

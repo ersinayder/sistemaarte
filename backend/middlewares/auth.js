@@ -120,7 +120,10 @@ function auth() {
 
 function authPermission(permission) {
   const middleware = (req, res, next) => {
-    if (!hasPermission(req.user, permission)) {
+    const permit = Array.isArray(permission)
+      ? hasAnyPermission(req.user, permission)
+      : hasPermission(req.user, permission);
+    if (!permit) {
       return res.status(403).json({ error: "Sem permissao" });
     }
     next();

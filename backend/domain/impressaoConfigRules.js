@@ -32,8 +32,13 @@ function isValidIpv4(value) {
   });
 }
 
-function validarImpressaoConfig(config = {}) {
+function validarImpressaoConfig(config = {}, options = {}) {
   const errors = {};
+  const platform = options.platform || null;
+
+  if (platform && platform !== 'win32' && Boolean(Number(config.directPrintEnabled ?? config.direct_print_enabled ?? 0))) {
+    errors.directPrintEnabled = 'Impressao direta no servidor esta disponivel apenas no Windows Server. Utilize o modo Navegador.';
+  }
 
   if (config.printerName && (
     CONTROL_CHARS.test(config.printerName) ||

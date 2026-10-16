@@ -54,11 +54,11 @@ function normalizarInformacoesComplementares(value) {
 function montarEnderecoDest(cliente) {
   if (!cliente?.logradouro) return null;
   return {
-    xLgr:    (cliente.logradouro || '').toUpperCase(),
-    nro:     (cliente.c_numero   || cliente.numero || 'S/N').toUpperCase(),
-    xBairro: (cliente.bairro     || 'CENTRO').toUpperCase(),
+    xLgr:    (cliente.logradouro || '').toUpperCase().substring(0, 60),
+    nro:     (cliente.c_numero   || cliente.numero || 'S/N').toUpperCase().substring(0, 60),
+    xBairro: (cliente.bairro     || 'CENTRO').toUpperCase().substring(0, 60),
     cMun:    cliente.cod_municipio || COD_MUNICIPIO_IPATINGA,
-    xMun:    (cliente.cidade     || 'IPATINGA').toUpperCase(),
+    xMun:    (cliente.cidade     || 'IPATINGA').toUpperCase().substring(0, 60),
     UF:      (cliente.uf         || 'MG').toUpperCase(),
     CEP:     (cliente.cep        || '').replace(/\D/g, ''),
     cPais:   '1058',
@@ -66,26 +66,44 @@ function montarEnderecoDest(cliente) {
   };
 }
 
+function resolverIndIEDest(documento, ie, indIEDestExplicito) {
+  // Se o cadastro do cliente tiver um valor explicito ('1', '2' ou '9'), usa direto.
+  const valido = new Set(['1', '2', '9']);
+  if (valido.has(String(indIEDestExplicito || '').trim())) {
+    return String(indIEDestExplicito).trim();
+  }
+
+  // CPF (pessoa fisica) => sempre nao contribuinte (9)
+  if (documento.length === 11) return '9';
+
+  // CNPJ (pessoa juridica)
+  if (documento.length === 14) {
+    const ieNorm = ie.toUpperCase();
+    if (ie && ieNorm !== 'ISENTO') return '1'; // contribuinte com IE valida
+    return '2'; // isento (sem IE ou IE = "ISENTO")
+  }
+
+  return '9';
+}
+
 function montarDest(cliente) {
-  const xNome = (cliente?.clientenome || cliente?.name || 'CONSUMIDOR FINAL').toUpperCase();
+  const xNome = (cliente?.clientenome || cliente?.name || 'CONSUMIDOR FINAL').toUpperCase().substring(0, 60);
   const documento = (cliente?.cpf || '').replace(/\D/g, '');
   const ie = String(cliente?.ie || '').trim();
+  const indIEDestExplicito = cliente?.ind_ie_dest ?? null;
 
   if (documento.length === 11 || documento.length === 14) {
     const dest = { CNPJCPF: documento, xNome };
     const endereco = montarEnderecoDest(cliente);
     if (endereco) dest.enderDest = endereco;
 
-    if (documento.length === 14 && ie) {
-      if (ie.toUpperCase() === 'ISENTO') {
-        dest.indIEDest = '2';
-      } else {
-        dest.indIEDest = '1';
-        dest.IE = ie;
-      }
-    } else {
-      dest.indIEDest = '9';
+    dest.indIEDest = resolverIndIEDest(documento, ie, indIEDestExplicito);
+
+    // Inclui IE no XML apenas quando ha contribuinte com IE (indIEDest=1)
+    if (dest.indIEDest === '1' && ie && ie.toUpperCase() !== 'ISENTO') {
+      dest.IE = ie;
     }
+
     return dest;
   } else {
     // Consumidor final sem CPF/CNPJ valido

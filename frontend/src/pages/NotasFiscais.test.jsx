@@ -154,6 +154,53 @@ describe('NotasFiscais inutilizacao manual', () => {
     openSpy.mockRestore()
   }, 15000)
 
+  it('abre DANFE em nova aba com formato html quando motor de PDF falha no servidor', async () => {
+    const user = userEvent.setup()
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+
+    api.get.mockImplementation((url) => {
+      if (url === '/nfe') {
+        return Promise.resolve({
+          data: {
+            notas: [{
+              origem: 'ordem',
+              ordemid: 285,
+              nfe_numero: '000000285',
+              nfe_serie: 1,
+              nfe_status: 'autorizado',
+              nfe_chave: '31260507500718000196550010000002851000000285',
+              nfe_emitida_em: '2026-06-10T10:00:00-03:00',
+            }],
+            meta: { ambiente: 1 },
+          },
+        })
+      }
+      if (url.includes('/danfe')) {
+        const errorBlob = new Blob(
+          [JSON.stringify({ erro: 'Chrome/Edge nao encontrado para gerar DANFE PDF. Configure DANFE_PDF_CHROME_PATH ou PUPPETEER_EXECUTABLE_PATH.' })],
+          { type: 'application/json' }
+        )
+        const error = new Error('Request failed with status code 500')
+        error.response = { status: 500, data: errorBlob }
+        return Promise.reject(error)
+      }
+      return Promise.resolve({ data: [] })
+    })
+
+    render(<NotasFiscais />)
+
+    await user.click(await screen.findByRole('button', { name: /danfe/i }))
+
+    await waitFor(() => {
+      expect(openSpy).toHaveBeenCalledWith(
+        '/api/nfe/31260507500718000196550010000002851000000285/danfe?formato=html',
+        '_blank',
+        'noopener,noreferrer'
+      )
+    })
+    openSpy.mockRestore()
+  }, 15000)
+
   it('abre o modo avulso a partir do modal de emissao', async () => {
     api.get.mockImplementation((url) => {
       if (url === '/nfe') {
@@ -344,5 +391,78 @@ describe('NotasFiscais inutilizacao manual', () => {
     expect(Boolean(itensTitulo.compareDocumentPosition(campo) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true)
     expect(campo).toHaveAttribute('rows', '2')
     expect(campo).toHaveStyle({ minHeight: '52px' })
+  })
+
+  it('reemitir nota rejeitada carrega a OS correta pelo ordemid e nao pelo id da nota fiscal', async () => {
+    api.get.mockImplementation((url) => {
+      if (url === '/nfe') {
+        return Promise.resolve({
+          data: {
+            notas: [{
+              id: 90,
+              ordemid: 654,
+              origem: 'ordem',
+              numero: 'OS-0654',
+              numero_os: 'OS-0654',
+              clientenome: 'Paroquia Sao Sebastiao',
+              servico: 'Corte a Laser',
+              valortotal: 1990,
+              status: 'Pronto',
+              nfe_status: 'rejeitado',
+              nfe_numero: '000000347',
+              nfe_serie: '1',
+              nfe_rejeicao_motivo: 'Rejeicao SEFAZ',
+            }],
+            meta: { ambiente: 1 },
+          },
+        })
+      }
+      if (url === '/nfe/emitir/654/preview') {
+        return Promise.resolve({
+          data: {
+            ordem: { id: 654, numero: 'OS-0654', status: 'Pronto', valortotal: 1990, pagamento: 'Pix' },
+            cliente: {
+              nome: 'Paroquia Sao Sebastiao',
+              documento: '12345678000199',
+              cep: '35162372',
+              logradouro: 'Rua Principal',
+              numero: '100',
+              bairro: 'Centro',
+              cidade: 'Ipatinga',
+              uf: 'MG',
+            },
+            emitente: { xNome: 'Arte' },
+            fiscal: { ambiente: 1, serie: '1' },
+            itens: [{
+              id: 1,
+              produto_id: 10,
+              nome: 'Corte a laser',
+              quantidade: 1,
+              preco_unitario: 1990,
+              subtotal: 1990,
+              ncm: '44151000',
+              cfop: '5101',
+              csosn: '102',
+              origem_fiscal: 0,
+              unidade: 'UN',
+            }],
+          },
+        })
+      }
+      return Promise.resolve({ data: {} })
+    })
+
+    render(<NotasFiscais />)
+
+    const botaoReemitir = await screen.findByRole('button', { name: /reemitir/i })
+    await userEvent.click(botaoReemitir)
+
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith('/nfe/emitir/654/preview', expect.anything())
+    })
+    expect(api.get).not.toHaveBeenCalledWith('/nfe/emitir/90/preview', expect.anything())
+
+    expect(await screen.findAllByText('OS-0654')).toHaveLength(2)
+    expect(await screen.findByDisplayValue('Paroquia Sao Sebastiao')).toBeInTheDocument()
   })
 })

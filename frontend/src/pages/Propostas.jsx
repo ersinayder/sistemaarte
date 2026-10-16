@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import api from '../services/api';
 import { buildPropostaWhatsappUrl } from '../utils/propostaWhatsapp';
+import { getWhatsappClientMode, launchWhatsappDesktop } from '../utils/whatsappOficina';
 import { useAuth } from '../context/AuthContext';
+import NovaProposta from './NovaProposta';
 
 const STATUS = [
   { id: 'Novo lead', label: 'Novo lead', slug: 'proposta-novo', color: '#38BDF8' },
@@ -129,6 +131,7 @@ export default function Propostas() {
   const canPrint = typeof can === 'function' && can('propostas.imprimir');
   const [propostas, setPropostas] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showNovaProposta, setShowNovaProposta] = useState(false);
   const [q, setQ] = useState('');
   const [detail, setDetail] = useState(null);
   const [draggingId, setDraggingId] = useState(null);
@@ -244,6 +247,12 @@ export default function Propostas() {
       toast.error('Cliente sem telefone cadastrado.');
       return;
     }
+    const mode = getWhatsappClientMode();
+    if (mode === 'desktop') {
+      const desktopUrl = url.replace(/^https:\/\/wa\.me\/(\d+)\?text=/, 'whatsapp://send?phone=$1&text=');
+      launchWhatsappDesktop(desktopUrl);
+      return;
+    }
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
@@ -285,15 +294,25 @@ export default function Propostas() {
               </button>
               <button
                 className="btn btn-primary"
-                onClick={() => navigate('/orcamento')}
+                onClick={() => setShowNovaProposta(v => !v)}
                 style={{ height: 28, fontSize: 11, padding: '0 10px', whiteSpace: 'nowrap' }}
               >
-                Nova proposta
+                {showNovaProposta ? '✕ Fechar' : '+ Nova proposta'}
               </button>
             </>
           )}
         </div>
       </div>
+
+      {showNovaProposta && (
+        <div style={{ padding: 'var(--space-3) var(--space-4)', borderBottom: '1px solid var(--color-divider)', background: 'var(--color-surface-offset)', maxHeight: '48vh', overflowY: 'auto', flexShrink: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
+            <span style={{ fontWeight: 800, fontSize: 'var(--text-sm)', color: 'var(--color-text)' }}>Cadastrar Nova Proposta Formal</span>
+            <button className="btn btn-ghost btn-xs" onClick={() => setShowNovaProposta(false)}>✕ Fechar</button>
+          </div>
+          <NovaProposta embedded onSaved={() => { load(); setShowNovaProposta(false); }} onCancel={() => setShowNovaProposta(false)} />
+        </div>
+      )}
 
       {loading ? (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, color: 'var(--color-text-muted)' }}>Carregando...</div>

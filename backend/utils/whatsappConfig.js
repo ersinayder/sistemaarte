@@ -104,7 +104,12 @@ function getWhatsappPublicConfig() {
   });
 }
 
+function isWhatsappWebEnabled(env = process.env) {
+  return env.WHATSAPP_WEB_ENABLED === "true";
+}
+
 module.exports = {
+  isWhatsappWebEnabled,
   resolverWhatsappRuntime,
   prepararWhatsappSecretsParaPersistencia,
   getWhatsappRuntimeConfig,

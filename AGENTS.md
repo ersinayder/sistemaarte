@@ -17,22 +17,23 @@ Este arquivo não é changelog. Histórico, specs e planos ficam em `docs/`.
 |---|---|
 | Sistema | Sistema Arte e Molduras |
 | Domínio | `arteemolduras.com.br` |
+| IP do Servidor | `187.127.22.223` |
 | Repositório | `ersinayder/sistemaarte` |
 | Branch protegida | `main` |
 | Branch de trabalho | `develop` |
-| Servidor | Windows Server em `C:\sistemaarte` |
-| Runtime | Node.js 22 |
-| Processos PM2 | `sistemaarte-backend`, `sistema-arte-whatsapp` |
+| Servidor | VPS Ubuntu 24.04 LTS (`/var/www/sistemaarte`) |
+| Runtime | Node.js 22 LTS |
+| Processos PM2 | `sistemaarte-backend` (com `TZ: 'America/Sao_Paulo'`) |
 
 ## Arquitetura
 
 ```txt
-Cloudflare -> Windows Server (PM2)
-                |-- Express 4 (porta 3001)
-                |     |-- Serve SPA em frontend/dist
-                |     `-- API /api/*
-                |-- WhatsApp local (127.0.0.1:8080)
-                `-- SQLite (backend/data/oficina.db)
+Cloudflare (Proxy / WAF)
+  `-> Nginx (portas 80/443, SSL Cloudflare Origin, HTTP->HTTPS 301, CF-Connecting-IP, gzip, unbuffered SSE)
+        `-> Express 4 local (127.0.0.1:3001)
+              |-- Serve SPA em /var/www/sistemaarte/frontend/dist
+              |-- API /api/*
+              `-- SQLite local (/var/www/sistemaarte/backend/data/oficina.db)
 ```
 
 Contratos estruturais:
@@ -40,23 +41,27 @@ Contratos estruturais:
 - O backend Express serve a API e o build do frontend.
 - O frontend chama `/api` com `withCredentials: true`.
 - Autenticação usa cookie HttpOnly `token` com validade de 12h.
-- `Authorization: Bearer` é fallback aceito e útil em testes PowerShell.
+- `Authorization: Bearer` é fallback aceito e útil em testes automatizados e scripts.
 - `GET /api/auth/me` retorna `401` quando não há sessão. Isso é esperado.
-- SQLite roda com WAL e `foreign_keys=ON`.
-- PM2 deve ficar em `fork` com 1 instância. Não ativar cluster sem redesenhar concorrência.
+- SQLite roda com WAL, `busy_timeout = 5000` e `foreign_keys = ON`.
+- PM2 roda em modo `fork` com 1 instância. Não ativar cluster sem redesenhar concorrência.
+- O reinício do backend em deploy é orquestrado via systemd path unit (`deploy-trigger.path`).
 
 ## Stack
 
 | Área | Tecnologia |
 |---|---|
 | Backend | Node.js 22, Express 4, CommonJS |
-| Banco | SQLite com `better-sqlite3` |
+| Banco | SQLite com `better-sqlite3`, WAL, `busy_timeout=5000` |
 | Frontend | React 18, Vite 8, React Router 6 |
+| Web Server | Nginx (reverse proxy, gzip, proxy headers) |
+| Proxy/DNS | Cloudflare com SSL e WAF |
 | UI | CSS operacional, tokens globais, lucide-react |
 | Testes | Vitest 4.1 |
 | NF-e | `nfewizard-io@1.1.0`, Java 21 em CI |
-| WhatsApp | `whatsapp-service` com Baileys |
-| Deploy | GitHub Actions self-hosted, robocopy, PM2 |
+| WhatsApp | Envio manual assistido (`wa.me` / app desktop `whatsapp://send`) |
+| Impressão | HTML operacional via navegador do usuário (impressão direta no servidor desativada no Linux) |
+| Deploy | GitHub Actions self-hosted (Linux), rsync, systemd sentinela, PM2 |
 
 ## Regras Críticas de OS
 
@@ -307,10 +312,7 @@ frontend/src/
   styles/                  CSS operacional e tokens
   utils/                   Helpers de impressão, WhatsApp e UI
 
-whatsapp-service/
-  src/                     Serviço local Express + Baileys
-  sessions/                Sessões WhatsApp, não versionadas
-  ecosystem.config.js      PM2 WhatsApp
+whatsapp-service/          (Legado descomissionado — substituído por envio manual assistido)
 ```
 
 ## NF-e
@@ -382,7 +384,7 @@ Armadilhas:
 - `NFE_CERT_PASSWORD` é o nome correto no código, não `NFE_CERT_SENHA`.
 - `config.dfe.pathCertificado` e `config.dfe.senhaCertificado` ficam dentro de `dfe`.
 - `config.nfe.ambiente` deve ser número (`1` ou `2`), não string.
-- `config.lib.useOpenSSL = false` é obrigatório no Windows.
+- `config.lib.useOpenSSL = false` é padrão seguro adotado no runtime.
 - Use `path.resolve()` para certificado.
 - `dhEmi`/eventos devem sair com offset `-03:00`, sem milissegundos e sem `Z`.
 - CSOSN 400 usa `ICMSSN102`. `ICMSSN400` não existe no XSD.
@@ -401,63 +403,17 @@ Inutilização:
 
 Runbook: `docs/nfe-inutilizacao-operacao.md`.
 
-## WhatsApp Local
+## WhatsApp
 
-Processo PM2:
+A política canônica do sistema é **envio manual assistido**, sem microserviço Baileys em execução:
 
-```txt
-sistema-arte-whatsapp
-```
-
-Produção esperada:
-
-```txt
-Serviço local: C:\sistemaarte\whatsapp-service
-URL local: http://127.0.0.1:8080
-Instância atual: ArteeMolduras
-Sessão: C:\sistemaarte\whatsapp-service\sessions\ArteeMolduras
-Endpoint: GET /instance/connectionState/:instance
-```
-
-Regras:
-
-- O nome da instância na tela `/configuracoes` deve bater exatamente com a pasta de sessão.
-- Qualquer diferença de letra, espaço, acento ou caixa cria outra instância.
-- Se o serviço exigir API key, o backend envia header `apikey`.
-- Backend usa `webApiKey` salvo em Configurações > WhatsApp ou variáveis de ambiente.
-- `/api/configuracoes/whatsapp/web-status` nunca deve derrubar a tela com 500 quando o serviço local falhar; retornar estado offline/desconectado.
-- QR Code deve aparecer quando o serviço retornar `state=qr` com `qr`/`qrcode`.
-- Existem modo manual assistido e fila automática.
-- O worker automático só inicia se `WHATSAPP_WEB_ENABLED === "true"` e runtime estiver completo.
-
-Diagnóstico direto:
-
-```powershell
-$headers = @{ apikey = "COLE_A_CHAVE_AQUI" }
-Invoke-RestMethod "http://127.0.0.1:8080/instance/connectionState/ArteeMolduras" -Headers $headers
-```
-
-Sessão corrompida costuma aparecer como:
-
-```txt
-Bad MAC
-Key used already or never filled
-failed to decrypt message
-Stream Errored (restart required)
-WhatsApp desconectado
-```
-
-Procedimento seguro:
-
-```powershell
-cd C:\sistemaarte\whatsapp-service
-pm2 stop sistema-arte-whatsapp
-Rename-Item ".\sessions\ArteeMolduras" ("ArteeMolduras-badmac-" + (Get-Date -Format "yyyyMMdd-HHmmss"))
-pm2 restart sistema-arte-whatsapp --update-env
-pm2 logs sistema-arte-whatsapp --lines 80
-```
-
-Não apagar a pasta antiga imediatamente.
+- O microserviço Baileys em segundo plano (`whatsapp-service` / `sistema-arte-whatsapp`) foi descomissionado por instabilidade e risco de banimento de número.
+- Atendimento e OS geram mensagens prontas e abrem diretamente o WhatsApp do atendente:
+  - Web: `https://wa.me/{numero}?text={mensagem}`
+  - Desktop: `whatsapp://send?phone={numero}&text={mensagem}`
+- A rota `/api/whatsapp/avisos` registra a intenção e histórico de mensagens geradas.
+- O endpoint `/api/configuracoes/whatsapp/web-status` responde `manual_mode: true` e `connected: true` sem depender de socket local.
+- O modo preferencial (Desktop ou Web) é configurado na tela `/configuracoes`.
 
 ## Impressão
 
@@ -467,10 +423,9 @@ Regras:
 - Não gerar PDF binário no servidor para OS/proposta/caixa/financeiro/DANFE.
 - `sendPrintHtml()` aplica headers e CSP de impressão.
 - OS usa `renderOrdemServicoHtml()` com saldo oficial.
-- Impressão direta usa `backend/utils/print/serverPrinter.js`.
-- Impressora padrão: `\\ARTESERVER\Impressoraloja`.
-- `ORDEM_PRINTER_NAME` sobrescreve a impressora.
-- `normalizePrintCopies()` valida cópias antes de mandar para PowerShell.
+- No VPS Linux (Ubuntu), a impressão direta via spooler SMB (`\\ARTESERVER\Impressoraloja` / PowerShell) não é suportada e está desativada (`process.platform !== 'win32'`).
+- O modo canônico de impressão é **Navegador do Usuário**: o operador visualiza o documento e a impressão é acionada pelo browser do cliente (`window.print()`).
+- A tela `/configuracoes` exibe o modo Navegador ativo quando executando no servidor Linux.
 
 Endpoints úteis:
 
@@ -491,16 +446,17 @@ GET  /api/nfe/:chave/danfe
 
 Local:
 
-- Backup diário às 2h BRT.
+- Backup diário agendado às 2h BRT (em `backend/server.js`).
+- Executa `PRAGMA wal_checkpoint(PASSIVE)` antes do backup para gravar páginas WAL sem bloquear operações de escrita.
 - Diretório: `backend/data/backups/`.
-- Rotação: 7 arquivos.
-- Status em `backup-status.json`.
+- Rotação: 7 arquivos locais mantidos automaticamente.
+- Status persistido em `backup-status.json`.
 - Tela: `/configuracoes`.
 - API: `GET /api/backup/status`.
 
 Offsite:
 
-- Oracle Object Storage criptografado já existe como recurso opcional.
+- Oracle Object Storage criptografado já existe como recurso opcional secundário.
 - Ativação por `OFFSITE_BACKUP_ENABLED=1`.
 - Detalhes em `docs/backup-offsite-oracle.md`.
 
@@ -510,45 +466,52 @@ Não sobrescrever `backend/data/` no deploy.
 
 CI:
 
-- `.github/workflows/ci.yml` roda em push para `develop` e PR para `main`/`develop`.
-- Instala backend com `npm ci`.
+- `.github/workflows/ci.yml` roda em push para `develop` e PR para `main`/`develop` no runner `ubuntu-latest`.
+- Instala dependências do backend com `npm ci`.
 - Executa `npm audit --omit=dev`.
-- Roda `npm test` no backend.
+- Roda `npm test` no backend com Java 21 (para validação de schema XML da NF-e).
 
 Deploy:
 
-- `.github/workflows/deploy.yml` roda em push para `main`.
-- Roda testes backend.
-- Audita backend e frontend.
-- Builda frontend.
-- Sincroniza `frontend/dist`.
-- Sincroniza `backend/` excluindo `node_modules`, `data`, `certs`, `.env` e `*.db`.
+- `.github/workflows/deploy.yml` roda em push para `main` no runner Linux self-hosted do VPS Ubuntu.
+- Executa testes e auditoria do backend.
+- Instala dependências do frontend e compila a SPA (`npm run build`).
+- Sincroniza `frontend/dist/` para `/var/www/sistemaarte/frontend/dist/`.
+- Sincroniza `backend/` para `/var/www/sistemaarte/backend/` via `rsync`, excluindo `node_modules`, `data`, `certs`, `.env` e `*.db*`.
 - Instala runtime do backend com `npm ci --omit=dev`.
-- Grava `C:\sistemaarte\backend\.deploy-trigger`.
-- A tarefa Windows `PM2-DeployRestart` reinicia o backend ao detectar a sentinela.
+- Grava sentinela em `/var/www/sistemaarte/backend/.deploy-trigger`.
+- A unidade do systemd `/etc/systemd/system/deploy-trigger.path` detecta a alteração e aciona `deploy-trigger.service` para reiniciar o backend com `pm2 restart sistemaarte-backend --update-env`.
 
-Comandos PM2:
+Comandos PM2 no VPS Ubuntu:
 
-```powershell
+```bash
 pm2 list
 pm2 restart sistemaarte-backend --update-env
-pm2 restart sistema-arte-whatsapp --update-env
 pm2 logs sistemaarte-backend --lines 80
-pm2 logs sistema-arte-whatsapp --lines 80
+pm2 show sistemaarte-backend
 ```
-
-`pm2 restart whatsapp-service` está errado neste servidor.
 
 ## Testes e Validação
 
-Baseline backend validado em 2026-06-19:
+Baseline validado após modernização VPS (outubro/2026):
 
 ```txt
-56 arquivos de teste
-398 testes passando
+Backend:  87 arquivos de teste, 828 testes passando
+Frontend: 14 arquivos de teste, 72 testes passando
 ```
 
-Comandos:
+Comandos no Linux / VPS:
+
+```bash
+cd backend
+npm test
+
+cd ../frontend
+npm test
+npm run build
+```
+
+Comandos no Windows (desenvolvimento local):
 
 ```powershell
 cd backend
@@ -557,41 +520,36 @@ npm.cmd test
 cd ..\frontend
 npm.cmd test
 npm.cmd run build
-
-cd ..\whatsapp-service
-npm.cmd test
 ```
 
 Focos úteis:
 
-```powershell
+```bash
 cd backend
-npm.cmd test -- routeContracts.test.js
-npm.cmd test -- whatsappWebProvider.test.js
-npm.cmd test -- nfeInutilizacaoService.test.js
-npm.cmd test -- ordemPrintRoute.test.js
+npx vitest run __tests__/routeContracts.test.js
+npx vitest run __tests__/nfeInutilizacaoService.test.js
+npx vitest run __tests__/ordemPrintRoute.test.js
+npx vitest run __tests__/servidorRoutes.test.js
+npx vitest run __tests__/workflowSecurity.test.js
 
-cd ..\frontend
-npm.cmd test -- NotasFiscais.test.jsx
-npm.cmd test -- InutilizacaoModal.test.jsx
+cd ../frontend
+npx vitest run src/pages/NotasFiscais.test.jsx
+npx vitest run src/pages/Configuracoes.test.jsx
+npx vitest run src/pages/Servidor.test.jsx
 ```
 
-PowerShell:
+Login manual e testes de API:
 
-- Use `npm.cmd`, não `npm`, quando houver bloqueio por execution policy.
-- `-WebSession` do PowerShell não reenvia bem cookies HttpOnly/SameSite neste fluxo.
-- Para testes manuais, extraia o token do `Set-Cookie` e use `Authorization: Bearer`.
+```bash
+# Obter token de sessão:
+TOKEN=$(curl -s -X POST http://localhost:3001/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"sua_senha"}' \
+  -c - | grep token | awk '{print $7}')
 
-Login manual:
-
-```powershell
-$loginResp = Invoke-WebRequest -Uri "http://localhost:3001/api/auth/login" `
-  -Method POST -ContentType "application/json" `
-  -Body '{"username":"admin","password":"lojanova"}'
-$token = ($loginResp.Headers["Set-Cookie"] -split ";")[0] -replace "token=",""
-
-Invoke-RestMethod -Uri "http://localhost:3001/api/nfe" `
-  -Method GET -Headers @{ Authorization = "Bearer $token" }
+# Testar endpoint protegido:
+curl -s http://localhost:3001/api/nfe \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Armadilhas Conhecidas
@@ -600,19 +558,17 @@ Invoke-RestMethod -Uri "http://localhost:3001/api/nfe" `
 - Não usar contagens antigas de testes. Rode a suíte se a contagem importar.
 - Não trocar `NFE_CERT_PASSWORD` por nomes em português.
 - Não usar `NFeRecepcaoEvento` em exemplos novos; o código atual usa helpers da `nfewizard-io` expostos como `NFE_Cancelamento`, `NFE_CartaDeCorrecao` e `NFE_Inutilizacao`.
-- Não ativar `WHATSAPP_WEB_ENABLED=true` sem base URL, instância e provider coerentes.
-- Não tratar falha do WhatsApp local como erro fatal de tela.
+- Não recriar microserviço Baileys em produção. Utilizar o fluxo manual assistido.
+- Não tentar impressão direta via spooler SMB em Linux; o modo suportado é navegador do usuário.
 - Não mover NF-e autorizada/cancelada para lixeira fiscal.
 - Não recalcular saldo de OS em SQL improvisado sem comparar com `getResumoFinanceiroOS()`.
 - Não alterar `resolveClienteData()` sem validar atendimento no frontend.
-- Não expor RDP diretamente na internet. Preferir VPN, Tailscale/ZeroTier ou Cloudflare Access.
+- Não expor portas desnecessárias diretamente na internet. No VPS Linux, o UFW deve permitir apenas 80, 443 e SSH (porta 22) preferencialmente restrito ou via Cloudflare Access.
 
 ## Documentação Relacionada
 
 - `README.md` - visão geral, setup, deploy e operação.
 - `backend/ARCHITECTURE.md` - resumo da arquitetura backend.
-- `whatsapp-service/README.md` - contrato e instalação do serviço local.
 - `docs/nfe-inutilizacao-operacao.md` - inutilização manual segura.
 - `docs/backup-offsite-oracle.md` - backup offsite Oracle.
-- `docs/whatsapp-service-mini-evolution.md` - evolução do serviço local.
 - `docs/superpowers/` - specs e planos históricos.

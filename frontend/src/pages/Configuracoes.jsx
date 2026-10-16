@@ -5,6 +5,7 @@ import { CheckCircle2, FileSearch, MessageSquareText, QrCode as QrCodeIcon, Refr
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import { buscarEnderecoPorCep, maskCep } from '../utils/cep'
+import { getWhatsappClientMode, setWhatsappClientMode } from '../utils/whatsappOficina'
 
 const EMPTY_EMPRESA = {
   razaosocial: '',
@@ -75,16 +76,16 @@ const EMPTY_WHATSAPP = {
 
 const WHATSAPP_PROVIDER_OPTIONS = [
   {
-    id: 'web_local',
-    title: 'WhatsApp Web local',
-    desc: 'Envia pelo numero pareado neste servidor.',
-    icon: Smartphone,
+    id: 'manual',
+    title: 'Manual assistido (Ativo)',
+    desc: 'Mantem mensagens prontas para o operador enviar via WhatsApp Desktop ou Web.',
+    icon: MessageSquareText,
   },
   {
-    id: 'manual',
-    title: 'Manual assistido',
-    desc: 'Mantem mensagens prontas para o operador enviar.',
-    icon: MessageSquareText,
+    id: 'web_local',
+    title: 'WhatsApp Web local (Desativado)',
+    desc: 'Automacao via Baileys pausada para evitar bloqueio do numero pela Meta.',
+    icon: Smartphone,
   },
 ]
 
@@ -167,13 +168,16 @@ function normalizeLoadedWhatsapp(whatsapp = {}) {
 }
 
 function normalizeLoadedImpressao(impressao = {}) {
+  const directPrintSupported =
+    impressao.directPrintSupported !== false &&
+    (!impressao.serverPlatform || impressao.serverPlatform === 'win32')
   return {
     ...EMPTY_IMPRESSAO,
     printerName: impressao.printerName || '',
     printerIp: impressao.printerIp || '',
     paperSize: impressao.paperSize || 'A5',
     color: Boolean(impressao.color ?? true),
-    directPrintEnabled: Boolean(impressao.directPrintEnabled),
+    directPrintEnabled: directPrintSupported ? Boolean(impressao.directPrintEnabled) : false,
   }
 }
 
@@ -243,6 +247,14 @@ function whatsappConnectionInfo(status) {
       desc: 'Atualize para verificar a sessao local.',
       className: 'is-pending',
       icon: RefreshCw,
+    }
+  }
+  if (status.state === 'manual_mode') {
+    return {
+      label: 'Manual assistido',
+      desc: status.message || 'Envio manual assistido ativo via navegador/desktop (automacao desativada).',
+      className: 'is-connected',
+      icon: MessageSquareText,
     }
   }
   if (status.connected) {
@@ -320,6 +332,7 @@ export default function Configuracoes() {
   const [whatsappWebStatus, setWhatsappWebStatus] = useState(null)
   const [whatsappQrDataUrl, setWhatsappQrDataUrl] = useState('')
   const [loadingWhatsappWebStatus, setLoadingWhatsappWebStatus] = useState(false)
+  const [manualClientMode, setManualClientMode] = useState(() => getWhatsappClientMode())
   const [impressaoInfo, setImpressaoInfo] = useState(null)
   const [impressaoForm, setImpressaoForm] = useState(EMPTY_IMPRESSAO)
   const [impressaoErrors, setImpressaoErrors] = useState({})
@@ -345,6 +358,9 @@ export default function Configuracoes() {
   const canRunBackup = can('backups.executar')
   const canViewSeguranca = can('configuracoes.seguranca')
   const canViewSistema = can('configuracoes.ver')
+  const isDirectPrintSupported =
+    impressaoInfo?.directPrintSupported !== false &&
+    (!impressaoInfo?.serverPlatform || impressaoInfo.serverPlatform === 'win32')
   const visibleSections = useMemo(
     () => SECTIONS.filter((section) => section.permissions.some((permission) => can(permission))),
     [can]
@@ -891,6 +907,10 @@ export default function Configuracoes() {
   const saveImpressao = async (event) => {
     event.preventDefault()
     if (!canEditImpressao) return
+    if (!isDirectPrintSupported && impressaoForm.directPrintEnabled) {
+      toast.error('Impressao direta no servidor esta disponivel apenas no Windows Server. Utilize o modo Navegador.')
+      return
+    }
     setSavingImpressao(true)
     setImpressaoErrors({})
 
@@ -900,7 +920,7 @@ export default function Configuracoes() {
         printerIp: impressaoForm.printerIp.trim(),
         paperSize: 'A5',
         color: 1,
-        directPrintEnabled: impressaoForm.directPrintEnabled,
+        directPrintEnabled: isDirectPrintSupported ? impressaoForm.directPrintEnabled : false,
       }
       const res = await api.put('/configuracoes/impressao', payload)
       applyImpressaoResponse(res.data)
@@ -917,6 +937,10 @@ export default function Configuracoes() {
 
   const testarImpressao = async () => {
     if (!canEditImpressao) return
+    if (!isDirectPrintSupported) {
+      toast.error('Impressao direta no servidor esta disponivel apenas no Windows Server. Utilize o modo Navegador.')
+      return
+    }
     setTestingImpressao(true)
     try {
       const res = await api.post('/configuracoes/impressao/teste', {}, { skipGlobalErrorToast: true })
@@ -936,6 +960,10 @@ export default function Configuracoes() {
 
   const diagnosticarImpressao = async () => {
     if (!canEditImpressao) return
+    if (!isDirectPrintSupported) {
+      toast.error('Impressao direta no servidor esta disponivel apenas no Windows Server. Utilize o modo Navegador.')
+      return
+    }
     setDiagnosingImpressao(true)
     try {
       const res = await api.post('/configuracoes/impressao/diagnostico', {}, { skipGlobalErrorToast: true, timeout: 60000 })
@@ -1121,9 +1149,9 @@ export default function Configuracoes() {
     const connection = isLocalProvider
       ? whatsappConnectionInfo(whatsappWebStatus)
       : {
-          label: 'Manual assistido',
+          label: 'Manual assistido ativo',
           desc: 'O sistema prepara a mensagem e o operador confirma o envio.',
-          className: 'is-pending',
+          className: 'is-connected',
           icon: MessageSquareText,
         }
     const ConnectionIcon = connection.icon
@@ -1146,6 +1174,36 @@ export default function Configuracoes() {
             </div>
           ) : (
             <>
+              <div
+                className="whatsapp-manual-banner"
+                style={{
+                  padding: 'var(--space-4)',
+                  background: 'var(--color-surface-subtle)',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--color-border-subtle)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 'var(--space-2)',
+                  marginBottom: 'var(--space-4)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontWeight: 600, color: 'var(--color-text)', fontSize: 'var(--text-sm)' }}>
+                  <CheckCircle2 size={18} color="var(--color-primary, #009246)" />
+                  <span>Envio Manual Assistido Ativo (Modo Padrao Seguro)</span>
+                </div>
+                <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
+                  O servico de disparo automatico em background via Baileys foi pausado operacionalmente para prevenir o bloqueio ou banimento do numero do WhatsApp da loja pela Meta.
+                  No modo assistido, o sistema prepara o texto completo da mensagem e abre diretamente a conversa no aplicativo ou navegador para confirmacao com um clique.
+                </p>
+                <div style={{ marginTop: 'var(--space-1)', paddingTop: 'var(--space-2)', borderTop: '1px solid var(--color-border-subtle)', fontSize: 'var(--text-xs)' }}>
+                  <strong>Instrucoes de uso:</strong>
+                  <ul style={{ margin: 'var(--space-1) 0 0 var(--space-4)', padding: 0, color: 'var(--color-text-muted)' }}>
+                    <li><strong>WhatsApp Desktop (App do Windows):</strong> Abre direto no aplicativo instalado no computador, sem abrir novas abas no navegador e sem recarregar conversas.</li>
+                    <li><strong>WhatsApp Web (Navegador):</strong> Abre no navegador via link <code>web.whatsapp.com</code> ou <code>wa.me</code> para envio imediato.</li>
+                  </ul>
+                </div>
+              </div>
+
               <div className={`whatsapp-status-panel whatsapp-status-panel-compact ${connection.className}`}>
                 <div className="whatsapp-status-main">
                   <span className="whatsapp-status-icon"><ConnectionIcon size={22} /></span>
@@ -1154,13 +1212,25 @@ export default function Configuracoes() {
                     <span>{connection.desc}</span>
                   </div>
                 </div>
-                <button type="button" className="btn btn-secondary" onClick={loadWhatsappWebStatus} disabled={!isLocalProvider || loadingWhatsappWebStatus}>
-                  {loadingWhatsappWebStatus ? <><div className="spinner" style={{ width: 14, height: 14 }} /> Consultando...</> : <><RefreshCw size={16} /> Atualizar status</>}
-                </button>
+                {isLocalProvider && (
+                  <button type="button" className="btn btn-secondary" onClick={loadWhatsappWebStatus} disabled={loadingWhatsappWebStatus}>
+                    {loadingWhatsappWebStatus ? <><div className="spinner" style={{ width: 14, height: 14 }} /> Consultando...</> : <><RefreshCw size={16} /> Atualizar status</>}
+                  </button>
+                )}
                 <div className="whatsapp-status-meta">
-                  <span><strong>Instancia</strong>{whatsappForm.webInstance || '-'}</span>
-                  <span><strong>URL local</strong>{whatsappForm.webBaseUrl || '-'}</span>
-                  <span><strong>Origem</strong>{whatsappInfo?.origem === 'banco' ? 'Tela de configuracao' : whatsappInfo?.origem || 'env'}</span>
+                  {isLocalProvider ? (
+                    <>
+                      <span><strong>Instancia</strong>{whatsappForm.webInstance || '-'}</span>
+                      <span><strong>URL local</strong>{whatsappForm.webBaseUrl || '-'}</span>
+                      <span><strong>Origem</strong>{whatsappInfo?.origem === 'banco' ? 'Tela de configuracao' : whatsappInfo?.origem || 'env'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span><strong>Modo</strong>Manual assistido</span>
+                      <span><strong>Destino</strong>{manualClientMode === 'desktop' ? 'WhatsApp Desktop (App)' : 'WhatsApp Web (Navegador)'}</span>
+                      <span><strong>Automacao</strong>Pausada (prevencao de bloqueio)</span>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -1213,12 +1283,58 @@ export default function Configuracoes() {
                   </label>
 
                   {isLocalProvider && (
-                    <div className="form-grid-2">
-                      <Field label="URL local" name="webBaseUrl" form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField} placeholder="http://127.0.0.1:8080" />
-                      <Field label="Instancia" name="webInstance" form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField} />
-                      <Field label="Chave local" name="webApiKey" form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField}>
-                        <input id="webApiKey" className="form-input" type="password" value={whatsappForm.webApiKey} onChange={(e) => setWhatsappField('webApiKey', e.target.value)} placeholder={whatsappInfo?.webApiKeyConfigurada ? 'Deixe em branco para manter a atual' : 'Chave local'} aria-label="Chave local do WhatsApp Web" />
-                      </Field>
+                    <>
+                      <div className="form-grid-2">
+                        <Field label="URL local" name="webBaseUrl" form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField} placeholder="http://127.0.0.1:8080" />
+                        <Field label="Instancia" name="webInstance" form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField} />
+                        <Field label="Chave local" name="webApiKey" form={whatsappForm} errors={whatsappErrors} onChange={setWhatsappField}>
+                          <input id="webApiKey" className="form-input" type="password" value={whatsappForm.webApiKey} onChange={(e) => setWhatsappField('webApiKey', e.target.value)} placeholder={whatsappInfo?.webApiKeyConfigurada ? 'Deixe em branco para manter a atual' : 'Chave local'} aria-label="Chave local do WhatsApp Web" />
+                        </Field>
+                      </div>
+                      <div style={{ marginTop: 'var(--space-3)', padding: 'var(--space-3)', background: 'var(--color-surface-subtle)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border-subtle)', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                        ⚠️ <strong>Aviso operacional:</strong> O servico em segundo plano Baileys foi desativado no servidor para proteger a linha contra banimento pela Meta. Recomendamos manter o modo <strong>Manual assistido</strong> ativo.
+                      </div>
+                    </>
+                  )}
+
+                  {!isLocalProvider && (
+                    <div style={{ marginTop: 'var(--space-4)', padding: 'var(--space-3)', background: 'var(--color-surface-subtle)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border-subtle)' }}>
+                      <span className="settings-eyebrow" style={{ display: 'block', marginBottom: 'var(--space-2)' }}>Destino do clique manual</span>
+                      <div style={{ display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)', cursor: 'pointer', fontWeight: manualClientMode === 'desktop' ? 600 : 400 }}>
+                          <input
+                            type="radio"
+                            name="manualClientMode"
+                            value="desktop"
+                            checked={manualClientMode === 'desktop'}
+                            onChange={() => {
+                              setManualClientMode('desktop')
+                              setWhatsappClientMode('desktop')
+                              toast.success('WhatsApp Desktop (App do Windows) selecionado')
+                            }}
+                          />
+                          WhatsApp Desktop (App do Windows)
+                        </label>
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)', cursor: 'pointer', fontWeight: manualClientMode === 'web' ? 600 : 400 }}>
+                          <input
+                            type="radio"
+                            name="manualClientMode"
+                            value="web"
+                            checked={manualClientMode === 'web'}
+                            onChange={() => {
+                              setManualClientMode('web')
+                              setWhatsappClientMode('web')
+                              toast.success('WhatsApp Web (Navegador) selecionado')
+                            }}
+                          />
+                          WhatsApp Web (Navegador)
+                        </label>
+                      </div>
+                      <p className="text-muted" style={{ fontSize: 'var(--text-xs)', marginTop: 'var(--space-2)', marginBottom: 0 }}>
+                        {manualClientMode === 'desktop'
+                          ? '✅ Abre direto no aplicativo do Windows sem abrir novas abas e sem carregar conversas.'
+                          : 'Abre no navegador em web.whatsapp.com.'}
+                      </p>
                     </div>
                   )}
                 </section>
@@ -1291,24 +1407,56 @@ export default function Configuracoes() {
           </div>
         ) : (
           <>
+            {!isDirectPrintSupported && (
+              <div
+                style={{
+                  padding: 'var(--space-3) var(--space-4)',
+                  background: 'var(--color-surface-subtle)',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--color-border-subtle)',
+                  fontSize: 'var(--text-xs)',
+                  color: 'var(--color-text-muted)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 'var(--space-1)',
+                  marginBottom: 'var(--space-4)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontWeight: 600, color: 'var(--color-text)' }}>
+                  <span>Servidor VPS Linux detectado</span>
+                </div>
+                <span>
+                  No servidor VPS (Linux), a impressao direta via spooler/PowerShell nao esta disponivel. O modo ativo de impressao e <strong>Navegador do usuario</strong> (o operador imprime diretamente pelo dialogo do navegador).
+                </span>
+              </div>
+            )}
+
             <div className="settings-info-grid">
               <InfoRow
                 label="Destino resolvido"
-                value={impressaoInfo?.directPrintEnabled ? (impressaoInfo?.destino || 'Nao configurado') : 'Navegador do usuario'}
+                value={isDirectPrintSupported && impressaoInfo?.directPrintEnabled ? (impressaoInfo?.destino || 'Nao configurado') : 'Navegador do usuario'}
               />
-              <InfoRow label="Modo" value={impressaoInfo?.directPrintEnabled ? 'Direta no servidor' : 'Navegador do usuario'} />
+              <InfoRow label="Modo" value={isDirectPrintSupported && impressaoInfo?.directPrintEnabled ? 'Direta no servidor' : 'Navegador do usuario'} />
               <InfoRow label="Papel" value={impressaoInfo?.paperSize || 'A5'} />
               <InfoRow label="Cor" value={impressaoInfo?.color ? 'Ativada' : 'Ativada no documento'} />
+              <InfoRow label="Plataforma" value={impressaoInfo?.serverPlatform === 'linux' ? 'Linux (VPS)' : (impressaoInfo?.serverPlatform || 'Servidor')} />
               <InfoRow label="Atualizado em" value={impressaoInfo?.updatedat} />
             </div>
 
-            <label className="settings-check" style={{ alignSelf: 'start', marginTop: 0 }}>
+            <label className={`settings-check ${!isDirectPrintSupported ? 'is-disabled' : ''}`} style={{ alignSelf: 'start', marginTop: 0, opacity: !isDirectPrintSupported ? 0.6 : 1 }}>
               <input
                 type="checkbox"
-                checked={impressaoForm.directPrintEnabled}
-                onChange={(e) => setImpressaoField('directPrintEnabled', e.target.checked)}
+                checked={isDirectPrintSupported ? impressaoForm.directPrintEnabled : false}
+                disabled={!isDirectPrintSupported}
+                onChange={(e) => {
+                  if (!isDirectPrintSupported) {
+                    toast.error('Impressao direta no servidor esta disponivel apenas no Windows Server. Utilize o modo Navegador.')
+                    return
+                  }
+                  setImpressaoField('directPrintEnabled', e.target.checked)
+                }}
               />
-              Impressao direta no servidor
+              Impressao direta no servidor {!isDirectPrintSupported && '(disponivel apenas no Windows Server)'}
             </label>
 
             <div className="form-grid-2">
@@ -1319,7 +1467,7 @@ export default function Configuracoes() {
                 errors={impressaoErrors}
                 onChange={setImpressaoField}
                 placeholder="Impressoraloja ou \\\\ARTESERVER\\Impressoraloja"
-                disabled={!impressaoForm.directPrintEnabled}
+                disabled={!isDirectPrintSupported || !impressaoForm.directPrintEnabled}
               />
               <Field
                 label="IP da impressora"
@@ -1329,7 +1477,7 @@ export default function Configuracoes() {
                 onChange={setImpressaoField}
                 inputMode="numeric"
                 placeholder="192.168.0.45"
-                disabled={!impressaoForm.directPrintEnabled}
+                disabled={!isDirectPrintSupported || !impressaoForm.directPrintEnabled}
               />
               <Field label="Papel" name="paperSize" form={impressaoForm} errors={impressaoErrors} onChange={setImpressaoField}>
                 <input id="paperSize" className="form-input" value="A5" disabled />
@@ -1342,10 +1490,10 @@ export default function Configuracoes() {
 
             <div className="settings-actions">
               <button type="button" className="btn btn-ghost" onClick={loadImpressao} disabled={savingImpressao || testingImpressao || diagnosingImpressao}>Cancelar</button>
-              <button type="button" className="btn btn-secondary" onClick={testarImpressao} disabled={savingImpressao || testingImpressao || diagnosingImpressao || !impressaoForm.directPrintEnabled}>
+              <button type="button" className="btn btn-secondary" onClick={testarImpressao} disabled={savingImpressao || testingImpressao || diagnosingImpressao || !isDirectPrintSupported || !impressaoForm.directPrintEnabled}>
                 {testingImpressao ? <><div className="spinner" style={{ width: 14, height: 14 }} /> Enviando...</> : 'Testar A5 colorido'}
               </button>
-              <button type="button" className="btn btn-secondary" onClick={diagnosticarImpressao} disabled={savingImpressao || testingImpressao || diagnosingImpressao || !impressaoForm.directPrintEnabled}>
+              <button type="button" className="btn btn-secondary" onClick={diagnosticarImpressao} disabled={savingImpressao || testingImpressao || diagnosingImpressao || !isDirectPrintSupported || !impressaoForm.directPrintEnabled}>
                 {diagnosingImpressao ? <><div className="spinner" style={{ width: 14, height: 14 }} /> Gerando...</> : <><FileSearch size={16} /> Diagnosticar A5</>}
               </button>
               <button type="submit" className="btn btn-primary" disabled={savingImpressao || testingImpressao || diagnosingImpressao}>

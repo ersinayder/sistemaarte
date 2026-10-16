@@ -21,16 +21,23 @@ describe('GitHub workflow security contracts', () => {
     expect(source).not.toMatch(/npm install/);
   });
 
-  it('keeps deploy from mirroring secrets and uses reproducible installs', () => {
+  it('keeps deploy from mirroring secrets and uses reproducible installs on Ubuntu VPS', () => {
     const source = readWorkflow('deploy.yml');
 
     expect(source).toMatch(/permissions:\s*\n\s*contents:\s*read/);
-    expect(source).toMatch(/PM2-DeployRestart/);
-    expect(source).toMatch(/Get-ScheduledTask/);
-    expect(source).toMatch(/\/XD node_modules data certs/);
+    expect(source).toMatch(/deploy-trigger/);
+    expect(source).toMatch(/rsync/);
+    expect(source).toMatch(/--exclude='node_modules'/);
+    expect(source).toMatch(/--exclude='data'/);
+    expect(source).toMatch(/--exclude='certs'/);
+    expect(source).toMatch(/--exclude='\.env'/);
     expect(source).toMatch(/npm ci/);
     expect(source).toMatch(/npm audit --omit=dev/);
     expect(source).not.toMatch(/npm install/);
+    expect(source).not.toMatch(/robocopy/i);
+    expect(source).not.toMatch(/powershell/i);
+    expect(source).not.toMatch(/PM2-DeployRestart/);
+    expect(source).not.toMatch(/Get-ScheduledTask/);
   });
 
   it('does not keep privileged one-shot PM2 setup workflows enabled', () => {

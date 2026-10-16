@@ -61,6 +61,16 @@ function abrirFechamentoCaixa(date) {
   window.open(`/api/caixa/fechamento?data=${encodeURIComponent(date)}`, '_blank', 'noopener,noreferrer');
 }
 
+function isEntrada(row) {
+  const t = String(typeof row === 'object' ? row?.tipo : row || '').trim().toLowerCase();
+  return t === 'entrada';
+}
+
+function isSaida(row) {
+  const t = String(typeof row === 'object' ? row?.tipo : row || '').trim().toLowerCase();
+  return t === 'saida' || t === 'saída';
+}
+
 function Pagination({ current, total, onChange }) {
   if (total <= 1) return null;
   const pages = [];
@@ -132,7 +142,7 @@ export default function Caixa() {
 
   const lancamentosFiltrados = useMemo(() => {
     let items = lancamentos;
-    if (filterTipo !== 'todos') items = items.filter(l => l.tipo === filterTipo);
+    if (filterTipo !== 'todos') items = items.filter(l => (filterTipo === 'Saída' ? isSaida(l) : isEntrada(l)));
     if (filterPag  !== 'todos') items = items.filter(l => l.pagamento === filterPag);
     if (filterCat  !== 'todos') items = items.filter(l => l.categoria === filterCat);
     if (filterOrigem !== 'todos') items = items.filter(l => (l.origem || 'manual') === filterOrigem);
@@ -149,8 +159,8 @@ export default function Caixa() {
   }, [lancamentos, filterTipo, filterPag, filterCat, filterOrigem, busca]);
 
   const { entrada, saida, saldo } = useMemo(() => {
-    const e  = lancamentosFiltrados.filter(l => l.tipo==='Entrada').reduce((s,l) => s+Number(l.valor||0), 0);
-    const s2 = lancamentosFiltrados.filter(l => l.tipo==='Saída').reduce((s,l) => s+Number(l.valor||0), 0);
+    const e  = lancamentosFiltrados.filter(isEntrada).reduce((s,l) => s+Number(l.valor||0), 0);
+    const s2 = lancamentosFiltrados.filter(isSaida).reduce((s,l) => s+Number(l.valor||0), 0);
     return { entrada: e, saida: s2, saldo: e - s2 };
   }, [lancamentosFiltrados]);
 
@@ -256,21 +266,12 @@ export default function Caixa() {
               PDF
             </button>
           )}
-          {canCreate && (
-            <button className="btn btn-primary" onClick={()=>{ setEditItem(null); setShowModal(true); }}
-              style={{ fontSize:'var(--text-xs)', display:'flex', alignItems:'center', gap:'var(--space-1)' }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M12 5v14M5 12h14"/>
-              </svg>
-              Novo manual
-            </button>
-          )}
         </div>
       </div>
 
       {/* KPIs */}
-      <div className="erp-kpi-grid cols-3" style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)',
-        gap:'var(--space-2)', padding:'var(--space-2) var(--space-6)',
+      <div className="erp-kpi-grid cols-3" style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(160px, 1fr))',
+        gap:'var(--space-2)', padding:'var(--space-2) var(--space-4)',
         borderBottom:'1px solid var(--color-border)', flexShrink:0 }}>
         {[
           { label:'Entradas', value:fmt(entrada), color:'var(--color-success)', icon:'M12 2v20M17 7H9.5a3.5 3.5 0 0 0 0 7h5' },
@@ -295,37 +296,60 @@ export default function Caixa() {
         ))}
       </div>
 
-      {/* Filtros */}
-      <div className="erp-filter-bar" style={{ padding:'var(--space-2) var(--space-6)', display:'flex', gap:'var(--space-2)',
+      {/* Formulário Embutido de Lançamento Direto */}
+      {canCreate && (
+        <div style={{ padding: 'var(--space-3) var(--space-4)', background: 'var(--color-surface-offset)', borderBottom: '1px solid var(--color-border)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
+            <span style={{ fontWeight: 800, fontSize: 'var(--text-sm)', color: 'var(--color-text)' }}>
+              {editItem ? 'Editar Lançamento' : 'Novo Lançamento Manual'}
+            </span>
+            {editItem && (
+              <button type="button" className="btn btn-ghost btn-xs" onClick={() => setEditItem(null)}>✕ Cancelar edição</button>
+            )}
+          </div>
+          <ModalLancamento
+            inline
+            item={editItem}
+            onClose={() => setEditItem(null)}
+            onSave={handleSave}
+            defaultDate={selectedDay}
+          />
+        </div>
+      )}
+
+      {/* Filtros Compactos em Linha Única */}
+      <div className="erp-filter-bar" style={{ padding:'var(--space-2) var(--space-4)', display:'grid',
+        gridTemplateColumns:'repeat(auto-fit, minmax(130px, 1fr))', gap:'var(--space-2)',
         alignItems:'center', borderBottom:'1px solid var(--color-border)', flexShrink:0,
         background:'var(--color-surface)' }}>
-        <div className="erp-search" style={{ position:'relative', flex:1, minWidth:140 }}>
+        <div className="erp-search" style={{ position:'relative', minWidth:140 }}>
           <svg style={{ position:'absolute', left:7, top:'50%', transform:'translateY(-50%)',
             color:'var(--color-text-faint)', pointerEvents:'none' }}
             width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
           </svg>
           <input className="form-input" value={busca} onChange={e=>setBusca(e.target.value)}
-            placeholder="Buscar…"
-            style={{ paddingLeft:24, fontSize:'var(--text-xs)', height:28, paddingTop:0, paddingBottom:0 }} />
+            placeholder="Buscar lançamentos…"
+            style={{ paddingLeft:24, fontSize:'var(--text-xs)', height:28, paddingTop:0, paddingBottom:0, width:'100%' }} />
         </div>
         <select className="form-input" value={filterTipo} onChange={e=>setFilterTipo(e.target.value)}
-          style={{ fontSize:'var(--text-xs)', height:28, padding:'0 var(--space-2)', minWidth:110 }}>
-          <option value="todos">Todos</option>
-          {TIPO_OPT.map(t=><option key={t}>{t}</option>)}
+          style={{ fontSize:'var(--text-xs)', height:28, padding:'0 var(--space-2)', width:'100%' }}>
+          <option value="todos">Tipo: Todos</option>
+          {TIPO_OPT.map(t=><option key={t} value={t}>{t}</option>)}
         </select>
         <select className="form-input" value={filterPag} onChange={e=>setFilterPag(e.target.value)}
-          style={{ fontSize:'var(--text-xs)', height:28, padding:'0 var(--space-2)', minWidth:120 }}>
-          <option value="todos">Pagamento</option>
-          {PAGAMENTO_OPT.map(p=><option key={p}>{p}</option>)}
+          style={{ fontSize:'var(--text-xs)', height:28, padding:'0 var(--space-2)', width:'100%' }}>
+          <option value="todos">Pagamento: Todos</option>
+          {PAGAMENTO_OPT.map(p=><option key={p} value={p}>{p}</option>)}
         </select>
         <select className="form-input" value={filterCat} onChange={e=>setFilterCat(e.target.value)}
-          style={{ fontSize:'var(--text-xs)', height:28, padding:'0 var(--space-2)', minWidth:110 }}>
-          {categorias.map(c=><option key={c} value={c}>{c==='todos'?'Categoria':c}</option>)}
+          style={{ fontSize:'var(--text-xs)', height:28, padding:'0 var(--space-2)', width:'100%' }}>
+          <option value="todos">Categoria: Todas</option>
+          {categorias.filter(c=>c!=='todos').map(c=><option key={c} value={c}>{c}</option>)}
         </select>
         <select className="form-input" value={filterOrigem} onChange={e=>setFilterOrigem(e.target.value)}
-          style={{ fontSize:'var(--text-xs)', height:28, padding:'0 var(--space-2)', minWidth:130 }}>
-          <option value="todos">Origem</option>
+          style={{ fontSize:'var(--text-xs)', height:28, padding:'0 var(--space-2)', width:'100%' }}>
+          <option value="todos">Origem: Todas</option>
           <option value="manual">Manual</option>
           <option value="entradaos">Entrada OS</option>
           <option value="saldoos">Recebimento OS</option>
@@ -350,13 +374,13 @@ export default function Caixa() {
                 <div className="mobile-record-title">{l.descricao || l.categoria || 'Lançamento'}</div>
                 {l.itens_resumo && <div className="mobile-record-sub truncate" title={l.itens_resumo}>{l.itens_resumo}</div>}
               </div>
-              <div className="mobile-record-value" style={{ color: l.tipo==='Entrada' ? 'var(--color-success)' : 'var(--color-error)' }}>
-                {l.tipo==='Entrada' ? '+' : '-'} {fmt(l.valor)}
+              <div className="mobile-record-value" style={{ color: isEntrada(l) ? 'var(--color-success)' : 'var(--color-error)' }}>
+                {isEntrada(l) ? '+' : '-'} {fmt(l.valor)}
               </div>
             </div>
             <div className="mobile-record-row">
               <div className="mobile-record-meta">
-                <span className={`badge ${l.tipo==='Entrada' ? 'badge-success' : 'badge-error'}`}>{l.tipo}</span>
+                <span className={`badge ${isEntrada(l) ? 'badge-success' : 'badge-error'}`}>{isEntrada(l) ? 'Entrada' : 'Saída'}</span>
                 {l.pagamento && <span className={`badge badge-${String(l.pagamento).toLowerCase()}`}>{l.pagamento}</span>}
                 {l.categoria && <span className="badge badge-secondary">{l.categoria}</span>}
               </div>
@@ -398,9 +422,9 @@ export default function Caixa() {
                 </td>
                 <td style={{ padding:'var(--space-2) var(--space-3)' }}>
                   <span style={{ fontSize:10, fontWeight:700, padding:'1px 6px', borderRadius:'var(--radius-full)',
-                    background: l.tipo==='Entrada' ? 'rgba(67,122,34,0.12)' : 'rgba(161,44,123,0.10)',
-                    color: l.tipo==='Entrada' ? 'var(--color-success)' : 'var(--color-error)' }}>
-                    {l.tipo==='Entrada' ? '↑' : '↓'} {l.tipo}
+                    background: isEntrada(l) ? 'rgba(67,122,34,0.12)' : 'rgba(161,44,123,0.10)',
+                    color: isEntrada(l) ? 'var(--color-success)' : 'var(--color-error)' }}>
+                    {isEntrada(l) ? '↑ Entrada' : '↓ Saída'}
                   </span>
                 </td>
                 <td style={{ padding:'var(--space-2) var(--space-3)', color:'var(--color-text-muted)' }}>{l.categoria||'—'}</td>
@@ -413,12 +437,12 @@ export default function Caixa() {
                   <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{l.descricao||'—'}</div>
                   {l.itens_resumo && (
                     <div style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
-                      fontSize:10, color:'var(--color-text-faint)', marginTop:2 }}>{l.itens_resumo}</div>
+                       fontSize:10, color:'var(--color-text-faint)', marginTop:2 }}>{l.itens_resumo}</div>
                   )}
                 </td>
                 <td style={{ padding:'var(--space-2) var(--space-3)', textAlign:'right', fontFamily:'monospace',
-                  fontWeight:700, color: l.tipo==='Entrada' ? 'var(--color-success)' : 'var(--color-error)' }}>
-                  {l.tipo==='Entrada' ? '+' : '−'} {fmt(l.valor)}
+                  fontWeight:700, color: isEntrada(l) ? 'var(--color-success)' : 'var(--color-error)' }}>
+                  {isEntrada(l) ? '+' : '−'} {fmt(l.valor)}
                 </td>
                 <td style={{ padding:'var(--space-2) var(--space-3)' }}>
                   <div style={{ display:'flex', gap:4, justifyContent:'flex-end' }}>
@@ -450,21 +474,11 @@ export default function Caixa() {
       </div>
 
       <Pagination current={page} total={totalPages} onChange={setPage} />
-
-      {showModal && ReactDOM.createPortal(
-        <ModalLancamento
-          item={editItem}
-          onClose={()=>{ setShowModal(false); setEditItem(null); }}
-          onSave={handleSave}
-          defaultDate={selectedDay}
-        />,
-        document.body
-      )}
     </div>
   );
 }
 
-function ModalLancamento({ item, onClose, onSave, defaultDate }) {
+function ModalLancamento({ inline, item, onClose, onSave, defaultDate }) {
   const [ordens, setOrdens] = useState([]);
   const [form, setForm] = useState({
     tipo:'Entrada', pagamento:'Pix', categoria:'Pagamento OS',
@@ -509,114 +523,128 @@ function ModalLancamento({ item, onClose, onSave, defaultDate }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSave({ ...form, valor: Number(form.valor)||0, ordemid: form.ordemid||null });
+    onSave({ ...form, valor: Number(form.valor)||0, ordemid: form.ordemid||null, pago: 1 });
+  };
+
+  const handleReset = () => {
+    setForm({
+      tipo:'Entrada', pagamento:'Pix', categoria:'Pagamento OS',
+      descricao:'', valor:'', data: defaultDate || getToday(),
+      ordemid:'',
+    });
+    if (onClose) onClose();
   };
 
   const cats = CATEG_OPT[form.tipo] || [];
 
+  const formContent = (
+    <form onSubmit={(e) => {
+      handleSubmit(e);
+      if (!item) {
+        setForm(f => ({ ...f, descricao:'', valor:'', ordemid:'' }));
+      }
+    }} style={{ display:'flex', flexDirection:'column', gap:'var(--space-3)' }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap:'var(--space-2)' }}>
+        {/* Tipo */}
+        <div style={{ display:'flex', gap:'var(--space-2)' }}>
+          {TIPO_OPT.map(t => (
+            <button key={t} type="button" onClick={()=>set('tipo',t)}
+              style={{ flex:1, padding:'6px var(--space-2)', fontSize:'var(--text-xs)', fontWeight:700,
+                borderRadius:'var(--radius-md)', border:'2px solid',
+                borderColor: form.tipo===t ? (t==='Entrada'?'var(--color-success)':'var(--color-error)') : 'var(--color-border)',
+                background: form.tipo===t ? (t==='Entrada'?'rgba(67,122,34,0.12)':'rgba(161,44,123,0.12)') : 'transparent',
+                color: form.tipo===t ? (t==='Entrada'?'var(--color-success)':'var(--color-error)') : 'var(--color-text-muted)',
+                cursor:'pointer' }}>
+              {t==='Entrada' ? '↑ Entrada' : '↓ Saída'}
+            </button>
+          ))}
+        </div>
+
+        {/* Forma de Pagamento */}
+        <div>
+          <select className="form-input" value={form.pagamento} onChange={e=>set('pagamento',e.target.value)}
+            style={{ fontSize:'var(--text-xs)', height:32 }}>
+            {PAGAMENTO_OPT.map(p=><option key={p}>{p}</option>)}
+          </select>
+        </div>
+
+        {/* Categoria */}
+        <div>
+          <select className="form-input" value={form.categoria} onChange={e=>set('categoria',e.target.value)}
+            style={{ fontSize:'var(--text-xs)', height:32 }}>
+            {cats.map(c=><option key={c}>{c}</option>)}
+          </select>
+        </div>
+
+        {/* Data */}
+        <div>
+          <input className="form-input" type="date" value={form.data}
+            onChange={e=>set('data',e.target.value)}
+            style={{ fontSize:'var(--text-xs)', height:32 }} required />
+        </div>
+
+        {/* Valor */}
+        <div>
+          <input className="form-input" type="number" step="0.01" value={form.valor}
+            placeholder="Valor R$ *"
+            onChange={e=>set('valor',e.target.value)}
+            style={{ fontSize:'var(--text-xs)', height:32, fontWeight:700 }} required min={0.01} />
+        </div>
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns: form.tipo==='Entrada' ? 'minmax(0, 1fr) minmax(0, 1fr)' : '1fr', gap:'var(--space-2)' }}>
+        {/* OS (apenas Entrada) */}
+        {form.tipo === 'Entrada' && (
+          <div>
+            <select className="form-input" value={form.ordemid} onChange={handleOsChange}
+              style={{ fontSize:'var(--text-xs)', height:32 }}>
+              <option value="">Sem OS vinculada (opcional)</option>
+              {ordens.map(o => (
+                <option key={o.id} value={o.id}>
+                  {o.numero} — {o.clientenome} (saldo: {Number(o.saldoaberto||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Descrição */}
+        <div>
+          <input className="form-input" value={form.descricao} onChange={e=>set('descricao',e.target.value)}
+            placeholder="Descrição (ex: Pagamento quadro 60x45, Fornecedor X...)"
+            style={{ fontSize:'var(--text-xs)', height:32 }} />
+        </div>
+      </div>
+
+      <div style={{ display:'flex', justifyContent:'flex-end', gap:'var(--space-2)', marginTop:2 }}>
+        {item && (
+          <button type="button" className="btn btn-ghost btn-sm" onClick={handleReset}>Cancelar edição</button>
+        )}
+        <button type="submit" className="btn btn-primary btn-sm">{item ? 'Salvar Alteração' : 'Registrar Lançamento'}</button>
+      </div>
+    </form>
+  );
+
+  if (inline) {
+    return formContent;
+  }
+
   return (
-    <div style={{ position:'fixed', inset:0, zIndex:1000, display:'flex', alignItems:'center',
-      justifyContent:'center', background:'oklch(from var(--color-bg) l c h / 0.75)', backdropFilter:'blur(2px)' }}
-      onClick={e => e.target===e.currentTarget && onClose()}>
-      <div style={{ background:'var(--color-surface)', borderRadius:'var(--radius-xl)',
-        boxShadow:'var(--shadow-lg)', width:'100%', maxWidth:440,
-        border:'1px solid var(--color-border)' }}>
-        <div style={{ padding:'var(--space-4) var(--space-5)', borderBottom:'1px solid var(--color-border)',
-          display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-          <h2 style={{ fontWeight:700, fontSize:'var(--text-base)', margin:0 }}>
+    <div className="modal-overlay" onClick={e => e.target===e.currentTarget && onClose()}>
+      <div className="modal modal-sm">
+        <div className="modal-header">
+          <h2 className="modal-title" style={{ fontWeight:700, fontSize:'var(--text-base)', margin:0 }}>
             {item ? 'Editar Lançamento' : 'Novo Lançamento'}
           </h2>
-          <button onClick={onClose} style={{ color:'var(--color-text-muted)', padding:'var(--space-1)' }}>
+          <button className="btn btn-icon btn-ghost" onClick={onClose} aria-label="Fechar">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M18 6 6 18M6 6l12 12"/>
             </svg>
           </button>
         </div>
-        <form onSubmit={handleSubmit}>
-          <div style={{ padding:'var(--space-4) var(--space-5)', display:'flex', flexDirection:'column', gap:'var(--space-3)' }}>
-
-            {/* Tipo */}
-            <div style={{ display:'flex', gap:'var(--space-2)' }}>
-              {TIPO_OPT.map(t => (
-                <button key={t} type="button" onClick={()=>set('tipo',t)}
-                  style={{ flex:1, padding:'var(--space-2)', fontSize:'var(--text-xs)', fontWeight:600,
-                    borderRadius:'var(--radius-md)', border:'2px solid',
-                    borderColor: form.tipo===t ? (t==='Entrada'?'var(--color-success)':'var(--color-error)') : 'var(--color-border)',
-                    background: form.tipo===t ? (t==='Entrada'?'rgba(67,122,34,0.10)':'rgba(161,44,123,0.08)') : 'transparent',
-                    color: form.tipo===t ? (t==='Entrada'?'var(--color-success)':'var(--color-error)') : 'var(--color-text-muted)',
-                    cursor:'pointer' }}>
-                  {t==='Entrada' ? '↑ Entrada' : '↓ Saída'}
-                </button>
-              ))}
-            </div>
-
-            {/* OS (apenas Entrada) */}
-            {form.tipo === 'Entrada' && (
-              <div>
-                <label className="form-label">OS (opcional)</label>
-                <select className="form-input" value={form.ordemid} onChange={handleOsChange}
-                  style={{ fontSize:'var(--text-xs)' }}>
-                  <option value="">Sem OS vinculada</option>
-                  {ordens.map(o => (
-                    <option key={o.id} value={o.id}>
-                      {o.numero} — {o.clientenome} (saldo: {Number(o.saldoaberto||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {/* Pagamento */}
-            <div>
-              <label className="form-label">Forma de Pagamento</label>
-              <select className="form-input" value={form.pagamento} onChange={e=>set('pagamento',e.target.value)}
-                style={{ fontSize:'var(--text-xs)' }}>
-                {PAGAMENTO_OPT.map(p=><option key={p}>{p}</option>)}
-              </select>
-            </div>
-
-            {/* Categoria */}
-            <div>
-              <label className="form-label">Categoria</label>
-              <select className="form-input" value={form.categoria} onChange={e=>set('categoria',e.target.value)}
-                style={{ fontSize:'var(--text-xs)' }}>
-                {cats.map(c=><option key={c}>{c}</option>)}
-              </select>
-            </div>
-
-            {/* Data + Valor */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'var(--space-3)' }}>
-              <div>
-                <label className="form-label">Data</label>
-                <input className="form-input" type="date" value={form.data}
-                  onChange={e=>set('data',e.target.value)}
-                  style={{ fontSize:'var(--text-xs)' }} required />
-              </div>
-              <div>
-                <label className="form-label">Valor (R$) *</label>
-                <input className="form-input" type="number" step="0.01" value={form.valor}
-                  onChange={e=>set('valor',e.target.value)}
-                  style={{ fontSize:'var(--text-xs)' }} required min={0.01} />
-              </div>
-            </div>
-
-            {/* Descrição */}
-            <div>
-              <label className="form-label">Descrição</label>
-              <input className="form-input" value={form.descricao} onChange={e=>set('descricao',e.target.value)}
-                placeholder="Ex: Pagamento quadro 60x45…"
-                style={{ fontSize:'var(--text-xs)' }} />
-            </div>
-          </div>
-
-          <div style={{ padding:'var(--space-3) var(--space-5)', borderTop:'1px solid var(--color-border)',
-            display:'flex', justifyContent:'flex-end', gap:'var(--space-2)' }}>
-            <button type="button" className="btn btn-secondary" onClick={onClose}
-              style={{ fontSize:'var(--text-xs)' }}>Cancelar</button>
-            <button type="submit" className="btn btn-primary"
-              style={{ fontSize:'var(--text-xs)' }}>{item ? 'Salvar' : 'Registrar'}</button>
-          </div>
-        </form>
+        <div className="modal-body modal-body-dense">
+          {formContent}
+        </div>
       </div>
     </div>
   );

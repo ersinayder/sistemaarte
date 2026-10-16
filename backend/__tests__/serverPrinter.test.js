@@ -48,7 +48,7 @@ describe('server printer helper', () => {
     expect(script).toContain('marginsType = 1');
     expect(script).toContain('scaling = 92');
     expect(script).toContain('sistema-arte-print-browser-');
-    expect(script).toContain('Start-Sleep -Milliseconds 1500');
+    expect(script).toContain('Start-Sleep -Milliseconds 6000');
     expect(script).not.toContain('WScript.Shell');
     expect(script).not.toContain("SendKeys('{ENTER}')");
     expect(script).not.toContain('--disable-print-preview');
@@ -167,5 +167,38 @@ describe('server printer helper', () => {
       html: '<html>OS</html>',
       platform: 'linux',
     })).rejects.toThrow('Impressao direta disponivel apenas no Windows Server');
+  });
+
+  describe('SEC-04: defense in depth against PowerShell injection', () => {
+    it('rejects printer names with command separators or injection characters', () => {
+      expect(() => printer.validatePrinterNameForScript('Impressora; Stop-Service PM2'))
+        .toThrow('Nome de impressora invalido para script de impressao');
+      expect(() => printer.validatePrinterNameForScript('Impressora | Out-File evil.ps1'))
+        .toThrow('Nome de impressora invalido para script de impressao');
+      expect(() => printer.validatePrinterNameForScript('Impressora $(whoami)'))
+        .toThrow('Nome de impressora invalido para script de impressao');
+      expect(() => printer.validatePrinterNameForScript('Impressora `n evil'))
+        .toThrow('Nome de impressora invalido para script de impressao');
+      expect(() => printer.validatePrinterNameForScript('Impressora & calc'))
+        .toThrow('Nome de impressora invalido para script de impressao');
+      expect(() => printer.validatePrinterNameForScript('Impressora\x00evil'))
+        .toThrow('Nome de impressora invalido para script de impressao');
+    });
+
+    it('accepts valid network and local printer names', () => {
+      expect(printer.validatePrinterNameForScript('\\\\ARTESERVER\\Impressoraloja'))
+        .toBe('\\\\ARTESERVER\\Impressoraloja');
+      expect(printer.validatePrinterNameForScript('Canon G3010 series'))
+        .toBe('Canon G3010 series');
+      expect(printer.validatePrinterNameForScript(''))
+        .toBe('');
+    });
+
+    it('validates htmlPath rejecting control characters or invalid paths', () => {
+      expect(() => printer.validateHtmlPathForScript(''))
+        .toThrow('Caminho do arquivo HTML de impressao ausente');
+      expect(() => printer.validateHtmlPathForScript('C:\\Temp\\ordem\x00.html'))
+        .toThrow('Caminho HTML contem caracteres de controle invalidos');
+    });
   });
 });

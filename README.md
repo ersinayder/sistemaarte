@@ -1,42 +1,43 @@
 # Sistema Arte e Molduras
 
-Sistema operacional da loja Arte e Molduras para atendimento, ordens de serviço, oficina, caixa, clientes, produtos, propostas comerciais, financeiro administrativo, impressão operacional, WhatsApp local e NF-e.
+Sistema operacional da loja Arte e Molduras para atendimento, ordens de serviço, oficina, caixa, clientes, produtos, propostas comerciais, financeiro administrativo, impressão operacional, WhatsApp assistido e NF-e.
 
-O backend Express também serve o build da SPA em produção. A aplicação roda em Windows Server com PM2, SQLite local em WAL mode e deploy por GitHub Actions self-hosted.
+O backend Express também serve o build da SPA em produção. A aplicação roda em VPS Ubuntu 24.04 LTS com Nginx, PM2, SQLite local em WAL mode e deploy automático por GitHub Actions self-hosted.
 
 ## Visão Rápida
 
 | Item | Estado atual |
 |---|---|
 | Domínio | `arteemolduras.com.br` |
-| Servidor | Windows Server em `C:\sistemaarte` |
-| Runtime | Node.js 22 |
-| Backend | Express 4 na porta `3001` |
+| Servidor | VPS Ubuntu 24.04 LTS (`187.127.22.223`) em `/var/www/sistemaarte` |
+| Runtime | Node.js 22 LTS |
+| Backend | Express 4 na porta `3001` (local via reverse proxy Nginx) |
 | Frontend | React 18 + Vite 8 |
-| Banco | SQLite via `better-sqlite3`, WAL e `foreign_keys=ON` |
+| Banco | SQLite via `better-sqlite3`, WAL, `busy_timeout=5000` e `foreign_keys=ON` |
 | Auth | JWT em cookie HttpOnly `token`, sessão de 12h |
-| WhatsApp | Serviço local Baileys em `127.0.0.1:8080` |
+| WhatsApp | Envio manual assistido (`wa.me` / app desktop) |
+| Impressão | Navegador do usuário (HTML imprimível gerado pelo backend) |
 | NF-e | `nfewizard-io@1.1.0` em homologação/produção por configuração |
-| Testes backend | 56 arquivos, 398 testes passando em 2026-06-19 |
+| Testes | 87 arquivos backend (828 testes) + 14 arquivos frontend (72 testes) |
 
 ## Arquitetura
 
 ```txt
-Cloudflare -> Windows Server (PM2)
-                |-- Express 4 (porta 3001)
-                |     |-- API /api/*
-                |     `-- SPA fallback para frontend/dist
-                |-- WhatsApp local (porta 8080, 127.0.0.1)
-                `-- SQLite (backend/data/oficina.db)
+Cloudflare (Proxy / WAF)
+  `-> Nginx (portas 80/443, SSL Cloudflare Origin, HTTP->HTTPS 301, CF-Connecting-IP, gzip, unbuffered SSE)
+        `-> Express 4 local (127.0.0.1:3001)
+              |-- API /api/*
+              |-- SPA fallback para /var/www/sistemaarte/frontend/dist
+              `-- SQLite (/var/www/sistemaarte/backend/data/oficina.db)
 ```
 
 Pontos importantes:
 
-- O backend serve a API e o frontend buildado.
+- O backend serve a API e os arquivos estáticos do frontend buildado.
 - O frontend usa axios com `baseURL=/api` e `withCredentials: true`.
 - `GET /api/auth/me` é o handshake de sessão. Retornar `401` sem login é esperado.
-- O WhatsApp local é um processo PM2 separado: `sistema-arte-whatsapp`.
-- SQLite é single-writer. Não use PM2 cluster sem redesenhar concorrência e testar locks.
+- O WhatsApp opera em modo manual assistido pelo operador (sem socket/microserviço vulnerável em background).
+- SQLite é single-writer: PM2 roda em modo `fork` com 1 instância. Não use PM2 cluster sem redesenhar concorrência.
 
 ## Módulos
 
@@ -66,28 +67,32 @@ Rotas legadas/redirecionadas:
 | Área | Tecnologia |
 |---|---|
 | Backend | Node.js 22, Express 4, CommonJS |
-| Banco | SQLite, `better-sqlite3`, WAL |
+| Banco | SQLite, `better-sqlite3`, WAL, `busy_timeout=5000` |
 | Frontend | React 18, Vite 8, React Router 6 |
+| Web Server | Nginx (reverse proxy, gzip, proxy headers) |
+| Proxy/DNS | Cloudflare com SSL e WAF |
 | UI | CSS operacional, tokens globais, lucide-react |
 | Testes | Vitest 4.1 |
 | NF-e | `nfewizard-io@1.1.0`, Java 21 em CI |
-| WhatsApp | `whatsapp-service` com Baileys |
-| Deploy | GitHub Actions self-hosted, robocopy, PM2 fork |
-| Impressão | HTML imprimível e impressão direta via PowerShell/Windows |
+| WhatsApp | Envio manual assistido (`wa.me` / app desktop) |
+| Impressão | HTML operacional via navegador do usuário (impressão direta no servidor desativada no Linux) |
+| Deploy | GitHub Actions self-hosted (Linux), rsync, systemd sentinela, PM2 fork |
 
-O `package.json` da raiz não é um workspace de desenvolvimento. Instale e rode comandos por serviço: `backend`, `frontend` e `whatsapp-service`.
+Instale e rode comandos nos diretórios de cada serviço: `backend` e `frontend`.
 
 ## Rodar Localmente
 
 ### Backend
 
-```powershell
+```bash
 cd backend
-npm.cmd install
-$env:NODE_ENV="development"
-$env:JWT_SECRET="dev-secret-local"
-npm.cmd run dev
+npm install
+export NODE_ENV="development"
+export JWT_SECRET="dev-secret-local"
+npm run dev
 ```
+
+*(No Windows PowerShell: `$env:NODE_ENV="development"`; `$env:JWT_SECRET="dev-secret-local"`; `npm.cmd run dev`)*
 
 Backend: `http://localhost:3001`
 
@@ -101,46 +106,36 @@ O seed de desenvolvimento roda somente com `NODE_ENV=development` ou `SEED_DEV=1
 
 ### Frontend
 
-```powershell
+```bash
 cd frontend
-npm.cmd install
-npm.cmd run dev
+npm install
+npm run dev
 ```
 
 Frontend: `http://localhost:5173`
 
-### WhatsApp Local
+### WhatsApp
 
-```powershell
-cd whatsapp-service
-npm.cmd install
-npm.cmd start
-```
-
-O serviço escuta por padrão em `http://127.0.0.1:8080`. Em produção, a instância operacional atual é `ArteeMolduras`.
+O sistema utiliza **modo manual assistido**. As mensagens de orçamento, OS e avisos de oficina são geradas pelo sistema e acionam o link direto do WhatsApp Web (`wa.me`) ou app Desktop (`whatsapp://send`), sem dependência de microserviço Baileys em execução.
 
 ## Comandos Úteis
 
-```powershell
-# Backend
+```bash
+# Backend (testes com Vitest)
 cd backend
-npm.cmd test
+npm test
 
-# Frontend
+# Frontend (testes e build de produção)
 cd frontend
-npm.cmd test
-npm.cmd run build
-
-# WhatsApp local
-cd whatsapp-service
-npm.cmd test
+npm test
+npm run build
 ```
 
-No Windows, prefira `npm.cmd` quando o PowerShell bloquear `npm.ps1`.
+*(No Windows, utilize `npm.cmd` caso a execução de scripts do PowerShell esteja restrita).*
 
 ## Variáveis de Ambiente
 
-Arquivo de produção principal: `C:\sistemaarte\backend\.env`.
+Arquivo de produção principal: `/var/www/sistemaarte/backend/.env`.
 
 O `.env`, bancos, certificados, XMLs fiscais e `backend/data/` não são versionados nem sobrescritos pelo deploy.
 
@@ -155,17 +150,13 @@ CORS_ORIGINS=https://arteemolduras.com.br
 TRUST_PROXY=1
 
 NFE_AMBIENTE_NUM=2
-NFE_CERT_PATH=C:\sistemaarte\backend\certs\certificado.pfx
+NFE_CERT_PATH=/var/www/sistemaarte/backend/certs/certificado.pfx
 NFE_CERT_PASSWORD=<senha-do-certificado>
 NFE_CNPJ_EMITENTE=<cnpj>
 NFE_SECRET_KEY=<chave-forte-para-segredos-fiscais>
 
 WHATSAPP_ENABLED=true
-WHATSAPP_PROVIDER=web_local
-WHATSAPP_WEB_ENABLED=true
-WHATSAPP_WEB_BASE_URL=http://127.0.0.1:8080
-WHATSAPP_WEB_INSTANCE=ArteeMolduras
-WHATSAPP_WEB_API_KEY=<mesma-chave-do-servico-local>
+WHATSAPP_PROVIDER=manual
 ```
 
 Configurações de empresa, fiscal, certificado, autorizados XML, WhatsApp, impressão, backups e segurança também são geridas por `/configuracoes`.
@@ -213,11 +204,12 @@ Runbook específico: `docs/nfe-inutilizacao-operacao.md`.
 
 ## Backups
 
-- Backup local diário às 2h BRT.
+- Backup local diário às 2h BRT agendado pelo backend.
+- Executa `PRAGMA wal_checkpoint(PASSIVE)` antes de copiar para persistir dados sem travar gravações.
 - Diretório local: `backend/data/backups/`.
-- Rotação local: 7 arquivos.
+- Rotação local: 7 arquivos mais recentes.
 - Status: `GET /api/backup/status` e tela `/configuracoes`.
-- Backup offsite Oracle Object Storage existe como recurso opcional, ativado por `OFFSITE_BACKUP_ENABLED=1`.
+- Backup offsite Oracle Object Storage existe como recurso opcional secundário, ativado por `OFFSITE_BACKUP_ENABLED=1`.
 
 Detalhes do offsite: `docs/backup-offsite-oracle.md`.
 
@@ -231,27 +223,26 @@ develop -> PR -> main -> deploy automático
 
 CI:
 
-- `.github/workflows/ci.yml` roda em push para `develop` e PR para `main`/`develop`.
-- CI instala dependências do backend, executa `npm audit --omit=dev` e roda `npm test`.
+- `.github/workflows/ci.yml` roda em push para `develop` e PR para `main`/`develop` no runner `ubuntu-latest`.
+- CI instala dependências do backend, executa `npm audit --omit=dev` e roda `npm test` (com Java 21).
 
 Deploy:
 
-- `.github/workflows/deploy.yml` roda em push para `main` no runner self-hosted.
-- Executa testes backend e audit.
-- Instala dependências do frontend, audita e roda build.
-- Publica `frontend/dist` com `robocopy /MIR`.
-- Sincroniza `backend/` excluindo `node_modules`, `data`, `certs`, `.env` e `*.db`.
+- `.github/workflows/deploy.yml` roda em push para `main` no runner Linux self-hosted do VPS Ubuntu.
+- Executa testes do backend e auditoria.
+- Instala dependências do frontend e compila a SPA (`npm run build`).
+- Sincroniza `frontend/dist/` para `/var/www/sistemaarte/frontend/dist/` via `rsync`.
+- Sincroniza `backend/` para `/var/www/sistemaarte/backend/` via `rsync`, excluindo `node_modules`, `data`, `certs`, `.env` e `*.db*`.
 - Instala runtime do backend com `npm ci --omit=dev`.
-- Grava `C:\sistemaarte\backend\.deploy-trigger`.
-- A tarefa agendada `PM2-DeployRestart` detecta a sentinela e reinicia o PM2.
+- Grava sentinela em `/var/www/sistemaarte/backend/.deploy-trigger`.
+- A unidade do systemd `/etc/systemd/system/deploy-trigger.path` detecta o arquivo e dispara `deploy-trigger.service` para reiniciar o backend (`pm2 restart sistemaarte-backend --update-env`).
 
 Processos PM2 de produção:
 
-```powershell
+```bash
 pm2 restart sistemaarte-backend --update-env
-pm2 restart sistema-arte-whatsapp --update-env
 pm2 logs sistemaarte-backend --lines 80
-pm2 logs sistema-arte-whatsapp --lines 80
+pm2 show sistemaarte-backend
 ```
 
 ## Estrutura
@@ -276,19 +267,12 @@ frontend/src/
   services/               Axios e event bus
   styles/                 Tokens e CSS operacional
   utils/                  Impressão, WhatsApp, desconto e helpers de UI
-
-whatsapp-service/
-  src/                    Express local e cliente Baileys
-  sessions/               Sessões locais, não versionadas
-  ecosystem.config.js     PM2 do serviço local
 ```
 
 ## Documentação Relacionada
 
 - `AGENTS.md` - contexto obrigatório para IA e alterações de código.
 - `backend/ARCHITECTURE.md` - arquitetura resumida do backend.
-- `whatsapp-service/README.md` - contrato e operação do serviço local.
 - `docs/nfe-inutilizacao-operacao.md` - runbook de inutilização segura.
 - `docs/backup-offsite-oracle.md` - backup offsite criptografado.
-- `docs/whatsapp-service-mini-evolution.md` - evolução do serviço local.
 - `docs/superpowers/` - specs e planos históricos de implementação.

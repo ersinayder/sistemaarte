@@ -8,6 +8,11 @@ const TRANSICOES_VALIDAS = {
   'Cancelado':   [],
 };
 
+const TRANSICOES_VALIDAS_ADMIN = {
+  ...TRANSICOES_VALIDAS,
+  'Entregue': ['Pronto'],
+};
+
 /**
  * Normaliza alias legado antes de validar.
  * Deve ser chamado no body ANTES de validarStatus().
@@ -29,12 +34,27 @@ function validarEntradaOS(total, entrada) {
   return null;
 }
 
-function validarStatus(statusNovo, statusAtual = null) {
+function validarStatus(statusNovo, statusAtual = null, options = {}) {
+  const isAdmin = typeof options === 'boolean'
+    ? options
+    : Boolean(options?.isAdmin || options?.role === 'admin' || options?.user?.role === 'admin');
+
   if (!STATUSES_VALIDOS.includes(statusNovo))
     return `Status invalido. Permitidos: ${STATUSES_VALIDOS.join(', ')}`;
-  if (statusAtual && TRANSICOES_VALIDAS[statusAtual] !== undefined) {
-    if (!TRANSICOES_VALIDAS[statusAtual].includes(statusNovo))
-      return `Transicao invalida: ${statusAtual} → ${statusNovo}`;
+
+  if (statusAtual) {
+    if (statusAtual === 'Entregue' && statusNovo === 'Pronto') {
+      if (!isAdmin) {
+        return 'Apenas administradores podem retornar uma OS de Entregue para Pronto.';
+      }
+      return null;
+    }
+
+    const mapa = isAdmin ? TRANSICOES_VALIDAS_ADMIN : TRANSICOES_VALIDAS;
+    if (mapa[statusAtual] !== undefined) {
+      if (!mapa[statusAtual].includes(statusNovo))
+        return `Transicao invalida: ${statusAtual} → ${statusNovo}`;
+    }
   }
   return null;
 }
@@ -58,4 +78,4 @@ function descricaoRestanteOS(numero, cliente, servico) {
   return `Restante ${numero} – ${cliente}${servico ? ' / ' + servico : ''}`;
 }
 
-module.exports = { validarEntradaOS, validarStatus, validarPrazo, normalizarStatus, descricaoEntradaOS, descricaoRestanteOS, STATUSES_VALIDOS, TRANSICOES_VALIDAS };
+module.exports = { validarEntradaOS, validarStatus, validarPrazo, normalizarStatus, descricaoEntradaOS, descricaoRestanteOS, STATUSES_VALIDOS, TRANSICOES_VALIDAS, TRANSICOES_VALIDAS_ADMIN };

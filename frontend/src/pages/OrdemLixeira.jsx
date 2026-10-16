@@ -20,7 +20,7 @@ export default function OrdemLixeira() {
     try {
       // backend aceita ?lixeira=1 na rota GET /ordens
       const { data } = await api.get('/ordens?lixeira=1');
-      setOrdens(data || []);
+      setOrdens(Array.isArray(data) ? data : (data?.data || []));
     } catch {
       toast.error('Erro ao carregar lixeira');
     } finally {

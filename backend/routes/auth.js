@@ -2,7 +2,7 @@ const router    = require("express").Router();
 const jwt       = require("jsonwebtoken");
 const bcrypt    = require("bcryptjs");
 const rateLimit = require("express-rate-limit");
-const { getOne } = require("../database");
+const { getOne, run } = require("../database");
 const { auth, JWT_SECRET, normalizarUsuarioSessao } = require("../middlewares/auth");
 const {
   criarEstadoLockout,
@@ -31,7 +31,7 @@ const loginLimiter = rateLimit({
   skipSuccessfulRequests: true,
 });
 
-const loginLockoutState = criarEstadoLockout();
+const loginLockoutState = criarEstadoLockout({ getOne, run });
 
 // POST /api/auth/login
 router.post("/login", loginLimiter, (req, res) => {

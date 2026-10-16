@@ -102,4 +102,11 @@ describe('DANFE HTML', () => {
     expect(html).toContain('Entrega combinada com cliente. Pedido interno 123.');
     expect(html).toContain('Imprimir / salvar PDF');
   });
+
+  it('aplica regras de estilo para caber em uma unica pagina A4 sem overflow', () => {
+    const html = renderDanfeHtml(XML);
+    expect(html).toContain('@page { size: A4; margin: 4mm; }');
+    expect(html).toContain('break-inside: avoid');
+    expect(html).toContain('.products-fill { min-height: 8mm;');
+  });
 });

@@ -399,35 +399,36 @@ function renderDanfeHtml(xml) {
   <style>
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; background: #e5e7eb; color: #000; font-family: Arial, Helvetica, sans-serif; }
-    .page { width: 210mm; min-height: 297mm; margin: 0 auto; padding: 5mm; background: #fff; position: relative; }
+    .page { width: 210mm; min-height: 297mm; margin: 0 auto; padding: 4mm; background: #fff; position: relative; }
     .danfe { font-size: 8pt; }
-    .receipt { display: grid; grid-template-columns: 1fr 39mm; border: 1px solid #000; min-height: 18mm; margin-bottom: 1.4mm; }
-    .receipt-text { padding: 2mm; font-size: 7pt; line-height: 1.28; }
-    .receipt-sign { border-top: 1px solid #000; margin-top: 4mm; padding-top: 1mm; font-size: 6.5pt; }
+    .danfe, .receipt, .top, .grid, .section-title, .products-wrap, .additional { break-inside: avoid; page-break-inside: avoid; }
+    .receipt { display: grid; grid-template-columns: 1fr 39mm; border: 1px solid #000; min-height: 15mm; margin-bottom: 1mm; }
+    .receipt-text { padding: 1.5mm 2mm; font-size: 7pt; line-height: 1.25; }
+    .receipt-sign { border-top: 1px solid #000; margin-top: 2.5mm; padding-top: .8mm; font-size: 6.5pt; }
     .receipt-nfe { border-left: 1px solid #000; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: 700; font-size: 10pt; line-height: 1.45; }
-    .top { display: grid; grid-template-columns: 69mm 42mm 1fr; border: 1px solid #000; min-height: 44mm; }
-    .box { border-right: 1px solid #000; padding: 1.6mm; overflow: hidden; }
+    .top { display: grid; grid-template-columns: 69mm 42mm 1fr; border: 1px solid #000; min-height: 40mm; }
+    .box { border-right: 1px solid #000; padding: 1.4mm; overflow: hidden; }
     .box:last-child { border-right: 0; }
-    .emitente-box { padding: 0; display: grid; grid-template-columns: 29mm 1fr; min-height: 44mm; }
-    .logo-pane { border-right: 1px solid #000; display: flex; align-items: center; justify-content: center; padding: 1.8mm; }
-    .logo-img { max-width: 25mm; max-height: 28mm; object-fit: contain; display: block; }
+    .emitente-box { padding: 0; display: grid; grid-template-columns: 29mm 1fr; min-height: 40mm; }
+    .logo-pane { border-right: 1px solid #000; display: flex; align-items: center; justify-content: center; padding: 1.5mm; }
+    .logo-img { max-width: 25mm; max-height: 25mm; object-fit: contain; display: block; }
     .logo-text { font-size: 9pt; font-weight: 900; text-align: center; line-height: 1.1; }
-    .emitente-info { padding: 1.6mm 1.8mm; text-align: center; display: flex; flex-direction: column; justify-content: center; gap: .8mm; }
+    .emitente-info { padding: 1.4mm 1.6mm; text-align: center; display: flex; flex-direction: column; justify-content: center; gap: .6mm; }
     .emitente-nome { font-size: 7.8pt; font-weight: 900; line-height: 1.12; text-transform: uppercase; }
-    .small { font-size: 6.5pt; line-height: 1.22; }
+    .small { font-size: 6.5pt; line-height: 1.2; }
     .center { text-align: center; }
-    .danfe-title { font-size: 18pt; font-weight: 900; line-height: 1; margin: 1mm 0 1mm; }
-    .danfe-sub { font-size: 6.5pt; line-height: 1.25; }
-    .entrada-saida { width: 29mm; display: grid; grid-template-columns: 21mm 8mm; align-items: stretch; border: 1px solid #000; margin: 1.3mm auto; font-size: 6.5pt; text-align: left; }
-    .entrada-saida span { grid-column: 1; padding: .6mm .8mm; border-bottom: 1px solid #000; white-space: nowrap; }
+    .danfe-title { font-size: 17pt; font-weight: 900; line-height: 1; margin: .8mm 0; }
+    .danfe-sub { font-size: 6.5pt; line-height: 1.2; }
+    .entrada-saida { width: 29mm; display: grid; grid-template-columns: 21mm 8mm; align-items: stretch; border: 1px solid #000; margin: 1mm auto; font-size: 6.5pt; text-align: left; }
+    .entrada-saida span { grid-column: 1; padding: .5mm .8mm; border-bottom: 1px solid #000; white-space: nowrap; }
     .entrada-saida span:last-child { border-bottom: 0; }
     .entrada-saida b { border-left: 1px solid #000; display: flex; align-items: center; justify-content: center; font-size: 11pt; grid-row: 1 / span 2; grid-column: 2; }
-    .nfnum { font-size: 10pt; font-weight: 800; line-height: 1.35; }
-    .barcode { width: 100%; height: 15mm; display: block; margin: .6mm 0 1mm; fill: #000; }
-    .barcode-fallback { height: 15mm; margin: .6mm 0 1mm; background: repeating-linear-gradient(90deg,#000 0 1px,#fff 1px 3px,#000 3px 5px,#fff 5px 8px); }
-    .key { font-family: "Courier New", monospace; font-size: 8.2pt; font-weight: 700; line-height: 1.2; text-align: center; }
-    .consulta { font-size: 6.5pt; text-align: center; line-height: 1.2; margin-top: .8mm; }
-    .section-title { margin-top: 1.4mm; padding: .7mm 1.2mm; background: #d9d9d9; border: 1px solid #000; border-bottom: 0; font-size: 6.4pt; font-weight: 800; text-transform: uppercase; letter-spacing: .02em; }
+    .nfnum { font-size: 9.5pt; font-weight: 800; line-height: 1.3; }
+    .barcode { width: 100%; height: 14mm; display: block; margin: .5mm 0 .8mm; fill: #000; }
+    .barcode-fallback { height: 14mm; margin: .5mm 0 .8mm; background: repeating-linear-gradient(90deg,#000 0 1px,#fff 1px 3px,#000 3px 5px,#fff 5px 8px); }
+    .key { font-family: "Courier New", monospace; font-size: 8pt; font-weight: 700; line-height: 1.15; text-align: center; }
+    .consulta { font-size: 6.2pt; text-align: center; line-height: 1.15; margin-top: .6mm; }
+    .section-title { margin-top: 1mm; padding: .5mm 1.2mm; background: #d9d9d9; border: 1px solid #000; border-bottom: 0; font-size: 6.1pt; font-weight: 800; text-transform: uppercase; letter-spacing: .02em; }
     .grid { display: grid; border: 1px solid #000; border-bottom: 0; }
     .grid.last { border-bottom: 1px solid #000; }
     .g2 { grid-template-columns: 1fr 35mm; }
@@ -435,30 +436,30 @@ function renderDanfeHtml(xml) {
     .g4 { grid-template-columns: repeat(4, 1fr); }
     .g5 { grid-template-columns: repeat(5, 1fr); }
     .g6 { grid-template-columns: 1fr 24mm 26mm 26mm 26mm 28mm; }
-    .field { min-height: 8mm; border-right: 1px solid #000; padding: .8mm 1.1mm; }
+    .field { min-height: 7mm; border-right: 1px solid #000; padding: .6mm 1mm; }
     .field:last-child { border-right: 0; }
-    .label { display: block; font-size: 5.8pt; text-transform: uppercase; margin-bottom: .7mm; line-height: 1; }
-    .value { display: block; font-size: 8pt; font-weight: 700; line-height: 1.16; }
+    .label { display: block; font-size: 5.5pt; text-transform: uppercase; margin-bottom: .4mm; line-height: 1; }
+    .value { display: block; font-size: 7.8pt; font-weight: 700; line-height: 1.14; }
     .value.normal { font-weight: 400; }
     table { width: 100%; border-collapse: collapse; }
     .products { border: 1px solid #000; table-layout: fixed; }
-    th, td { border-right: 1px solid #000; border-bottom: 1px solid #000; padding: .9mm .8mm; font-size: 6.1pt; vertical-align: top; }
+    th, td { border-right: 1px solid #000; border-bottom: 1px solid #000; padding: .7mm .8mm; font-size: 6pt; vertical-align: top; }
     th:last-child, td:last-child { border-right: 0; }
-    th { background: #d9d9d9; text-transform: uppercase; font-size: 5.5pt; line-height: 1.05; font-weight: 800; text-align: center; }
+    th { background: #d9d9d9; text-transform: uppercase; font-size: 5.4pt; line-height: 1.05; font-weight: 800; text-align: center; }
     .cod { width: 17mm; }
     .desc { width: 49mm; }
     .num { text-align: right; white-space: nowrap; }
     .products-wrap { border: 1px solid #000; border-top: 0; }
     .products-wrap .products { border: 0; }
-    .products-fill { min-height: 48mm; border-top: 0; }
-    .issqn { margin-top: 1.4mm; }
-    .additional { display: grid; grid-template-columns: 1fr 58mm; border: 1px solid #000; min-height: 28mm; }
-    .additional > div { padding: 1.3mm; border-right: 1px solid #000; font-size: 7pt; line-height: 1.32; }
+    .products-fill { min-height: 8mm; border-top: 0; }
+    .issqn { margin-top: 1mm; }
+    .additional { display: grid; grid-template-columns: 1fr 58mm; border: 1px solid #000; min-height: 22mm; }
+    .additional > div { padding: 1mm 1.2mm; border-right: 1px solid #000; font-size: 6.8pt; line-height: 1.25; }
     .additional > div:last-child { border-right: 0; }
     .watermark { position: absolute; inset: 85mm 0 auto 0; text-align: center; font-size: 26pt; font-weight: 900; color: rgba(0,0,0,.08); transform: rotate(-18deg); pointer-events: none; letter-spacing: .08em; }
     .actions { display: flex; justify-content: flex-end; gap: 8px; width: 210mm; margin: 10px auto; }
     .actions button { border: 1px solid #0f766e; background: #0f766e; color: white; border-radius: 6px; padding: 8px 14px; font-weight: 700; cursor: pointer; }
-    @page { size: A4; margin: 5mm; }
+    @page { size: A4; margin: 4mm; }
     @media print {
       body { background: white; }
       .page { width: auto; min-height: auto; margin: 0; padding: 0; }
@@ -515,11 +516,11 @@ function renderDanfeHtml(xml) {
         </div>
       </div>
 
-      <div class="grid g2 last" style="margin-top:1.4mm">
+      <div class="grid g2 last" style="margin-top:1mm">
         <div class="field"><span class="label">NATUREZA DA OPERAÇÃO</span><span class="value">${esc(d.ide.natOp)}</span></div>
         <div class="field"><span class="label">PROTOCOLO DE AUTORIZAÇÃO DE USO</span><span class="value">${esc(d.prot.nProt)} ${esc(dateTime(d.prot.dhRecbto))}</span></div>
       </div>
-      <div class="grid g3 last" style="margin-top:1.2mm">
+      <div class="grid g3 last" style="margin-top:1mm">
         <div class="field"><span class="label">INSCRIÇÃO ESTADUAL</span><span class="value">${esc(d.emit.ie)}</span></div>
         <div class="field"><span class="label">INSCR. EST. SUBST. TRIBUTÁRIO</span><span class="value"></span></div>
         <div class="field"><span class="label">CNPJ</span><span class="value">${esc(formatDoc(d.emit.cnpj))}</span></div>

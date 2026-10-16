@@ -171,6 +171,7 @@ describe('propostas routes', () => {
     expect(ordemInsert[1][9]).toBeNull();
     expect(ordemInsert[1][12]).toContain('Produzir apos sinal');
     expect(ordemInsert[1][12]).toContain('Prazo previsto na proposta: 10 dias uteis');
+    expect(ordemInsert[1][15]).toMatch(/^\d{4}-\d{2}-\d{2} 00:00:00$/);
     expect(db.run).toHaveBeenCalledWith(
       expect.stringMatching(/UPDATE propostas SET ordemid=\?, updatedat=datetime\('now','localtime'\) WHERE id=\? AND ordemid IS NULL/),
       [555, 12],

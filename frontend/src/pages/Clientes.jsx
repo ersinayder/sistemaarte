@@ -42,7 +42,7 @@ export default function Clientes() {
   const canConsultDocuments = typeof can === 'function' && can('clientes.consultar_documentos');
 
   const blank = {
-    tipo:'PF', nome:'', cpf:'', cnpj:'', ie:'', contato:'', email:'',
+    tipo:'PF', nome:'', cpf:'', cnpj:'', ie:'', ind_ie_dest:'', contato:'', email:'',
     cep:'', logradouro:'', numero:'', bairro:'', cidade:'', uf:'', obs:''
   };
 
@@ -191,6 +191,7 @@ export default function Clientes() {
       cpf:        tipo === 'PF' ? documento : '',
       cnpj:       tipo === 'PJ' ? documento : '',
       ie:         c.ie         || '',
+      ind_ie_dest: tipo === 'PJ' ? (c.ind_ie_dest || '') : '',
       contato:    c.phone      || '',
       email:      c.email      || '',
       cep:        c.cep        || '',
@@ -216,18 +217,19 @@ export default function Clientes() {
     setSaving(true);
     try {
       const payload = {
-        name:       form.nome,
-        phone:      form.contato,
-        email:      form.email,
-        cpf:        documento,
-        ie:         form.ie,
-        logradouro: form.logradouro,
-        numero:     form.numero,
-        bairro:     form.bairro,
-        cidade:     form.cidade,
-        uf:         form.uf,
-        cep:        form.cep,
-        notes:      form.obs
+        name:        form.nome,
+        phone:       form.contato,
+        email:       form.email,
+        cpf:         documento,
+        ie:          form.ie,
+        ind_ie_dest: form.tipo === 'PJ' ? (form.ind_ie_dest || null) : null,
+        logradouro:  form.logradouro,
+        numero:      form.numero,
+        bairro:      form.bairro,
+        cidade:      form.cidade,
+        uf:          form.uf,
+        cep:         form.cep,
+        notes:       form.obs
       };
       if (editId) {
         await api.put(`/clientes/${editId}`, payload);
@@ -619,12 +621,12 @@ export default function Clientes() {
             if (formOverlayDownRef.current && e.target === e.currentTarget) closeForm();
             formOverlayDownRef.current = false;
           }}>
-          <div className="modal" style={{ maxWidth:600 }} onClick={e => e.stopPropagation()}>
+          <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">{editId ? 'Editar Cliente' : 'Novo Cliente'}</h2>
               <button className="btn btn-ghost btn-sm" onClick={closeForm}>✕</button>
             </div>
-            <div className="modal-body">
+            <div className="modal-body modal-body-dense">
               <div style={{ display:'flex', background:'var(--color-surface-offset)', borderRadius:'var(--radius-lg)', padding:3, gap:2, marginBottom:'var(--space-3)' }}>
                 <div style={{ ...tabStyle(form.tipo==='PF'), cursor:'default', opacity: form.tipo==='PF' ? 1 : 0.68 }}>👤 Pessoa Física</div>
                 <div style={{ ...tabStyle(form.tipo==='PJ'), cursor:'default', opacity: form.tipo==='PJ' ? 1 : 0.68 }}>🏢 Pessoa Jurídica</div>
@@ -651,7 +653,27 @@ export default function Clientes() {
                 {form.tipo === 'PJ' && (
                   <div className="form-group">
                     <label className="form-label">Inscrição Estadual</label>
-                    <input className="form-input" value={form.ie} onChange={e => set('ie', e.target.value)} placeholder="IE" />
+                    <input className="form-input" value={form.ie} onChange={e => set('ie', e.target.value)} placeholder="IE ou deixe vazio se isento" />
+                  </div>
+                )}
+                {form.tipo === 'PJ' && (
+                  <div className="form-group">
+                    <label className="form-label">
+                      Tipo de Contribuinte ICMS
+                      <span style={{ fontSize:'var(--text-xs)', fontWeight:400, color:'var(--color-text-muted)', marginLeft:6 }}>para NF-e</span>
+                    </label>
+                    <select className="form-input" value={form.ind_ie_dest} onChange={e => set('ind_ie_dest', e.target.value)}>
+                      <option value="">Detectar automaticamente</option>
+                      <option value="1">Contribuinte com IE</option>
+                      <option value="2">Contribuinte Isento</option>
+                      <option value="9">Não Contribuinte</option>
+                    </select>
+                    <span style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>
+                      {form.ind_ie_dest === '1' && 'Empresa com Inscrição Estadual válida — preencha o campo IE acima.'}
+                      {form.ind_ie_dest === '2' && 'Empresa isenta de IE (ex: MEI, empresa do Simples sem IE). Deixe o campo IE vazio.'}
+                      {form.ind_ie_dest === '9' && 'Empresa não contribuinte de ICMS (ex: associações, prestadores de serviço puro).'}
+                      {!form.ind_ie_dest && 'Se não souber, deixe como "Detectar automaticamente". O sistema usará a IE preenchida.'}
+                    </span>
                   </div>
                 )}
 
@@ -724,12 +746,12 @@ export default function Clientes() {
 
       {confirmDel && ReactDOM.createPortal(
         <div className="modal-overlay" onClick={() => setConfirmDel(null)}>
-          <div className="modal" style={{ maxWidth:420 }} onClick={e => e.stopPropagation()}>
+          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">Excluir Cliente</h2>
               <button className="btn btn-ghost btn-sm" onClick={() => setConfirmDel(null)}>✕</button>
             </div>
-            <div className="modal-body">
+            <div className="modal-body modal-body-dense">
               <p>Tem certeza que deseja excluir <strong>{confirmDel.name}</strong>?</p>
               <p style={{ marginTop:'var(--space-2)', fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>
                 ⚠️ As ordens de serviço vinculadas a este cliente <strong>não serão excluídas</strong>, apenas a referência ao cliente será removida.

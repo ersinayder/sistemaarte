@@ -13,8 +13,6 @@ jobs:
     name: Testes Backend
     runs-on: self-hosted
     env:
-      HOMEPATH: C:\Users\Administrator
-      HOME: C:\Users\Administrator
       NODE_ENV: test
 
     steps:
@@ -49,10 +47,6 @@ jobs:
     runs-on: self-hosted
     needs: testes
 
-    env:
-      HOMEPATH: C:\Users\Administrator
-      HOME: C:\Users\Administrator
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -68,15 +62,13 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Verificar rotina de restart PM2
-        shell: powershell
+      - name: Verificar sentinela systemd
         run: |
-          $task = Get-ScheduledTask -TaskName "PM2-DeployRestart" -ErrorAction SilentlyContinue
-          if (-not $task) {
-            Write-Error "Tarefa PM2-DeployRestart nao encontrada. Recrie a rotina de restart antes do deploy."
-            exit 1
-          }
-          Write-Host "PM2-DeployRestart encontrado: $($task.State)"
+          if systemctl is-active --quiet deploy-trigger.path; then
+            echo "deploy-trigger.path esta ativo no systemd."
+          else
+            echo "Aviso: deploy-trigger.path nao esta ativo no systemd."
+          fi
 
       - name: Install frontend dependencies
         working-directory: frontend
@@ -93,45 +85,38 @@ jobs:
           NODE_ENV: production
 
       - name: Deploy frontend dist
-        shell: powershell
         run: |
-          $source = "${{ github.workspace }}\frontend\dist\"
-          $dest   = "C:\sistemaarte\frontend\dist"
-          if (!(Test-Path $dest)) { New-Item -ItemType Directory -Path $dest -Force }
-          robocopy $source $dest /MIR /NFL /NDL /NJH /NJS
-          if ($LASTEXITCODE -le 7) { exit 0 } else { exit $LASTEXITCODE }
+          mkdir -p /var/www/sistemaarte/frontend/dist
+          rsync -av --delete frontend/dist/ /var/www/sistemaarte/frontend/dist/
 
       - name: Sync backend source
-        shell: powershell
         run: |
-          $source = "${{ github.workspace }}\backend\"
-          $dest   = "C:\sistemaarte\backend"
-          if (!(Test-Path $dest)) { New-Item -ItemType Directory -Path $dest -Force }
-          robocopy $source $dest /MIR /E /NFL /NDL /NJH /NJS `
-            /XD node_modules data certs `
-            /XF .env *.db
-          if ($LASTEXITCODE -le 7) { exit 0 } else { exit $LASTEXITCODE }
+          mkdir -p /var/www/sistemaarte/backend
+          rsync -av --delete \
+            --exclude='node_modules' \
+            --exclude='data' \
+            --exclude='certs' \
+            --exclude='.env' \
+            --exclude='*.db' \
+            --exclude='*.db-wal' \
+            --exclude='*.db-shm' \
+            backend/ /var/www/sistemaarte/backend/
 
       - name: Install backend runtime dependencies
-        shell: powershell
         run: |
-          Set-Location "C:\sistemaarte\backend"
+          cd /var/www/sistemaarte/backend
           npm ci --omit=dev --prefer-offline
 
       - name: Audit deployed backend runtime dependencies
-        shell: powershell
         run: |
-          Set-Location "C:\sistemaarte\backend"
+          cd /var/www/sistemaarte/backend
           npm audit --omit=dev
 
       - name: Sinalizar restart via sentinela
-        shell: powershell
         run: |
-          $sentinel = "C:\sistemaarte\backend\.deploy-trigger"
-          [System.IO.File]::WriteAllText($sentinel, (Get-Date -Format 'o'))
-          Write-Host "Sentinela gravado: $sentinel"
-          Write-Host "PM2-DeployRestart vai detectar em ate 1 minuto e reiniciar o processo."
+          date -Iseconds > /var/www/sistemaarte/backend/.deploy-trigger
+          echo "Sentinela gravada em /var/www/sistemaarte/backend/.deploy-trigger"
+          echo "deploy-trigger.path do systemd detectara a alteracao e reiniciara o servico PM2 sistemaarte-backend."
 
       - name: Concluido
-        shell: powershell
-        run: Write-Host "Deploy concluido em $(Get-Date -Format 'dd/MM/yyyy HH:mm:ss')"
+        run: echo "Deploy concluido em $(date '+%d/%m/%Y %H:%M:%S')"

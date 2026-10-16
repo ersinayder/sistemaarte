@@ -103,14 +103,14 @@ function Modal({ open, onClose, onSaved, editData }) {
   if (!open) return null
   return ReactDOM.createPortal(
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{ maxWidth: 540 }}>
+      <div className="modal modal-lg">
         <div className="modal-header">
           <span className="modal-title">{editData ? 'Editar Produto' : 'Novo Produto'}</span>
-          <button className="btn btn-icon btn-ghost" onClick={onClose}>
+          <button className="btn btn-icon btn-ghost" onClick={onClose} aria-label="Fechar">
             <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
         </div>
-        <div className="modal-body" style={{ display:'flex', flexDirection:'column', gap:'var(--space-4)' }}>
+        <div className="modal-body modal-body-dense" style={{ display:'flex', flexDirection:'column', gap:'var(--space-3)' }}>
 
           {/* Nome */}
           <div className="form-group">
@@ -391,7 +391,7 @@ export default function Produtos() {
                 <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M18 6L6 18M6 6l12 12"/></svg>
               </button>
             </div>
-            <div style={{padding:'var(--space-4) var(--space-5)',fontSize:'var(--text-sm)',color:'var(--color-text-muted)'}}>
+            <div className="modal-body modal-body-dense" style={{fontSize:'var(--text-sm)',color:'var(--color-text-muted)'}}>
               <strong style={{color:'var(--color-text)'}}>{deleteName}</strong> será excluído permanentemente.
             </div>
             <div className="modal-footer">

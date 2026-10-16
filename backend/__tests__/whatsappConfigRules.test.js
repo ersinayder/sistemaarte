@@ -84,6 +84,25 @@ describe('whatsappConfigRules', () => {
     });
   });
 
+  it('accepts manual provider for assisted sending without credentials', () => {
+    const config = normalizarWhatsappConfig({
+      enabled: 1,
+      provider: 'manual',
+      mensagemPronto: 'OS pronta',
+      mensagemConfirmacao: 'Confirmacao',
+    });
+
+    expect(config.provider).toBe('manual');
+    expect(validarWhatsappConfig(config, {})).toEqual({ ok: true, errors: {} });
+    expect(statusWhatsappConfig(config)).toEqual({ status: 'OK', missing: [] });
+  });
+
+  it('detects isWhatsappWebEnabled based on env variable', () => {
+    expect(utils.isWhatsappWebEnabled({ WHATSAPP_WEB_ENABLED: 'true' })).toBe(true);
+    expect(utils.isWhatsappWebEnabled({ WHATSAPP_WEB_ENABLED: 'false' })).toBe(false);
+    expect(utils.isWhatsappWebEnabled({})).toBe(false);
+  });
+
   it('sanitizes config without leaking token', () => {
     const sanitized = sanitizarWhatsappConfig({
       enabled: 1,

@@ -10,6 +10,7 @@ const {
 } = require("../domain/propostasRules");
 const { renderPropostaHtml } = require("../utils/propostaPdf");
 const { sendPrintHtml } = require("../utils/print/base");
+const { hoje } = require("../utils/dates");
 
 const SEL_PROPOSTA = `
   SELECT p.*,
@@ -196,11 +197,12 @@ router.post("/:id/gerar-os", auth(), authPermission("propostas.gerar_os"), (req,
       }
 
       const numero = gerarNumeroOS();
+      const createdatOS = `${hoje()} 00:00:00`;
       const id = runInsert(
         `INSERT INTO ordens
           (numero, clienteid, clientenome, clientetelefone, clientecpf, servico, descricao,
            valortotal, valorentrada, prazoentrega, prioridade, pagamento, observacoes, status, criadopor, createdat)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now','localtime'))`,
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [
           numero,
           proposta.clienteid || null,
@@ -217,6 +219,7 @@ router.post("/:id/gerar-os", auth(), authPermission("propostas.gerar_os"), (req,
           observacoesOSFromProposta(proposta),
           "Aguardando",
           req.user.id,
+          createdatOS,
         ]
       );
       for (const item of itens) {

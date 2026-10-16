@@ -81,7 +81,14 @@ router.post("/", auth(), authPermission("caixa.criar_lancamento"), (req, res, ne
     let origem = "manual";
     let descFinal = descricao;
     let categoriaFinal = categoria || null;
-    let pagoFinal = pago ? 1 : 0;
+    let pagoFinal = pago === undefined ? 1 : (pago ? 1 : 0);
+
+    const normalizarTipoLancamento = (t) => {
+      const s = String(t || "").trim().toLowerCase();
+      if (s === "saida" || s === "saída") return "Saída";
+      if (s === "entrada") return "Entrada";
+      return t || "Entrada";
+    };
 
     if (itensVenda.length > 0 && ordemid)
       return res.status(400).json({ error: "Venda avulsa nao deve ser vinculada a uma OS." });
@@ -97,7 +104,7 @@ router.post("/", auth(), authPermission("caixa.criar_lancamento"), (req, res, ne
       pagoFinal = 1;
       descFinal = descricaoRestanteOS(resumo.ordem.numero, resumo.ordem.clientenome, resumo.ordem.servico);
     } else if (itensVenda.length > 0) {
-      if (tipo && tipo !== "Entrada")
+      if (tipo && normalizarTipoLancamento(tipo) !== "Entrada")
         return res.status(400).json({ error: "Venda avulsa deve ser uma entrada." });
       origem = "vendaavulsa";
       categoriaFinal = categoria || "Venda avulsa";
@@ -111,7 +118,7 @@ router.post("/", auth(), authPermission("caixa.criar_lancamento"), (req, res, ne
     const id = transaction(() => {
       const lancamentoId = runInsert(
         "INSERT INTO lancamentos (data,tipo,categoria,descricao,pagamento,valor,pago,ordemid,criadopor,origem) VALUES (?,?,?,?,?,?,?,?,?,?)",
-        [data, origem === "vendaavulsa" || origem === "saldoos" ? "Entrada" : (tipo||"Diversos"), categoriaFinal, descFinal, pagamento, nValor, pagoFinal, ordemid||null, req.user.id, origem]
+        [data, origem === "vendaavulsa" || origem === "saldoos" ? "Entrada" : (normalizarTipoLancamento(tipo)||"Diversos"), categoriaFinal, descFinal, pagamento, nValor, pagoFinal, ordemid||null, req.user.id, origem]
       );
 
       for (const item of itensVenda) {
@@ -168,6 +175,12 @@ router.delete("/:id", auth(), authPermission("caixa.excluir_lancamento"), (req, 
         run(
           "UPDATE ordens SET valorentrada=0, updatedat=datetime('now','localtime') WHERE id=? AND deletedat IS NULL",
           [old.ordemid]
+        );
+      }
+      if (old.origem === "conta-pagar" && old.conta_pagar_id) {
+        run(
+          "UPDATE contas_pagar SET status='Pendente', datapagamento=NULL, pagoem=NULL, lancamentoid=NULL, updatedat=datetime('now','localtime') WHERE id=?",
+          [old.conta_pagar_id]
         );
       }
     });

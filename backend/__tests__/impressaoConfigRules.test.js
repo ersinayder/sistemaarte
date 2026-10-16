@@ -111,4 +111,26 @@ describe('impressaoConfigRules', () => {
       updatedat: '2026-06-05 12:00:00',
     });
   });
+
+  it('blocks direct print on non-windows platform in validation', () => {
+    const config = normalizarImpressaoConfig({
+      printerName: 'Impressora Loja',
+      directPrintEnabled: true,
+    });
+    const result = validarImpressaoConfig(config, { platform: 'linux' });
+    expect(result.ok).toBe(false);
+    expect(result.errors.directPrintEnabled).toBe(
+      'Impressao direta no servidor esta disponivel apenas no Windows Server. Utilize o modo Navegador.'
+    );
+  });
+
+  it('allows direct print on win32 platform in validation', () => {
+    const config = normalizarImpressaoConfig({
+      printerName: 'Impressora Loja',
+      directPrintEnabled: true,
+    });
+    const result = validarImpressaoConfig(config, { platform: 'win32' });
+    expect(result.ok).toBe(true);
+  });
 });
+

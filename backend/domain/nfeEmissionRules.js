@@ -190,22 +190,55 @@ const CSTATS_REJEICAO_CONHECIDA = new Set([
   '725',
   '777',
   '778',
+  '805',
   '806',
 ]);
 const CSTATS_REJEICAO_REUTILIZA_NUMERO = new Set([
+  '207',
   '208',
+  '209',
   '210',
+  '215',
+  '217',
+  '218',
   '220',
+  '225',
+  '226',
   '232',
   '233',
   '234',
   '237',
+  '245',
+  '327',
+  '328',
   '386',
   '387',
   '388',
+  '471',
+  '531',
+  '532',
+  '533',
+  '564',
+  '573',
   '591',
+  '602',
+  '603',
+  '610',
+  '703',
+  '704',
   '725',
+  '777',
   '778',
+  '805',
+  '806',
+  'xml_schema',
+  'xml_cep',
+  'xml_documento_cliente',
+  'xml_endereco',
+  'xml_ncm',
+  'xml_cfop',
+  'xml_tributacao_item',
+  'falha_local',
 ]);
 const CSTATS_EMISSAO_NAO_CONCLUSIVA = new Set(['205', '206', '302', '303']);
 const ESTADOS_EMISSAO_BLOQUEANTES = new Set(['processando', 'incerto']);
@@ -234,6 +267,13 @@ function normalizarClienteOverride(raw = {}) {
   }
 
   if (hasOwn(raw, 'ie')) override.ie = normalizarTexto(raw.ie, 30);
+  if (hasOwn(raw, 'ind_ie_dest')) {
+    const val = String(raw.ind_ie_dest || '').trim();
+    if (val && !['1', '2', '9'].includes(val)) {
+      return { ok: false, erro: 'ind_ie_dest deve ser "1" (contribuinte com IE), "2" (isento) ou "9" (nao contribuinte).' };
+    }
+    override.ind_ie_dest = val || null;
+  }
   if (hasOwn(raw, 'logradouro')) override.logradouro = normalizarTexto(raw.logradouro, 200);
   if (hasOwn(raw, 'numero')) override.c_numero = normalizarTexto(raw.numero, 20);
   if (hasOwn(raw, 'c_numero')) override.c_numero = normalizarTexto(raw.c_numero, 20);

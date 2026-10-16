@@ -370,26 +370,26 @@ export default function InutilizacaoModal({ open, onClose, onSuccess }) {
           </button>
         </header>
 
-        <div className="modal-body">
+        <div className="modal-body modal-body-dense">
           <div
             style={{
               display: 'flex',
               alignItems: 'flex-start',
               gap: 'var(--space-3)',
-              padding: 'var(--space-3)',
+              padding: 'var(--space-2) var(--space-3)',
               border: '1px solid var(--color-error)',
               borderRadius: 'var(--radius-md)',
               background: 'var(--color-error-highlight, var(--color-surface-offset))',
             }}
           >
-            <ShieldAlert size={20} aria-hidden="true" style={{ flexShrink: 0 }} />
-            <div style={{ fontSize: 'var(--text-sm)', lineHeight: 1.5 }}>
+            <ShieldAlert size={18} aria-hidden="true" style={{ flexShrink: 0, marginTop: 2 }} />
+            <div style={{ fontSize: 'var(--text-xs)', lineHeight: 1.4 }}>
               <strong>Isto nao cancela uma NF-e.</strong> A inutilizacao declara que os numeros informados nao foram e nao serao usados. Depois de autorizada, nao pode ser desfeita.
             </div>
           </div>
 
           {carregando && (
-            <div style={{ minHeight: 120, display: 'grid', placeItems: 'center', color: 'var(--color-text-muted)' }}>
+            <div style={{ minHeight: 100, display: 'grid', placeItems: 'center', color: 'var(--color-text-muted)' }}>
               <span><span className="spinner" style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: 8 }} />Carregando contexto fiscal...</span>
             </div>
           )}
@@ -397,10 +397,10 @@ export default function InutilizacaoModal({ open, onClose, onSuccess }) {
           {erroCarga && <div role="alert" className="form-error">{erroCarga}</div>}
 
           {!carregando && contexto && (
-            <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 'var(--space-4)' }}>
+            <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 'var(--space-3)' }}>
               <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
-                <legend style={{ fontWeight: 800, fontSize: 'var(--text-sm)', marginBottom: 'var(--space-2)' }}>Contexto fiscal</legend>
-                <div className="form-grid-2">
+                <legend style={{ fontWeight: 800, fontSize: 'var(--text-xs)', textTransform: 'uppercase', color: 'var(--color-text-muted)', marginBottom: 'var(--space-1)' }}>Contexto fiscal</legend>
+                <div className="form-grid-4">
                   <label className="form-group">
                     <span className="form-label">Ambiente</span>
                     <input className="form-input" value={ambiente} readOnly />
@@ -418,15 +418,15 @@ export default function InutilizacaoModal({ open, onClose, onSuccess }) {
                     <input className="form-input" value={serie} readOnly />
                   </label>
                 </div>
-                <div style={{ marginTop: 'var(--space-2)', color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)' }}>
+                <div style={{ marginTop: 'var(--space-1)', color: 'var(--color-text-muted)', fontSize: '11px' }}>
                   Ultimo numero conhecido: {ultimoNumero || '-'}
                   {avisoPrazo && <> | {avisoPrazo}</>}
                 </div>
               </fieldset>
 
-              <fieldset disabled={enviando || Boolean(resultado)} style={{ border: 0, padding: 0, margin: 0, display: 'grid', gap: 'var(--space-3)' }}>
-                <legend style={{ fontWeight: 800, fontSize: 'var(--text-sm)', marginBottom: 'var(--space-2)' }}>Faixa a inutilizar</legend>
-                <div className="form-grid-2">
+              <fieldset disabled={enviando || Boolean(resultado)} style={{ border: 0, padding: 0, margin: 0, display: 'grid', gap: 'var(--space-2)' }}>
+                <legend style={{ fontWeight: 800, fontSize: 'var(--text-xs)', textTransform: 'uppercase', color: 'var(--color-text-muted)', marginBottom: 'var(--space-1)' }}>Faixa a inutilizar</legend>
+                <div className="form-grid-3">
                   <label className="form-group">
                     <span className="form-label">Ano</span>
                     <input
@@ -439,7 +439,6 @@ export default function InutilizacaoModal({ open, onClose, onSuccess }) {
                     />
                     {validacao.erros.ano && <span className="form-error">{validacao.erros.ano}</span>}
                   </label>
-                  <div />
                   <label className="form-group">
                     <span className="form-label">Numero inicial</span>
                     <input
@@ -467,7 +466,7 @@ export default function InutilizacaoModal({ open, onClose, onSuccess }) {
                 </div>
 
                 {validacao.quantidade > 0 && (
-                  <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700 }}>
+                  <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700 }}>
                     Faixa {faixaAtual}: {validacao.quantidade} {validacao.quantidade === 1 ? 'numero' : 'numeros'}
                   </div>
                 )}
@@ -476,13 +475,14 @@ export default function InutilizacaoModal({ open, onClose, onSuccess }) {
                   <span className="form-label">Justificativa</span>
                   <textarea
                     className="form-input"
-                    rows="3"
+                    rows="2"
                     maxLength="255"
                     value={justificativa}
                     onChange={(event) => setJustificativa(event.target.value)}
                     placeholder="Descreva a causa tecnica da quebra de sequencia."
+                    style={{ minHeight: 48, maxHeight: 90, resize: 'vertical' }}
                   />
-                  <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)' }}>
+                  <span style={{ color: 'var(--color-text-muted)', fontSize: '11px' }}>
                     {justificativa.trim().length}/255 caracteres
                   </span>
                   {validacao.erros.justificativa && <span className="form-error">{validacao.erros.justificativa}</span>}

@@ -323,6 +323,7 @@ function createNfeEmissaoService({
   }
 
   function processarErroTransmissao(error, tentativa, input) {
+    logger.error?.('[NF-e Erro de Transmissao]:', onlyMessage(error));
     const info = typeof classificarErro === 'function' ? classificarErro(error) : null;
     if (info?.tipo === 'validacao_xml') {
       return finalizarFalhaLocal(tentativa, input, {

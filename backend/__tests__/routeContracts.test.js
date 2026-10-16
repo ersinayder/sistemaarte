@@ -274,6 +274,7 @@ describe('route authorization contracts', () => {
     expect(source).toMatch(/router\.post\(['"]\/integridade-financeira\/:ordemId\/conciliar['"],\s*auth\(\),\s*authPermission\(['"]nfe\.conciliar['"]\)/);
     expect(source).toMatch(/router\.get\(['"]\/integridade-financeira['"],\s*auth\(\),\s*authPermission\(['"]nfe\.integridade['"]\)/);
     expect(source).toMatch(/router\.get\(['"]\/pendencias['"],\s*auth\(\),\s*authPermission\(['"]nfe\.integridade['"]\)/);
+    expect(source).toMatch(/router\.post\(['"]\/pendencias\/:origem\/:id\/liberar['"],\s*auth\(\),\s*auth(Any)?Permission\(\[['"]nfe\.integridade['"],\s*['"]nfe\.conciliar['"],\s*['"]nfe\.emitir['"]\]\)/);
     expect(source).toMatch(/router\.get\(['"]\/inutilizacoes\/contexto['"],\s*auth\(\),\s*authPermission\(['"]nfe\.inutilizar['"]\)/);
     expect(source).toMatch(/router\.post\(['"]\/inutilizacoes['"],\s*auth\(\),\s*authPermission\(['"]nfe\.inutilizar['"]\)/);
     expect(source).toMatch(/router\.get\(['"]\/avulsa\/preview['"],\s*auth\(\),\s*authPermission\(['"]nfe\.emitir['"]\)/);
@@ -510,6 +511,8 @@ describe('security configuration contracts', () => {
     expect(source).toMatch(/renderTesteImpressaoHtml/);
     expect(source).toMatch(/printHtml\(\{\s*html,\s*jobName:\s*["']teste-impressao-a5["']/);
     expect(source).toMatch(/diagnosePrintHtml\(\{\s*html,\s*jobName:\s*["']diagnostico-impressao-a5["']/);
+    expect(source).toMatch(/process\.platform\s*!==\s*["']win32["']\s*&&\s*config\.directPrintEnabled/);
+    expect(source).toMatch(/Impressao direta no servidor esta disponivel apenas no Windows Server\. Utilize o modo Navegador\./);
   });
 
   it('shows the A5 print diagnostic package in the configuration UI', () => {
@@ -530,6 +533,7 @@ describe('security configuration contracts', () => {
 
     expect(configuracoesSource).toMatch(/router\.get\(["']\/whatsapp\/web-status["'],\s*auth\(\),\s*authPermission\(["']configuracoes\.editar_whatsapp["']\)/);
     expect(configuracoesSource).toMatch(/createWhatsappWebProvider/);
+    expect(configuracoesSource).toMatch(/manual_mode/);
     expect(serverSource).toMatch(/WHATSAPP_WEB_ENABLED/);
     expect(serverSource).toMatch(/createWhatsappWorker/);
     expect(ecosystemSource).toMatch(/WHATSAPP_WEB_ENABLED/);
@@ -537,13 +541,14 @@ describe('security configuration contracts', () => {
     expect(ecosystemSource).toMatch(/WHATSAPP_WEB_INSTANCE/);
   });
 
-  it('exposes whatsapp web local settings in the configuration UI', () => {
+  it('exposes whatsapp web local settings in the configuration UI and highlights manual mode', () => {
     const configuracoesSource = fs.readFileSync(new URL('../../frontend/src/pages/Configuracoes.jsx', import.meta.url), 'utf8');
 
     expect(configuracoesSource).toMatch(/web_local/);
     expect(configuracoesSource).toMatch(/webBaseUrl/);
     expect(configuracoesSource).toMatch(/webInstance/);
     expect(configuracoesSource).toMatch(/\/configuracoes\/whatsapp\/web-status/);
+    expect(configuracoesSource).toMatch(/Envio Manual Assistido Ativo/);
   });
 
   it('uses the internal API for CEP lookup so production CSP does not block address autofill', () => {
@@ -769,8 +774,9 @@ describe('security configuration contracts', () => {
     const nextRouteStart = source.indexOf("router.get('/inutilizacoes/contexto'", routeStart);
     const routeSource = source.slice(routeStart, nextRouteStart);
 
-    expect(source).toMatch(/router\.get\(['"]\/pendencias\/:origem\/:id\/transicoes['"],\s*auth\(\),\s*authPermission\(['"]nfe\.integridade['"]\)/);
+    expect(source).toMatch(/router\.get\(['"]\/pendencias\/:origem\/:id\/:transicoes['"]|router\.get\(['"]\/pendencias\/:origem\/:id\/transicoes['"],\s*auth\(\),\s*authPermission\(['"]nfe\.integridade['"]\)/);
     expect(source).toMatch(/buscarPendenciaFiscalComTransicoes/);
+    expect(source).toMatch(/liberarPendenciaFiscal/);
     expect(routeStart).toBeGreaterThan(-1);
     expect(routeStart).toBeLessThan(source.indexOf("router.get('/:chave/eventos'"));
     expect(routeSource).not.toMatch(/getNFEWizard|callSEFAZ|NFE_|service\.executar/);

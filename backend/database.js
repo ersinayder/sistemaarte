@@ -16,6 +16,80 @@ const {
   DEFAULT_PROFILE_PERMISSIONS,
   assertKnownPermissions,
 } = require("./domain/permissionRules");
+const { hoje } = require("./utils/dates");
+
+let _backupDate = "";
+
+function formatBRTDate(dateInput) {
+  if (!dateInput) return null;
+  if (typeof dateInput === "string" && /^\d{4}-\d{2}-\d{2}$/.test(dateInput)) {
+    return dateInput;
+  }
+  const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+  if (isNaN(d.getTime())) return null;
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d).split("/").reverse().join("-");
+}
+
+function resolveLastBackupDate(backupsDir) {
+  if (!backupsDir || !fs.existsSync(backupsDir)) return "";
+  const statusFile = path.join(backupsDir, "backup-status.json");
+  if (fs.existsSync(statusFile)) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(statusFile, "utf8"));
+      const cand = raw.lastSuccess || raw.local?.ultimo?.updatedat;
+      const formatted = formatBRTDate(cand);
+      if (formatted) return formatted;
+    } catch (_) {}
+  }
+  try {
+    const files = fs.readdirSync(backupsDir)
+      .filter((name) => name.endsWith(".db"))
+      .map((name) => {
+        try {
+          const stat = fs.statSync(path.join(backupsDir, name));
+          return { name, mtimeMs: stat.mtimeMs, mtime: stat.mtime };
+        } catch (_) {
+          return null;
+        }
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.mtimeMs - a.mtimeMs);
+    if (files.length > 0) {
+      const formatted = formatBRTDate(files[0].mtime);
+      if (formatted) return formatted;
+    }
+  } catch (_) {}
+  return "";
+}
+
+function initBackupDate(backupsDir = path.join(DATA_DIR, "backups")) {
+  const last = resolveLastBackupDate(backupsDir);
+  const hj = hoje();
+  if (last && last === hj) {
+    _backupDate = hj;
+  } else {
+    _backupDate = "";
+  }
+  return _backupDate;
+}
+
+function shouldRunBackup({ now = new Date(), backupDate = _backupDate } = {}) {
+  const hj = formatBRTDate(now);
+  const h = parseInt(
+    new Intl.DateTimeFormat("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      hour: "numeric",
+      hour12: false,
+    }).format(now),
+    10
+  );
+  return h >= 2 && backupDate !== hj;
+}
 
 const DATA_DIR = path.join(__dirname, "data");
 const DB_FILE  = path.join(DATA_DIR, "oficina.db");
@@ -266,6 +340,7 @@ CREATE TABLE IF NOT EXISTS lancamentos (
   ordemid   INTEGER,
   criadopor INTEGER,
   origem    TEXT DEFAULT NULL,
+  conta_pagar_id INTEGER DEFAULT NULL,
   deletedat TEXT DEFAULT NULL,
   deletedpor INTEGER DEFAULT NULL,
   createdat TEXT DEFAULT (datetime('now','localtime'))
@@ -361,6 +436,7 @@ CREATE TABLE IF NOT EXISTS contas_pagar (
   status        TEXT NOT NULL DEFAULT 'Pendente',
   pagamento     TEXT,
   pagoem        TEXT,
+  datapagamento TEXT,
   lancamentoid  INTEGER,
   observacoes   TEXT,
   criadopor     INTEGER,
@@ -660,9 +736,10 @@ function seedPermissionProfiles(targetDb) {
   tx();
 }
 
-function initDB() {
-  db = new Database(DB_FILE);
+function initDB(customPath, options = {}) {
+  db = new Database(customPath || DB_FILE);
   db.pragma("journal_mode = WAL");
+  db.pragma("busy_timeout = 5000");
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA);
 
@@ -1003,6 +1080,26 @@ function initDB() {
     "ALTER TABLE permission_profiles ADD COLUMN base_role TEXT",
     "UPDATE permission_profiles SET base_role=key WHERE base_role IS NULL AND key IN ('admin','caixa','oficina')",
     "CREATE INDEX IF NOT EXISTS idx_profile_permissions_permission ON profile_permissions(permission)",
+    // v24 - campo ind_ie_dest para distinguir tipo de contribuinte ICMS de pessoa juridica
+    // '1' = Contribuinte com IE, '2' = Contribuinte Isento, '9' = Nao Contribuinte
+    // NULL = auto-detectar pela logica legada (compatibilidade total com clientes existentes)
+    "ALTER TABLE clientes ADD COLUMN ind_ie_dest TEXT DEFAULT NULL",
+    // v25 - persistencia de lockout de login contra forca bruta entre restarts (SEC-05)
+    `CREATE TABLE IF NOT EXISTS login_lockout (
+      username TEXT PRIMARY KEY,
+      failures INTEGER NOT NULL DEFAULT 0,
+      first_failure_at INTEGER,
+      locked_until INTEGER,
+      updated_at INTEGER NOT NULL
+    )`,
+    "CREATE INDEX IF NOT EXISTS idx_login_lockout_locked_until ON login_lockout(locked_until)",
+    // v26 - normalizacao de tipo de lancamentos ('Saida' -> 'Saída') e correcao de pago residual em lancamentos manuais do caixa
+    "UPDATE lancamentos SET tipo='Saída' WHERE tipo IN ('Saida', 'saida', 'saída')",
+    "UPDATE lancamentos SET tipo='Entrada' WHERE tipo IN ('entrada')",
+    "UPDATE lancamentos SET pago=1 WHERE (pago=0 OR pago IS NULL) AND (origem='manual' OR ordemid IS NULL)",
+    // v27 - estorno de contas a pagar no caixa e vinculo de lancamento a conta pagar
+    "ALTER TABLE lancamentos ADD COLUMN conta_pagar_id INTEGER DEFAULT NULL",
+    "ALTER TABLE contas_pagar ADD COLUMN datapagamento TEXT DEFAULT NULL",
   ];
   applyMigrations(db, migrations);
   db.prepare("UPDATE users SET profile_key=role WHERE profile_key IS NULL").run();
@@ -1168,7 +1265,11 @@ function initDB() {
       console.log("[DB] Usuarios padrao criados (somente dev)");
     }
   }
-  console.log(`[DB] Banco inicializado: ${DB_FILE}`);
+  const backupsDir = options?.backupsDir
+    || (customPath && customPath !== ":memory:" ? path.join(path.dirname(customPath), "backups") : path.join(DATA_DIR, "backups"));
+  initBackupDate(backupsDir);
+
+  console.log(`[DB] Banco inicializado: ${customPath || DB_FILE}`);
   return db;
 }
 
@@ -1184,7 +1285,13 @@ function backup() {
   fs.mkdirSync(bdir,{recursive:true});
   const dest = path.join(bdir,`backup-${now}.db`);
   const statusAnterior = readBackupStatus(bdir);
+  try {
+    db.pragma("wal_checkpoint(PASSIVE)");
+  } catch (err) {
+    console.warn("[Backup] wal_checkpoint falhou:", err.message);
+  }
   return db.backup(dest).then(async ()=>{
+    _backupDate = hoje();
     const files = fs.readdirSync(bdir).filter(f=>f.endsWith(".db")).sort();
     while (files.length > 7) fs.unlinkSync(path.join(bdir,files.shift()));
     let offsiteResult;
@@ -1247,4 +1354,17 @@ module.exports = {
   seedPermissionProfiles,
   getNfeEmissaoSchemaStatements,
   getNfeEmissaoMigrationStatements,
+  formatBRTDate,
+  resolveLastBackupDate,
+  initBackupDate,
+  shouldRunBackup,
+  getBackupDate: () => _backupDate,
+  setBackupDate: (val) => { _backupDate = val; },
 };
+
+Object.defineProperty(module.exports, "_backupDate", {
+  get: () => _backupDate,
+  set: (val) => { _backupDate = val; },
+  configurable: true,
+  enumerable: true,
+});

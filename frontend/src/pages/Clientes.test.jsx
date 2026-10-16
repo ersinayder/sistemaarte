@@ -92,7 +92,7 @@ describe('Clientes', () => {
     expect(screen.getByPlaceholderText(/rua, av/i)).toHaveValue('Rua Pedra Azul')
     expect(screen.getByPlaceholderText(/^Bairro$/i)).toHaveValue('IGUACU')
     expect(screen.getByPlaceholderText(/^Cidade$/i)).toHaveValue('IPATINGA')
-    expect(screen.getByRole('combobox')).toHaveValue('MG')
+    expect(screen.getByDisplayValue('MG')).toBeInTheDocument()
   })
 
   it('esconde acoes de cadastro quando usuario tem apenas clientes.ver', async () => {

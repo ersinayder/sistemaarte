@@ -524,12 +524,12 @@ function QuickClientModal({ open, cliente, initialName, onClose, onSaved }) {
         if (overlayDownRef.current && e.target === e.currentTarget) onClose()
         overlayDownRef.current = false
       }}>
-      <div className="modal" style={{ maxWidth: 660 }} onClick={e => e.stopPropagation()}>
+      <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h2 className="modal-title">{cliente?.id ? 'Dados fiscais do cliente' : 'Cadastrar cliente'}</h2>
           <button className="btn btn-icon btn-ghost" onClick={onClose}><X size={18} /></button>
         </div>
-        <div className="modal-body" style={{ display: 'grid', gap: 'var(--space-4)' }}>
+        <div className="modal-body modal-body-dense" style={{ display: 'grid', gap: 'var(--space-3)' }}>
           <div style={{ display: 'flex', background: 'var(--color-surface-offset)', borderRadius: 'var(--radius-lg)', padding: 3, gap: 3 }}>
             {['PF', 'PJ'].map(tipo => (
               <button
@@ -645,7 +645,7 @@ export default function Atendimento() {
   const canReceive = typeof can === 'function' && can('caixa.criar_lancamento')
   const canDeliver = typeof can === 'function' && can('ordens.alterar_status')
   const canPrintOS = typeof can === 'function' && can('ordens.imprimir')
-  const [mode, setMode] = useState('home')
+  const [mode, setMode] = useState('new-os')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [clientes, setClientes] = useState([])
@@ -1119,6 +1119,19 @@ export default function Atendimento() {
             Criar OS
           </button>
         </div>
+
+        <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-1)', justifyContent: 'flex-start', flexWrap: 'wrap' }}>
+          {canReceive && (
+            <button type="button" className="btn btn-secondary btn-xs" onClick={() => setMode('receive')} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <DollarSign size={13} /> Receber OS / Quitar saldo
+            </button>
+          )}
+          {canReceive && (
+            <button type="button" className="btn btn-secondary btn-xs" onClick={() => setMode('sale')} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Package size={13} /> Venda avulsa no caixa
+            </button>
+          )}
+        </div>
       </div>
     </form>
     )
@@ -1247,39 +1260,39 @@ export default function Atendimento() {
   }
 
   return (
-    <div style={{ padding: 'var(--space-6)', display: 'grid', gap: 'var(--space-4)' }}>
+    <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
       <style>{`
         .atendimento-kpis { display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); }
         .atendimento-wide-workspace { min-width:0; }
-        .atendimento-panel-head { display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); padding: var(--space-4) var(--space-5); border-bottom:1px solid var(--color-border); }
+        .atendimento-panel-head { display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); padding: var(--space-3) var(--space-4); border-bottom:1px solid var(--color-border); }
         .atendimento-mode-buttons { display:flex; gap:var(--space-2); flex-wrap:wrap; justify-content:flex-end; }
-        .atendimento-cards { display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); padding: var(--space-5); }
-        .atendimento-action-card { min-height: 116px; padding: var(--space-4); border:none; text-align:left; color:var(--color-text); display:flex; align-items:flex-start; gap:var(--space-3); cursor:pointer; }
-        .atendimento-form { display:grid; gap: var(--space-3); padding: var(--space-5); }
+        .atendimento-cards { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--space-3); padding: var(--space-4); }
+        .atendimento-action-card { min-height: 104px; padding: var(--space-3) var(--space-4); border:none; text-align:left; color:var(--color-text); display:flex; align-items:flex-start; gap:var(--space-3); cursor:pointer; }
+        .atendimento-form { display:grid; gap: var(--space-3); padding: var(--space-4); }
         .atendimento-flow-column { min-width:0; display:grid; gap:var(--space-3); align-content:start; }
-        .atendimento-nova-grid { grid-template-columns:minmax(360px, 0.95fr) minmax(460px, 1.2fr); align-items:start; }
-        .atendimento-receber-grid { grid-template-columns:minmax(380px, 1fr) minmax(360px, 0.85fr); align-items:start; }
-        .atendimento-venda-grid { grid-template-columns:minmax(460px, 1.25fr) minmax(320px, 0.75fr); align-items:start; }
-        .atendimento-section { padding: var(--space-4); display:grid; gap: var(--space-3); }
-        .atendimento-section-title { display:flex; align-items:center; gap: var(--space-2); font-weight:900; font-size: var(--text-sm); }
-        .atendimento-grid-2 { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
-        .atendimento-grid-3 { display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); }
-        .atendimento-grid-4 { display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); }
+        .atendimento-nova-grid { grid-template-columns:minmax(340px, 0.95fr) minmax(420px, 1.2fr); align-items:start; }
+        .atendimento-receber-grid { grid-template-columns:minmax(340px, 1fr) minmax(320px, 0.85fr); align-items:start; }
+        .atendimento-venda-grid { grid-template-columns:minmax(400px, 1.25fr) minmax(300px, 0.75fr); align-items:start; }
+        .atendimento-section { padding: var(--space-3) var(--space-4); display:grid; gap: var(--space-2); }
+        .atendimento-section-title { display:flex; align-items:center; gap: var(--space-2); font-weight:800; font-size: var(--text-xs); text-transform:uppercase; color:var(--color-text-muted); letter-spacing:0.04em; }
+        .atendimento-grid-2 { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+        .atendimento-grid-3 { display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
+        .atendimento-grid-4 { display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2); }
         .atendimento-popover { position:absolute; top:calc(100% + 5px); left:0; right:0; z-index:45; background:var(--color-surface-2); border:1px solid var(--color-border); border-radius:var(--radius-md); box-shadow:var(--shadow-lg); overflow:hidden; }
         .atendimento-suggestion { width:100%; border:none; border-bottom:1px solid var(--color-divider); background:transparent; color:var(--color-text); text-align:left; padding:var(--space-2) var(--space-3); display:flex; justify-content:space-between; gap:var(--space-3); cursor:pointer; font-size:var(--text-xs); }
-        .atendimento-inline-callout { display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); padding:var(--space-3); border:1px solid var(--color-primary); border-radius:var(--radius-md); background:color-mix(in oklab, var(--color-primary) 10%, var(--color-surface)); }
+        .atendimento-inline-callout { display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); padding:var(--space-2) var(--space-3); border:1px solid var(--color-primary); border-radius:var(--radius-md); background:color-mix(in oklab, var(--color-primary) 10%, var(--color-surface)); }
         .atendimento-inline-callout div { display:grid; gap:2px; font-size:var(--text-xs); }
         .atendimento-inline-callout span { color:var(--color-text-muted); }
-        .atendimento-item-row { display:grid; grid-template-columns:minmax(160px,1fr) 72px 100px 100px 34px; gap:var(--space-2); align-items:center; padding:var(--space-2); border:1px solid var(--color-border); border-radius:var(--radius-md); background:var(--color-surface-offset); }
-        .atendimento-submit-row { display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); padding: var(--space-3) var(--space-4); border:1px solid var(--color-border); border-radius:var(--radius-lg); background:var(--color-surface); position:sticky; bottom:0; z-index:5; }
+        .atendimento-item-row { display:grid; grid-template-columns:minmax(140px,1fr) 64px 90px 90px 30px; gap:var(--space-2); align-items:center; padding:var(--space-2); border:1px solid var(--color-border); border-radius:var(--radius-md); background:var(--color-surface-offset); }
+        .atendimento-submit-row { display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); padding: var(--space-2) var(--space-4); border:1px solid var(--color-border); border-radius:var(--radius-md); background:var(--color-surface); position:sticky; bottom:0; z-index:5; }
         .atendimento-submit-row div { display:grid; gap:2px; }
         .atendimento-submit-row span { font-size:10px; color:var(--color-text-muted); font-weight:900; text-transform:uppercase; letter-spacing:0.06em; }
-        .atendimento-submit-row strong { font-size:var(--text-xl); font-weight:900; font-variant-numeric:tabular-nums; }
-        .atendimento-os-row { width:100%; border:1px solid var(--color-border); border-radius:var(--radius-md); padding:var(--space-3); color:var(--color-text); display:flex; justify-content:space-between; align-items:center; gap:var(--space-3); text-align:left; cursor:pointer; }
-        .atendimento-os-row div { display:grid; gap:3px; min-width:0; }
-        .atendimento-os-row span { color:var(--color-text-muted); font-size:var(--text-xs); }
+        .atendimento-submit-row strong { font-size:var(--text-lg); font-weight:900; font-variant-numeric:tabular-nums; }
+        .atendimento-os-row { width:100%; border:1px solid var(--color-border); border-radius:var(--radius-md); padding:var(--space-2) var(--space-3); color:var(--color-text); display:flex; justify-content:space-between; align-items:center; gap:var(--space-2); text-align:left; cursor:pointer; }
+        .atendimento-os-row div { display:grid; gap:2px; min-width:0; }
+        .atendimento-os-row span { color:var(--color-text-muted); font-size:11px; }
         .atendimento-results-list { min-height:82px; max-height:min(32vh, 420px); overflow:auto; display:grid; gap:var(--space-2); align-content:start; padding-right:2px; }
-        .atendimento-selected-os { display:flex; justify-content:space-between; gap:var(--space-3); padding:var(--space-3); border:1px solid var(--color-primary); border-radius:var(--radius-md); background:color-mix(in oklab, var(--color-primary) 10%, var(--color-surface)); }
+        .atendimento-selected-os { display:flex; justify-content:space-between; gap:var(--space-3); padding:var(--space-2) var(--space-3); border:1px solid var(--color-primary); border-radius:var(--radius-md); background:color-mix(in oklab, var(--color-primary) 10%, var(--color-surface)); }
         .atendimento-selected-os div { display:grid; gap:2px; }
         .atendimento-selected-os span { color:var(--color-text-muted); font-size:10px; font-weight:900; text-transform:uppercase; letter-spacing:0.06em; }
         @media (max-width: 1180px) {
@@ -1291,16 +1304,16 @@ export default function Atendimento() {
           .atendimento-panel-head { align-items:flex-start; flex-direction:column; }
           .atendimento-mode-buttons { justify-content:flex-start; }
           .atendimento-mode-button span { display:none; }
-          .atendimento-item-row { grid-template-columns:1fr 68px 88px 34px; }
+          .atendimento-item-row { grid-template-columns:1fr 60px 80px 30px; }
           .atendimento-item-row > div:nth-child(4) { display:none; }
         }
       `}</style>
 
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 'var(--space-4)' }}>
         <div>
-          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-primary)', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>/ Atendimento</div>
-          <h1 style={{ margin: 0, fontSize: 'var(--text-2xl)', fontWeight: 900 }}>Frente de Atendimento</h1>
-          <p style={{ margin: '4px 0 0', color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-primary)', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>/ Atendimento</div>
+          <h1 style={{ margin: 0, fontSize: 'var(--text-xl)', fontWeight: 900 }}>Frente de Atendimento</h1>
+          <p style={{ margin: '2px 0 0', color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)' }}>
             Nova OS, recebimento e venda avulsa no mesmo ponto de trabalho.
           </p>
         </div>
@@ -1316,11 +1329,11 @@ export default function Atendimento() {
       )}
 
       <div className="atendimento-wide-workspace">
-        <main className="card" style={{ overflow: 'hidden' }}>
+        <div className="card" style={{ overflow: 'hidden' }}>
           <div className="atendimento-panel-head">
             <div>
-              <h2 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 900 }}>O que você vai fazer agora?</h2>
-              <p style={{ margin: '3px 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>Escolha um caminho de atendimento.</p>
+              <h2 style={{ margin: 0, fontSize: 'var(--text-base)', fontWeight: 900 }}>O que você vai fazer agora?</h2>
+              <p style={{ margin: '2px 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>Escolha um caminho de atendimento.</p>
             </div>
             <div className="atendimento-mode-buttons">
               {modos.map(m => (
@@ -1329,12 +1342,12 @@ export default function Atendimento() {
             </div>
           </div>
           {renderCurrent()}
-        </main>
+        </div>
       </div>
 
       {deliveryPrompt && (
         <div className="modal-overlay">
-          <div className="modal" style={{ maxWidth: 460 }}>
+          <div className="modal modal-sm">
             <div className="modal-header">
               <span className="modal-title">Marcar como entregue?</span>
               <button className="btn btn-icon btn-ghost" onClick={() => setDeliveryPrompt(null)}><X size={18} /></button>

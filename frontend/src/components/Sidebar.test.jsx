@@ -106,4 +106,41 @@ describe('Sidebar', () => {
     expect(screen.queryByRole('link', { name: /clientes/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /produtos/i })).not.toBeInTheDocument()
   })
+
+  it('exibe o link Servidor apenas para perfil admin', () => {
+    authState = {
+      user: { id: 1, name: 'Administrador', role: 'admin', profile_key: 'admin' },
+      logout: vi.fn(),
+      switchUser: vi.fn(),
+      profile: { key: 'admin', name: 'Administrador' },
+      can: () => true,
+    }
+
+    render(
+      <MemoryRouter>
+        <Sidebar collapsed={false} />
+      </MemoryRouter>
+    )
+
+    expect(screen.getByRole('link', { name: /servidor/i })).toBeInTheDocument()
+  })
+
+  it('oculta o link Servidor para usuarios nao-admin', () => {
+    authState = {
+      user: { id: 2, name: 'Operador Caixa', role: 'caixa', profile_key: 'caixa' },
+      logout: vi.fn(),
+      switchUser: vi.fn(),
+      profile: { key: 'caixa', name: 'Caixa' },
+      can: (p) => p === 'configuracoes.ver',
+    }
+
+    render(
+      <MemoryRouter>
+        <Sidebar collapsed={false} />
+      </MemoryRouter>
+    )
+
+    expect(screen.queryByRole('link', { name: /servidor/i })).not.toBeInTheDocument()
+  })
 })
+

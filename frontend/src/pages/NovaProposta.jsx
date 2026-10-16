@@ -328,7 +328,7 @@ function ItensPropostaEditor({ itens, onChange, produtos, onAdd, total }) {
   )
 }
 
-export default function NovaProposta() {
+export default function NovaProposta({ onSaved, onCancel, embedded = false }) {
   const { can } = useAuth()
   const navigate = useNavigate()
   const canPrintProposal = typeof can === 'function' && can('propostas.imprimir')
@@ -419,7 +419,11 @@ export default function NovaProposta() {
 
       toast.success(mode === 'print' ? 'Proposta salva. Abrindo PDF...' : 'Proposta salva.')
       if (mode === 'print') window.open(`/api/propostas/${data.id}/pdf`, '_blank', 'noopener,noreferrer')
-      navigate(canViewProposals ? '/propostas' : '/orcamento/calculadora')
+      if (onSaved) {
+        onSaved(data)
+      } else {
+        navigate(canViewProposals ? '/propostas' : '/orcamento/calculadora')
+      }
     } catch (error) {
       toast.error(error?.response?.data?.error || 'Erro ao salvar proposta')
     } finally {
@@ -429,26 +433,28 @@ export default function NovaProposta() {
   }
 
   return (
-    <div className="page-content" style={{ display: 'grid', gap: 'var(--space-4)' }}>
-      <div className="page-header" style={{ alignItems: 'flex-start', gap: 'var(--space-3)' }}>
-        <div>
-          <div className="page-title">Nova proposta</div>
-          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)', marginTop: 2 }}>
-            Monte uma proposta formal com itens avulsos, produtos, prazo e condicoes comerciais.
+    <div className={embedded ? "" : "page-content"} style={{ display: 'grid', gap: 'var(--space-4)' }}>
+      {!embedded && (
+        <div className="page-header" style={{ alignItems: 'flex-start', gap: 'var(--space-3)' }}>
+          <div>
+            <div className="page-title">Nova proposta</div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-faint)', marginTop: 2 }}>
+              Monte uma proposta formal com itens avulsos, produtos, prazo e condicoes comerciais.
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <button className="btn btn-secondary btn-sm" onClick={() => navigate('/orcamento/calculadora')}>
+              <Calculator size={14} />
+              Calculadora
+            </button>
+            {canViewProposals && (
+              <button className="btn btn-secondary btn-sm" onClick={() => navigate('/propostas')}>
+                Ver funil
+              </button>
+            )}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          <button className="btn btn-secondary btn-sm" onClick={() => navigate('/orcamento/calculadora')}>
-            <Calculator size={14} />
-            Calculadora
-          </button>
-          {canViewProposals && (
-            <button className="btn btn-secondary btn-sm" onClick={() => navigate('/propostas')}>
-              Ver funil
-            </button>
-          )}
-        </div>
-      </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 420px), 1fr))', gap: 'var(--space-4)', alignItems: 'start' }}>
         <section className="card card-pad" style={{ padding: 'var(--space-4)', display: 'grid', gap: 'var(--space-3)', minWidth: 0 }}>
@@ -465,7 +471,7 @@ export default function NovaProposta() {
             <input className="form-input" value={form.titulo} onChange={event => set('titulo', event.target.value)} placeholder="Ex: Trofeus personalizados para evento" />
           </Campo>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 160px), 1fr))', gap: 'var(--space-2)' }}>
             <Campo label="Prazo de producao">
               <input className="form-input" value={form.prazoentrega} onChange={event => set('prazoentrega', event.target.value)} placeholder="Ex: 10 dias uteis, 7 dias ou 15/06/2026" />
             </Campo>

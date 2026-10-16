@@ -98,29 +98,29 @@ function ModalAuditoriaFinanceiraOS({ apontamento, onClose }) {
   const apontamentos = detalhe?.apontamentos || [];
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-content" style={{ maxWidth: 860 }} onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal modal-xl" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div>
-            <h2 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 800 }}>Auditoria financeira da OS</h2>
-            <p className="text-muted" style={{ margin: '4px 0 0' }}>{detalhe?.ordem?.numero || apontamento?.numero || apontamento?.ordemId}</p>
+            <h2 className="modal-title" style={{ margin: 0, fontSize: 'var(--text-base)', fontWeight: 800 }}>Auditoria financeira da OS</h2>
+            <p className="text-muted" style={{ margin: '2px 0 0', fontSize: 'var(--text-xs)' }}>{detalhe?.ordem?.numero || apontamento?.numero || apontamento?.ordemId}</p>
           </div>
           <button className="btn btn-secondary btn-sm" onClick={onClose}>Fechar</button>
         </div>
         {loading ? (
           <div className="loading-center"><div className="spinner" /></div>
         ) : (
-          <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 'var(--space-3)' }}>
+          <div className="modal-body modal-body-dense" style={{ display: 'grid', gap: 'var(--space-3)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 'var(--space-2)' }}>
               <StatCard label="Total da OS" value={fmt(resumo.valorTotal)} />
               <StatCard label="Recebido oficial" value={fmt(resumo.recebidoOficial)} color="var(--color-success)" />
               <StatCard label="Saldo oficial" value={fmt(resumo.saldoOficial)} color="var(--color-gold)" />
               <StatCard label="Excedente" value={fmt(resumo.excedente)} color={Number(resumo.excedente || 0) > 0 ? 'var(--color-error)' : 'var(--color-text-muted)'} />
             </div>
-            <div className="card card-pad">
-              <h3 style={{ margin: 0, fontSize: 'var(--text-sm)' }}>Apontamentos</h3>
-              <div className="settings-list" style={{ marginTop: 'var(--space-3)' }}>
-                {apontamentos.length === 0 ? <div className="empty-state">Nenhum apontamento recalculado para esta OS.</div> : apontamentos.map((item) => (
+            <div className="card card-pad" style={{ padding: 'var(--space-3)' }}>
+              <h3 style={{ margin: 0, fontSize: 'var(--text-xs)', textTransform: 'uppercase', color: 'var(--color-text-muted)', fontWeight: 800 }}>Apontamentos</h3>
+              <div className="settings-list" style={{ marginTop: 'var(--space-2)' }}>
+                {apontamentos.length === 0 ? <div className="empty-state" style={{ padding: 'var(--space-3)' }}>Nenhum apontamento recalculado para esta OS.</div> : apontamentos.map((item) => (
                   <div className="settings-list-item" key={item.tipo}>
                     <strong>{item.mensagem}</strong>
                     <span>{item.severidade}</span>
@@ -129,15 +129,15 @@ function ModalAuditoriaFinanceiraOS({ apontamento, onClose }) {
               </div>
             </div>
             <div className="card" style={{ overflow: 'hidden' }}>
-              <div style={{ padding: 'var(--space-4)', borderBottom: '1px solid var(--color-border)' }}>
-                <strong>Lancamentos da OS</strong>
+              <div style={{ padding: 'var(--space-3) var(--space-4)', borderBottom: '1px solid var(--color-border)' }}>
+                <strong style={{ fontSize: 'var(--text-xs)', textTransform: 'uppercase', color: 'var(--color-text-muted)', fontWeight: 800 }}>Lançamentos da OS</strong>
               </div>
               <div className="table-wrap">
                 <table>
-                  <thead><tr><th>Data</th><th>Descricao</th><th>Pagamento</th><th>Valor</th><th>Status</th></tr></thead>
+                  <thead><tr><th>Data</th><th>Descrição</th><th>Pagamento</th><th>Valor</th><th>Status</th></tr></thead>
                   <tbody>
                     {lancamentos.length === 0 ? (
-                      <tr><td colSpan={5}><div className="empty-state">Nenhum lancamento vinculado a esta OS.</div></td></tr>
+                      <tr><td colSpan={5}><div className="empty-state">Nenhum lançamento vinculado a esta OS.</div></td></tr>
                     ) : lancamentos.map((item) => (
                       <tr key={item.id}>
                         <td>{fmtD(item.data)}</td>
@@ -176,7 +176,7 @@ function ContaForm({ initial, onCancel, onSave }) {
 
   return (
     <form onSubmit={submit} className="card card-pad" style={{ display: 'grid', gap: 'var(--space-3)' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: 'var(--space-2)' }}>
         <div>
           <label className="form-label">Fornecedor</label>
           <input className="form-input" value={form.fornecedor} onChange={(e) => set('fornecedor', e.target.value)} required />
@@ -189,10 +189,10 @@ function ContaForm({ initial, onCancel, onSave }) {
         </div>
       </div>
       <div>
-        <label className="form-label">Descricao</label>
+        <label className="form-label">Descrição</label>
         <input className="form-input" value={form.descricao} onChange={(e) => set('descricao', e.target.value)} required />
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 'var(--space-3)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 150px), 1fr))', gap: 'var(--space-2)' }}>
         <div>
           <label className="form-label">Vencimento</label>
           <input className="form-input" type="date" value={form.vencimento} onChange={(e) => set('vencimento', e.target.value)} required />
@@ -209,7 +209,7 @@ function ContaForm({ initial, onCancel, onSave }) {
         </div>
       </div>
       <div>
-        <label className="form-label">Observacoes</label>
+        <label className="form-label">Observações</label>
         <textarea className="form-input" rows={2} value={form.observacoes} onChange={(e) => set('observacoes', e.target.value)} />
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>

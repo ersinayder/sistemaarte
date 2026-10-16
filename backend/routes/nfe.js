@@ -20,6 +20,7 @@ const { createNfeAttemptRepository } = require('../repositories/nfeAttemptReposi
 const { createNfeEventoAttemptRepository } = require('../repositories/nfeEventoAttemptRepository');
 const {
   buscarPendenciaFiscalComTransicoes,
+  liberarPendenciaFiscal,
   listarPendenciasFiscais,
 } = require('../repositories/nfePendenciaRepository');
 const { createNfeInutilizacaoService } = require('../services/nfeInutilizacaoService');
@@ -39,6 +40,7 @@ const {
 } = require('../utils/nfeEventos');
 const { renderDanfeHtml } = require('../utils/danfe');
 const { renderDanfePdf } = require('../utils/pdf/danfePdf');
+const { sendPrintHtml } = require('../utils/print/base');
 const { gerarExportacaoNFe } = require('../services/nfeExportService');
 const {
   extrairXmlFiscal,
@@ -197,7 +199,7 @@ function parseRetEvento(resultado, fallbackDhEvento) {
 
 function buscarOrdemParaNFe(db, osId) {
   return db.prepare(`
-    SELECT o.*, c.name AS clientenome, c.cpf, c.ie, c.logradouro,
+    SELECT o.*, c.name AS clientenome, c.cpf, c.ie, c.ind_ie_dest, c.logradouro,
            c.numero AS c_numero, c.bairro, c.cidade, c.uf, c.cep
     FROM ordens o
     LEFT JOIN clientes c ON o.clienteid = c.id
@@ -247,6 +249,7 @@ function serializarPreviaEmissaoNFe({ os, itens, ambiente, serie }) {
       nome: os.clientenome || os.clientenome_os || 'CONSUMIDOR FINAL',
       documento: os.cpf || '',
       ie: os.ie || '',
+      ind_ie_dest: os.ind_ie_dest || null,
       logradouro: os.logradouro || '',
       numero: os.c_numero || '',
       bairro: os.bairro || '',
@@ -271,6 +274,7 @@ function clienteAvulsoBase(row = {}) {
     clientenome: row.name || row.clientenome || 'CONSUMIDOR FINAL',
     cpf: row.cpf || '',
     ie: row.ie || '',
+    ind_ie_dest: row.ind_ie_dest || null,
     logradouro: row.logradouro || '',
     c_numero: row.numero || row.c_numero || '',
     bairro: row.bairro || '',
@@ -284,7 +288,7 @@ function carregarClienteAvulso(db, raw = {}) {
   const id = Number(raw?.id || raw?.clienteid || 0);
   if (!Number.isInteger(id) || id <= 0) return clienteAvulsoBase();
   const row = db.prepare(`
-    SELECT id, name, cpf, ie, logradouro, numero, bairro, cidade, uf, cep
+    SELECT id, name, cpf, ie, ind_ie_dest, logradouro, numero, bairro, cidade, uf, cep
     FROM clientes
     WHERE id = ? AND deletedat IS NULL
   `).get(id);
@@ -310,6 +314,7 @@ function serializarClienteAvulso(cliente = {}) {
     nome: cliente.clientenome === 'CONSUMIDOR FINAL' && !cliente.cpf ? '' : (cliente.clientenome || ''),
     documento: cliente.cpf || '',
     ie: cliente.ie || '',
+    ind_ie_dest: cliente.ind_ie_dest || null,
     logradouro: cliente.logradouro || '',
     numero: cliente.c_numero || '',
     bairro: cliente.bairro || '',
@@ -611,6 +616,37 @@ router.get('/pendencias/:origem/:id/transicoes', auth(), authPermission('nfe.int
   } catch (e) {
     console.error('[NF-e] GET /pendencias/:origem/:id/transicoes:', e.message);
     res.status(500).json({ erro: 'Erro ao carregar auditoria da pendencia fiscal' });
+  }
+});
+
+// POST /api/nfe/pendencias/:origem/:id/liberar
+// Libera de forma auditada uma pendencia fiscal pendente (incerto/processando), desbloqueando a OS para reemissao.
+router.post('/pendencias/:origem/:id/liberar', auth(), authPermission(['nfe.integridade', 'nfe.conciliar', 'nfe.emitir']), (req, res) => {
+  const origem = String(req.params.origem || '').trim();
+  const id = Number(req.params.id);
+  if (!['emissao', 'evento'].includes(origem) || !Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ erro: 'Pendencia fiscal invalida.' });
+  }
+
+  const motivo = String(req.body?.motivo || '').trim();
+  if (!motivo || motivo.length < 5) {
+    return res.status(400).json({ erro: 'Informe um motivo valido para a liberacao (minimo 5 caracteres).' });
+  }
+
+  try {
+    const result = liberarPendenciaFiscal(getDB(), {
+      origem,
+      id,
+      motivo,
+      usuarioId: req.user?.id || null,
+    });
+    if (!result.ok) {
+      return res.status(result.status || 422).json({ erro: result.erro });
+    }
+    res.json(result);
+  } catch (e) {
+    console.error('[NF-e] POST /pendencias/:origem/:id/liberar:', e.message);
+    res.status(500).json({ erro: e.message || 'Erro ao liberar pendencia fiscal' });
   }
 });
 
@@ -1154,13 +1190,20 @@ router.get('/:chave/danfe', auth(), authPermission('nfe.danfe'), async (req, res
     }
 
     const html = renderDanfeHtml(xml);
+    if (req.query.formato === 'html') {
+      return sendPrintHtml(res, `danfe-${filenameSeguro(chave)}.html`, html);
+    }
+
     const pdf = await renderDanfePdf(html);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="danfe-${filenameSeguro(chave)}.pdf"`);
     res.send(pdf);
   } catch (e) {
     console.error('[NF-e] GET /:chave/danfe:', e.message);
-    res.status(e.statusCode || 500).json({ erro: e.statusCode ? e.message : 'Erro ao gerar DANFE' });
+    res.status(e.statusCode || 500).json({
+      erro: e.statusCode ? e.message : 'Erro ao gerar DANFE',
+      code: e.code || 'ERRO_DANFE',
+    });
   }
 });
 

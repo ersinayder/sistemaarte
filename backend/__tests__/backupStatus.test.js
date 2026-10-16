@@ -385,3 +385,135 @@ describe('backupStatus', () => {
     expect(fs.existsSync(backupStatusPath(tmpDir))).toBe(false);
   });
 });
+
+describe('_backupDate initialization and scheduler logic', () => {
+  let schedDir;
+
+  beforeEach(() => {
+    schedDir = fs.mkdtempSync(path.join(os.tmpdir(), 'backup-sched-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(schedDir, { recursive: true, force: true });
+  });
+
+  it('initializes _backupDate when backup-status.json has lastSuccess matching today and avoids retriggering', async () => {
+    const { initBackupDate, getBackupDate, shouldRunBackup } = await import('../database.js');
+    const { hoje } = await import('../utils/dates.js');
+    const hj = hoje();
+
+    fs.writeFileSync(
+      path.join(schedDir, 'backup-status.json'),
+      JSON.stringify({ lastSuccess: `${hj}T02:00:00-03:00` }, null, 2)
+    );
+
+    const initializedDate = initBackupDate(schedDir);
+    expect(initializedDate).toBe(hj);
+    expect(getBackupDate()).toBe(hj);
+
+    const shouldRun = shouldRunBackup({
+      now: new Date(`${hj}T14:00:00-03:00`),
+      backupDate: getBackupDate(),
+    });
+    expect(shouldRun).toBe(false);
+  });
+
+  it('initializes _backupDate when latest backup file is from today and avoids retriggering', async () => {
+    const { initBackupDate, getBackupDate, shouldRunBackup } = await import('../database.js');
+    const { hoje } = await import('../utils/dates.js');
+    const hj = hoje();
+
+    const file = path.join(schedDir, `backup-${hj}T02-00-00.db`);
+    fs.writeFileSync(file, 'backup-content');
+    const now = new Date();
+    fs.utimesSync(file, now, now);
+
+    const initializedDate = initBackupDate(schedDir);
+    expect(initializedDate).toBe(hj);
+    expect(getBackupDate()).toBe(hj);
+
+    const shouldRun = shouldRunBackup({
+      now: new Date(`${hj}T14:00:00-03:00`),
+      backupDate: getBackupDate(),
+    });
+    expect(shouldRun).toBe(false);
+  });
+
+  it('sets _backupDate to empty string when last backup is from yesterday and allows scheduler to trigger at 02:00 BRT', async () => {
+    const { initBackupDate, getBackupDate, shouldRunBackup } = await import('../database.js');
+    const { hoje } = await import('../utils/dates.js');
+    const hj = hoje();
+
+    fs.writeFileSync(
+      path.join(schedDir, 'backup-status.json'),
+      JSON.stringify({ lastSuccess: '2026-05-17T02:00:00-03:00' }, null, 2)
+    );
+
+    const initializedDate = initBackupDate(schedDir);
+    expect(initializedDate).toBe('');
+    expect(getBackupDate()).toBe('');
+
+    const shouldRun = shouldRunBackup({
+      now: new Date(`${hj}T02:15:00-03:00`),
+      backupDate: getBackupDate(),
+    });
+    expect(shouldRun).toBe(true);
+  });
+
+  it('calls wal_checkpoint(PASSIVE) during backup() and updates _backupDate', async () => {
+    const { backup, getDB, getBackupDate, initDB } = await import('../database.js');
+    const { vi } = await import('vitest');
+    const { hoje } = await import('../utils/dates.js');
+
+    initDB(':memory:');
+    const db = getDB();
+    const pragmaSpy = vi.spyOn(db, 'pragma');
+
+    const result = await backup();
+    expect(pragmaSpy).toHaveBeenCalledWith('wal_checkpoint(PASSIVE)');
+    expect(result.ok).toBe(true);
+    expect(getBackupDate()).toBe(hoje());
+
+    pragmaSpy.mockRestore();
+
+    if (result.arquivo) {
+      const createdFile = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..', 'data', 'backups', result.arquivo);
+      if (fs.existsSync(createdFile)) {
+        try { fs.unlinkSync(createdFile); } catch (_) {}
+      }
+    }
+  });
+
+  it('wires server.js scheduler to shouldRunBackup() and prevents triggering when backup was completed today', async () => {
+    const serverSource = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+
+    expect(serverSource).not.toMatch(/let\s+_backupDate\s*=\s*["']["'];/);
+    expect(serverSource).toMatch(/const\s+\{[^}]*shouldRunBackup[^}]*setBackupDate[^}]*\}\s*=\s*require\(["']\.\/database["']\)/);
+    expect(serverSource).toMatch(/if\s*\(\s*shouldRunBackup\(\)\s*\)\s*\{[\s\S]*setBackupDate\(hoje\(\)\);[\s\S]*backup\(\)/);
+
+    const { initBackupDate, shouldRunBackup, setBackupDate, getBackupDate } = await import('../database.js');
+    const { vi } = await import('vitest');
+    const { hoje } = await import('../utils/dates.js');
+    const hj = hoje();
+
+    fs.writeFileSync(
+      path.join(schedDir, 'backup-status.json'),
+      JSON.stringify({ lastSuccess: `${hj}T02:00:00-03:00` }, null, 2)
+    );
+
+    initBackupDate(schedDir);
+    expect(getBackupDate()).toBe(hj);
+
+    const backupMock = vi.fn().mockResolvedValue({ ok: true });
+
+    let triggered = false;
+    if (shouldRunBackup()) {
+      setBackupDate(hj);
+      await backupMock();
+      triggered = true;
+    }
+
+    expect(triggered).toBe(false);
+    expect(backupMock).not.toHaveBeenCalled();
+  });
+});

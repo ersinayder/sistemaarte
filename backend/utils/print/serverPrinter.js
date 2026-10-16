@@ -6,7 +6,7 @@ const { montarDestinoImpressora } = require('../../domain/impressaoConfigRules')
 
 const DEFAULT_ORDEM_PRINTER = '\\\\ARTESERVER\\Impressoraloja';
 const PRINT_TIMEOUT_MS = 45000;
-const DEFAULT_PRINT_SETTLE_MS = 1500;
+const DEFAULT_PRINT_SETTLE_MS = 6000;
 const TEMP_DIR = path.join(os.tmpdir(), 'sistema-arte-print');
 const PRINT_BROWSER_PROFILE_PREFIX = 'sistema-arte-print-browser-';
 const BROWSER_CANDIDATES = [
@@ -65,8 +65,37 @@ function psString(value) {
 
 function normalizePrintSettleMs(value = DEFAULT_PRINT_SETTLE_MS) {
   const ms = Number(value ?? DEFAULT_PRINT_SETTLE_MS);
-  if (!Number.isFinite(ms) || ms < DEFAULT_PRINT_SETTLE_MS) return DEFAULT_PRINT_SETTLE_MS;
+  if (!Number.isFinite(ms) || ms < 1000) return DEFAULT_PRINT_SETTLE_MS;
   return Math.min(Math.round(ms), 15000);
+}
+
+// Validação defensiva do nome da impressora antes de interpolar no script PS.
+// A validação primária já ocorre no save de impressaoConfig, mas esta é a
+// segunda camada — defesa em profundidade (SEC-04).
+const SAFE_PRINTER_PATTERN = /^[A-Za-z0-9 _.\-()\\/]{1,160}$/;
+const CONTROL_CHARS_RE = /[\x00-\x1F\x7F]/;
+
+function validatePrinterNameForScript(printerName) {
+  if (!printerName) return '';
+  if (
+    CONTROL_CHARS_RE.test(printerName) ||
+    !SAFE_PRINTER_PATTERN.test(printerName)
+  ) {
+    throw new Error(
+      `Nome de impressora invalido para script de impressao: ${JSON.stringify(printerName)}`
+    );
+  }
+  return printerName;
+}
+
+function validateHtmlPathForScript(htmlPath) {
+  if (!htmlPath || typeof htmlPath !== 'string') {
+    throw new Error('Caminho do arquivo HTML de impressao ausente ou invalido.');
+  }
+  if (CONTROL_CHARS_RE.test(htmlPath)) {
+    throw new Error(`Caminho HTML contem caracteres de controle invalidos: ${JSON.stringify(htmlPath)}`);
+  }
+  return path.normalize(htmlPath);
 }
 
 function buildPrintDiagnostics({ html, htmlPath, printerName, copies, settleMs, stdout = '', stderr = '', error = null }) {
@@ -106,12 +135,16 @@ function buildPrintDiagnostics({ html, htmlPath, printerName, copies, settleMs, 
 }
 
 function buildPrintScript({ htmlPath, printerName, copies, settleMs = DEFAULT_PRINT_SETTLE_MS }) {
-  const printerLine = printerName ? `$printerName = ${psString(printerName)}` : '$printerName = $null';
+  const safeHtmlPath = validateHtmlPathForScript(htmlPath);
+  const safePrinterName = validatePrinterNameForScript(printerName);
+  const printerLine = safePrinterName
+    ? `$printerName = ${psString(safePrinterName)}`
+    : '$printerName = $null';
   const normalizedSettleMs = normalizePrintSettleMs(settleMs);
 
   return `
 $ErrorActionPreference = 'Stop'
-$htmlPath = ${psString(htmlPath)}
+$htmlPath = ${psString(safeHtmlPath)}
 ${printerLine}
 $copies = ${normalizePrintCopies(copies)}
 $browserCandidates = @(
@@ -127,14 +160,41 @@ if (-not $browser) {
 
 $oldDefault = Get-CimInstance Win32_Printer | Where-Object { $_.Default } | Select-Object -First 1
 if ($printerName) {
-  $printer = Get-CimInstance Win32_Printer | Where-Object { $_.Name -eq $printerName } | Select-Object -First 1
+  $printer = Get-CimInstance Win32_Printer | Where-Object {
+    $_.PortName -notlike "TS*" -and
+    $_.Name -notlike "*redirected*" -and
+    ($_.Name -eq $printerName -or
+     $_.ShareName -eq $printerName -or
+     $_.Name -like ('*\\' + $printerName) -or
+     $_.ShareName -like ('*' + $printerName) -or
+     $_.Name -like ('*' + $printerName + '*') -or
+     $printerName -like ('*' + $_.Name + '*'))
+  } | Select-Object -First 1
+  if (-not $printer) {
+    $printer = Get-CimInstance Win32_Printer | Where-Object {
+      $_.Name -eq $printerName -or
+      $_.ShareName -eq $printerName -or
+      $_.Name -like ('*\\' + $printerName) -or
+      $_.ShareName -like ('*' + $printerName) -or
+      $_.Name -like ('*' + $printerName + '*') -or
+      $printerName -like ('*' + $_.Name + '*')
+    } | Select-Object -First 1
+  }
   if (-not $printer -and $printerName.StartsWith('\\\\')) {
     $shareName = Split-Path -Leaf $printerName
-    $printer = Get-CimInstance Win32_Printer | Where-Object { $_.ShareName -eq $shareName } | Select-Object -First 1
+    $printer = Get-CimInstance Win32_Printer | Where-Object {
+      $_.PortName -notlike "TS*" -and
+      ($_.ShareName -eq $shareName -or $_.Name -like ('*\\' + $shareName))
+    } | Select-Object -First 1
     if (-not $printer) {
       Add-Printer -ConnectionName $printerName
       Start-Sleep -Seconds 2
-      $printer = Get-CimInstance Win32_Printer | Where-Object { $_.Name -eq $printerName -or $_.ShareName -eq $shareName } | Select-Object -First 1
+      $printer = Get-CimInstance Win32_Printer | Where-Object {
+        $_.Name -eq $printerName -or
+        $_.ShareName -eq $shareName -or
+        $_.Name -like ('*\\' + $shareName) -or
+        $_.Name -like ('*\\' + $printerName)
+      } | Select-Object -First 1
     }
   }
   if (-not $printer) {
@@ -225,7 +285,7 @@ $preferences = @{
   }
 } | ConvertTo-Json -Compress -Depth 14
 Set-Content -LiteralPath (Join-Path $defaultProfileDir "Preferences") -Value $preferences -Encoding UTF8
-$args = @(
+$browserArgs = @(
   "--kiosk-printing",
   "--no-first-run",
   "--disable-extensions",
@@ -234,7 +294,7 @@ $args = @(
   "--user-data-dir=$userDataDir",
   $fileUri
 )
-$process = Start-Process -FilePath $browser -ArgumentList $args -PassThru
+$process = Start-Process -FilePath $browser -ArgumentList $browserArgs -PassThru
 Start-Sleep -Milliseconds ${normalizedSettleMs}
 if ($process -and -not $process.HasExited) {
   $process.CloseMainWindow() | Out-Null
@@ -390,5 +450,8 @@ module.exports = {
   printHtml,
   resolvePrinterName,
   safeJobName,
+  validateHtmlPathForScript,
+  validatePrinterNameForScript,
   writeTempHtml,
 };
+

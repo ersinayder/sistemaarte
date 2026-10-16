@@ -16,7 +16,12 @@ ChartJS.register(
   PointElement, ArcElement, Tooltip, Legend, Filler
 )
 
-const fmt = v => 'R$ ' + Number(v || 0).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+const fmt = v => {
+  const n = Number(v || 0)
+  const sign = n < 0 ? '-' : ''
+  const abs = Math.abs(n).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+  return `${sign}R$ ${abs}`
+}
 const fmtShort = v => {
   const n = Number(v || 0)
   if (n >= 1000) return 'R$ ' + (n / 1000).toFixed(1).replace('.', ',') + 'k'
@@ -223,18 +228,16 @@ export default function Dashboard() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [rRes, rOrdens] = await Promise.all([
+      const [rRes, rOrdens, rIntegridade] = await Promise.all([
         api.get(`/relatorios/resumo?mes=${mesSel}`),
-        api.get('/ordens')
+        api.get('/ordens'),
+        canViewIntegridade
+          ? api.get('/kpis/integridade', { skipGlobalErrorToast: true }).catch(() => ({ data: null }))
+          : Promise.resolve({ data: null })
       ])
       setDados(rRes.data)
       setOrdens(rOrdens.data?.ordens || rOrdens.data || [])
-      if (canViewIntegridade) {
-        const rIntegridade = await api.get('/kpis/integridade', { skipGlobalErrorToast: true }).catch(() => ({ data: null }))
-        setIntegridadeResumo(rIntegridade.data)
-      } else {
-        setIntegridadeResumo(null)
-      }
+      setIntegridadeResumo(rIntegridade.data)
     } catch {
       toast.error('Erro ao carregar dados')
     } finally {
@@ -501,7 +504,7 @@ export default function Dashboard() {
       <div className="dash-kpi-grid">
         <KPI label="Total do Mês"
           value={fmt(dados?.total)}
-          sub={`${dados?.count || 0} lançamentos`}
+          sub={dados?.saidas > 0 ? `Entradas: ${fmt(dados?.entradas)} | Saídas: ${fmt(dados?.saidas)}` : `${dados?.count || 0} lançamentos`}
           accent="var(--color-primary)" />
         <KPI label="Faturamento Hoje"
           value={fmt(dados?.hoje)}

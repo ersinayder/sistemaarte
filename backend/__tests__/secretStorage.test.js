@@ -36,4 +36,39 @@ describe('secret storage helpers', () => {
     expect(() => encryptSecret('SENHA_TESTE_UNICA')).toThrow(/CONFIG_SECRET_KEY|NFE_SECRET_KEY/);
     expect(encryptSecretIfPossible('SENHA_TESTE_UNICA')).toBe('SENHA_TESTE_UNICA');
   });
+
+  describe('SEC-07: cryptographic purpose segregation and backward compatibility', () => {
+    it('encrypts and decrypts with nfe purpose correctly', async () => {
+      const { decryptSecret, encryptSecret } = await import('../utils/secrets.js');
+      const encrypted = encryptSecret('senha_nfe_123', 'nfe');
+      expect(decryptSecret(encrypted, 'nfe')).toBe('senha_nfe_123');
+    });
+
+    it('produces different ciphertexts and keys for different purposes', async () => {
+      const { decryptSecret, encryptSecret } = await import('../utils/secrets.js');
+      const encryptedConfig = encryptSecret('segredo_compartilhado', 'config');
+      const encryptedNfe = encryptSecret('segredo_compartilhado', 'nfe');
+
+      expect(encryptedConfig).not.toBe(encryptedNfe);
+      expect(decryptSecret(encryptedConfig, 'config')).toBe('segredo_compartilhado');
+      expect(decryptSecret(encryptedNfe, 'nfe')).toBe('segredo_compartilhado');
+    });
+
+    it('decrypts legacy ciphertext encrypted without purpose prefix via fallback', async () => {
+      const crypto = await import('crypto');
+      const { decryptSecret, SECRET_PREFIX } = await import('../utils/secrets.js');
+
+      // Create a ciphertext encrypted using the legacy single-hash key
+      const legacyKey = crypto.createHash('sha256').update(process.env.CONFIG_SECRET_KEY).digest();
+      const iv = crypto.randomBytes(12);
+      const cipher = crypto.createCipheriv('aes-256-gcm', legacyKey, iv);
+      const enc = Buffer.concat([cipher.update('legado_sem_proposito', 'utf8'), cipher.final()]);
+      const tag = cipher.getAuthTag();
+      const legacyCiphertext = `${SECRET_PREFIX}${iv.toString('base64url')}.${tag.toString('base64url')}.${enc.toString('base64url')}`;
+
+      // decryptSecret with 'config' or 'nfe' should fallback and still decrypt legacy data
+      expect(decryptSecret(legacyCiphertext, 'config')).toBe('legado_sem_proposito');
+      expect(decryptSecret(legacyCiphertext, 'nfe')).toBe('legado_sem_proposito');
+    });
+  });
 });

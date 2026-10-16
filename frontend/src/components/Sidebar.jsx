@@ -24,6 +24,7 @@ const ICONS = {
   produtos:  { d: 'M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z', d2: 'M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12' },
   nfe:       { d: 'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z', d2: 'M14 2v6h6M9 13h6M9 17h4' },
   config:    { d: 'M12 15.5A3.5 3.5 0 1012 8a3.5 3.5 0 000 7.5z', d2: 'M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51h.08a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9c.23.61.81 1 1.47 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z' },
+  servidor:  { d: 'M2 20h20M5 20V5a2 2 0 012-2h10a2 2 0 012 2v15M9 7h6M9 11h6M9 15h6' },
 }
 
 const PROFILE_COLOR = { admin: 'var(--color-purple)', caixa: 'var(--color-primary)', oficina: 'var(--color-orange)' }
@@ -69,6 +70,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
   const canViewUsuarios = hasPermission('usuarios.ver')
   const canViewFinanceiro = hasPermission('financeiro.ver') || hasPermission('financeiro.contas_pagar.ver') || hasPermission('financeiro.relatorios')
   const canViewConfiguracoes = hasPermission('configuracoes.ver') || hasPermission('configuracoes.editar_fiscal') || hasPermission('configuracoes.editar_whatsapp') || hasPermission('configuracoes.editar_impressao') || hasPermission('configuracoes.seguranca') || hasPermission('backups.ver')
+  const isAdmin = user?.role === 'admin'
   const canViewCadastros = canViewClientes || canViewProdutos || canViewUsuarios
   const canViewOperacao = canViewAtendimento || canViewDashboard || canViewCaixa || canViewOrdens || canViewOrcamento || canViewPropostas
 
@@ -141,7 +143,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
               {canViewDashboard && navItem('/dashboard', 'Resumo', 'resumo')}
               {canViewCaixa && navItem('/caixa', 'Caixa', 'caixa')}
               {canViewOrdens && navItemBadge('/ordens', 'Ordens de Servico', 'ordens', vencidas)}
-              {canViewOrcamento && navItem('/orcamento', 'Orcamento', 'orcamento')}
+              {canViewOrcamento && navItem('/orcamento/calculadora', 'Orcamento', 'orcamento')}
               {canViewPropostas && navItem('/propostas', 'Propostas', 'propostas')}
             </>
           )}
@@ -175,6 +177,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
             <>
               {section('Sistema')}
               {navItem('/configuracoes', 'Configuracoes', 'config')}
+              {isAdmin && navItem('/servidor', 'Servidor', 'servidor')}
             </>
           )}
         </nav>

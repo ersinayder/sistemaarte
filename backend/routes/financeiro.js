@@ -63,12 +63,12 @@ function getResumoFinanceiroPayload(mesInput) {
   const { mes, inicio, fim } = periodoMes(mesInput);
   const receitaRealizada = getOne(
     `SELECT COALESCE(SUM(l.valor),0) AS v FROM lancamentos l
-     WHERE strftime('%Y-%m',l.data)=? AND l.tipo='Entrada' AND l.pago=1 AND ${FILTRO_LANCAMENTO_ATIVO}`,
+     WHERE strftime('%Y-%m',l.data)=? AND (l.tipo='Entrada' OR l.tipo='entrada') AND (l.pago=1 OR l.pago IS NULL) AND ${FILTRO_LANCAMENTO_ATIVO}`,
     [mes]
   )?.v ?? 0;
   const saidasPagas = getOne(
     `SELECT COALESCE(SUM(l.valor),0) AS v FROM lancamentos l
-     WHERE strftime('%Y-%m',l.data)=? AND l.tipo='Saída' AND l.pago=1 AND ${FILTRO_LANCAMENTO_ATIVO}`,
+     WHERE strftime('%Y-%m',l.data)=? AND l.tipo IN ('Saída', 'Saida', 'saida', 'saída') AND (l.pago=1 OR l.pago IS NULL) AND ${FILTRO_LANCAMENTO_ATIVO}`,
     [mes]
   )?.v ?? 0;
   const contasPendentes = getOne(
@@ -104,12 +104,12 @@ function getDrePayload(mesInput) {
   const { mes } = periodoMes(mesInput);
   const receitaBruta = getOne(
     `SELECT COALESCE(SUM(l.valor),0) AS v FROM lancamentos l
-     WHERE strftime('%Y-%m',l.data)=? AND l.tipo='Entrada' AND l.pago=1 AND ${FILTRO_LANCAMENTO_ATIVO}`,
+     WHERE strftime('%Y-%m',l.data)=? AND (l.tipo='Entrada' OR l.tipo='entrada') AND (l.pago=1 OR l.pago IS NULL) AND ${FILTRO_LANCAMENTO_ATIVO}`,
     [mes]
   )?.v ?? 0;
   const devolucoes = getOne(
     `SELECT COALESCE(SUM(l.valor),0) AS v FROM lancamentos l
-     WHERE strftime('%Y-%m',l.data)=? AND l.tipo='Saída' AND l.pago=1
+     WHERE strftime('%Y-%m',l.data)=? AND l.tipo IN ('Saída', 'Saida', 'saida', 'saída') AND (l.pago=1 OR l.pago IS NULL)
      AND (LOWER(COALESCE(l.categoria,'')) LIKE '%devol%' OR LOWER(COALESCE(l.categoria,'')) LIKE '%estorno%')
      AND ${FILTRO_LANCAMENTO_ATIVO}`,
     [mes]
@@ -117,7 +117,7 @@ function getDrePayload(mesInput) {
   const despesas = getAll(
     `SELECT COALESCE(l.categoria,'Outros') AS categoria, COALESCE(SUM(l.valor),0) AS valor
      FROM lancamentos l
-     WHERE strftime('%Y-%m',l.data)=? AND l.tipo='Saída' AND l.pago=1
+     WHERE strftime('%Y-%m',l.data)=? AND l.tipo IN ('Saída', 'Saida', 'saida', 'saída') AND (l.pago=1 OR l.pago IS NULL)
      AND NOT (LOWER(COALESCE(l.categoria,'')) LIKE '%devol%' OR LOWER(COALESCE(l.categoria,'')) LIKE '%estorno%')
      AND ${FILTRO_LANCAMENTO_ATIVO}
      GROUP BY COALESCE(l.categoria,'Outros') ORDER BY valor DESC`,
@@ -226,13 +226,13 @@ router.patch("/contas-pagar/:id/pagar", auth(), authPermission("financeiro.conta
     const lancamentoId = transaction(() => {
       const id = runInsert(
         `INSERT INTO lancamentos
-          (data, tipo, categoria, descricao, pagamento, valor, pago, criadopor, origem)
-         VALUES (?,?,?,?,?,?,?,?,?)`,
-        [pagoem, "Saída", conta.categoria || "Conta a pagar", `${conta.fornecedor} - ${conta.descricao}`, pagamento, toNumber(conta.valor), 1, req.user.id, "conta-pagar"]
+          (data, tipo, categoria, descricao, pagamento, valor, pago, criadopor, origem, conta_pagar_id)
+         VALUES (?,?,?,?,?,?,?,?,?,?)`,
+        [pagoem, "Saída", conta.categoria || "Conta a pagar", `${conta.fornecedor} - ${conta.descricao}`, pagamento, toNumber(conta.valor), 1, req.user.id, "conta-pagar", conta.id]
       );
       run(
-        "UPDATE contas_pagar SET status='Pago', pagoem=?, pagamento=?, lancamentoid=?, updatedat=datetime('now','localtime') WHERE id=? AND deletedat IS NULL",
-        [pagoem, pagamento, id, conta.id]
+        "UPDATE contas_pagar SET status='Pago', pagoem=?, datapagamento=?, pagamento=?, lancamentoid=?, updatedat=datetime('now','localtime') WHERE id=? AND deletedat IS NULL",
+        [pagoem, pagoem, pagamento, id, conta.id]
       );
       return id;
     });

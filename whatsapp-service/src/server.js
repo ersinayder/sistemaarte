@@ -8,8 +8,17 @@ function getBearerToken(req) {
 }
 
 function requireApiKey(apiKey) {
+  const isConfigured = Boolean(apiKey && String(apiKey).trim().length > 0);
   return (req, res, next) => {
-    if (!apiKey) return next();
+    if (!isConfigured) {
+      if (process.env.NODE_ENV === 'production') {
+        return res.status(503).json({
+          error: 'Servico WhatsApp nao configurado: WHATSAPP_SERVICE_API_KEY ausente.'
+        });
+      }
+      // Em dev/test: permitir sem chave (facilita testes locais)
+      return next();
+    }
     const received = req.get('apikey') || getBearerToken(req);
     if (received !== apiKey) return res.status(401).json({ error: 'API key invalida' });
     return next();
@@ -29,11 +38,14 @@ function createApp({ instance, apiKey = '', client }) {
   const app = express();
   app.disable('x-powered-by');
   app.use(express.json({ limit: '64kb' }));
-  app.use(requireApiKey(apiKey));
 
+  // Health sem autenticação — necessário para monitoramento
   app.get('/health', (_req, res) => {
     res.json({ ok: true, service: 'whatsapp-service', instance });
   });
+
+  // Todas as rotas seguintes exigem API Key
+  app.use(requireApiKey(apiKey));
 
   app.get('/instance/connectionState/:instance', requireInstance(instance), (_req, res) => {
     const status = client.getState();

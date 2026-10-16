@@ -133,7 +133,7 @@ function getCertificadoConfig() {
   if (cleanText(fiscal?.certificado_path) && cleanText(fiscal?.certificado_senha)) {
     return {
       pathCertificado: path.resolve(fiscal.certificado_path),
-      senhaCertificado: decryptSecret(fiscal.certificado_senha),
+      senhaCertificado: decryptSecret(fiscal.certificado_senha, 'nfe'),
       nome: cleanText(fiscal.certificado_nome),
       updatedat: fiscal.certificado_updatedat || fiscal.updatedat || null,
       origem: 'banco',

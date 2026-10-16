@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import api from '../services/api';
@@ -90,8 +91,9 @@ function AvancarBtn({ ordem, colColor, onAvancar }) {
 }
 
 export default function Oficina() {
-  const { can } = useAuth();
+  const { user, can } = useAuth();
   const navigate  = useNavigate();
+  const isAdmin    = user?.role === 'admin';
   const canEdit    = typeof can === 'function' && (can('oficina.alterar_status') || can('ordens.alterar_status'));
   const canWhatsapp = typeof can === 'function' && can('ordens.whatsapp');
   const showValor  = typeof can === 'function' && (can('atendimento.ver') || can('caixa.ver') || can('financeiro.ver') || can('nfe.ver'));
@@ -103,6 +105,7 @@ export default function Oficina() {
   const [dragOverCol, setDragOverCol] = useState(null);
   const [filterTipo,  setFilterTipo]  = useState('todos');
   const [filterPrio,  setFilterPrio]  = useState('todas');
+  const [searchQuery, setSearchQuery] = useState('');
   const [viewMode,    setViewMode]    = useState('kanban');
   const [today]       = useState(hojeLocal);
   const [whatsappMenu, setWhatsappMenu] = useState(null);
@@ -261,6 +264,21 @@ export default function Oficina() {
     }
   }, []);
 
+  const reverterParaPronto = useCallback(async (ordem) => {
+    if (!isAdmin) return toast.error('Apenas administradores podem retornar uma OS de Entregue para Pronto');
+    if (!window.confirm(`Deseja retornar a OS #${ordem.numero} de Entregue para Pronto?`)) return;
+    const snapshot = ordens;
+    setOrdens(current => atualizarStatusOrdemOficina(current, ordem.id, 'Pronto', agoraLocal(), today));
+    try {
+      await api.patch(`/ordens/${ordem.id}/status`, { status: 'Pronto' });
+      toast.success(`OS #${ordem.numero} retornada para Pronto!`);
+      await load({ showLoading: false });
+    } catch(e) {
+      setOrdens(snapshot);
+      alert(e?.response?.data?.error || 'Erro ao retornar status');
+    }
+  }, [isAdmin, load, ordens, today]);
+
   const onDrop = useCallback(async (e, novoStatus) => {
     e.preventDefault();
     if (!canEdit) return toast.error('Sem permissao para alterar status');
@@ -270,25 +288,38 @@ export default function Oficina() {
     if (!id) return;
     const ordem = ordens.find(o => String(o.id) === String(id));
     if (!ordem || ordem.status === novoStatus) return;
+    if (ordem.status === 'Entregue' && novoStatus === 'Pronto' && !isAdmin) {
+      return toast.error('Apenas administradores podem retornar uma OS de Entregue para Pronto');
+    }
     const snapshot = ordens;
     setOrdens(current => atualizarStatusOrdemOficina(current, ordem.id, novoStatus, agoraLocal(), today));
     try {
       await api.patch(`/ordens/${ordem.id}/status`, { status: novoStatus });
+      toast.success(ordem.status === 'Entregue' && novoStatus === 'Pronto'
+        ? `OS #${ordem.numero} retornada para Pronto!`
+        : `Status → ${novoStatus}`
+      );
       await load({ showLoading: false });
     } catch(e) {
       setOrdens(snapshot);
       alert(e?.response?.data?.error || 'Erro ao mover');
     }
-  }, [canEdit, ordens, load, today]);
+  }, [canEdit, isAdmin, ordens, load, today]);
 
   const porStatus = useCallback((col) => {
     return ordens.filter(o => {
       if (o.status !== col.status) return false;
       if (filterTipo !== 'todos' && o.servico !== filterTipo) return false;
       if (filterPrio !== 'todas' && o.prioridade !== filterPrio) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.trim().toLowerCase();
+        const num = String(o.numero || '').toLowerCase();
+        const nome = String(o.clientenome || '').toLowerCase();
+        if (!num.includes(q) && !nome.includes(q)) return false;
+      }
       return true;
     });
-  }, [ordens, filterTipo, filterPrio]);
+  }, [ordens, filterTipo, filterPrio, searchQuery]);
 
   const tiposDisponiveis = useMemo(() => {
     const s = new Set(ordens.map(o => o.servico).filter(Boolean));
@@ -395,14 +426,35 @@ export default function Oficina() {
         gap: 'var(--space-3)',
         minHeight: 44,
       }}>
-        <div style={{ flexShrink: 0 }}>
-          <h1 style={{ fontWeight:900, fontSize:'var(--text-sm)', margin:0, color:'var(--color-text)', whiteSpace:'nowrap' }}>Fila da Oficina</h1>
-          <p style={{ fontSize:10, color:'var(--color-text-muted)', margin:0 }}>
-            {ordens.filter(o=>o.status!=='Entregue').length} ordens ativas
-          </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+          <div style={{ flexShrink: 0 }}>
+            <h1 style={{ fontWeight:900, fontSize:'var(--text-sm)', margin:0, color:'var(--color-text)', whiteSpace:'nowrap' }}>Fila da Oficina</h1>
+            <p style={{ fontSize:10, color:'var(--color-text-muted)', margin:0 }}>
+              {ordens.filter(o=>o.status!=='Entregue').length} ordens ativas
+            </p>
+          </div>
+          <div style={{ position: 'relative', minWidth: 160, maxWidth: 240 }}>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Buscar OS ou cliente..."
+              style={{
+                fontSize: 11,
+                padding: '0 8px',
+                height: 28,
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--color-border)',
+                background: 'var(--color-surface-offset)',
+                color: 'var(--color-text)',
+                outline: 'none',
+                width: '100%',
+              }}
+            />
+          </div>
         </div>
 
-        <div style={{ display:'flex', gap:6, alignItems:'center', flexWrap:'nowrap' }}>
+        <div style={{ display:'flex', gap:6, alignItems:'center', flexWrap:'wrap' }}>
           <select value={filterTipo} onChange={e=>setFilterTipo(e.target.value)} style={selectStyle}>
             {tiposDisponiveis.map(t => <option key={t} value={t}>{t === 'todos' ? 'Todos os tipos' : t}</option>)}
           </select>
@@ -434,7 +486,7 @@ export default function Oficina() {
         </div>
       </div>
 
-      {whatsappMenu && (
+      {whatsappMenu && createPortal(
         <div
           onClick={(e) => e.stopPropagation()}
           style={{
@@ -465,13 +517,14 @@ export default function Oficina() {
           >
             {whatsappMenu.aviso.tipo === 'pedido_pronto' ? 'Marcar avisado' : 'Marcar confirmado'}
           </button>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Kanban */}
       {viewMode === 'kanban' ? (
-        <div style={{ display:'flex', gap:'var(--space-4)', padding:'var(--space-4)', flex:1,
-          overflow:'auto', alignItems:'stretch' }}>
+        <div style={{ display:'flex', gap:'var(--space-3)', padding:'var(--space-3)', flex:1,
+          overflowX:'auto', overflowY:'hidden', alignItems:'stretch' }}>
           {COLUNAS.map(col => {
             const cards = porStatus(col);
             const isOver = dragOverCol === col.status;
@@ -484,7 +537,7 @@ export default function Oficina() {
                 onDragLeave={onDragLeave}
                 onDrop={e => onDrop(e, col.status)}
                 style={{
-                  flex:'1 1 260px', minWidth:220, maxWidth:380,
+                  flex:'1 1 230px', minWidth:200, maxWidth:360,
                   display:'flex', flexDirection:'column',
                   background:'color-mix(in oklch, var(--color-surface-offset) 72%, var(--color-surface))',
                   borderRadius:'var(--radius-lg)',
@@ -647,6 +700,30 @@ export default function Oficina() {
                                 onAvancar={avancarStatus}
                               />
                             )}
+                            {isAdmin && o.status === 'Entregue' && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  reverterParaPronto(o);
+                                }}
+                                title="Retornar OS para Pronto (Administrador)"
+                                style={{
+                                  fontSize: 9,
+                                  padding: '3px 8px',
+                                  borderRadius: 'var(--radius-full)',
+                                  cursor: 'pointer',
+                                  fontWeight: 800,
+                                  whiteSpace: 'nowrap',
+                                  border: '1px solid var(--status-pronto, #3f8b4a)',
+                                  background: 'var(--color-surface)',
+                                  color: 'var(--status-pronto, #3f8b4a)',
+                                  transition: 'all 0.18s cubic-bezier(0.16,1,0.3,1)',
+                                }}
+                              >
+                                ↩ Voltar p/ Pronto
+                              </button>
+                            )}
                           </div>
                         </div>
                       );
@@ -675,6 +752,12 @@ export default function Oficina() {
                 {ordens.filter(o => {
                   if (filterTipo !== 'todos' && o.servico !== filterTipo) return false;
                   if (filterPrio !== 'todas' && o.prioridade !== filterPrio) return false;
+                  if (searchQuery.trim()) {
+                    const q = searchQuery.trim().toLowerCase();
+                    const num = String(o.numero || '').toLowerCase();
+                    const nome = String(o.clientenome || '').toLowerCase();
+                    if (!num.includes(q) && !nome.includes(q)) return false;
+                  }
                   return true;
                 }).map((o, idx) => {
                   const vencida = o.prazoentrega && o.prazoentrega < today && o.status !== 'Pronto' && o.status !== 'Entregue';

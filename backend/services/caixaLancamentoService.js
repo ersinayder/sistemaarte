@@ -37,6 +37,13 @@ function normalizarOrdemId(ordemid) {
   return ordemid;
 }
 
+function normalizarTipoLancamento(tipo) {
+  const t = String(tipo || "").trim().toLowerCase();
+  if (t === "saida" || t === "saída") return "Saída";
+  if (t === "entrada") return "Entrada";
+  return tipo || "Entrada";
+}
+
 function buscarOrdemAtiva(db, ordemId) {
   return queryOne(
     db,
@@ -103,8 +110,8 @@ function createCaixaLancamentoService({ db }) {
       let origem = novoOrdemId ? "saldoos" : "manual";
       let descFinal = descricao;
       let categoriaFinal = categoria || null;
-      let tipoFinal = novoOrdemId ? "Entrada" : (tipo || "Diversos");
-      let pagoFinal = novoOrdemId ? 1 : (pago ? 1 : 0);
+      let tipoFinal = normalizarTipoLancamento(novoOrdemId ? "Entrada" : (tipo || "Diversos"));
+      let pagoFinal = novoOrdemId ? 1 : (pago === undefined ? (old.pago ?? 1) : (pago ? 1 : 0));
       let ordemNova = null;
 
       if (novoOrdemId) {

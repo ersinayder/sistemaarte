@@ -111,8 +111,10 @@ function createNfeAttemptRepository(db, deps = {}) {
       WHERE rejeitada.ordemid = ?
         AND rejeitada.operacao = 'emissao'
         AND rejeitada.serie = ?
-        AND rejeitada.status = 'rejeitado'
-        AND TRIM(COALESCE(rejeitada.cstat, '')) IN (${placeholders})
+        AND (
+          rejeitada.status = 'falha_local'
+          OR (rejeitada.status = 'rejeitado' AND TRIM(COALESCE(rejeitada.cstat, '')) IN (${placeholders}))
+        )
         AND NOT EXISTS (
           SELECT 1
           FROM nfe_emissao_tentativas posterior
@@ -122,7 +124,7 @@ function createNfeAttemptRepository(db, deps = {}) {
             AND posterior.id > rejeitada.id
             AND NOT (
               posterior.numero = rejeitada.numero
-              AND posterior.status = 'falha_local'
+              AND posterior.status IN ('falha_local', 'rejeitado')
             )
         )
       ORDER BY rejeitada.id DESC

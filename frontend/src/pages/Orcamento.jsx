@@ -101,9 +101,9 @@ function PrecoField({ label, value, onChange }) {
 // B9  VALOR MOLDURA  = IF(OR(L>=1m; A>=1m); ((L+A)*2 + 1.5)*preço; ((L+A)*2 + 1)*preço)
 // B10 VALOR VIDRO    = IF(AND(sem; L<1; A<1); 0.5*preço;
 //                       IF(sem; 0; IF(liso; área*300; área*400)))
-// B11 VALOR FUNDO    = área * 80
+// B11 VALOR FUNDO    = área * 100
 // B12 VALOR IMPRESSÃO= IF(impressão; área*150; 0)
-function calcQuadros({ L, A, precoMoldura, vidro, impressao }) {
+export function calcQuadros({ L, A, precoMoldura, vidro, impressao, precoFundo = 100 }) {
   if (!L || !A) return null
   const l = parseFloat(L), a = parseFloat(A)
   if (!l || !a) return null
@@ -129,14 +129,15 @@ function calcQuadros({ L, A, precoMoldura, vidro, impressao }) {
   }
 
   // VALOR FUNDO
-  const custoFundo = areaM2 * 80
+  const valorMetroFundo = precoFundo ?? 100
+  const custoFundo = areaM2 * valorMetroFundo
 
   // VALOR IMPRESSÃO
   const custoImpressao = impressao ? areaM2 * 150 : 0
 
   const custoTotal = custoMoldura + custoVidro + custoFundo + custoImpressao
 
-  return { metrosTotal, custoMoldura, areaM2, custoVidro, custoFundo, custoImpressao, custoTotal }
+  return { metrosTotal, custoMoldura, areaM2, custoVidro, custoFundo, custoImpressao, custoTotal, valorMetroFundo }
 }
 
 /* ══ MODULE 1 — Quadros ══ */
@@ -150,7 +151,7 @@ function ModuloQuadros({ onAdd, precos, setPrecos }) {
 
   const hasData  = (parseFloat(L) > 0) && (parseFloat(A) > 0)
   const q        = Math.max(1, parseInt(qtd) || 1)
-  const calc     = hasData ? calcQuadros({ L, A, precoMoldura: precos.moldura, vidro, impressao }) : null
+  const calc     = hasData ? calcQuadros({ L, A, precoMoldura: precos.moldura, vidro, impressao, precoFundo: precos.fundo ?? 100 }) : null
   const subtotal = calc ? calc.custoTotal * q : 0
 
   const VIDRO_OPTS = [
@@ -231,7 +232,7 @@ function ModuloQuadros({ onAdd, precos, setPrecos }) {
         <div style={{ background: 'var(--color-surface-offset)', border: '1px solid var(--color-divider)', borderRadius: 'var(--radius-lg)', padding: '12px 14px', marginBottom: 12 }}>
           <Row label={`Área (${L||0}×${A||0} cm)`} value={calc ? fmtN(calc.areaM2, 4) + ' m²' : '—'} faint />
           <Row label={calc ? `Moldura: ${fmtN(calc.metrosTotal,3)}m × R$${precos.moldura}/m` : 'Moldura'} value={calc ? fmt(calc.custoMoldura) : '—'} faint />
-          <Row label="Fundo (área × R$80/m²)" value={calc ? fmt(calc.custoFundo) : '—'} faint />
+          <Row label={`Fundo (área × R$${calc ? calc.valorMetroFundo : (precos.fundo ?? 100)}/m²)`} value={calc ? fmt(calc.custoFundo) : '—'} faint />
           {calc && calc.custoVidro > 0 && vidroLabel() && <Row label={vidroLabel()} value={fmt(calc.custoVidro)} faint />}
           {impressao && <Row label="Impressão (área × R$150/m²)" value={calc ? fmt(calc.custoImpressao) : '—'} faint />}
           <Divider />
@@ -704,12 +705,12 @@ function NovaOSModal({ produtosIniciais, clienteInicial, clienteIdInicial, clien
         if (overlayDownRef.current && e.target === e.currentTarget) onClose()
         overlayDownRef.current = false
       }}>
-      <div className="modal" style={{ maxWidth:640, maxHeight:'92vh', overflowY:'auto' }} onClick={e => e.stopPropagation()}>
-        <div className="modal-header" style={{ position:'sticky', top:0, background:'var(--color-surface)', zIndex:1, borderBottom:'1px solid var(--color-divider)' }}>
+      <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
           <h2 className="modal-title">Nova Ordem de Serviço</h2>
-          <button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button>
+          <button className="btn btn-icon btn-ghost" onClick={onClose} aria-label="Fechar">✕</button>
         </div>
-        <div className="modal-body">
+        <div className="modal-body modal-body-dense">
           <div className="form-grid">
             <div className="form-group" style={{ gridColumn:'1/-1', position:'relative' }} ref={clienteRef}>
               <label className="form-label">Cliente <span style={{color:'var(--color-error)'}}>*</span></label>
@@ -831,7 +832,7 @@ function NovaOSModal({ produtosIniciais, clienteInicial, clienteIdInicial, clien
             </div>
           )}
         </div>
-        <div className="modal-footer" style={{ position:'sticky', bottom:0, background:'var(--color-surface)', borderTop:'1px solid var(--color-divider)' }}>
+        <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
           <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
             {saving ? 'Salvando…' : 'Criar OS'}
@@ -860,7 +861,7 @@ export default function Orcamento() {
   const [showNovaOS, setShowNovaOS]           = useState(false)
   const [savingProposta, setSavingProposta]   = useState(false)
   const [activeTab, setActiveTab]             = useState('quadros')
-  const [precos, setPrecos]                   = useState({ moldura: 60, nomes: 35, trid: 80 })
+  const [precos, setPrecos]                   = useState({ moldura: 60, nomes: 35, fundo: 100, trid: 80 })
   const clienteRef = useRef(null)
   const clienteSearchSeq = useRef(0)
 
@@ -1006,7 +1007,20 @@ export default function Orcamento() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 12, alignItems: 'start' }}>
+      <style>{`
+        .orcamento-main-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
+          gap: var(--space-3);
+          align-items: start;
+        }
+        @media (max-width: 900px) {
+          .orcamento-main-grid {
+            grid-template-columns: 1fr !important;
+          }
+        }
+      `}</style>
+      <div className="orcamento-main-grid">
 
         {/* COLUNA ESQUERDA — tabs + módulo ativo */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

@@ -69,4 +69,34 @@ describe('OrdemLixeira', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /restaurar/i })).toBeInTheDocument())
     expect(screen.getByRole('button', { name: /^excluir$/i })).toBeInTheDocument()
   })
+
+  it('handles paginated response { data, meta } without throwing TypeError', async () => {
+    permissions = ['ordens.ver']
+    api.get.mockResolvedValue({
+      data: {
+        data: [
+          {
+            id: 1,
+            numero: 'OS-0001',
+            clientenome: 'Cliente Teste',
+            servico: 'Moldura A3',
+            deletedat: '2026-10-15 10:00:00',
+            valortotal: 200,
+          },
+        ],
+        meta: { total: 1 },
+      },
+    })
+
+    render(
+      <MemoryRouter>
+        <OrdemLixeira />
+      </MemoryRouter>
+    )
+
+    expect(await screen.findByText('Cliente Teste')).toBeInTheDocument()
+    expect(screen.getByText('OS-0001')).toBeInTheDocument()
+    expect(screen.getByText(/1 item na lixeira/i)).toBeInTheDocument()
+  })
 })
+

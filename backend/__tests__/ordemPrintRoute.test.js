@@ -113,13 +113,14 @@ describe('ordem service order server printing route', () => {
       itens: [{ nome: 'Moldura', quantidade: 1, preco_unitario: 100 }],
       logs: [],
       resumo: { total: 100, recebido: 0, saldo: 100 },
+      autoPrint: true,
     });
     expect(printHtml).toHaveBeenCalledWith({
       html: '<html>OS-0042</html>',
       jobName: 'ordem-OS-0042',
       copies: 2,
       printerConfig: { directPrintEnabled: true, printerName: 'Impressoraloja', printerIp: '192.168.0.45' },
-      settleMs: 4000,
+      settleMs: 6000,
     });
     expect(res.json).toHaveBeenCalledWith({
       ok: true,
