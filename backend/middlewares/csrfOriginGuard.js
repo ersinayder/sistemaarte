@@ -11,8 +11,8 @@ function normalizeOrigin(value) {
   }
 }
 
-function hasBearerToken(req) {
-  return /^Bearer\s+\S+/i.test(String(req.get('authorization') || ''));
+function hasBypassToken(req) {
+  return /^Bearer\s+\S+/i.test(String(req.get('authorization') || '')) || Boolean(req.get('x-print-agent-token'));
 }
 
 function csrfOriginGuard({ allowedOrigins = [], requireOrigin = process.env.NODE_ENV === 'production' } = {}) {
@@ -30,7 +30,7 @@ function csrfOriginGuard({ allowedOrigins = [], requireOrigin = process.env.NODE
     const candidate = origin || referer;
 
     if (!candidate) {
-      if (!requireOrigin || hasBearerToken(req)) return next();
+      if (!requireOrigin || hasBypassToken(req)) return next();
       return res.status(403).json({ error: 'Origem da requisicao nao autorizada.' });
     }
 

@@ -41,7 +41,7 @@ const globalLimiter = rateLimit({
   max: 60,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => req.path.startsWith('/kpis/stream'),
+  skip: (req) => req.path.startsWith('/kpis/stream') || req.path.startsWith('/impressao/agente/stream'),
   message: { error: "Muitas requisições. Tente novamente em instantes." },
 });
 app.use("/api", globalLimiter);
@@ -63,6 +63,7 @@ app.use("/api/produtos",    require("./routes/produtos"));
 app.use("/api/configuracoes", require("./routes/configuracoes"));
 app.use("/api/servidor",      require("./routes/servidor"));
 app.use("/api/kpis",        require("./routes/kpis"));
+app.use("/api/impressao/agente", require("./routes/impressaoAgente"));
 // ── NF-e ──────────────────────────────────────────────────────────────────────
 app.use("/api/nfe",         require("./routes/nfe"));
 

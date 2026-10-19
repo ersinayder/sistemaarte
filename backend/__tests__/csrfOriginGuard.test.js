@@ -9,11 +9,12 @@ function makeRes() {
   return res;
 }
 
-function makeReq({ method = 'POST', origin, referer, host = 'arteemolduras.com.br', authorization } = {}) {
+function makeReq({ method = 'POST', origin, referer, host = 'arteemolduras.com.br', authorization, printAgentToken } = {}) {
   const headers = { host };
   if (origin) headers.origin = origin;
   if (referer) headers.referer = referer;
   if (authorization) headers.authorization = authorization;
+  if (printAgentToken) headers['x-print-agent-token'] = printAgentToken;
   return {
     method,
     protocol: 'https',
@@ -58,6 +59,16 @@ describe('csrfOriginGuard', () => {
 
   it('allows mutating requests without browser origin headers for bearer API clients', () => {
     const req = makeReq({ authorization: 'Bearer token-api' });
+    const res = makeRes();
+    const next = vi.fn();
+
+    csrfOriginGuard({ allowedOrigins: ['https://arteemolduras.com.br'], requireOrigin: true })(req, res, next);
+
+    expect(next).toHaveBeenCalled();
+  });
+
+  it('allows mutating requests without browser origin headers for print agent token clients', () => {
+    const req = makeReq({ printAgentToken: 'agent-token-123' });
     const res = makeRes();
     const next = vi.fn();
 
