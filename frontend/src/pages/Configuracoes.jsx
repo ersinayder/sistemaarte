@@ -300,6 +300,20 @@ function formatJson(value) {
   return JSON.stringify(value || {}, null, 2)
 }
 
+function formatDateTime(value) {
+  if (!value) return '-'
+  try {
+    const raw = typeof value === 'string' && !value.includes('T') && !value.endsWith('Z')
+      ? value.replace(' ', 'T')
+      : value
+    const d = new Date(raw)
+    if (isNaN(d.getTime())) return String(value)
+    return d.toLocaleString('pt-BR')
+  } catch {
+    return String(value)
+  }
+}
+
 export default function Configuracoes() {
   const { can } = useAuth()
   const [activeSection, setActiveSection] = useState('empresa')
@@ -1389,25 +1403,28 @@ export default function Configuracoes() {
     )
   }
 
-  const renderImpressao = () => (
-    <div className="settings-stack">
-      <form className="card card-pad" onSubmit={saveImpressao}>
-        <div className="settings-section-head">
-          <div>
-            <h2>{active.label}</h2>
-            <p className="text-muted">{active.desc}</p>
-          </div>
-          <StatusPill value={statusMap.impressao} />
-        </div>
+  const renderImpressao = () => {
+    const isAgentOnline = Boolean(impressaoInfo?.agentOnline || impressaoInfo?.isAgenteOnline)
+    const agentLastSeen = impressaoInfo?.agentLastSeen || impressaoInfo?.agent_last_seen
 
-        {loadingImpressao ? (
-          <div className="loading-center">
-            <div className="spinner" />
-            <span>Carregando impressao...</span>
+    return (
+      <div className="settings-stack">
+        <form className="card card-pad" onSubmit={saveImpressao}>
+          <div className="settings-section-head">
+            <div>
+              <h2>{active.label}</h2>
+              <p className="text-muted">{active.desc}</p>
+            </div>
+            <StatusPill value={statusMap.impressao} />
           </div>
-        ) : (
-          <>
-            {!isDirectPrintSupported && (
+
+          {loadingImpressao ? (
+            <div className="loading-center">
+              <div className="spinner" />
+              <span>Carregando impressao...</span>
+            </div>
+          ) : (
+            <>
               <div
                 style={{
                   padding: 'var(--space-3) var(--space-4)',
@@ -1418,30 +1435,69 @@ export default function Configuracoes() {
                   color: 'var(--color-text-muted)',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: 'var(--space-1)',
+                  gap: 'var(--space-2)',
                   marginBottom: 'var(--space-4)',
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontWeight: 600, color: 'var(--color-text)' }}>
-                  <span>Servidor VPS Linux detectado</span>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontWeight: 600, color: 'var(--color-text)' }}>
+                    <span>Agente de Impressão Local (PC Edu)</span>
+                  </div>
+                  <span className={`badge ${isAgentOnline ? 'badge-success' : 'badge-warning'}`}>
+                    {isAgentOnline ? 'Online' : 'Offline'}
+                  </span>
                 </div>
-                <span>
-                  No servidor VPS (Linux), a impressao direta via spooler/PowerShell nao esta disponivel. O modo ativo de impressao e <strong>Navegador do usuario</strong> (o operador imprime diretamente pelo dialogo do navegador).
-                </span>
+                <span>Impressão Silenciosa na Loja: ativada via Agente Local na Canon G3010.</span>
               </div>
-            )}
 
-            <div className="settings-info-grid">
-              <InfoRow
-                label="Destino resolvido"
-                value={isDirectPrintSupported && impressaoInfo?.directPrintEnabled ? (impressaoInfo?.destino || 'Nao configurado') : 'Navegador do usuario'}
-              />
-              <InfoRow label="Modo" value={isDirectPrintSupported && impressaoInfo?.directPrintEnabled ? 'Direta no servidor' : 'Navegador do usuario'} />
-              <InfoRow label="Papel" value={impressaoInfo?.paperSize || 'A5'} />
-              <InfoRow label="Cor" value={impressaoInfo?.color ? 'Ativada' : 'Ativada no documento'} />
-              <InfoRow label="Plataforma" value={impressaoInfo?.serverPlatform === 'linux' ? 'Linux (VPS)' : (impressaoInfo?.serverPlatform || 'Servidor')} />
-              <InfoRow label="Atualizado em" value={impressaoInfo?.updatedat} />
-            </div>
+              {!isDirectPrintSupported && (
+                <div
+                  style={{
+                    padding: 'var(--space-3) var(--space-4)',
+                    background: 'var(--color-surface-subtle)',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--color-border-subtle)',
+                    fontSize: 'var(--text-xs)',
+                    color: 'var(--color-text-muted)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 'var(--space-1)',
+                    marginBottom: 'var(--space-4)',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontWeight: 600, color: 'var(--color-text)' }}>
+                    <span>Servidor VPS Linux detectado</span>
+                  </div>
+                  <span>
+                    No servidor VPS (Linux), a impressao direta via spooler/PowerShell nao esta disponivel. O modo ativo de impressao e <strong>Navegador do usuario</strong> (o operador imprime diretamente pelo dialogo do navegador).
+                  </span>
+                </div>
+              )}
+
+              <div className="settings-info-grid">
+                <InfoRow
+                  label="Status do Agente"
+                  value={
+                    <span className={`badge ${isAgentOnline ? 'badge-success' : 'badge-warning'}`}>
+                      {isAgentOnline ? 'Online' : 'Offline'}
+                    </span>
+                  }
+                />
+                <InfoRow
+                  label="Último sinal do agente"
+                  value={agentLastSeen ? formatDateTime(agentLastSeen) : '-'}
+                />
+                <InfoRow
+                  label="Destino resolvido"
+                  value={isDirectPrintSupported && impressaoInfo?.directPrintEnabled ? (impressaoInfo?.destino || 'Nao configurado') : (isAgentOnline ? 'Canon G3010 (Agente Local)' : 'Navegador do usuario')}
+                />
+                <InfoRow label="Modo" value={isAgentOnline ? 'Fila silenciosa (Agente Local)' : (isDirectPrintSupported && impressaoInfo?.directPrintEnabled ? 'Direta no servidor' : 'Navegador do usuario')} />
+                <InfoRow label="Papel" value={impressaoInfo?.paperSize || 'A5'} />
+                <InfoRow label="Cor" value={impressaoInfo?.color ? 'Ativada' : 'Ativada no documento'} />
+                <InfoRow label="Plataforma" value={impressaoInfo?.serverPlatform === 'linux' ? 'Linux (VPS)' : (impressaoInfo?.serverPlatform || 'Servidor')} />
+                <InfoRow label="Atualizado em" value={impressaoInfo?.updatedat} />
+              </div>
+
 
             <label className={`settings-check ${!isDirectPrintSupported ? 'is-disabled' : ''}`} style={{ alignSelf: 'start', marginTop: 0, opacity: !isDirectPrintSupported ? 0.6 : 1 }}>
               <input
@@ -1562,6 +1618,8 @@ export default function Configuracoes() {
       </div>
     </div>
   )
+}
+
 
   const renderBackups = () => {
     const local = backupsInfo?.local || {}

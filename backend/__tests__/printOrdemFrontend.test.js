@@ -37,4 +37,22 @@ describe('printOrdem frontend helper', () => {
 
     expect(api.post).not.toHaveBeenCalled();
   });
+
+  it('does not call browserPrint when the API returns queue mode', async () => {
+    const api = {
+      post: vi.fn(() => Promise.resolve({
+        data: { ok: true, mode: 'queue', message: 'OS OS-0875 enviada para a impressora da loja.', jobId: 10 },
+      })),
+    };
+    const browserPrint = vi.fn();
+
+    const result = await helper.printOrdem(api, 875, 2, { browserPrint });
+
+    expect(api.post).toHaveBeenCalledWith('/ordens/875/print', { copies: 2 }, { skipGlobalErrorToast: true });
+    expect(browserPrint).not.toHaveBeenCalled();
+    expect(result.data.ok).toBe(true);
+    expect(result.data.mode).toBe('queue');
+    expect(result.data.message).toBe('OS OS-0875 enviada para a impressora da loja.');
+  });
 });
+

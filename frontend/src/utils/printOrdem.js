@@ -55,6 +55,9 @@ export async function printOrdem(api, ordemId, copies, options = {}) {
 
   const response = await api.post(`/ordens/${ordemId}/print`, { copies: normalizedCopies }, { skipGlobalErrorToast: true })
   const data = response?.data || {}
+  if (data.mode === 'queue' || data.mode === 'agent') {
+    return response
+  }
   if (data.mode === 'browser' && data.printUrl) {
     const browserPrint = options.browserPrint || printUrlInPage
     await browserPrint(data.printUrl, { copies: normalizedCopies })

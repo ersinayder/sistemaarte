@@ -129,6 +129,97 @@ describe('Configuracoes - Impressao', () => {
     expect(checkbox).not.toBeDisabled()
     expect(checkbox).toBeChecked()
   })
+
+  it('displays print agent online status and friendly explanation when agent is online', async () => {
+    api.get.mockImplementation((url) => {
+      if (url === '/configuracoes') {
+        return Promise.resolve({
+          data: {
+            empresa: { razaosocial: 'Arte e Molduras LTDA' },
+            status: {},
+          },
+        })
+      }
+      if (url === '/configuracoes/impressao') {
+        return Promise.resolve({
+          data: {
+            impressao: {
+              printerName: 'Canon G3010',
+              paperSize: 'A5',
+              color: true,
+              directPrintEnabled: false,
+              serverPlatform: 'linux',
+              directPrintSupported: false,
+              agentOnline: true,
+              agentLastSeen: '2026-10-19T14:30:00.000Z',
+              status: { status: 'OK' },
+            },
+          },
+        })
+      }
+      return Promise.resolve({ data: {} })
+    })
+
+    render(
+      <MemoryRouter>
+        <Configuracoes />
+      </MemoryRouter>
+    )
+
+    const impressaoTab = await screen.findByRole('button', { name: /impressao/i })
+    fireEvent.click(impressaoTab)
+
+    expect(await screen.findByText(/Impressão Silenciosa na Loja: ativada via Agente Local na Canon G3010/i)).toBeInTheDocument()
+    const onlineBadges = screen.getAllByText('Online')
+    expect(onlineBadges.length).toBeGreaterThanOrEqual(1)
+    expect(onlineBadges[0]).toHaveClass('badge-success')
+    expect(screen.getByText('Último sinal do agente')).toBeInTheDocument()
+  })
+
+  it('displays print agent offline status when agent is offline', async () => {
+    api.get.mockImplementation((url) => {
+      if (url === '/configuracoes') {
+        return Promise.resolve({
+          data: {
+            empresa: { razaosocial: 'Arte e Molduras LTDA' },
+            status: {},
+          },
+        })
+      }
+      if (url === '/configuracoes/impressao') {
+        return Promise.resolve({
+          data: {
+            impressao: {
+              printerName: 'Canon G3010',
+              paperSize: 'A5',
+              color: true,
+              directPrintEnabled: false,
+              serverPlatform: 'linux',
+              directPrintSupported: false,
+              agentOnline: false,
+              agentLastSeen: null,
+              status: { status: 'OK' },
+            },
+          },
+        })
+      }
+      return Promise.resolve({ data: {} })
+    })
+
+    render(
+      <MemoryRouter>
+        <Configuracoes />
+      </MemoryRouter>
+    )
+
+    const impressaoTab = await screen.findByRole('button', { name: /impressao/i })
+    fireEvent.click(impressaoTab)
+
+    expect(await screen.findByText(/Impressão Silenciosa na Loja: ativada via Agente Local na Canon G3010/i)).toBeInTheDocument()
+    const offlineBadges = screen.getAllByText('Offline')
+    expect(offlineBadges.length).toBeGreaterThanOrEqual(1)
+    expect(offlineBadges[0]).toHaveClass('badge-warning')
+  })
 })
 
 describe('Configuracoes - WhatsApp', () => {
