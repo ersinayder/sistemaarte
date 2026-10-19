@@ -7,12 +7,15 @@ process.env.ORDEM_PRINTER_NAME = '\\\\ARTESERVER\\Impressoraloja';
 const db = {
   getOne: vi.fn(),
   getAll: vi.fn(),
+  runInsert: vi.fn(),
+  run: vi.fn(),
 };
 
 const resumoFinanceiro = vi.fn();
 const renderOrdemServicoHtml = vi.fn();
 const printHtml = vi.fn();
 const getImpressaoConfig = vi.fn();
+const notificarNovoJob = vi.fn();
 const normalizePrintCopies = (value = 1) => {
   const copies = Number(value ?? 1);
   if (!Number.isInteger(copies) || ![1, 2].includes(copies)) {
@@ -28,6 +31,12 @@ require.cache[require.resolve('../database.js')] = {
   filename: require.resolve('../database.js'),
   loaded: true,
   exports: db,
+};
+require.cache[require.resolve('../routes/impressaoAgente.js')] = {
+  id: require.resolve('../routes/impressaoAgente.js'),
+  filename: require.resolve('../routes/impressaoAgente.js'),
+  loaded: true,
+  exports: { notificarNovoJob },
 };
 require.cache[require.resolve('../domain/financeiroRules.js')] = {
   id: require.resolve('../domain/financeiroRules.js'),
@@ -121,7 +130,46 @@ describe('ordem service order server printing route', () => {
     expect(permission).toBe('ordens.imprimir');
   });
 
-  it('prints the requested service order with one or two copies on the server printer', async () => {
+  it('enqueues print job into print_queue and notifies agent when agent is online', async () => {
+    getImpressaoConfig.mockReturnValue({
+      agent_mode: 1,
+      agent_last_seen: new Date().toISOString(),
+    });
+    db.runInsert.mockReturnValue(101);
+
+    const { handler } = await loadPrintHandler();
+    const res = makeRes();
+
+    await handler({ params: { id: '42' }, body: { copies: 2 } }, res);
+
+    expect(renderOrdemServicoHtml).toHaveBeenCalledWith(
+      expect.objectContaining({ autoPrint: false })
+    );
+    expect(db.runInsert).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO print_queue'),
+      [42, 'OS-OS-0042', '<html>OS-0042</html>', 2]
+    );
+    expect(notificarNovoJob).toHaveBeenCalledWith({
+      id: 101,
+      tipo: 'ordem',
+      documento_nome: 'OS-OS-0042',
+    });
+    expect(res.json).toHaveBeenCalledWith({
+      ok: true,
+      mode: 'queue',
+      message: 'OS OS-0042 enviada para a impressora da loja.',
+      jobId: 101,
+      copies: 2,
+    });
+  });
+
+  it('prints the requested service order with one or two copies on the server printer when directPrintEnabled', async () => {
+    getImpressaoConfig.mockReturnValue({
+      directPrintEnabled: true,
+      printerName: 'Impressoraloja',
+      printerIp: '192.168.0.45',
+      agent_mode: 0,
+    });
     const { handler } = await loadPrintHandler();
     const res = makeRes();
     db.getAll
@@ -141,7 +189,7 @@ describe('ordem service order server printing route', () => {
       html: '<html>OS-0042</html>',
       jobName: 'ordem-OS-0042',
       copies: 2,
-      printerConfig: { directPrintEnabled: true, printerName: 'Impressoraloja', printerIp: '192.168.0.45' },
+      printerConfig: { directPrintEnabled: true, printerName: 'Impressoraloja', printerIp: '192.168.0.45', agent_mode: 0 },
       settleMs: 6000,
     });
     expect(res.json).toHaveBeenCalledWith({

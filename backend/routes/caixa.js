@@ -16,6 +16,9 @@ const {
   renderFechamentoCaixaHtml,
 } = require("../utils/print/caixaFechamento");
 const { sendPrintHtml } = require("../utils/print/base");
+const { isAgenteOnline } = require("../domain/printQueueRules");
+const { notificarNovoJob } = require("./impressaoAgente");
+const { getImpressaoConfig } = require("../utils/impressaoConfig");
 
 // GET /api/caixa
 router.get("/", auth(), authPermission("caixa.ver"), (req, res, next) => {
@@ -66,6 +69,65 @@ router.get("/fechamento", auth(), authPermission("caixa.fechamento"), (req, res,
     const html = renderFechamentoCaixaHtml({ data, fechamento, usuario: req.user });
     sendPrintHtml(res, `fechamento-caixa-${data}.html`, html);
   } catch(e) { next(e); }
+});
+
+// POST /api/caixa/fechamento/print
+router.post("/fechamento/print", auth(), authPermission("caixa.fechamento"), async (req, res, next) => {
+  try {
+    const data = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.data || req.body?.data || ""))
+      ? String(req.query.data || req.body?.data)
+      : hoje();
+    const lancamentos = getAll(
+      `SELECT l.*,
+              o.numero AS ordemnumero,
+              (
+                SELECT GROUP_CONCAT(li.nome || ' x' || li.quantidade, ', ')
+                FROM lancamento_itens li
+                WHERE li.lancamentoid = l.id
+              ) AS itens_resumo
+       FROM lancamentos l
+       LEFT JOIN ordens o ON o.id=l.ordemid
+       WHERE l.deletedat IS NULL
+       AND (l.ordemid IS NULL OR o.deletedat IS NULL)
+       AND l.data=?
+       ORDER BY l.data DESC, l.id DESC`,
+      [data]
+    );
+
+    const printerConfig = getImpressaoConfig();
+    const docNome = `Fechamento-Caixa-${data}`;
+
+    if (isAgenteOnline(printerConfig)) {
+      const fechamento = montarFechamentoCaixa({ data, lancamentos });
+      const html = renderFechamentoCaixaHtml({ data, fechamento, usuario: req.user });
+
+      const jobId = runInsert(
+        `INSERT INTO print_queue (tipo, referencia_id, documento_nome, html, copias, papel, status, createdat, updatedat)
+         VALUES ('caixa', NULL, ?, ?, 1, 'A5', 'pendente', datetime('now','localtime'), datetime('now','localtime'))`,
+        [docNome, html]
+      );
+
+      notificarNovoJob({ id: jobId, tipo: "caixa", documento_nome: docNome });
+
+      return res.json({
+        ok: true,
+        mode: "queue",
+        message: "Fechamento enviado para a impressora da loja.",
+        jobId,
+        copies: 1,
+      });
+    }
+
+    return res.json({
+      ok: true,
+      mode: "browser",
+      message: `Abra a impressao do Fechamento de Caixa (${data}) no navegador.`,
+      copies: 1,
+      printUrl: `/api/caixa/fechamento?data=${data}&embedded=1`,
+    });
+  } catch (e) {
+    next(e);
+  }
 });
 
 // POST /api/caixa

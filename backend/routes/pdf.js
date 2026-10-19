@@ -1,7 +1,9 @@
 const router = require("express").Router();
-const { getOne, getAll } = require("../database");
+const { getOne, getAll, runInsert } = require("../database");
 const { auth, authPermission } = require("../middlewares/auth");
 const { getResumoFinanceiroOS } = require("../domain/financeiroRules");
+const { isAgenteOnline } = require("../domain/printQueueRules");
+const { notificarNovoJob } = require("./impressaoAgente");
 const { renderOrdemServicoHtml } = require("../utils/print/ordemServico");
 const { sendPrintHtml } = require("../utils/print/base");
 const { normalizePrintCopies, printHtml } = require("../utils/print/serverPrinter");
@@ -81,40 +83,69 @@ router.post("/:id/print", auth(), authPermission("ordens.imprimir"), async (req,
     );
     const resumo = getResumoFinanceiroOS(req.params.id);
     const printerConfig = getImpressaoConfig();
-    if (!printerConfig.directPrintEnabled) {
+
+    if (isAgenteOnline(printerConfig)) {
+      const docNome = `OS-${os.numero || os.id}`;
+      const html = renderOrdemServicoHtml({
+        ordem: os,
+        itens,
+        logs,
+        resumo,
+        autoPrint: false,
+      });
+
+      const jobId = runInsert(
+        `INSERT INTO print_queue (tipo, referencia_id, documento_nome, html, copias, papel, status, createdat, updatedat)
+         VALUES ('ordem', ?, ?, ?, ?, 'A5', 'pendente', datetime('now','localtime'), datetime('now','localtime'))`,
+        [os.id, docNome, html, copies]
+      );
+
+      notificarNovoJob({ id: jobId, tipo: "ordem", documento_nome: docNome });
+
       return res.json({
         ok: true,
-        mode: "browser",
-        message: `Abra a impressao da OS ${os.numero || os.id} no navegador.`,
+        mode: "queue",
+        message: `OS ${os.numero || os.id} enviada para a impressora da loja.`,
+        jobId,
         copies,
-        printUrl: `/api/ordens/${os.id}/pdf?embedded=1`,
       });
     }
-    const html = renderOrdemServicoHtml({
-      ordem: os,
-      itens,
-      logs,
-      resumo,
-      autoPrint: true,
-    });
-    const result = await printHtml({
-      html,
-      jobName: `ordem-${os.numero || os.id}`,
-      copies,
-      printerConfig,
-      settleMs: 6000,
-    });
 
-    res.json({
+    if (printerConfig.directPrintEnabled) {
+      const html = renderOrdemServicoHtml({
+        ordem: os,
+        itens,
+        logs,
+        resumo,
+        autoPrint: true,
+      });
+      const result = await printHtml({
+        html,
+        jobName: `ordem-${os.numero || os.id}`,
+        copies,
+        printerConfig,
+        settleMs: 6000,
+      });
+
+      return res.json({
+        ok: true,
+        mode: "server",
+        message: `OS ${os.numero || os.id} enviada para impressao.`,
+        copies: result.copies,
+        printerName: result.printerName,
+      });
+    }
+
+    return res.json({
       ok: true,
-      mode: "server",
-      message: `OS ${os.numero || os.id} enviada para impressao.`,
-      copies: result.copies,
-      printerName: result.printerName,
+      mode: "browser",
+      message: `Abra a impressao da OS ${os.numero || os.id} no navegador.`,
+      copies,
+      printUrl: `/api/ordens/${os.id}/pdf?embedded=1`,
     });
   } catch (e) {
     res.status(500).json({
-      error: "Nao foi possivel enviar a OS para a impressora do servidor.",
+      error: "Nao foi possivel enviar a OS para a impressora.",
       detail: e.message,
     });
   }

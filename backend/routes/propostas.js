@@ -11,6 +11,10 @@ const {
 const { renderPropostaHtml } = require("../utils/propostaPdf");
 const { sendPrintHtml } = require("../utils/print/base");
 const { hoje } = require("../utils/dates");
+const { isAgenteOnline } = require("../domain/printQueueRules");
+const { notificarNovoJob } = require("./impressaoAgente");
+const { normalizePrintCopies } = require("../utils/print/serverPrinter");
+const { getImpressaoConfig } = require("../utils/impressaoConfig");
 
 const SEL_PROPOSTA = `
   SELECT p.*,
@@ -114,6 +118,57 @@ router.get("/:id/pdf", auth(), authPermission("propostas.imprimir"), (req, res, 
     const html = renderPropostaHtml({ proposta, itens: itensProposta(req.params.id), empresa: empresaPrint() });
     sendPrintHtml(res, `proposta-${proposta.numero || proposta.id}.html`, html);
   } catch (e) { next(e); }
+});
+
+router.post("/:id/print", auth(), authPermission("propostas.imprimir"), async (req, res, next) => {
+  let copies;
+  try {
+    copies = normalizePrintCopies(req.body?.copies);
+  } catch (e) {
+    return res.status(400).json({ error: e.message });
+  }
+
+  try {
+    const proposta = getOne(`${SEL_PROPOSTA} WHERE p.id=?`, [req.params.id]);
+    if (!proposta) return res.status(404).json({ error: "Proposta nao encontrada" });
+
+    const printerConfig = getImpressaoConfig();
+    const docNome = `Proposta-${proposta.numero || proposta.id}`;
+
+    if (isAgenteOnline(printerConfig)) {
+      const html = renderPropostaHtml({
+        proposta,
+        itens: itensProposta(req.params.id),
+        empresa: empresaPrint(),
+      });
+
+      const jobId = runInsert(
+        `INSERT INTO print_queue (tipo, referencia_id, documento_nome, html, copias, papel, status, createdat, updatedat)
+         VALUES ('proposta', ?, ?, ?, ?, 'A5', 'pendente', datetime('now','localtime'), datetime('now','localtime'))`,
+        [proposta.id, docNome, html, copies]
+      );
+
+      notificarNovoJob({ id: jobId, tipo: "proposta", documento_nome: docNome });
+
+      return res.json({
+        ok: true,
+        mode: "queue",
+        message: "Proposta enviada para a impressora da loja.",
+        jobId,
+        copies,
+      });
+    }
+
+    return res.json({
+      ok: true,
+      mode: "browser",
+      message: `Abra a impressao da Proposta ${proposta.numero || proposta.id} no navegador.`,
+      copies,
+      printUrl: `/api/propostas/${proposta.id}/pdf?embedded=1`,
+    });
+  } catch (e) {
+    next(e);
+  }
 });
 
 router.post("/", auth(), authPermission("propostas.criar"), (req, res, next) => {
