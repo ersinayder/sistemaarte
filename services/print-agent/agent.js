@@ -267,7 +267,7 @@ function conectarSSE({
         'Cache-Control': 'no-cache',
       };
 
-      const req = client.get(url, { headers }, (res) => {
+      const req = client.get(url, { headers, signal: abortController.signal }, (res) => {
         if (res.statusCode !== 200) {
           const err = new Error(`SSE Falhou com status ${res.statusCode}`);
           if (onError) onError(err);
