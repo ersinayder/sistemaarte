@@ -242,5 +242,38 @@ describe('database migrations', () => {
     expect(ecosystemSource).toMatch(/TZ:\s*['"]America\/Sao_Paulo['"]/);
     expect(ecosystemSource).toMatch(/cwd:\s*['"]\/var\/www\/sistemaarte\/backend['"]/);
   });
+
+  it('creates print_queue table and agent columns in impressao_config', () => {
+    const testDb = database.initDB(':memory:');
+    try {
+      // Verifica print_queue
+      const printQueueInfo = testDb.prepare("PRAGMA table_info(print_queue)").all();
+      const colNames = printQueueInfo.map((c) => c.name);
+      expect(colNames).toContain('id');
+      expect(colNames).toContain('tipo');
+      expect(colNames).toContain('referencia_id');
+      expect(colNames).toContain('documento_nome');
+      expect(colNames).toContain('html');
+      expect(colNames).toContain('copias');
+      expect(colNames).toContain('papel');
+      expect(colNames).toContain('status');
+      expect(colNames).toContain('erro');
+      expect(colNames).toContain('tentativas');
+      expect(colNames).toContain('createdat');
+      expect(colNames).toContain('updatedat');
+      expect(colNames).toContain('printedat');
+
+      // Verifica impressao_config
+      const impressaoConfigInfo = testDb.prepare("PRAGMA table_info(impressao_config)").all();
+      const impColNames = impressaoConfigInfo.map((c) => c.name);
+      expect(impColNames).toContain('agent_mode');
+      expect(impColNames).toContain('agent_last_seen');
+
+      const configRow = testDb.prepare("SELECT agent_mode FROM impressao_config WHERE id = 1").get();
+      expect(configRow.agent_mode).toBe(1);
+    } finally {
+      testDb.close();
+    }
+  });
 });
 

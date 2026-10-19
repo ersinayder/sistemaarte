@@ -504,6 +504,8 @@ CREATE TABLE IF NOT EXISTS impressao_config (
   paper_size            TEXT DEFAULT 'A5',
   color                 INTEGER DEFAULT 1,
   direct_print_enabled  INTEGER DEFAULT 0,
+  agent_mode            INTEGER NOT NULL DEFAULT 1,
+  agent_last_seen       DATETIME,
   updatedat             TEXT DEFAULT (datetime('now','localtime'))
 );
 INSERT OR IGNORE INTO impressao_config (id, printer_name, paper_size, color)
@@ -662,6 +664,22 @@ CREATE INDEX IF NOT EXISTS idx_nfe_inutilizacoes_faixa
   ON nfe_inutilizacoes(numero_inicial, numero_final);
 ${NFE_INTEGRIDADE_CONCILIACOES_SCHEMA_STATEMENTS.join(";\n")};
 ${NFE_EMISSAO_SCHEMA_STATEMENTS.join(";\n")};
+CREATE TABLE IF NOT EXISTS print_queue (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tipo TEXT NOT NULL,
+  referencia_id INTEGER,
+  documento_nome TEXT NOT NULL,
+  html TEXT NOT NULL,
+  copias INTEGER NOT NULL DEFAULT 1,
+  papel TEXT NOT NULL DEFAULT 'A5',
+  status TEXT NOT NULL DEFAULT 'pendente',
+  erro TEXT,
+  tentativas INTEGER NOT NULL DEFAULT 0,
+  createdat DATETIME DEFAULT (datetime('now', 'localtime')),
+  updatedat DATETIME DEFAULT (datetime('now', 'localtime')),
+  printedat DATETIME
+);
+CREATE INDEX IF NOT EXISTS idx_print_queue_status ON print_queue(status, createdat);
 `;
 
 let db;
@@ -1100,6 +1118,25 @@ function initDB(customPath, options = {}) {
     // v27 - estorno de contas a pagar no caixa e vinculo de lancamento a conta pagar
     "ALTER TABLE lancamentos ADD COLUMN conta_pagar_id INTEGER DEFAULT NULL",
     "ALTER TABLE contas_pagar ADD COLUMN datapagamento TEXT DEFAULT NULL",
+    // v28 - fila de impressao remota e suporte ao agente local silencioso
+    "ALTER TABLE impressao_config ADD COLUMN agent_mode INTEGER NOT NULL DEFAULT 1",
+    "ALTER TABLE impressao_config ADD COLUMN agent_last_seen DATETIME",
+    `CREATE TABLE IF NOT EXISTS print_queue (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tipo TEXT NOT NULL,
+      referencia_id INTEGER,
+      documento_nome TEXT NOT NULL,
+      html TEXT NOT NULL,
+      copias INTEGER NOT NULL DEFAULT 1,
+      papel TEXT NOT NULL DEFAULT 'A5',
+      status TEXT NOT NULL DEFAULT 'pendente',
+      erro TEXT,
+      tentativas INTEGER NOT NULL DEFAULT 0,
+      createdat DATETIME DEFAULT (datetime('now', 'localtime')),
+      updatedat DATETIME DEFAULT (datetime('now', 'localtime')),
+      printedat DATETIME
+    )`,
+    "CREATE INDEX IF NOT EXISTS idx_print_queue_status ON print_queue(status, createdat)",
   ];
   applyMigrations(db, migrations);
   db.prepare("UPDATE users SET profile_key=role WHERE profile_key IS NULL").run();
@@ -1200,6 +1237,8 @@ function initDB(customPath, options = {}) {
       paper_size            TEXT DEFAULT 'A5',
       color                 INTEGER DEFAULT 1,
       direct_print_enabled  INTEGER DEFAULT 0,
+      agent_mode            INTEGER NOT NULL DEFAULT 1,
+      agent_last_seen       DATETIME,
       updatedat             TEXT DEFAULT (datetime('now','localtime'))
     );
     INSERT OR IGNORE INTO impressao_config (id, printer_name, paper_size, color)
