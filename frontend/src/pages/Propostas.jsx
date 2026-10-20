@@ -236,9 +236,20 @@ export default function Propostas() {
     }
   };
 
-  const openPdf = (proposta) => {
+  const openPdf = async (proposta) => {
     if (!canPrint) return toast.error('Sem permissao para imprimir proposta');
-    window.open(`/api/propostas/${proposta.id}/pdf`, '_blank', 'noopener,noreferrer');
+    try {
+      const res = await api.post(`/propostas/${proposta.id}/print`, {}, { skipGlobalErrorToast: true });
+      if (res.data?.mode === 'queue') {
+        toast.success(res.data.message || 'Proposta enviada para a impressora.');
+      } else if (res.data?.mode === 'browser' && res.data?.printUrl) {
+        window.open(res.data.printUrl, '_blank', 'noopener,noreferrer');
+      } else {
+        window.open(`/api/propostas/${proposta.id}/pdf`, '_blank', 'noopener,noreferrer');
+      }
+    } catch (e) {
+      toast.error(e?.response?.data?.error || 'Erro ao imprimir proposta');
+    }
   };
 
   const openWhatsapp = (proposta) => {

@@ -412,8 +412,20 @@ export default function NovaProposta({ onSaved, onCancel, embedded = false }) {
         produtos: itensPayload,
       })
 
-      toast.success(mode === 'print' ? 'Proposta salva. Abrindo PDF...' : 'Proposta salva.')
-      if (mode === 'print') window.open(`/api/propostas/${data.id}/pdf`, '_blank', 'noopener,noreferrer')
+      if (mode === 'print') {
+        try {
+          const res = await api.post(`/propostas/${data.id}/print`, {}, { skipGlobalErrorToast: true });
+          if (res.data?.mode === 'queue') {
+            toast.success(res.data.message || 'Proposta enviada para a impressora.');
+          } else {
+            window.open(`/api/propostas/${data.id}/pdf`, '_blank', 'noopener,noreferrer');
+          }
+        } catch {
+          window.open(`/api/propostas/${data.id}/pdf`, '_blank', 'noopener,noreferrer');
+        }
+      } else {
+        toast.success('Proposta salva.');
+      }
       if (onSaved) {
         onSaved(data)
       } else {

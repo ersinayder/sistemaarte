@@ -17,11 +17,15 @@ if %ERRORLEVEL% neq 0 (
     exit /b 1
 )
 
-echo Iniciando o agente de impressão...
-node agent.js
+set NODE_EXE="C:\Program Files\nodejs\node.exe"
+if not exist %NODE_EXE% set NODE_EXE=node
 
-if %ERRORLEVEL% neq 0 (
-    echo.
-    echo [AVISO] O processo do agente foi encerrado com código %ERRORLEVEL%.
-    pause
-)
+:loop
+echo [%DATE% %TIME%] Iniciando o agente de impressão...
+%NODE_EXE% agent.js
+
+echo.
+echo [AVISO] O processo do agente foi encerrado com código %ERRORLEVEL%.
+echo Reiniciando o agente em 5 segundos... (Pressione Ctrl+C para cancelar)
+timeout /t 5 /nobreak >nul
+goto loop

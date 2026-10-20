@@ -5,6 +5,7 @@ import { toast } from 'react-hot-toast';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { aplicarDescontoOS } from '../utils/descontoOS';
+import { printOrdem } from '../utils/printOrdem';
 
 // ------- Componente de busca de produtos -------
 function ProdutoInput({ produtos, onAdd }) {
@@ -248,9 +249,19 @@ function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEd
       onClose();
       navigate(`/ordens/${createdOS.id}`);
     };
-    const imprimir = () => {
-      window.open(`/api/ordens/${createdOS.id}/pdf`, '_blank', 'noopener,noreferrer');
-      onClose();
+    const imprimir = async () => {
+      try {
+        const res = await printOrdem(api, createdOS.id, 1);
+        if (res.data?.mode === 'queue') {
+          toast.success(res.data.message || 'OS enviada para impressao');
+        } else if (res.data?.mode === 'browser') {
+          toast.success('Impressao aberta no navegador.');
+        }
+      } catch (err) {
+        toast.error(err.response?.data?.error || err.message || 'Erro ao imprimir OS');
+      } finally {
+        onClose();
+      }
     };
 
     return ReactDOM.createPortal(
