@@ -16,7 +16,7 @@ describe('Print Agent Local (PC Edu)', () => {
 
   describe('carregarConfiguracao', () => {
     it('deve carregar defaults quando nenhuma env ou config fornecida', () => {
-      const config = carregarConfiguracao({});
+      const config = carregarConfiguracao({}, '/mock-empty-dir');
       expect(config.printerName).toBe('Canon G3010 series');
       expect(config.serverUrl).toBe('https://arteemolduras.com.br');
       expect(config.settleMs).toBe(4000);

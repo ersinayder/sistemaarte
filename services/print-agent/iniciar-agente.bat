@@ -20,6 +20,14 @@ if %ERRORLEVEL% neq 0 (
 set NODE_EXE="C:\Program Files\nodejs\node.exe"
 if not exist %NODE_EXE% set NODE_EXE=node
 
+if not exist "%~dp0SumatraPDF.exe" (
+    echo [Configuracao] Baixando motor de impressao silenciosa SumatraPDF...
+    curl.exe -L -s -o "%~dp0sumatra.zip" https://www.sumatrapdfreader.org/dl/rel/3.6.1/SumatraPDF-3.6.1-64.zip
+    tar.exe -xf "%~dp0sumatra.zip" -C "%~dp0"
+    if exist "%~dp0SumatraPDF-3.6.1-64.exe" move /Y "%~dp0SumatraPDF-3.6.1-64.exe" "%~dp0SumatraPDF.exe" >nul
+    if exist "%~dp0sumatra.zip" del /f /q "%~dp0sumatra.zip" >nul
+)
+
 :loop
 echo [%DATE% %TIME%] Iniciando o agente de impressão...
 %NODE_EXE% agent.js

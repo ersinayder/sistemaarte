@@ -5,13 +5,48 @@ const path = require('path');
 const http = require('http');
 const https = require('https');
 
-// Tenta reutilizar printHtml de backend/utils/print/serverPrinter.js
-let defaultPrintHtml = null;
+let windowsSilentPrinter = null;
+try {
+  windowsSilentPrinter = require('./windowsSilentPrinter');
+} catch {}
+
+let legacyPrintHtml = null;
 try {
   const serverPrinter = require('../../backend/utils/print/serverPrinter');
-  defaultPrintHtml = serverPrinter.printHtml;
-} catch {
-  // Caso executado em ambiente isolado ou empacotado sem acesso direto
+  legacyPrintHtml = serverPrinter.printHtml;
+} catch {}
+
+async function defaultPrintHtml({ html, jobName, copies, settleMs, env = process.env, baseDir = __dirname }) {
+  const printerName = env.ORDEM_PRINTER_NAME || 'Canon G3010 series';
+
+  if (process.platform === 'win32' && windowsSilentPrinter) {
+    const hasSumatra = Boolean(windowsSilentPrinter.getSumatraPath(baseDir));
+    const hasBrowser = Boolean(windowsSilentPrinter.getBrowserPath());
+
+    if (hasSumatra && hasBrowser) {
+      console.log(`[PrintAgent] Imprimindo via SumatraPDF na impressora: "${printerName}" (${copies || 1} via/vias)...`);
+      return windowsSilentPrinter.printViaSumatra({
+        html,
+        jobName,
+        copies,
+        printerName,
+        baseDir,
+      });
+    }
+  }
+
+  if (legacyPrintHtml) {
+    console.log(`[PrintAgent] Imprimindo via serverPrinter legado: "${printerName}"...`);
+    return legacyPrintHtml({
+      html,
+      jobName,
+      copies,
+      settleMs,
+      env,
+    });
+  }
+
+  throw new Error('Nenhum mecanismo de impressao direta disponivel neste ambiente.');
 }
 
 const DEFAULTS = {
@@ -125,6 +160,7 @@ function carregarConfiguracao(envOverride = null, baseDir = __dirname) {
     settleMs,
     pollIntervalMs,
     pingIntervalMs,
+    baseDir,
   };
 }
 
@@ -177,12 +213,13 @@ async function processarProximaTarefa({
       throw new Error('Função de impressão (printHtml) não disponível neste ambiente.');
     }
 
-    // Executa impressão via serverPrinter
+    // Executa impressão
     await printFn({
       html,
       jobName: documento_nome || `job-${id}`,
       copies: copias || 1,
       settleMs: config.settleMs,
+      baseDir: config.baseDir || __dirname,
       env: {
         ...process.env,
         ORDEM_PRINTER_NAME: config.printerName,

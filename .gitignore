@@ -10,6 +10,7 @@ frontend/dist/
 # Env
 .env
 backend/.env
+services/print-agent/.env
 
 # Certificado digital NF-e — NUNCA versionar o .pfx
 backend/certs/
@@ -45,6 +46,10 @@ deploy-restart.ps1
 .deploy-trigger
 backend/.deploy-trigger
 *.deploy-trigger
+
+# Print Agent binaries & settings
+services/print-agent/SumatraPDF*.exe
+services/print-agent/SumatraPDF-settings.txt
 
 # OS/Editor
 .DS_Store
