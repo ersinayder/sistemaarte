@@ -57,19 +57,8 @@ function labelDay(dateStr) {
   return new Date(dateStr + 'T12:00:00').toLocaleDateString('pt-BR', { weekday:'short', day:'2-digit', month:'short' });
 }
 
-async function abrirFechamentoCaixa(date) {
-  try {
-    const res = await api.post(`/caixa/fechamento/print?data=${encodeURIComponent(date)}`, {}, { skipGlobalErrorToast: true });
-    if (res.data?.mode === 'queue') {
-      toast.success(res.data.message || 'Fechamento enviado para a impressora.');
-    } else if (res.data?.mode === 'browser' && res.data?.printUrl) {
-      window.open(res.data.printUrl, '_blank', 'noopener,noreferrer');
-    } else {
-      window.open(`/api/caixa/fechamento?data=${encodeURIComponent(date)}`, '_blank', 'noopener,noreferrer');
-    }
-  } catch (err) {
-    toast.error(err.response?.data?.error || err.message || 'Erro ao imprimir fechamento');
-  }
+function abrirFechamentoCaixa(date) {
+  window.open(`/api/caixa/fechamento?data=${encodeURIComponent(date)}`, '_blank', 'noopener,noreferrer');
 }
 
 function isEntrada(row) {
