@@ -33,6 +33,15 @@ const STATUS_COLOR = {
   'Cancelado':   'var(--status-cancelado)',
 };
 
+const FORMAS_PAGAMENTO = [
+  { valor: 'Pix', rotulo: 'Pix' },
+  { valor: 'Dinheiro', rotulo: 'Dinheiro' },
+  { valor: 'Credito', rotulo: 'Cartão de Crédito' },
+  { valor: 'Debito', rotulo: 'Cartão de Débito' },
+  { valor: 'Transferencia', rotulo: 'Transferência Bancária' },
+  { valor: 'Boleto', rotulo: 'Boleto' },
+];
+
 export default function Clientes() {
   const navigate = useNavigate();
   const { can } = useAuth();
@@ -40,10 +49,16 @@ export default function Clientes() {
   const canEdit = typeof can === 'function' && can('clientes.editar');
   const canDelete = typeof can === 'function' && can('clientes.excluir');
   const canConsultDocuments = typeof can === 'function' && can('clientes.consultar_documentos');
+  const canGerenciarFiado = typeof can === 'function' && can('clientes.fiado.gerenciar');
+  const canReceberAcerto = typeof can === 'function' && can('clientes.fiado.acerto');
+  const canCreditoAjuste = typeof can === 'function' && can('clientes.credito.ajuste');
+  const canCreditoDevolver = typeof can === 'function' && can('clientes.credito.devolver');
+  const canCreditoEstornar = typeof can === 'function' && can('clientes.credito.estornar');
 
   const blank = {
     tipo:'PF', nome:'', cpf:'', cnpj:'', ie:'', ind_ie_dest:'', contato:'', email:'',
-    cep:'', logradouro:'', numero:'', bairro:'', cidade:'', uf:'', obs:''
+    cep:'', logradouro:'', numero:'', bairro:'', cidade:'', uf:'', obs:'',
+    fiado_ativo: 0, fiado_limite: ''
   };
 
   const [clientes,      setClientes]      = useState([]);
@@ -66,6 +81,32 @@ export default function Clientes() {
   const [detailId,      setDetailId]      = useState(null);
   const [detailData,    setDetailData]    = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [detailTab,     setDetailTab]     = useState('conta_aberto');
+
+  // Modais de Fiado e Crédito Loja
+  const [showModalAcerto,       setShowModalAcerto]       = useState(false);
+  const [acertoPagamento,        setAcertoPagamento]        = useState('Pix');
+  const [acertoSubmitting,       setAcertoSubmitting]       = useState(false);
+
+  const [showModalSaldoInicial, setShowModalSaldoInicial] = useState(false);
+  const [saldoInicialValor,     setSaldoInicialValor]     = useState('');
+  const [saldoInicialMotivo,    setSaldoInicialMotivo]    = useState('Saldo anterior em ficha de papel');
+  const [saldoInicialSubmitting, setSaldoInicialSubmitting] = useState(false);
+
+  const [showModalAjuste,       setShowModalAjuste]       = useState(false);
+  const [ajusteTipo,            setAjusteTipo]            = useState('entrada');
+  const [ajusteValor,           setAjusteValor]           = useState('');
+  const [ajusteMotivo,          setAjusteMotivo]          = useState('');
+  const [ajusteSubmitting,      setAjusteSubmitting]      = useState(false);
+
+  const [showModalDevolver,     setShowModalDevolver]     = useState(false);
+  const [devolverValor,         setDevolverValor]         = useState('');
+  const [devolverMotivo,        setDevolverMotivo]        = useState('Restituição de crédito em espécie');
+  const [devolverSubmitting,    setDevolverSubmitting]    = useState(false);
+
+  const [confirmEstornoMov,     setConfirmEstornoMov]     = useState(null);
+  const [estornoSubmitting,     setEstornoSubmitting]     = useState(false);
+
   const searchRef = useRef(null);
   const formOverlayDownRef = useRef(false);
   const PER_PAGE = 25;
@@ -187,20 +228,22 @@ export default function Clientes() {
     const documento = tipo === 'PJ' ? maskCNPJ(c.cpf || '') : maskCPF(c.cpf || '');
     setForm({
       tipo,
-      nome:       c.name       || '',
-      cpf:        tipo === 'PF' ? documento : '',
-      cnpj:       tipo === 'PJ' ? documento : '',
-      ie:         c.ie         || '',
+      nome:        c.name       || '',
+      cpf:         tipo === 'PF' ? documento : '',
+      cnpj:        tipo === 'PJ' ? documento : '',
+      ie:          c.ie         || '',
       ind_ie_dest: tipo === 'PJ' ? (c.ind_ie_dest || '') : '',
-      contato:    c.phone      || '',
-      email:      c.email      || '',
-      cep:        c.cep        || '',
-      logradouro: c.logradouro || '',
-      numero:     c.numero     || '',
-      bairro:     c.bairro     || '',
-      cidade:     c.cidade     || '',
-      uf:         c.uf         || '',
-      obs:        c.notes      || ''
+      contato:     c.phone      || '',
+      email:       c.email      || '',
+      cep:         c.cep        || '',
+      logradouro:  c.logradouro || '',
+      numero:      c.numero     || '',
+      bairro:      c.bairro     || '',
+      cidade:      c.cidade     || '',
+      uf:          c.uf         || '',
+      obs:         c.notes      || '',
+      fiado_ativo: c.fiado_ativo ? 1 : 0,
+      fiado_limite: c.fiado_limite != null ? String(c.fiado_limite) : '',
     });
     setCpfError(''); setCnpjError('');
     setShowForm(true);
@@ -229,7 +272,9 @@ export default function Clientes() {
         cidade:      form.cidade,
         uf:          form.uf,
         cep:         form.cep,
-        notes:       form.obs
+        notes:       form.obs,
+        fiado_ativo: form.fiado_ativo ? 1 : 0,
+        fiado_limite: form.fiado_ativo ? Number(form.fiado_limite || 0) : 0,
       };
       if (editId) {
         await api.put(`/clientes/${editId}`, payload);
@@ -261,11 +306,19 @@ export default function Clientes() {
   const loadDetail = useCallback(async (id) => {
     setDetailLoading(true);
     try {
-      const [cliRes, ordRes] = await Promise.all([
+      const [cliRes, ordRes, contaRes, credRes] = await Promise.all([
         api.get(`/clientes/${id}`),
         api.get(`/clientes/${id}/ordens`),
+        api.get(`/clientes/${id}/conta-aberto`).catch(() => ({ data: { ordens: [], totalEmAberto: 0 } })),
+        api.get(`/clientes/${id}/credito`).catch(() => ({ data: { saldo: 0, movimentos: [] } })),
       ]);
-      setDetailData({ cliente: cliRes.data, sumario: cliRes.data._sumario, ordens: ordRes.data });
+      setDetailData({
+        cliente: cliRes.data,
+        sumario: cliRes.data._sumario,
+        ordens: ordRes.data,
+        contaAberto: contaRes.data,
+        credito: credRes.data,
+      });
     } catch { toast.error('Erro ao carregar detalhes'); }
     finally { setDetailLoading(false); }
   }, []);
@@ -305,19 +358,149 @@ export default function Clientes() {
     flex: 1,
     padding: 'var(--space-2) var(--space-3)',
     borderRadius: 'var(--radius-md)',
-    fontSize: 'var(--text-sm)',
-    fontWeight: 600,
+    fontSize: 'var(--text-xs)',
+    fontWeight: 700,
     cursor: 'pointer',
     border: 'none',
     background: active ? 'var(--color-primary)' : 'transparent',
     color: active ? '#fff' : 'var(--color-text-muted)',
     transition: 'background var(--ease), color var(--ease)',
+    textAlign: 'center',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
   });
+
+  // Handlers para Ações de Fiado e Crédito Loja
+  const handleEnviarCobranca = async () => {
+    if (!detailId) return;
+    try {
+      const { data } = await api.get(`/clientes/${detailId}/cobranca/whatsapp`);
+      const url = data.urlWhatsAppApp || data.urlWhatsAppWeb;
+      if (url) {
+        window.open(url, '_blank');
+      } else {
+        toast.error('Não foi possível gerar link do WhatsApp');
+      }
+    } catch (e) {
+      toast.error(e?.response?.data?.error || 'Erro ao gerar mensagem de cobrança');
+    }
+  };
+
+  const handleImprimirExtrato = () => {
+    if (!detailId) return;
+    window.open(`/api/clientes/${detailId}/conta-aberto/extrato`, '_blank');
+  };
+
+  const handleConfirmAcerto = async () => {
+    if (!detailId || !detailData?.contaAberto?.totalEmAberto) return;
+    setAcertoSubmitting(true);
+    try {
+      const { data } = await api.post(`/clientes/${detailId}/acerto`, {
+        pagamento: acertoPagamento,
+        valor_total_esperado: detailData.contaAberto.totalEmAberto,
+        ordem_ids: detailData.contaAberto.ordens.map(o => o.id),
+      });
+      toast.success('Acerto realizado com sucesso!');
+      setShowModalAcerto(false);
+      if (data?.acerto?.id) {
+        window.open(`/api/clientes/acertos/${data.acerto.id}/recibo`, '_blank');
+      }
+      loadDetail(detailId);
+      load();
+    } catch (e) {
+      toast.error(e?.response?.data?.error || 'Erro ao processar acerto');
+    } finally {
+      setAcertoSubmitting(false);
+    }
+  };
+
+  const handleConfirmSaldoInicial = async () => {
+    const v = Number(saldoInicialValor);
+    if (!(v > 0)) { toast.error('Informe um valor de crédito válido'); return; }
+    setSaldoInicialSubmitting(true);
+    try {
+      await api.post(`/clientes/${detailId}/credito/saldo-inicial`, {
+        valor: v,
+        motivo: saldoInicialMotivo || 'Saldo anterior em ficha de papel',
+      });
+      toast.success('Saldo inicial de crédito registrado!');
+      setShowModalSaldoInicial(false);
+      setSaldoInicialValor('');
+      loadDetail(detailId);
+    } catch (e) {
+      toast.error(e?.response?.data?.error || 'Erro ao registrar saldo inicial');
+    } finally {
+      setSaldoInicialSubmitting(false);
+    }
+  };
+
+  const handleConfirmAjuste = async () => {
+    const v = Number(ajusteValor);
+    if (!(v > 0)) { toast.error('Informe um valor de crédito válido'); return; }
+    if (!ajusteMotivo.trim()) { toast.error('Informe o motivo do ajuste'); return; }
+    setAjusteSubmitting(true);
+    try {
+      await api.post(`/clientes/${detailId}/credito/ajuste`, {
+        tipo: ajusteTipo,
+        valor: v,
+        motivo: ajusteMotivo.trim(),
+      });
+      toast.success('Ajuste de crédito registrado!');
+      setShowModalAjuste(false);
+      setAjusteValor('');
+      setAjusteMotivo('');
+      loadDetail(detailId);
+    } catch (e) {
+      toast.error(e?.response?.data?.error || 'Erro ao registrar ajuste');
+    } finally {
+      setAjusteSubmitting(false);
+    }
+  };
+
+  const handleConfirmDevolver = async () => {
+    const v = Number(devolverValor);
+    if (!(v > 0)) { toast.error('Informe um valor válido para devolução'); return; }
+    setDevolverSubmitting(true);
+    try {
+      await api.post(`/clientes/${detailId}/credito/devolver`, {
+        valor: v,
+        motivo: devolverMotivo || 'Restituição de crédito em espécie',
+      });
+      toast.success('Devolução registrada com sucesso!');
+      setShowModalDevolver(false);
+      setDevolverValor('');
+      loadDetail(detailId);
+    } catch (e) {
+      toast.error(e?.response?.data?.error || 'Erro ao devolver crédito');
+    } finally {
+      setDevolverSubmitting(false);
+    }
+  };
+
+  const handleConfirmEstorno = async () => {
+    if (!confirmEstornoMov) return;
+    setEstornoSubmitting(true);
+    try {
+      await api.post(`/clientes/credito/estornar/${confirmEstornoMov.id}`, {
+        motivo: 'Estorno manual autorizado',
+      });
+      toast.success('Movimento estornado com sucesso!');
+      setConfirmEstornoMov(null);
+      loadDetail(detailId);
+    } catch (e) {
+      toast.error(e?.response?.data?.error || 'Erro ao estornar movimento');
+    } finally {
+      setEstornoSubmitting(false);
+    }
+  };
 
   const DetailPanel = () => {
     const s = detailData?.sumario;
     const c = detailData?.cliente;
     const ordens = detailData?.ordens || [];
+    const contaAberto = detailData?.contaAberto || { ordens: [], totalEmAberto: 0 };
+    const credito = detailData?.credito || { saldo: 0, movimentos: [] };
 
     const KpiBox = ({ label, value, color, sub }) => (
       <div style={{ background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)', padding:'var(--space-3)', textAlign:'center' }}>
@@ -356,93 +539,212 @@ export default function Clientes() {
 
         {s && (
           <>
-            <div style={{ fontWeight:700, fontSize:'var(--text-xs)', color:'var(--color-text-muted)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:'var(--space-2)' }}>Resumo financeiro</div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'var(--space-2)', marginBottom:'var(--space-4)' }}>
+            <div style={{ fontWeight:700, fontSize:'var(--text-xs)', color:'var(--color-text-muted)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:'var(--space-2)' }}>Resumo de Contas</div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'var(--space-2)', marginBottom:'var(--space-3)' }}>
+              <KpiBox
+                label="Em Aberto"
+                value={fmt(contaAberto.totalEmAberto || 0)}
+                color={contaAberto.totalEmAberto > 0 ? 'var(--color-error)' : 'var(--color-text-muted)'}
+                sub={c.fiado_ativo ? (c.fiado_limite > 0 ? `Limite: ${fmt(c.fiado_limite)}` : 'Sem limite fixado') : 'Fiado desativado'}
+              />
+              <KpiBox
+                label="Crédito Loja"
+                value={fmt(credito.saldo ?? s.saldoCredito ?? 0)}
+                color={(credito.saldo || 0) > 0 ? 'var(--color-success)' : 'var(--color-text-muted)'}
+                sub={credito.movimentos?.length ? `${credito.movimentos.length} lançamento(s)` : null}
+              />
               <KpiBox label="Total de OS" value={s.totalOrdens} color="var(--color-primary)" />
               <KpiBox label="Total gasto" value={fmt(s.totalGasto)} color="var(--color-success)" />
-              <KpiBox label="Ticket médio" value={fmt(s.ticketMedio)} color="var(--color-text)" />
-              <KpiBox
-                label="Em aberto"
-                value={s.osEmAberto}
-                color={s.osEmAberto > 0 ? 'var(--color-warning)' : 'var(--color-text-muted)'}
-                sub={s.osVencidas > 0 ? `${s.osVencidas} vencida${s.osVencidas > 1 ? 's' : ''}` : null}
-              />
             </div>
 
-            {s.ultimaOs && (
+            <div style={{ display:'flex', background:'var(--color-surface-offset)', borderRadius:'var(--radius-lg)', padding:3, gap:2, marginBottom:'var(--space-3)' }}>
+              <button
+                type="button"
+                style={tabStyle(detailTab === 'conta_aberto')}
+                onClick={() => setDetailTab('conta_aberto')}
+              >
+                Conta em Aberto {contaAberto.totalEmAberto > 0 ? `(${fmt(contaAberto.totalEmAberto)})` : ''}
+              </button>
+              <button
+                type="button"
+                style={tabStyle(detailTab === 'credito')}
+                onClick={() => setDetailTab('credito')}
+              >
+                Crédito Loja {credito.saldo > 0 ? `(${fmt(credito.saldo)})` : ''}
+              </button>
+              <button
+                type="button"
+                style={tabStyle(detailTab === 'ordens')}
+                onClick={() => setDetailTab('ordens')}
+              >
+                Histórico ({ordens.length})
+              </button>
+            </div>
+
+            {/* ABA: CONTA EM ABERTO (FIADO) */}
+            {detailTab === 'conta_aberto' && (
               <div style={{ marginBottom:'var(--space-4)' }}>
-                <div style={{ fontWeight:700, fontSize:'var(--text-xs)', color:'var(--color-text-muted)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:'var(--space-2)' }}>Última OS</div>
-                <div
-                  style={{ background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)', padding:'var(--space-2) var(--space-3)', cursor:'pointer', border:'1px solid var(--color-border)' }}
-                  onClick={() => navigate(`/ordens/${s.ultimaOs.id}`)}
-                >
-                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                    <span style={{ fontWeight:700, fontSize:'var(--text-xs)', color:'var(--color-primary)' }}>{s.ultimaOs.numero}</span>
-                    <span style={{ fontSize:10, color:'var(--color-text-muted)' }}>{fmtD(s.ultimaOs.createdat)}</span>
-                  </div>
-                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:3 }}>
-                    <span style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>{s.ultimaOs.servico}</span>
-                    <span style={{ fontSize:'var(--text-xs)', fontFamily:'monospace', fontWeight:700 }}>{fmt(s.ultimaOs.valortotal || s.ultimaOs.valor)}</span>
-                  </div>
-                  <div style={{ marginTop:4 }}>
-                    <span
-                      style={{ fontSize:9, fontWeight:700, padding:'1px 6px', borderRadius:'var(--radius-full)',
-                        background: `color-mix(in oklch, ${STATUS_COLOR[s.ultimaOs.status] || 'var(--color-primary)'} 15%, var(--color-surface))`,
-                        color: STATUS_COLOR[s.ultimaOs.status] || 'var(--color-primary)' }}
-                    >{s.ultimaOs.status}</span>
-                  </div>
+                <div style={{ display:'flex', gap:'var(--space-2)', flexWrap:'wrap', marginBottom:'var(--space-3)' }}>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={handleEnviarCobranca}
+                    disabled={!contaAberto.totalEmAberto}
+                  >
+                    💬 Enviar cobrança
+                  </button>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={handleImprimirExtrato}
+                  >
+                    🖨️ Imprimir extrato
+                  </button>
+                  {canReceberAcerto && (
+                    <button
+                      className="btn btn-primary btn-sm"
+                      onClick={() => setShowModalAcerto(true)}
+                      disabled={!contaAberto.totalEmAberto}
+                    >
+                      💰 Receber acerto
+                    </button>
+                  )}
                 </div>
+
+                {contaAberto.ordens.length > 0 ? (
+                  <div style={{ display:'flex', flexDirection:'column', gap:'var(--space-2)' }}>
+                    {contaAberto.ordens.map(o => (
+                      <div
+                        key={o.id}
+                        style={{ background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)', padding:'var(--space-2) var(--space-3)', border:'1px solid var(--color-border)', cursor:'pointer' }}
+                        onClick={() => navigate(`/ordens/${o.id}`)}
+                      >
+                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                          <span style={{ fontWeight:700, fontSize:'var(--text-xs)', color:'var(--color-primary)' }}>{o.numero}</span>
+                          <span style={{ fontSize:10, color:'var(--color-text-muted)' }}>Prazo: {fmtD(o.prazoentrega)}</span>
+                        </div>
+                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:2 }}>
+                          <span style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>{o.servico}</span>
+                          <span style={{ fontSize:'var(--text-xs)', fontFamily:'monospace', fontWeight:700, color:'var(--color-error)' }}>
+                            Saldo: {fmt(o.saldo)}
+                          </span>
+                        </div>
+                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:2, fontSize:10, color:'var(--color-text-faint)' }}>
+                          <span>Total: {fmt(o.valortotal)}</span>
+                          <span>Pago: {fmt(o.recebido)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ textAlign:'center', padding:'var(--space-4)', color:'var(--color-text-muted)', fontSize:'var(--text-sm)' }}>
+                    Nenhuma OS em débito. Todas as contas estão quitadas.
+                  </div>
+                )}
               </div>
             )}
 
-            {Object.keys(s.statusBreakdown).length > 0 && (
+            {/* ABA: CRÉDITO LOJA (HAVER) */}
+            {detailTab === 'credito' && (
               <div style={{ marginBottom:'var(--space-4)' }}>
-                <div style={{ fontWeight:700, fontSize:'var(--text-xs)', color:'var(--color-text-muted)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:'var(--space-2)' }}>Por status</div>
-                <div style={{ display:'flex', flexDirection:'column', gap:'var(--space-1)' }}>
-                  {Object.entries(s.statusBreakdown).map(([st, qty]) => (
-                    <div key={st} style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                      <span style={{ fontSize:'var(--text-xs)', display:'flex', alignItems:'center', gap:'var(--space-1)' }}>
-                        <span style={{ width:6, height:6, borderRadius:'50%', background: STATUS_COLOR[st] || 'var(--color-text-faint)', display:'inline-block', flexShrink:0 }} />
-                        {st}
-                      </span>
-                      <span style={{ fontSize:'var(--text-xs)', fontWeight:700, color:'var(--color-text-muted)', fontVariantNumeric:'tabular-nums' }}>{qty}</span>
-                    </div>
-                  ))}
+                <div style={{ display:'flex', gap:'var(--space-2)', flexWrap:'wrap', marginBottom:'var(--space-3)' }}>
+                  {canCreditoAjuste && (
+                    <>
+                      <button className="btn btn-secondary btn-sm" onClick={() => setShowModalSaldoInicial(true)}>
+                        ➕ Saldo inicial
+                      </button>
+                      <button className="btn btn-secondary btn-sm" onClick={() => setShowModalAjuste(true)}>
+                        ⚖️ Ajuste
+                      </button>
+                    </>
+                  )}
+                  {canCreditoDevolver && (
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => setShowModalDevolver(true)}
+                      disabled={!(credito.saldo > 0)}
+                    >
+                      💸 Devolver em dinheiro
+                    </button>
+                  )}
                 </div>
+
+                {credito.movimentos.length > 0 ? (
+                  <div style={{ display:'flex', flexDirection:'column', gap:'var(--space-2)' }}>
+                    {credito.movimentos.map(m => (
+                      <div
+                        key={m.id}
+                        style={{ background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)', padding:'var(--space-2) var(--space-3)', border:'1px solid var(--color-border)' }}
+                      >
+                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                          <span style={{ fontWeight:700, fontSize:'var(--text-xs)', color: m.valor > 0 ? 'var(--color-success)' : 'var(--color-error)' }}>
+                            {m.valor > 0 ? `+ ${fmt(m.valor)}` : `- ${fmt(Math.abs(m.valor))}`}
+                          </span>
+                          <span style={{ fontSize:10, color:'var(--color-text-muted)' }}>{fmtD(m.createdat)}</span>
+                        </div>
+                        <div style={{ fontSize:'var(--text-xs)', marginTop:2, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                          <span>{m.motivo || m.tipo} {m.ordem_numero ? `(${m.ordem_numero})` : ''}</span>
+                          {canCreditoEstornar && !m.estorna_id && !m.foi_estornado && (
+                            <button
+                              className="btn btn-ghost btn-xs inline-danger"
+                              title="Estornar movimento"
+                              onClick={() => setConfirmEstornoMov(m)}
+                            >
+                              Estornar
+                            </button>
+                          )}
+                        </div>
+                        {m.usuario_nome && (
+                          <div style={{ fontSize:9, color:'var(--color-text-faint)', marginTop:2 }}>
+                            Registrado por: {m.usuario_nome}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ textAlign:'center', padding:'var(--space-4)', color:'var(--color-text-muted)', fontSize:'var(--text-sm)' }}>
+                    Nenhum movimento de crédito registrado.
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ABA: HISTÓRICO DE OS */}
+            {detailTab === 'ordens' && (
+              <div>
+                {ordens.length > 0 ? (
+                  <div style={{ display:'flex', flexDirection:'column', gap:'var(--space-2)' }}>
+                    {ordens.map(o => (
+                      <div
+                        key={o.id}
+                        style={{ background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)', padding:'var(--space-2) var(--space-3)', cursor:'pointer', border:'1px solid var(--color-border)' }}
+                        onClick={() => navigate(`/ordens/${o.id}`)}
+                      >
+                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                          <span style={{ fontWeight:700, fontSize:'var(--text-xs)', color:'var(--color-primary)' }}>{o.numero}</span>
+                          <span style={{ fontSize:10, color:'var(--color-text-muted)' }}>{fmtD(o.createdat || o.criadoem)}</span>
+                        </div>
+                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:2 }}>
+                          <span style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>{o.servico}</span>
+                          <span style={{ fontSize:'var(--text-xs)', fontFamily:'monospace', fontWeight:600 }}>{fmt(o.valortotal||o.valor)}</span>
+                        </div>
+                        <div style={{ marginTop:4 }}>
+                          <span
+                            style={{ fontSize:9, fontWeight:700, padding:'1px 6px', borderRadius:'var(--radius-full)',
+                              background: `color-mix(in oklch, ${STATUS_COLOR[o.status] || 'var(--color-primary)'} 15%, var(--color-surface))`,
+                              color: STATUS_COLOR[o.status] || 'var(--color-primary)' }}
+                          >{o.status}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ textAlign:'center', padding:'var(--space-4)', color:'var(--color-text-muted)', fontSize:'var(--text-sm)' }}>
+                    Nenhuma ordem de serviço cadastrada.
+                  </div>
+                )}
               </div>
             )}
           </>
-        )}
-
-        {ordens.length > 0 && (
-          <div>
-            <div style={{ fontWeight:700, fontSize:'var(--text-xs)', color:'var(--color-text-muted)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:'var(--space-2)' }}>Histórico de OS</div>
-            <div style={{ display:'flex', flexDirection:'column', gap:'var(--space-2)' }}>
-              {ordens.map(o => (
-                <div
-                  key={o.id}
-                  style={{ background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)', padding:'var(--space-2) var(--space-3)', cursor:'pointer', border:'1px solid var(--color-border)' }}
-                  onClick={() => navigate(`/ordens/${o.id}`)}
-                >
-                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                    <span style={{ fontWeight:700, fontSize:'var(--text-xs)', color:'var(--color-primary)' }}>{o.numero}</span>
-                    <span style={{ fontSize:10, color:'var(--color-text-muted)' }}>{fmtD(o.createdat || o.criadoem)}</span>
-                  </div>
-                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:2 }}>
-                    <span style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>{o.servico}</span>
-                    <span style={{ fontSize:'var(--text-xs)', fontFamily:'monospace', fontWeight:600 }}>{fmt(o.valortotal||o.valor)}</span>
-                  </div>
-                  <div style={{ marginTop:4 }}>
-                    <span
-                      style={{ fontSize:9, fontWeight:700, padding:'1px 6px', borderRadius:'var(--radius-full)',
-                        background: `color-mix(in oklch, ${STATUS_COLOR[o.status] || 'var(--color-primary)'} 15%, var(--color-surface))`,
-                        color: STATUS_COLOR[o.status] || 'var(--color-primary)' }}
-                    >{o.status}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
         )}
       </div>
     );
@@ -515,88 +817,104 @@ export default function Clientes() {
                     <div className="mobile-record-meta">
                       <span className="badge badge-primary">{c.totalordens ?? 0} OS</span>
                       {(c.cpf || c.ie) && <span className="badge badge-secondary">{c.cpf ? documentoLabel(c.cpf) : 'IE'}</span>}
+                      {Boolean(c.fiado_ativo) && <span className="badge badge-warning">Fiado</span>}
                     </div>
                     {(canEdit || canDelete) && (
                       <div className="mobile-record-actions" onClick={e => e.stopPropagation()}>
-                        {canEdit && <button className="btn btn-secondary btn-sm" onClick={() => openEdit(c)}>Editar</button>}
-                        {canDelete && <button className="btn btn-ghost btn-sm inline-danger" onClick={() => setConfirmDel(c)}>Excluir</button>}
+                        {canEdit && (
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => openEdit(c)}
+                          >
+                            Editar
+                          </button>
+                        )}
+                        {canDelete && (
+                          <button
+                            className="btn btn-ghost btn-sm inline-danger"
+                            onClick={() => setConfirmDel(c)}
+                          >
+                            Excluir
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
                 </article>
               ))}
             </div>
+
             <div className="desktop-table-area mobile-cards-hidden" style={{ overflowY:'auto', flex:1 }}>
               <table className="table">
                 <thead>
                   <tr>
-                    <th style={{ cursor:'pointer', userSelect:'none' }} onClick={() => toggleSort('nome')}>Nome <SortIcon f="nome"/></th>
-                    <th>Contato</th>
-                    <th>Documento / IE</th>
-                    <th>OS</th>
-                    <th>Total gasto</th>
-                    <th></th>
+                    <th onClick={() => toggleSort('nome')} style={{ cursor:'pointer', userSelect:'none' }}>
+                      Nome <SortIcon f="nome" />
+                    </th>
+                    <th>Documento</th>
+                    <th>Telefone</th>
+                    <th>E-mail</th>
+                    <th onClick={() => toggleSort('gastototal')} style={{ cursor:'pointer', userSelect:'none', textAlign:'right' }}>
+                      Gasto Total <SortIcon f="gastototal" />
+                    </th>
+                    <th onClick={() => toggleSort('totalordens')} style={{ cursor:'pointer', userSelect:'none', textAlign:'center' }}>
+                      OS <SortIcon f="totalordens" />
+                    </th>
+                    {(canEdit || canDelete) && <th style={{ textAlign:'right' }}>Ações</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {sorted.map(c => (
-                    <tr
-                      key={c.id}
-                      style={{ cursor:'pointer', background: detailId===c.id ? 'var(--color-primary-highlight)' : '' }}
-                      onClick={() => setDetailId(prev => prev===c.id ? null : c.id)}
-                    >
-                      <td>
-                        <div style={{ fontWeight:600 }}>{c.name}</div>
-                        {c.email && <div style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>{c.email}</div>}
-                      </td>
-                      <td style={{ fontSize:'var(--text-xs)' }}>{c.phone||'—'}</td>
-                      <td style={{ fontSize:'var(--text-xs)' }}>
-                        {c.cpf  && <div><span style={{color:'var(--color-text-faint)'}}>{documentoLabel(c.cpf)} </span>{c.cpf}</div>}
-                        {c.ie   && <div><span style={{color:'var(--color-text-faint)'}}>IE </span>{c.ie}</div>}
-                        {!c.cpf && !c.ie && '—'}
-                      </td>
-                      <td style={{ textAlign:'center' }}><span className="badge badge-primary">{c.totalordens ?? 0}</span></td>
-                      <td style={{ textAlign:'right', fontFamily:'monospace', fontSize:'var(--text-xs)' }}>{fmt(c.gastototal)}</td>
-                      <td>
-                        <div style={{ display:'flex', gap:'var(--space-1)', justifyContent:'flex-end' }} onClick={e => e.stopPropagation()}>
-                          {(canEdit || canDelete) && (
-                            <>
-                              {canEdit && <button className="btn btn-ghost btn-xs" title="Editar" onClick={() => openEdit(c)}>
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                              </button>}
-                              {canDelete && <button className="btn btn-ghost btn-xs" style={{ color:'var(--color-error)' }} title="Excluir" onClick={() => setConfirmDel(c)}>
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                              </button>}
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {sorted.map(c => {
+                    const isSelected = detailId === c.id;
+                    return (
+                      <tr
+                        key={c.id}
+                        onClick={() => setDetailId(prev => prev===c.id ? null : c.id)}
+                        style={{ cursor:'pointer', background: isSelected ? 'var(--color-surface-offset)' : undefined }}
+                      >
+                        <td style={{ fontWeight:600 }}>
+                          <div style={{ display:'flex', alignItems:'center', gap:'var(--space-2)' }}>
+                            <span>{c.name}</span>
+                            {Boolean(c.fiado_ativo) && <span className="badge badge-warning" style={{ fontSize:9, padding:'1px 5px' }}>Fiado</span>}
+                          </div>
+                        </td>
+                        <td style={{ color:'var(--color-text-muted)', fontSize:'var(--text-xs)' }}>
+                          {c.cpf ? `${documentoLabel(c.cpf)} ${c.cpf}` : c.ie ? `IE ${c.ie}` : '—'}
+                        </td>
+                        <td style={{ color:'var(--color-text-muted)' }}>{c.phone || '—'}</td>
+                        <td style={{ color:'var(--color-text-muted)' }}>{c.email || '—'}</td>
+                        <td style={{ textAlign:'right', fontFamily:'monospace', fontWeight:600 }}>{fmt(c.gastototal)}</td>
+                        <td style={{ textAlign:'center' }}>
+                          <span className="badge badge-primary">{c.totalordens ?? 0}</span>
+                        </td>
+                        {(canEdit || canDelete) && (
+                          <td style={{ textAlign:'right' }} onClick={e => e.stopPropagation()}>
+                            <div style={{ display:'flex', gap:'var(--space-1)', justifyContent:'flex-end' }}>
+                              {canEdit && (
+                                <button className="btn btn-ghost btn-sm" title="Editar" onClick={() => openEdit(c)}>
+                                  Editar
+                                </button>
+                              )}
+                              {canDelete && (
+                                <button className="btn btn-ghost btn-sm inline-danger" title="Excluir" onClick={() => setConfirmDel(c)}>
+                                  Excluir
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
             </>
           )}
-          {!loading && (clientesMeta.totalPages || 1) > 1 && (
-            <div style={{ padding:'var(--space-2) var(--space-3)', borderTop:'1px solid var(--color-border)',
-              display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0,
-              background:'var(--color-surface)', fontSize:'var(--text-xs)' }}>
-              <span style={{ color:'var(--color-text-muted)' }}>
-                Pagina {page} de {clientesMeta.totalPages || 1} • {clientesMeta.total || 0} registro{(clientesMeta.total || 0)!==1?'s':''}
-              </span>
-              <div style={{ display:'flex', gap:'var(--space-2)' }}>
-                <button className="btn btn-secondary" onClick={() => setPage(p => Math.max(1, p - 1))}
-                  disabled={page <= 1} style={{ fontSize:'var(--text-xs)', padding:'var(--space-1) var(--space-3)' }}>Anterior</button>
-                <button className="btn btn-secondary" onClick={() => setPage(p => Math.min(clientesMeta.totalPages || 1, p + 1))}
-                  disabled={page >= (clientesMeta.totalPages || 1)} style={{ fontSize:'var(--text-xs)', padding:'var(--space-1) var(--space-3)' }}>Proximo</button>
-              </div>
-            </div>
-          )}
         </div>
 
         {detailId && (
-          <div className="card client-detail-panel" style={{ width:340, overflow:'hidden', display:'flex', flexDirection:'column', flexShrink:0 }}>
+          <div className="card" style={{ width:380, flexShrink:0, display:'flex', flexDirection:'column', overflow:'hidden' }}>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0, padding:'var(--space-3) var(--space-4) var(--space-2)' }}>
               <span style={{ fontWeight:700, fontSize:'var(--text-sm)' }}>Detalhes do Cliente</span>
               <button className="btn btn-ghost btn-xs" onClick={() => setDetailId(null)}>✕</button>
@@ -613,6 +931,7 @@ export default function Clientes() {
         )}
       </div>
 
+      {/* MODAL DE CADASTRO / EDIÇÃO DE CLIENTE */}
       {showForm && ReactDOM.createPortal(
         <div
           className="modal-overlay"
@@ -668,12 +987,6 @@ export default function Clientes() {
                       <option value="2">Contribuinte Isento</option>
                       <option value="9">Não Contribuinte</option>
                     </select>
-                    <span style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>
-                      {form.ind_ie_dest === '1' && 'Empresa com Inscrição Estadual válida — preencha o campo IE acima.'}
-                      {form.ind_ie_dest === '2' && 'Empresa isenta de IE (ex: MEI, empresa do Simples sem IE). Deixe o campo IE vazio.'}
-                      {form.ind_ie_dest === '9' && 'Empresa não contribuinte de ICMS (ex: associações, prestadores de serviço puro).'}
-                      {!form.ind_ie_dest && 'Se não souber, deixe como "Detectar automaticamente". O sistema usará a IE preenchida.'}
-                    </span>
                   </div>
                 )}
 
@@ -727,6 +1040,36 @@ export default function Clientes() {
                   </select>
                 </div>
 
+                {/* CONFIGURAÇÃO DE FIADO / CONTA EM ABERTO (APENAS COM PERMISSÃO) */}
+                {canGerenciarFiado && (
+                  <div className="form-group" style={{ gridColumn: '1/-1', background: 'var(--color-surface-offset)', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-md)' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', cursor: 'pointer', fontWeight: 600 }}>
+                      <input
+                        type="checkbox"
+                        aria-label="Permite Conta em Aberto (Fiado)"
+                        checked={Boolean(form.fiado_ativo)}
+                        onChange={e => set('fiado_ativo', e.target.checked ? 1 : 0)}
+                      />
+                      <span>Permite Conta em Aberto (Fiado)</span>
+                    </label>
+                    {Boolean(form.fiado_ativo) && (
+                      <div style={{ marginTop: 'var(--space-2)' }}>
+                        <label className="form-label" htmlFor="fiado_limite_input">Limite de Crédito Fiado (R$ 0 = Ilimitado)</label>
+                        <input
+                          id="fiado_limite_input"
+                          aria-label="Limite de Crédito Fiado"
+                          className="form-input"
+                          type="number"
+                          step="0.01"
+                          value={form.fiado_limite}
+                          onChange={e => set('fiado_limite', e.target.value)}
+                          placeholder="0.00"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="form-group" style={{ gridColumn:'1/-1' }}>
                   <label className="form-label">Observações</label>
                   <textarea className="form-input" rows={3} value={form.obs} onChange={e => set('obs', e.target.value)} placeholder="Anotações sobre o cliente…" />
@@ -744,6 +1087,231 @@ export default function Clientes() {
         document.body
       )}
 
+      {/* MODAL DE RECEBER ACERTO AGRUPADO */}
+      {showModalAcerto && ReactDOM.createPortal(
+        <div className="modal-overlay" onClick={() => setShowModalAcerto(false)}>
+          <div className="modal modal-md" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">Receber Acerto de Conta</h2>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowModalAcerto(false)}>✕</button>
+            </div>
+            <div className="modal-body modal-body-dense">
+              <p style={{ margin:0, fontSize:'var(--text-sm)' }}>
+                Cliente: <strong>{detailData?.cliente?.name}</strong>
+              </p>
+              <div style={{ margin:'var(--space-3) 0', padding:'var(--space-3)', background:'var(--color-surface-offset)', borderRadius:'var(--radius-md)' }}>
+                <div style={{ display:'flex', justifyContent:'space-between', fontSize:'var(--text-sm)', marginBottom:'var(--space-1)' }}>
+                  <span>Ordens a quitar:</span>
+                  <strong>{detailData?.contaAberto?.ordens?.length || 0} OS</strong>
+                </div>
+                <div style={{ display:'flex', justifyContent:'space-between', fontSize:'var(--text-base)', fontWeight:800 }}>
+                  <span>Total a Receber:</span>
+                  <span style={{ color:'var(--color-primary)' }}>{fmt(detailData?.contaAberto?.totalEmAberto)}</span>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Forma de Pagamento</label>
+                <select
+                  className="form-input"
+                  value={acertoPagamento}
+                  onChange={e => setAcertoPagamento(e.target.value)}
+                >
+                  {FORMAS_PAGAMENTO.map(f => (
+                    <option key={f.valor} value={f.valor}>{f.rotulo}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={() => setShowModalAcerto(false)} disabled={acertoSubmitting}>
+                Cancelar
+              </button>
+              <button className="btn btn-primary" onClick={handleConfirmAcerto} disabled={acertoSubmitting}>
+                {acertoSubmitting ? 'Processando…' : 'Confirmar e Emitir Recibo'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* MODAL DE SALDO INICIAL DE CRÉDITO */}
+      {showModalSaldoInicial && ReactDOM.createPortal(
+        <div className="modal-overlay" onClick={() => setShowModalSaldoInicial(false)}>
+          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">Lançar Saldo Inicial de Crédito</h2>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowModalSaldoInicial(false)}>✕</button>
+            </div>
+            <div className="modal-body modal-body-dense">
+              <p style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', margin:'0 0 var(--space-3)' }}>
+                Utilize para registrar saldo de haver legado trazido de fichas de papel sem distorcer o DRE do mês corrente.
+              </p>
+              <div className="form-group">
+                <label className="form-label">Valor (R$)</label>
+                <input
+                  className="form-input"
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={saldoInicialValor}
+                  onChange={e => setSaldoInicialValor(e.target.value)}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Motivo / Referência</label>
+                <input
+                  className="form-input"
+                  value={saldoInicialMotivo}
+                  onChange={e => setSaldoInicialMotivo(e.target.value)}
+                  placeholder="Saldo anterior em ficha de papel"
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={() => setShowModalSaldoInicial(false)} disabled={saldoInicialSubmitting}>
+                Cancelar
+              </button>
+              <button className="btn btn-primary" onClick={handleConfirmSaldoInicial} disabled={saldoInicialSubmitting}>
+                {saldoInicialSubmitting ? 'Gravando…' : 'Gravar Saldo'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* MODAL DE AJUSTE MANUAL DE CRÉDITO */}
+      {showModalAjuste && ReactDOM.createPortal(
+        <div className="modal-overlay" onClick={() => setShowModalAjuste(false)}>
+          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">Ajuste Manual de Crédito</h2>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowModalAjuste(false)}>✕</button>
+            </div>
+            <div className="modal-body modal-body-dense">
+              <div className="form-group">
+                <label className="form-label">Tipo de Ajuste</label>
+                <select className="form-input" value={ajusteTipo} onChange={e => setAjusteTipo(e.target.value)}>
+                  <option value="entrada">Crédito (+) Cortesia / Correção a favor do cliente</option>
+                  <option value="saida">Débito (-) Regularização / Correção a favor da loja</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Valor (R$)</label>
+                <input
+                  className="form-input"
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={ajusteValor}
+                  onChange={e => setAjusteValor(e.target.value)}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Motivo (Obrigatório)</label>
+                <input
+                  className="form-input"
+                  value={ajusteMotivo}
+                  onChange={e => setAjusteMotivo(e.target.value)}
+                  placeholder="Justificativa da alteração"
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={() => setShowModalAjuste(false)} disabled={ajusteSubmitting}>
+                Cancelar
+              </button>
+              <button className="btn btn-primary" onClick={handleConfirmAjuste} disabled={ajusteSubmitting}>
+                {ajusteSubmitting ? 'Gravando…' : 'Gravar Ajuste'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* MODAL DE DEVOLVER CRÉDITO EM DINHEIRO */}
+      {showModalDevolver && ReactDOM.createPortal(
+        <div className="modal-overlay" onClick={() => setShowModalDevolver(false)}>
+          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">Devolver Crédito em Dinheiro</h2>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowModalDevolver(false)}>✕</button>
+            </div>
+            <div className="modal-body modal-body-dense">
+              <p style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)', margin:'0 0 var(--space-3)' }}>
+                Saldo disponível para devolução: <strong>{fmt(detailData?.credito?.saldo)}</strong>. Registra uma saída de caixa.
+              </p>
+              <div className="form-group">
+                <label className="form-label">Valor a Devolver (R$)</label>
+                <input
+                  className="form-input"
+                  type="number"
+                  step="0.01"
+                  max={detailData?.credito?.saldo}
+                  placeholder="0.00"
+                  value={devolverValor}
+                  onChange={e => setDevolverValor(e.target.value)}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Motivo</label>
+                <input
+                  className="form-input"
+                  value={devolverMotivo}
+                  onChange={e => setDevolverMotivo(e.target.value)}
+                  placeholder="Restituição de crédito em espécie"
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={() => setShowModalDevolver(false)} disabled={devolverSubmitting}>
+                Cancelar
+              </button>
+              <button className="btn btn-primary" onClick={handleConfirmDevolver} disabled={devolverSubmitting}>
+                {devolverSubmitting ? 'Registrando…' : 'Confirmar Devolução'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* MODAL DE CONFIRMAÇÃO DE ESTORNO DE MOVIMENTO */}
+      {confirmEstornoMov && ReactDOM.createPortal(
+        <div className="modal-overlay" onClick={() => setConfirmEstornoMov(null)}>
+          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">Estornar Movimento</h2>
+              <button className="btn btn-ghost btn-sm" onClick={() => setConfirmEstornoMov(null)}>✕</button>
+            </div>
+            <div className="modal-body modal-body-dense">
+              <p>Deseja realmente estornar o movimento de <strong>{fmt(confirmEstornoMov.valor)}</strong>?</p>
+              <p style={{ fontSize:'var(--text-xs)', color:'var(--color-text-muted)' }}>
+                Motivo: {confirmEstornoMov.motivo || confirmEstornoMov.tipo}
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={() => setConfirmEstornoMov(null)} disabled={estornoSubmitting}>
+                Cancelar
+              </button>
+              <button
+                className="btn"
+                style={{ background:'var(--color-error)', color:'white' }}
+                onClick={handleConfirmEstorno}
+                disabled={estornoSubmitting}
+              >
+                {estornoSubmitting ? 'Estornando…' : 'Confirmar Estorno'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO DE CLIENTE */}
       {confirmDel && ReactDOM.createPortal(
         <div className="modal-overlay" onClick={() => setConfirmDel(null)}>
           <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
