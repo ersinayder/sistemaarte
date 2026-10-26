@@ -245,6 +245,23 @@ router.post("/:id/credito/ajuste", auth(), authPermission("clientes.credito.ajus
   }
 });
 
+// POST /api/clientes/:id/credito/usar
+router.post("/:id/credito/usar", auth(), authPermission("clientes.credito.usar"), (req, res, next) => {
+  try {
+    const { ordem_id, ordemId, valor } = req.body ?? {};
+    const service = createClienteCreditoService({ db: getDB() });
+    const result = service.usarCreditoOS({
+      ordemId: ordem_id || ordemId,
+      clienteId: req.params.id,
+      valor,
+      criadopor: req.user.id,
+    });
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 // POST /api/clientes/:id/credito/devolver
 router.post("/:id/credito/devolver", auth(), authPermission("clientes.credito.devolver"), (req, res, next) => {
   try {

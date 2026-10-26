@@ -22,6 +22,7 @@ const EMPTY_EMPRESA = {
   codigomunicipio: '',
   uf: '',
   cep: '',
+  chave_pix: '',
 }
 
 const EMPTY_FISCAL = {
@@ -1876,6 +1877,7 @@ export default function Configuracoes() {
                     </Field>
                     <Field label="Telefone" name="telefone" form={empresaForm} errors={errors} onChange={setField} inputMode="tel" />
                     <Field label="E-mail" name="email" form={empresaForm} errors={errors} onChange={setField} type="email" />
+                    <Field label="Chave Pix da Loja" name="chave_pix" form={empresaForm} errors={errors} onChange={setField} placeholder="CNPJ, e-mail, telefone ou chave aleatória" />
                     <Field label={cepLoadingEmpresa ? 'CEP buscando...' : 'CEP'} name="cep" form={empresaForm} errors={errors} onChange={setField}>
                       <input
                         id="cep"

@@ -57,6 +57,7 @@ const EMPRESA_COLUMNS = [
   "codigomunicipio",
   "uf",
   "cep",
+  "chave_pix",
 ];
 
 const SEL_EMPRESA = `
@@ -75,6 +76,7 @@ const SEL_EMPRESA = `
     codigomunicipio,
     uf,
     cep,
+    chave_pix,
     updatedat
   FROM empresa_config
   WHERE id = 1

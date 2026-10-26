@@ -54,6 +54,7 @@ function normalizarEmpresaConfig(input = {}) {
     codigomunicipio: onlyDigits(input.codigomunicipio, 7),
     uf: cleanText(input.uf, 10).toUpperCase(),
     cep: onlyDigits(input.cep, 8),
+    chave_pix: cleanText(input.chave_pix, 100),
   };
 }
 

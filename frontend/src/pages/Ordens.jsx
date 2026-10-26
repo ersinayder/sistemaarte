@@ -6,6 +6,7 @@ import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { aplicarDescontoOS } from '../utils/descontoOS';
 import { printOrdem } from '../utils/printOrdem';
+import ExcedenteModal from '../components/ExcedenteModal';
 
 // ------- Componente de busca de produtos -------
 function ProdutoInput({ produtos, onAdd }) {
@@ -112,6 +113,7 @@ function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEd
   const [clientesBusca, setClientesBusca] = useState(clientes);
   const clienteRef = useRef(null);
   const [createdOS, setCreatedOS] = useState(null);
+  const [excedenteInfo, setExcedenteInfo] = useState(null);
   const overlayDownRef = useRef(false);
   const clienteSearchSeq = useRef(0);
 
@@ -221,7 +223,34 @@ function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEd
       onSaved();
       onClose();
     } catch(err) {
+      if (err?.response?.data?.code === 'EXCEDENTE_PAGAMENTO') {
+        setExcedenteInfo({
+          excedente: Number(err.response.data.excedente || 0),
+          payload,
+        });
+        return;
+      }
       toast.error(err?.response?.data?.error || 'Erro ao salvar');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleResolveExcedente = async (destino) => {
+    if (!excedenteInfo) return;
+    setSaving(true);
+    try {
+      const payloadComDestino = {
+        ...excedenteInfo.payload,
+        destino_excedente: destino,
+      };
+      await api.put(`/ordens/${os.id}`, payloadComDestino);
+      toast.success('OS atualizada!');
+      setExcedenteInfo(null);
+      onSaved();
+      onClose();
+    } catch (err) {
+      toast.error(err?.response?.data?.error || 'Erro ao resolver excedente');
     } finally {
       setSaving(false);
     }
@@ -505,6 +534,15 @@ function ModalOS({ os, onClose, onSaved, clientes, todosProdutos, canEdit, canEd
             </button>
           </div>
         </form>
+        {excedenteInfo && (
+          <ExcedenteModal
+            isOpen={true}
+            excedente={excedenteInfo.excedente}
+            isSubmitting={saving}
+            onResolve={handleResolveExcedente}
+            onClose={() => setExcedenteInfo(null)}
+          />
+        )}
       </div>
     </div>
   );

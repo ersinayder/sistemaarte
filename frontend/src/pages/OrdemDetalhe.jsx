@@ -8,6 +8,8 @@ import { useAuth } from '../context/AuthContext'
 import { printOrdem } from '../utils/printOrdem'
 import { getWhatsappClientMode, launchWhatsappDesktop, buildWhatsappDesktopUrl, buildWhatsappWebUrl } from '../utils/whatsappOficina'
 import { ModalEmitir } from './NotasFiscais'
+import ExcedenteModal from '../components/ExcedenteModal'
+import UsarCreditoModal from '../components/UsarCreditoModal'
 
 const fmt   = v => 'R$ ' + Number(v||0).toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.')
 const fmtDT = iso => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
@@ -145,6 +147,10 @@ export default function OrdemDetalhe({ context }) {
   // NF-e
   const [modalEmitirAberto, setModalEmitirAberto] = useState(false)
   const [imprimindo, setImprimindo]       = useState(false)
+  const [clienteCredito, setClienteCredito]       = useState(0)
+  const [modalCreditoAberto, setModalCreditoAberto] = useState(false)
+  const [usandoCredito, setUsandoCredito]         = useState(false)
+  const [excedenteInfo, setExcedenteInfo]         = useState(null)
 
   useEffect(() => {
     document.body.style.overflow = confirmDelete ? 'hidden' : ''
@@ -158,6 +164,16 @@ export default function OrdemDetalhe({ context }) {
       setHistorico(ro.data.logs || [])
       setItens(ro.data.itens || ro.data.items || ro.data.produtos || [])
       setLancamentosOS(ro.data.lancamentos || [])
+      if (ro.data.clienteid) {
+        try {
+          const rc = await api.get('/clientes/' + ro.data.clienteid + '/credito')
+          setClienteCredito(Number(rc.data?.saldo || 0))
+        } catch (_) {
+          setClienteCredito(0)
+        }
+      } else {
+        setClienteCredito(0)
+      }
     } catch {
       toast.error('Erro ao carregar OS')
       navigate(backPath)
@@ -199,14 +215,46 @@ export default function OrdemDetalhe({ context }) {
     )
   }, [historico, lancamentosOS])
 
-  const mudarStatus = async (novoStatus) => {
+  const mudarStatus = async (novoStatus, destino_excedente = null) => {
     if (novoStatus === 'Cancelado' && !(typeof can === 'function' && can('ordens.cancelar'))) return toast.error('Sem permissao para cancelar OS')
     if (!(typeof can === 'function' && (can('ordens.alterar_status') || can('oficina.alterar_status')))) return toast.error('Sem permissao para alterar status')
     try {
-      await api.patch(`/ordens/${id}/status`, { status: novoStatus })
+      const payload = { status: novoStatus }
+      if (destino_excedente) {
+        payload.destino_excedente = destino_excedente
+      }
+      await api.patch(`/ordens/${id}/status`, payload)
       toast.success(`Status → ${novoStatus}`)
+      setExcedenteInfo(null)
       load()
-    } catch(e) { toast.error(e.response?.data?.error || 'Erro ao atualizar status') }
+    } catch(e) {
+      if (e.response?.data?.code === 'EXCEDENTE_PAGAMENTO') {
+        setExcedenteInfo({
+          excedente: Number(e.response.data.excedente || 0),
+          novoStatus,
+        })
+        return
+      }
+      toast.error(e.response?.data?.error || 'Erro ao atualizar status')
+    }
+  }
+
+  const handleUsarCredito = async (valor) => {
+    if (!ordem?.clienteid) return
+    setUsandoCredito(true)
+    try {
+      await api.post(`/clientes/${ordem.clienteid}/credito/usar`, {
+        ordem_id: ordem.id,
+        valor,
+      })
+      toast.success('Crédito aplicado com sucesso!')
+      setModalCreditoAberto(false)
+      load()
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Erro ao aplicar crédito na OS')
+    } finally {
+      setUsandoCredito(false)
+    }
   }
 
   const adicionarObs = async () => {
@@ -284,7 +332,9 @@ export default function OrdemDetalhe({ context }) {
   if (loading) return <div className="loading-center"><div className="spinner"/></div>
   if (!ordem)  return null
 
-  const saldoOS   = Number(ordem.saldoaberto ?? 0)
+  const totalOS   = Number(ordem.valortotal || ordem.valor || 0)
+  const entradaOS = Number(ordem.valorentrada || ordem.entrada || 0)
+  const saldoOS   = Number(ordem.saldoaberto !== undefined && ordem.saldoaberto !== null ? ordem.saldoaberto : Math.max(0, totalOS - entradaOS))
   const vencida   = ordem.prazo && ordem.prazo < today() && !['Entregue','Cancelado','Pronto'].includes(ordem.status)
   const statusIdx = STATUS_FLOW.indexOf(ordem.status)
   const canChangeStatus = typeof can === 'function' && (can('ordens.alterar_status') || can('oficina.alterar_status'))
@@ -594,6 +644,36 @@ export default function OrdemDetalhe({ context }) {
               </span>
             </div>
 
+            {clienteCredito > 0 && saldoOS > 0 && (
+              <div style={{
+                marginTop: 'var(--space-3)',
+                padding: 'var(--space-2) var(--space-3)',
+                background: 'var(--color-surface-dynamic)',
+                borderRadius: 'var(--radius-md)',
+                border: '1px dashed var(--color-success)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 'var(--space-2)',
+                flexWrap: 'wrap',
+              }}>
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>Crédito do Cliente</div>
+                  <div className="tabnum" style={{ fontWeight: 700, color: 'var(--color-success)', fontSize: 'var(--text-xs)' }}>
+                    {fmt(clienteCredito)} disponível
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-ghost"
+                  style={{ color: 'var(--color-success)', borderColor: 'var(--color-success)' }}
+                  onClick={() => setModalCreditoAberto(true)}
+                >
+                  Usar Crédito Loja
+                </button>
+              </div>
+            )}
+
             {/* ── Painel NF-e ─────────────────────────────────────────── */}
             {nfeEmitida && (
               <div style={{
@@ -824,6 +904,27 @@ export default function OrdemDetalhe({ context }) {
           ordemInicial={ordem}
           onClose={() => setModalEmitirAberto(false)}
           onSuccess={() => { setModalEmitirAberto(false); load() }}
+        />
+      )}
+
+      {excedenteInfo && (
+        <ExcedenteModal
+          isOpen={true}
+          excedente={excedenteInfo.excedente}
+          onResolve={(destino) => mudarStatus(excedenteInfo.novoStatus, destino)}
+          onClose={() => setExcedenteInfo(null)}
+        />
+      )}
+
+      {modalCreditoAberto && (
+        <UsarCreditoModal
+          isOpen={true}
+          clienteNome={ordem.clientenome}
+          saldoCredito={clienteCredito}
+          saldoOS={saldoOS}
+          isSubmitting={usandoCredito}
+          onConfirm={handleUsarCredito}
+          onClose={() => setModalCreditoAberto(false)}
         />
       )}
     </div>
