@@ -296,6 +296,8 @@ CREATE TABLE IF NOT EXISTS clientes (
   uf         TEXT,
   cep        TEXT,
   notes      TEXT,
+  fiado_ativo INTEGER DEFAULT 0,
+  fiado_limite REAL DEFAULT NULL,
   deletedat  TEXT    DEFAULT NULL,
   deletedpor INTEGER DEFAULT NULL,
   createdat  TEXT DEFAULT (datetime('now','localtime'))
@@ -340,6 +342,8 @@ CREATE TABLE IF NOT EXISTS lancamentos (
   ordemid   INTEGER,
   criadopor INTEGER,
   origem    TEXT DEFAULT NULL,
+  clienteid INTEGER DEFAULT NULL,
+  acerto_id INTEGER DEFAULT NULL,
   conta_pagar_id INTEGER DEFAULT NULL,
   deletedat TEXT DEFAULT NULL,
   deletedpor INTEGER DEFAULT NULL,
@@ -465,6 +469,7 @@ CREATE TABLE IF NOT EXISTS empresa_config (
   codigomunicipio       TEXT,
   uf                    TEXT,
   cep                   TEXT,
+  chave_pix             TEXT DEFAULT NULL,
   updatedat             TEXT DEFAULT (datetime('now','localtime'))
 );
 INSERT OR IGNORE INTO empresa_config (id) VALUES (1);
@@ -664,6 +669,35 @@ CREATE INDEX IF NOT EXISTS idx_nfe_inutilizacoes_faixa
   ON nfe_inutilizacoes(numero_inicial, numero_final);
 ${NFE_INTEGRIDADE_CONCILIACOES_SCHEMA_STATEMENTS.join(";\n")};
 ${NFE_EMISSAO_SCHEMA_STATEMENTS.join(";\n")};
+CREATE TABLE IF NOT EXISTS cliente_credito_movimentos (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  clienteid     INTEGER NOT NULL,
+  tipo          TEXT NOT NULL,
+  valor         REAL NOT NULL,
+  ordemid       INTEGER DEFAULT NULL,
+  lancamentoid  INTEGER DEFAULT NULL,
+  estorna_id    INTEGER DEFAULT NULL,
+  motivo        TEXT DEFAULT NULL,
+  criadopor     INTEGER NOT NULL,
+  createdat     TEXT DEFAULT (datetime('now','localtime')),
+  FOREIGN KEY(clienteid) REFERENCES clientes(id)
+);
+CREATE INDEX IF NOT EXISTS idx_cliente_credito_cliente ON cliente_credito_movimentos(clienteid);
+CREATE INDEX IF NOT EXISTS idx_cliente_credito_lancamento ON cliente_credito_movimentos(lancamentoid);
+CREATE TABLE IF NOT EXISTS cliente_acertos (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  clienteid      INTEGER NOT NULL,
+  valor_total    REAL NOT NULL,
+  pagamento      TEXT NOT NULL,
+  observacao     TEXT DEFAULT NULL,
+  criadopor      INTEGER NOT NULL,
+  createdat      TEXT DEFAULT (datetime('now','localtime')),
+  estornado_em   TEXT DEFAULT NULL,
+  estornado_por  INTEGER DEFAULT NULL,
+  FOREIGN KEY(clienteid) REFERENCES clientes(id)
+);
+CREATE INDEX IF NOT EXISTS idx_cliente_acertos_cliente ON cliente_acertos(clienteid);
+CREATE INDEX IF NOT EXISTS idx_lancamentos_acerto_id ON lancamentos(acerto_id);
 CREATE TABLE IF NOT EXISTS print_queue (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   tipo TEXT NOT NULL,
@@ -744,9 +778,26 @@ function seedPermissionProfiles(targetDb) {
       updateMissingBaseRole.run(profile.base_role, profile.key);
       const row = getProfile.get(profile.key);
       const shouldSeedPermissions = Number(countPermissions.get(row.id)?.total || 0) === 0;
-      if (!shouldSeedPermissions) continue;
-      for (const permission of permissions) {
-        insertPermission.run(row.id, permission);
+      if (shouldSeedPermissions) {
+        for (const permission of permissions) {
+          insertPermission.run(row.id, permission);
+        }
+      } else if (profile.key === "admin" || profile.key === "caixa") {
+        const novasPermissoes = [
+          "clientes.fiado.gerenciar",
+          "clientes.credito.ver",
+          "clientes.credito.usar",
+          "clientes.credito.ajustar",
+          "clientes.credito.devolver",
+          "clientes.acerto.receber",
+          "ordens.entregar_fiado",
+          "ordens.entregar_acima_limite",
+        ];
+        for (const permission of permissions) {
+          if (novasPermissoes.includes(permission)) {
+            insertPermission.run(row.id, permission);
+          }
+        }
       }
     }
   });
@@ -1137,6 +1188,41 @@ function initDB(customPath, options = {}) {
       printedat DATETIME
     )`,
     "CREATE INDEX IF NOT EXISTS idx_print_queue_status ON print_queue(status, createdat)",
+    // v29 - fiado e credito loja
+    "ALTER TABLE clientes ADD COLUMN fiado_ativo INTEGER DEFAULT 0",
+    "ALTER TABLE clientes ADD COLUMN fiado_limite REAL DEFAULT NULL",
+    "ALTER TABLE lancamentos ADD COLUMN clienteid INTEGER DEFAULT NULL",
+    "ALTER TABLE lancamentos ADD COLUMN acerto_id INTEGER DEFAULT NULL",
+    "ALTER TABLE empresa_config ADD COLUMN chave_pix TEXT DEFAULT NULL",
+    `CREATE TABLE IF NOT EXISTS cliente_credito_movimentos (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      clienteid     INTEGER NOT NULL,
+      tipo          TEXT NOT NULL,
+      valor         REAL NOT NULL,
+      ordemid       INTEGER DEFAULT NULL,
+      lancamentoid  INTEGER DEFAULT NULL,
+      estorna_id    INTEGER DEFAULT NULL,
+      motivo        TEXT DEFAULT NULL,
+      criadopor     INTEGER NOT NULL,
+      createdat     TEXT DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY(clienteid) REFERENCES clientes(id)
+    )`,
+    "CREATE INDEX IF NOT EXISTS idx_cliente_credito_cliente ON cliente_credito_movimentos(clienteid)",
+    "CREATE INDEX IF NOT EXISTS idx_cliente_credito_lancamento ON cliente_credito_movimentos(lancamentoid)",
+    `CREATE TABLE IF NOT EXISTS cliente_acertos (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      clienteid      INTEGER NOT NULL,
+      valor_total    REAL NOT NULL,
+      pagamento      TEXT NOT NULL,
+      observacao     TEXT DEFAULT NULL,
+      criadopor      INTEGER NOT NULL,
+      createdat      TEXT DEFAULT (datetime('now','localtime')),
+      estornado_em   TEXT DEFAULT NULL,
+      estornado_por  INTEGER DEFAULT NULL,
+      FOREIGN KEY(clienteid) REFERENCES clientes(id)
+    )`,
+    "CREATE INDEX IF NOT EXISTS idx_cliente_acertos_cliente ON cliente_acertos(clienteid)",
+    "CREATE INDEX IF NOT EXISTS idx_lancamentos_acerto_id ON lancamentos(acerto_id)",
   ];
   applyMigrations(db, migrations);
   db.prepare("UPDATE users SET profile_key=role WHERE profile_key IS NULL").run();
