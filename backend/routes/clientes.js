@@ -1,6 +1,9 @@
 const router = require("express").Router();
-const { getAll, getOne, run, runInsert, transaction } = require("../database");
+const { getAll, getOne, run, runInsert, transaction, getDB } = require("../database");
 const { auth, authPermission } = require("../middlewares/auth");
+const { hasPermission } = require("../domain/permissionRules");
+const { toNumber } = require("../utils/numbers");
+const { createClienteCreditoService } = require("../services/clienteCreditoService");
 const { normalizarPaginacao, montarMetaPaginacao } = require("../domain/paginationRules");
 const { consultarCnpj } = require("../services/cnpjLookupService");
 const { hoje } = require("../utils/dates");
@@ -102,6 +105,7 @@ router.get("/:id", auth(), authPermission("clientes.ver"), (req, res, next) => {
         osVencidas,
         ultimaOs,
         statusBreakdown,
+        saldoCredito: createClienteCreditoService({ db: getDB() }).getExtratoCredito(id).saldo,
       },
     });
   } catch(e) { next(e); }
@@ -147,17 +151,28 @@ router.put("/:id", auth(), authPermission("clientes.editar"), (req, res, next) =
     const indIeDest = docDigits.length === 14 && ['1','2','9'].includes(String(ind_ie_dest||'').trim())
       ? String(ind_ie_dest).trim()
       : null;
-    run(
-      `UPDATE clientes
-       SET name=?, phone=?, email=?, cpf=?, ie=?, ind_ie_dest=?,
-           logradouro=?, numero=?, bairro=?,
-           cidade=?, uf=?, cep=?, notes=?
-       WHERE id=?`,
-      [name, phone||null, email||null, cpf||null, ie||null, indIeDest,
-       logradouro||null, numero||null, bairro||null,
-       cidade||null, uf||null, cep||null, notes||null,
-       req.params.id]
-    );
+    const canManageFiado = hasPermission(req.user, "clientes.fiado.gerenciar");
+    const fields = [
+      "name=?", "phone=?", "email=?", "cpf=?", "ie=?", "ind_ie_dest=?",
+      "logradouro=?", "numero=?", "bairro=?",
+      "cidade=?", "uf=?", "cep=?", "notes=?"
+    ];
+    const params = [
+      name, phone||null, email||null, cpf||null, ie||null, indIeDest,
+      logradouro||null, numero||null, bairro||null,
+      cidade||null, uf||null, cep||null, notes||null
+    ];
+
+    if (canManageFiado && (req.body.fiado_ativo !== undefined || req.body.fiado_limite !== undefined)) {
+      fields.push("fiado_ativo=?", "fiado_limite=?");
+      params.push(
+        req.body.fiado_ativo ? 1 : 0,
+        req.body.fiado_limite != null && req.body.fiado_limite !== "" ? toNumber(req.body.fiado_limite, null) : null
+      );
+    }
+    params.push(req.params.id);
+
+    run(`UPDATE clientes SET ${fields.join(", ")} WHERE id=?`, params);
     res.json({ ok: true });
   } catch(e) { next(e); }
 });
@@ -180,6 +195,80 @@ router.delete("/:id", auth(), authPermission("clientes.excluir"), (req, res, nex
     );
     res.json({ ok: true, nome: c.name });
   } catch(e) { next(e); }
+});
+
+// GET /api/clientes/:id/credito
+router.get("/:id/credito", auth(), authPermission("clientes.credito.ver"), (req, res, next) => {
+  try {
+    const service = createClienteCreditoService({ db: getDB() });
+    res.json(service.getExtratoCredito(req.params.id));
+  } catch (e) { next(e); }
+});
+
+// POST /api/clientes/:id/credito/saldo-inicial
+router.post("/:id/credito/saldo-inicial", auth(), authPermission("clientes.credito.ajustar"), (req, res, next) => {
+  try {
+    const { valor, motivo } = req.body ?? {};
+    const service = createClienteCreditoService({ db: getDB() });
+    const result = service.lancarSaldoInicial({
+      clienteId: req.params.id,
+      valor,
+      motivo,
+      criadopor: req.user.id,
+    });
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// POST /api/clientes/:id/credito/ajuste
+router.post("/:id/credito/ajuste", auth(), authPermission("clientes.credito.ajustar"), (req, res, next) => {
+  try {
+    const { tipo, valor, motivo } = req.body ?? {};
+    const service = createClienteCreditoService({ db: getDB() });
+    const result = service.lancarAjusteManual({
+      clienteId: req.params.id,
+      tipo,
+      valor,
+      motivo,
+      criadopor: req.user.id,
+    });
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// POST /api/clientes/:id/credito/devolver
+router.post("/:id/credito/devolver", auth(), authPermission("clientes.credito.devolver"), (req, res, next) => {
+  try {
+    const { valor, pagamento } = req.body ?? {};
+    const service = createClienteCreditoService({ db: getDB() });
+    const result = service.devolverCredito({
+      clienteId: req.params.id,
+      valor,
+      pagamento,
+      criadopor: req.user.id,
+    });
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// POST /api/clientes/:id/credito/estornar/:movimentoId
+router.post("/:id/credito/estornar/:movimentoId", auth(), authPermission("clientes.credito.ajustar"), (req, res, next) => {
+  try {
+    const service = createClienteCreditoService({ db: getDB() });
+    const result = service.estornarMovimento({
+      movimentoId: req.params.movimentoId,
+      usuarioId: req.user.id,
+    });
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
 });
 
 module.exports = router;
