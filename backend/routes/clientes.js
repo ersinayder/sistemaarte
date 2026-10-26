@@ -108,7 +108,9 @@ router.get("/:id", auth(), authPermission("clientes.ver"), (req, res, next) => {
         osVencidas,
         ultimaOs,
         statusBreakdown,
-        saldoCredito: createClienteCreditoService({ db: getDB() }).getExtratoCredito(id).saldo,
+        saldoCredito: (typeof getDB === "function" && getDB())
+          ? createClienteCreditoService({ db: getDB() }).getExtratoCredito(id).saldo
+          : 0,
       },
     });
   } catch(e) { next(e); }

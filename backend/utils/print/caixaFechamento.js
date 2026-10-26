@@ -1,4 +1,4 @@
-const { agruparPorPagamento } = require('../../domain/pagamentosRules');
+const { agruparPorPagamento, normalizarPagamento } = require('../../domain/pagamentosRules');
 const {
   esc,
   fmtDate,
@@ -32,17 +32,26 @@ function montarFechamentoCaixa({ data, lancamentos = [] } = {}) {
   const rows = Array.isArray(lancamentos) ? lancamentos : [];
   const entradas = rows.filter(isEntrada);
   const saidas = rows.filter(isSaida);
-  const entrada = soma(entradas);
+
+  // Crédito Loja não entra na gaveta física/bancária
+  const entradasCaixa = entradas.filter((r) => normalizarPagamento(r?.pagamento) !== 'CreditoLoja');
+  const entradasCreditoLoja = entradas.filter((r) => normalizarPagamento(r?.pagamento) === 'CreditoLoja');
+
+  const entrada = soma(entradasCaixa);
   const saida = soma(saidas);
+  const totalCreditoLoja = soma(entradasCreditoLoja);
+
   return {
     data,
     lancamentos: rows,
     entradas,
-    saidas,
+    entradasCaixa,
+    entradasCreditoLoja,
+    totalCreditoLoja,
     entrada,
     saida,
     saldo: Math.round((entrada - saida) * 100) / 100,
-    entradasPorPagamento: agruparPorPagamento(entradas).sort((a, b) => b.total - a.total),
+    entradasPorPagamento: agruparPorPagamento(entradasCaixa).sort((a, b) => b.total - a.total),
   };
 }
 
@@ -121,6 +130,15 @@ function renderFechamentoCaixaHtml({ data, fechamento, usuario } = {}) {
         empty: 'Nenhuma entrada no periodo.',
       })}
     </section>
+
+    ${f.totalCreditoLoja > 0 ? `
+    <section class="section">
+      <h2 class="section-title">Crédito Loja Utilizado (não entra na gaveta)</h2>
+      <div style="background: #f8fafc; padding: 2.5mm 3.5mm; border-radius: 4px; border: 1px solid #e2e8f0; font-size: 12px;">
+        <strong>Total em Haveres Utilizados:</strong> ${fmtMoney(f.totalCreditoLoja)} <span style="color: #64748b;">&mdash; Compensação contábil de haver/crédito, não entra na gaveta.</span>
+      </div>
+    </section>
+    ` : ''}
 
     <section class="section">
       <h2 class="section-title">Lancamentos do dia</h2>

@@ -9,6 +9,7 @@ const {
   validarContaPagar,
 } = require("../domain/financeiroAdminRules");
 const { getResumoFinanceiroOS } = require("../domain/financeiroRules");
+const { validarInvarianteCredito } = require("../domain/clienteCreditoRules");
 const {
   auditarIntegridadeFinanceiraOS,
   montarDetalheIntegridadeFinanceiraOS,
@@ -31,9 +32,15 @@ function mesAtual() {
   return hoje().slice(0, 7);
 }
 
-function periodoMes(mes) {
-  const safeMes = /^\d{4}-\d{2}$/.test(String(mes || "")) ? mes : mesAtual();
-  return { mes: safeMes, inicio: `${safeMes}-01`, fim: `${safeMes}-31` };
+function periodoMes(mesInput) {
+  const mes = /^\d{4}-\d{2}$/.test(String(mesInput || "").trim())
+    ? String(mesInput).trim()
+    : mesAtual();
+  const [ano, m] = mes.split("-").map(Number);
+  const ultimoDia = new Date(ano, m, 0).getDate();
+  const inicio = `${mes}-01`;
+  const fim = `${mes}-${String(ultimoDia).padStart(2, "0")}`;
+  return { mes, inicio, fim };
 }
 
 function rowConta(id) {
@@ -44,8 +51,9 @@ function filtrosContaPagar(query = {}) {
   const where = ["deletedat IS NULL"];
   const params = [];
   if (query.mes) {
-    where.push("strftime('%Y-%m', vencimento)=?");
-    params.push(query.mes);
+    const { inicio, fim } = periodoMes(query.mes);
+    where.push("vencimento BETWEEN ? AND ?");
+    params.push(inicio, fim);
   }
   if (query.status && query.status !== "todos") {
     where.push("status=?");
@@ -68,7 +76,9 @@ function getResumoFinanceiroPayload(mesInput) {
   )?.v ?? 0;
   const saidasPagas = getOne(
     `SELECT COALESCE(SUM(l.valor),0) AS v FROM lancamentos l
-     WHERE strftime('%Y-%m',l.data)=? AND l.tipo IN ('Saída', 'Saida', 'saida', 'saída') AND (l.pago=1 OR l.pago IS NULL) AND ${FILTRO_LANCAMENTO_ATIVO}`,
+     WHERE strftime('%Y-%m',l.data)=? AND l.tipo IN ('Saída', 'Saida', 'saida', 'saída') AND (l.pago=1 OR l.pago IS NULL)
+     AND COALESCE(l.origem,'') != 'credito_devolvido'
+     AND ${FILTRO_LANCAMENTO_ATIVO}`,
     [mes]
   )?.v ?? 0;
   const contasPendentes = getOne(
@@ -111,6 +121,7 @@ function getDrePayload(mesInput) {
     `SELECT COALESCE(SUM(l.valor),0) AS v FROM lancamentos l
      WHERE strftime('%Y-%m',l.data)=? AND l.tipo IN ('Saída', 'Saida', 'saida', 'saída') AND (l.pago=1 OR l.pago IS NULL)
      AND (LOWER(COALESCE(l.categoria,'')) LIKE '%devol%' OR LOWER(COALESCE(l.categoria,'')) LIKE '%estorno%')
+     AND COALESCE(l.origem,'') != 'credito_devolvido'
      AND ${FILTRO_LANCAMENTO_ATIVO}`,
     [mes]
   )?.v ?? 0;
@@ -119,6 +130,7 @@ function getDrePayload(mesInput) {
      FROM lancamentos l
      WHERE strftime('%Y-%m',l.data)=? AND l.tipo IN ('Saída', 'Saida', 'saida', 'saída') AND (l.pago=1 OR l.pago IS NULL)
      AND NOT (LOWER(COALESCE(l.categoria,'')) LIKE '%devol%' OR LOWER(COALESCE(l.categoria,'')) LIKE '%estorno%')
+     AND COALESCE(l.origem,'') != 'credito_devolvido'
      AND ${FILTRO_LANCAMENTO_ATIVO}
      GROUP BY COALESCE(l.categoria,'Outros') ORDER BY valor DESC`,
     [mes]
@@ -269,7 +281,11 @@ router.get("/contas-receber", auth(), authPermission("financeiro.ver"), (_req, r
 router.get("/integridade-os/:ordemId", auth(), authPermission("financeiro.ver"), (req, res, next) => {
   try {
     const ordem = getOne(
-      "SELECT id, numero, clientenome, status, valortotal FROM ordens WHERE id=? AND deletedat IS NULL",
+      `SELECT o.id, o.numero, o.clientenome, o.clienteid, o.status, o.valortotal,
+              COALESCE(c.fiado_ativo, 0) AS cliente_fiado_ativo
+       FROM ordens o
+       LEFT JOIN clientes c ON c.id = o.clienteid
+       WHERE o.id=? AND o.deletedat IS NULL`,
       [req.params.ordemId]
     );
     if (!ordem) return res.status(404).json({ error: "OS nao encontrada" });
@@ -296,13 +312,68 @@ router.get("/integridade-os/:ordemId", auth(), authPermission("financeiro.ver"),
 router.get("/integridade-os", auth(), authPermission("financeiro.ver"), (_req, res, next) => {
   try {
     const ordens = getAll(
-      "SELECT id, numero, clientenome, status, valortotal FROM ordens WHERE deletedat IS NULL ORDER BY id DESC"
+      `SELECT o.id, o.numero, o.clientenome, o.clienteid, o.status, o.valortotal,
+              COALESCE(c.fiado_ativo, 0) AS cliente_fiado_ativo
+       FROM ordens o
+       LEFT JOIN clientes c ON c.id = o.clienteid
+       WHERE o.deletedat IS NULL
+       ORDER BY o.id DESC`
     );
-    res.json(auditarIntegridadeFinanceiraOS({
+
+    const movQuery = getOne(
+      "SELECT COALESCE(SUM(valor), 0) AS total FROM cliente_credito_movimentos WHERE tipo != 'saldo_inicial'"
+    );
+    const lancCreditoLojaQuery = getOne(
+      "SELECT COALESCE(SUM(valor), 0) AS total FROM lancamentos WHERE pagamento = 'CreditoLoja' AND (pago = 1 OR pago IS NULL) AND deletedat IS NULL"
+    );
+    const saidasDevolvidoQuery = getOne(
+      "SELECT COALESCE(SUM(valor), 0) AS total FROM lancamentos WHERE origem = 'credito_devolvido' AND (pago = 1 OR pago IS NULL) AND deletedat IS NULL"
+    );
+    const invarianteCredito = validarInvarianteCredito({
+      totalMovimentosSemSaldoInicial: movQuery?.total ?? 0,
+      totalLancamentosCreditoLoja: lancCreditoLojaQuery?.total ?? 0,
+      totalSaidasDevolvido: saidasDevolvidoQuery?.total ?? 0,
+    });
+
+    const clientesComCreditoNegativo = getAll(
+      `SELECT cliente_id, ROUND(COALESCE(SUM(valor), 0), 2) as saldo
+       FROM cliente_credito_movimentos
+       GROUP BY cliente_id
+       HAVING saldo < -0.009`
+    );
+
+    const resultado = auditarIntegridadeFinanceiraOS({
       ordens,
       receberGerencial: getContasReceberPayload(),
       getResumoFinanceiroOS,
-    }));
+    });
+
+    if (!invarianteCredito.valido) {
+      resultado.itens.push({
+        tipo: "invariante_credito_divergente",
+        severidade: "critico",
+        diferenca: invarianteCredito.diferenca,
+        mensagem: `Invariante contábil de crédito diverge em R$ ${invarianteCredito.diferenca.toFixed(2)}.`,
+      });
+      resultado.total += 1;
+      resultado.criticos += 1;
+    }
+
+    if (clientesComCreditoNegativo.length > 0) {
+      resultado.itens.push({
+        tipo: "cliente_credito_negativo",
+        severidade: "critico",
+        clientes: clientesComCreditoNegativo,
+        mensagem: `${clientesComCreditoNegativo.length} cliente(s) com saldo de crédito negativo detectado(s).`,
+      });
+      resultado.total += 1;
+      resultado.criticos += 1;
+    }
+
+    resultado.invarianteCredito = invarianteCredito;
+    resultado.clientesComCreditoNegativo = clientesComCreditoNegativo;
+
+    res.json(resultado);
   } catch (e) { next(e); }
 });
 

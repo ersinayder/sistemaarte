@@ -33,14 +33,24 @@ function auditarIntegridadeFinanceiraOS({ ordens = [], receberGerencial = [], ge
     if (!resumo) continue;
 
     const base = criarBaseItem(ordem, resumo);
+    const isFiado = Boolean(ordem.cliente_fiado_ativo || ordem.fiado || ordem.is_fiado);
 
     if (base.status === "Entregue" && base.saldoOficial > 0.01) {
-      itens.push({
-        ...base,
-        tipo: "entregue_com_saldo",
-        severidade: "critico",
-        mensagem: "OS entregue ainda possui saldo oficial em aberto.",
-      });
+      if (isFiado) {
+        itens.push({
+          ...base,
+          tipo: "entregue_fiado",
+          severidade: "info",
+          mensagem: "OS entregue com saldo em aberto autorizada por convênio fiado.",
+        });
+      } else {
+        itens.push({
+          ...base,
+          tipo: "entregue_com_saldo",
+          severidade: "critico",
+          mensagem: "OS entregue ainda possui saldo oficial em aberto.",
+        });
+      }
     }
 
     const excedente = toMoney(base.recebidoOficial - base.valorTotal);
@@ -54,7 +64,8 @@ function auditarIntegridadeFinanceiraOS({ ordens = [], receberGerencial = [], ge
       });
     }
 
-    if (isOpenStatus(base.status)) {
+    const isFiadoEntregueComSaldo = base.status === "Entregue" && isFiado && base.saldoOficial > 0.009;
+    if (isOpenStatus(base.status) || isFiadoEntregueComSaldo) {
       const gerencial = receberPorId.get(Number(ordem.id));
       const saldoGerencial = toMoney(gerencial?.saldo);
       const deveriaAparecer = base.saldoOficial > 0.009;
@@ -150,7 +161,6 @@ function montarDetalheIntegridadeFinanceiraOS({
       excedente: Math.max(0, toMoney(base.recebidoOficial - base.valorTotal)),
     },
     receberGerencial: sanitizarReceberGerencial(receberGerencial),
-    lancamentos: lancamentos.map(sanitizarLancamento),
     apontamentos: auditoria.itens.map(({ tipo, severidade, mensagem, saldoGerencial, excedente }) => ({
       tipo,
       severidade,
@@ -158,6 +168,7 @@ function montarDetalheIntegridadeFinanceiraOS({
       ...(saldoGerencial !== undefined ? { saldoGerencial } : {}),
       ...(excedente !== undefined ? { excedente } : {}),
     })),
+    lancamentos: lancamentos.map(sanitizarLancamento),
   };
 }
 
