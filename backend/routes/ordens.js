@@ -12,6 +12,38 @@ const { sendWhatsAppConfirmacao } = require("../utils/whatsapp");
 const { marcarAvisoParaEnvio } = require("../utils/whatsappQueue");
 const { getWhatsappRuntimeConfig } = require("../utils/whatsappConfig");
 const { getResumoFinanceiroOS } = require('../domain/financeiroRules');
+const { validarEntregaComSaldo } = require('../domain/clienteFiadoRules');
+
+function calcularDividaEntregueCliente(clienteId) {
+  if (!clienteId) return 0;
+  const ordens = getAll(
+    "SELECT id, valortotal FROM ordens WHERE clienteid=? AND status='Entregue' AND deletedat IS NULL",
+    [clienteId]
+  );
+  let dividaTotal = 0;
+  for (const o of ordens) {
+    const res = getResumoFinanceiroOS(o.id);
+    if (res && res.saldo > 0.01) {
+      dividaTotal += res.saldo;
+    }
+  }
+  return Math.round(dividaTotal * 100) / 100;
+}
+
+function checarEntregaComSaldo({ ordem, saldoOrdem, clienteId, usuario, confirmarAcimaLimite }) {
+  if (saldoOrdem <= 0.01) return { ok: true };
+  const cid = clienteId || ordem?.clienteid;
+  const cliente = cid ? getOne("SELECT id, fiado_ativo, fiado_limite FROM clientes WHERE id=? AND deletedat IS NULL", [cid]) : null;
+  const dividaAtual = calcularDividaEntregueCliente(cid);
+  return validarEntregaComSaldo({
+    ordem,
+    saldoOrdem,
+    cliente,
+    dividaAtualCliente: dividaAtual,
+    usuario,
+    confirmarAcimaLimite,
+  });
+}
 const { calcularDescontoOS } = require('../domain/descontoRules');
 const { normalizarPaginacao, montarMetaPaginacao } = require("../domain/paginationRules");
 const {
@@ -505,18 +537,38 @@ router.put("/:id", auth(), authAnyPermission(["ordens.editar", "ordens.alterar_s
       if (status === 'Cancelado' && !hasPermission(req.user, "ordens.cancelar")) return res.status(403).json({ error: "Sem permissao para cancelar OS." });
       const erroStatus = validarStatus(status, old.status, { isAdmin: req.user?.role === 'admin' });
       if (erroStatus) return res.status(400).json({ error: erroStatus });
+      let checagemFiado = null;
       if (status === 'Entregue') {
         const resumo = getResumoFinanceiroOS(req.params.id);
-        if (resumo && resumo.saldo > 0.01)
-          return res.status(400).json({ error: `Saldo aberto: R$ ${resumo.saldo.toFixed(2)}. Quite antes de entregar.` });
+        checagemFiado = checarEntregaComSaldo({
+          ordem: old,
+          saldoOrdem: resumo?.saldo || 0,
+          clienteId: old.clienteid,
+          usuario: req.user,
+          confirmarAcimaLimite: req.body?.confirmar_acima_limite,
+        });
+        if (!checagemFiado.ok) {
+          return res.status(400).json({ error: checagemFiado.error, code: checagemFiado.code, ...checagemFiado });
+        }
       }
       transaction(() => {
         const current = getOne("SELECT status FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);
         if (!current) throw new Error("OS nao encontrada");
         run("UPDATE ordens SET status=?,updatedat=datetime('now','localtime') WHERE id=?", [status, req.params.id]);
-        if (status !== current.status)
-          runInsert("INSERT INTO statuslog (ordemid,statusanterior,statusnovo,usuarioid) VALUES (?,?,?,?)",
-            [req.params.id, current.status, status, req.user.id]);
+        if (status !== current.status) {
+          let obsLog = null;
+          if (status === 'Entregue') {
+            const resumo = getResumoFinanceiroOS(req.params.id);
+            if (resumo?.saldo > 0.01) {
+              obsLog = `Entregue em débito (fiado): saldo R$ ${resumo.saldo.toFixed(2)}`;
+              if (checagemFiado?.acimaLimite) {
+                obsLog += ` (liberado acima do limite R$ ${toNumber(checagemFiado.limite).toFixed(2)})`;
+              }
+            }
+          }
+          runInsert("INSERT INTO statuslog (ordemid,statusanterior,statusnovo,usuarioid,obs) VALUES (?,?,?,?,?)",
+            [req.params.id, current.status, status, req.user.id, obsLog]);
+        }
       });
       maybeNotifyPronto(req.params.id, old.status, status);
       return res.json({ ok: true });
@@ -557,15 +609,33 @@ router.put("/:id", auth(), authAnyPermission(["ordens.editar", "ordens.alterar_s
       if (erroStatus) return res.status(400).json({ error: erroStatus });
     }
 
+    let checagemFiadoFull = null;
+    let saldoProjetadoFull = 0;
     if (ns === 'Entregue') {
       const resumo = getResumoFinanceiroOS(req.params.id);
       const entradaOS = getEntradaOS(req.params.id);
       const entradaAtual = entradaOS ? toNumber(entradaOS.valor) : 0;
       const recebidoSemEntrada = Math.max(0, toNumber(resumo?.recebido) - entradaAtual);
       const recebidoProjetado = recebidoSemEntrada + (entrada > 0 ? entrada : 0);
-      const saldoProjetado = Math.max(0, Math.round((total - recebidoProjetado) * 100) / 100);
-      if (saldoProjetado > 0.01)
-        return res.status(400).json({ error: `Saldo aberto: R$ ${saldoProjetado.toFixed(2)}. Quite antes de entregar.` });
+      saldoProjetadoFull = Math.max(0, Math.round((total - recebidoProjetado) * 100) / 100);
+
+      let targetCid = clienteid !== undefined ? (clienteid || null) : old.clienteid;
+      const nBusca = normalizarNomeClienteBusca(clientenome || old.clientenome);
+      if (!targetCid && nBusca) {
+        const cliRow = getOne("SELECT id FROM clientes WHERE name=? LIMIT 1", [nBusca]);
+        if (cliRow) targetCid = cliRow.id;
+      }
+
+      checagemFiadoFull = checarEntregaComSaldo({
+        ordem: { ...old, clienteid: targetCid },
+        saldoOrdem: saldoProjetadoFull,
+        clienteId: targetCid,
+        usuario: req.user,
+        confirmarAcimaLimite: req.body?.confirmar_acima_limite,
+      });
+      if (!checagemFiadoFull.ok) {
+        return res.status(400).json({ error: checagemFiadoFull.error, code: checagemFiadoFull.code, ...checagemFiadoFull });
+      }
     }
 
     let novoCid = clienteid !== undefined ? (clienteid || null) : old.clienteid;
@@ -588,9 +658,17 @@ router.put("/:id", auth(), authAnyPermission(["ordens.editar", "ordens.alterar_s
          total, desconto.descontoinput || null, desconto.descontovalor, entrada, novoPrazo, prioridade||old.prioridade, novoPagamento,
          observacoes !== undefined ? observacoes : old.observacoes, ns, req.params.id]
       );
-      if (ns !== old.status)
-        runInsert("INSERT INTO statuslog (ordemid,statusanterior,statusnovo,usuarioid) VALUES (?,?,?,?)",
-          [req.params.id, old.status, ns, req.user.id]);
+      if (ns !== old.status) {
+        let obsLog = null;
+        if (ns === 'Entregue' && saldoProjetadoFull > 0.01) {
+          obsLog = `Entregue em débito (fiado): saldo R$ ${saldoProjetadoFull.toFixed(2)}`;
+          if (checagemFiadoFull?.acimaLimite) {
+            obsLog += ` (liberado acima do limite R$ ${toNumber(checagemFiadoFull.limite).toFixed(2)})`;
+          }
+        }
+        runInsert("INSERT INTO statuslog (ordemid,statusanterior,statusnovo,usuarioid,obs) VALUES (?,?,?,?,?)",
+          [req.params.id, old.status, ns, req.user.id, obsLog]);
+      }
       if (Array.isArray(produtos)) saveItens(req.params.id, produtos);
       const entradaOS = getEntradaOS(req.params.id);
       const entradaDesc = descricaoEntradaOS(old.numero, novoCliente, novoServico, total, entrada);
@@ -628,10 +706,22 @@ router.patch("/:id/status", auth(), authAnyPermission(["ordens.alterar_status", 
       return res.status(403).json({ error: "Sem permissao para cancelar OS." });
     }
 
+    let checagemPatch = null;
+    let saldoPatch = 0;
     if (status === 'Entregue') {
       const resumo = getResumoFinanceiroOS(req.params.id);
-      if (resumo && resumo.saldo > 0.01)
-        return res.status(400).json({ error: `OS possui saldo aberto de R$ ${resumo.saldo.toFixed(2)}. Quite antes de entregar.` });
+      saldoPatch = resumo?.saldo || 0;
+      const ordemRow = getOne("SELECT * FROM ordens WHERE id=?", [req.params.id]);
+      checagemPatch = checarEntregaComSaldo({
+        ordem: ordemRow,
+        saldoOrdem: saldoPatch,
+        clienteId: ordemRow?.clienteid,
+        usuario: req.user,
+        confirmarAcimaLimite: req.body?.confirmar_acima_limite,
+      });
+      if (!checagemPatch.ok) {
+        return res.status(400).json({ error: checagemPatch.error, code: checagemPatch.code, ...checagemPatch });
+      }
     }
 
     let statusAnterior;
@@ -642,9 +732,14 @@ router.patch("/:id/status", auth(), authAnyPermission(["ordens.alterar_status", 
       if (erroStatus) throw new Error(erroStatus);
       statusAnterior = current.status;
       run("UPDATE ordens SET status=?,updatedat=datetime('now','localtime') WHERE id=?", [status, req.params.id]);
+      let obsFinal = obs || null;
+      if (status === 'Entregue' && saldoPatch > 0.01) {
+        const fiadoObs = `Entregue em débito (fiado): saldo R$ ${saldoPatch.toFixed(2)}${checagemPatch?.acimaLimite ? ` (liberado acima do limite R$ ${toNumber(checagemPatch.limite).toFixed(2)})` : ''}`;
+        obsFinal = obsFinal ? `${obsFinal} | ${fiadoObs}` : fiadoObs;
+      }
       runInsert(
         "INSERT INTO statuslog (ordemid,statusanterior,statusnovo,usuarioid,obs) VALUES (?,?,?,?,?)",
-        [req.params.id, current.status, status, req.user.id, obs||null]
+        [req.params.id, current.status, status, req.user.id, obsFinal]
       );
     });
 
