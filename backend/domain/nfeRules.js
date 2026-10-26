@@ -16,13 +16,21 @@
 
 // Mapeia forma de pagamento da OS para tPag da NF-e
 function mapTpPag(pagamento) {
+  const p = String(pagamento || '').trim();
   const mapa = {
     'Dinheiro':        '01',
     'Cheque':          '02',
+    'Credito':         '03',
     'Cartão Crédito':  '03',
     'Cartao Credito':  '03',
+    'Cartão de Crédito':'03',
+    'Cartao de Credito':'03',
+    'Debito':          '04',
     'Cartão Débito':   '04',
     'Cartao Debito':   '04',
+    'Cartão de Débito': '04',
+    'Cartao de Debito': '04',
+    'CreditoLoja':     '05',
     'Crédito Loja':    '05',
     'Credito Loja':    '05',
     'Vale Alimentação':'10',
@@ -35,7 +43,7 @@ function mapTpPag(pagamento) {
     'Transferencia':   '17',
     'Sem Pagamento':   '90',
   };
-  return mapa[pagamento] || '01';
+  return mapa[p] || '01';
 }
 
 const COD_MUNICIPIO_IPATINGA = '3131307';
@@ -311,4 +319,4 @@ function montarNFe({ ordem, itens, cliente, emitente, numero, serie, ambiente, a
   return { infNFe };
 }
 
-module.exports = { montarNFe, normalizarInformacoesComplementares };
+module.exports = { mapTpPag, montarNFe, normalizarInformacoesComplementares };

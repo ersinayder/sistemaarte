@@ -6,6 +6,7 @@ const PAGAMENTOS_CANONICOS = [
   'Transferencia',
   'Link',
   'Boleto',
+  'CreditoLoja',
   'Outros',
 ];
 
@@ -17,6 +18,7 @@ const LABELS = {
   Transferencia: 'Transferencia',
   Link: 'Link de Pagamento',
   Boleto: 'Boleto',
+  CreditoLoja: 'Crédito Loja',
   Outros: 'Outros',
 };
 
@@ -34,6 +36,13 @@ function normalizarPagamento(value) {
   if (!s) return 'Outros';
   if (s === 'pix') return 'Pix';
   if (s === 'dinheiro' || s === 'especie') return 'Dinheiro';
+  if (
+    ['creditoloja', 'creditodaloja', 'haver', 'valecredito'].includes(s) ||
+    s.startsWith('creditoloja') ||
+    s.startsWith('valecredito')
+  ) {
+    return 'CreditoLoja';
+  }
   if (['credito', 'cartaocredito', 'cartaodecredito', 'cardcredito'].includes(s)) return 'Credito';
   if (['debito', 'cartaodebito', 'cartaodedebito', 'carddebito'].includes(s)) return 'Debito';
   if (['transferencia', 'ted', 'doc'].includes(s)) return 'Transferencia';
