@@ -218,6 +218,11 @@ router.delete("/:id", auth(), authPermission("caixa.excluir_lancamento"), (req, 
   try {
     const old = getOne("SELECT * FROM lancamentos WHERE id=? AND deletedat IS NULL", [req.params.id]);
     if (!old) return res.status(404).json({ error: "Lancamento nao encontrado." });
+    if (old.origem && (old.origem.startsWith("credito_") || old.acerto_id)) {
+      return res.status(400).json({
+        error: "Lançamentos de crédito ou acerto devem ser gerenciados pelo extrato do cliente.",
+      });
+    }
     if (old.ordemid && old.pago) {
       const ordemStatus = getOne("SELECT status FROM ordens WHERE id=? AND deletedat IS NULL", [old.ordemid]);
       const resumo = getResumoFinanceiroOS(old.ordemid);

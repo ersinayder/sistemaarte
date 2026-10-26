@@ -81,6 +81,10 @@ function createCaixaLancamentoService({ db }) {
       const old = queryOne(db, "SELECT * FROM lancamentos WHERE id=? AND deletedat IS NULL", [id]);
       if (!old) throw appError(404, "Lancamento nao encontrado.");
 
+      if (old.origem && (old.origem.startsWith("credito_") || old.acerto_id)) {
+        throw appError(400, "Lançamentos de crédito ou acerto não podem ser editados manualmente.");
+      }
+
       if (old.origem === "entradaos" && user?.role !== "admin") {
         throw appError(400, "A entrada vinculada a OS deve ser alterada pela propria OS.");
       }

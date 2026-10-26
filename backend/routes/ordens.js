@@ -13,6 +13,26 @@ const { marcarAvisoParaEnvio } = require("../utils/whatsappQueue");
 const { getWhatsappRuntimeConfig } = require("../utils/whatsappConfig");
 const { getResumoFinanceiroOS } = require('../domain/financeiroRules');
 const { validarEntregaComSaldo } = require('../domain/clienteFiadoRules');
+const { createClienteCreditoService } = require('../services/clienteCreditoService');
+
+function validarExclusaoOrdem(ordemId) {
+  const mov = getOne("SELECT 1 FROM cliente_credito_movimentos WHERE ordemid=? LIMIT 1", [ordemId]);
+  const lanc = getOne(
+    "SELECT 1 FROM lancamentos WHERE ordemid=? AND deletedat IS NULL AND (origem LIKE 'credito_%' OR acerto_id IS NOT NULL) LIMIT 1",
+    [ordemId]
+  );
+  const ordem = getOne("SELECT id, status FROM ordens WHERE id=?", [ordemId]);
+  const resumo = getResumoFinanceiroOS(ordemId);
+  const debitoFiado = ordem?.status === 'Entregue' && resumo && resumo.saldo > 0.01;
+
+  if (mov || lanc || debitoFiado) {
+    return {
+      ok: false,
+      error: "Não é possível excluir OS com movimentações de crédito ou débitos de fiado. Cancele a OS primeiro.",
+    };
+  }
+  return { ok: true };
+}
 
 function calcularDividaEntregueCliente(clienteId) {
   if (!clienteId) return 0;
@@ -537,6 +557,28 @@ router.put("/:id", auth(), authAnyPermission(["ordens.editar", "ordens.alterar_s
       if (status === 'Cancelado' && !hasPermission(req.user, "ordens.cancelar")) return res.status(403).json({ error: "Sem permissao para cancelar OS." });
       const erroStatus = validarStatus(status, old.status, { isAdmin: req.user?.role === 'admin' });
       if (erroStatus) return res.status(400).json({ error: erroStatus });
+
+      let resolucaoCancelamentoStatusOnly = null;
+      if (status === 'Cancelado' && old.status !== 'Cancelado') {
+        const resumoCancel = getResumoFinanceiroOS(req.params.id);
+        const recebidoCancel = Math.round(toNumber(resumoCancel?.recebido, 0) * 100) / 100;
+        if (recebidoCancel > 0.01) {
+          if (!req.body.destino_excedente) {
+            return res.status(409).json({
+              code: "EXCEDENTE_PAGAMENTO",
+              error: "Esta OS possui pagamentos registrados. Defina o destino do valor antes de cancelar.",
+              excedente: recebidoCancel,
+            });
+          }
+          resolucaoCancelamentoStatusOnly = {
+            tipo: req.body.destino_excedente,
+            valor: recebidoCancel,
+            clienteId: old.clienteid,
+            pagamentoDevolucao: req.body.pagamento_devolucao || "Dinheiro",
+          };
+        }
+      }
+
       let checagemFiado = null;
       if (status === 'Entregue') {
         const resumo = getResumoFinanceiroOS(req.params.id);
@@ -554,6 +596,32 @@ router.put("/:id", auth(), authAnyPermission(["ordens.editar", "ordens.alterar_s
       transaction(() => {
         const current = getOne("SELECT status FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);
         if (!current) throw new Error("OS nao encontrada");
+
+        if (resolucaoCancelamentoStatusOnly) {
+          const credService = createClienteCreditoService({ db: getDB() });
+          if (resolucaoCancelamentoStatusOnly.tipo === "credito") {
+            if (!resolucaoCancelamentoStatusOnly.clienteId) {
+              throw new Error("Para gerar Crédito Loja, a OS deve estar vinculada a um cliente cadastrado.");
+            }
+            credService.gerarCreditoPorExcedente({
+              ordemId: req.params.id,
+              clienteId: resolucaoCancelamentoStatusOnly.clienteId,
+              valor: resolucaoCancelamentoStatusOnly.valor,
+              criadopor: req.user.id,
+            });
+          } else if (resolucaoCancelamentoStatusOnly.tipo === "devolver") {
+            if (!hasPermission(req.user, "clientes.credito.devolver")) {
+              throw new Error("Sem permissão para devolver valores em dinheiro.");
+            }
+            credService.devolverExcedente({
+              ordemId: req.params.id,
+              clienteId: resolucaoCancelamentoStatusOnly.clienteId,
+              valor: resolucaoCancelamentoStatusOnly.valor,
+              pagamento: resolucaoCancelamentoStatusOnly.pagamentoDevolucao,
+              criadopor: req.user.id,
+            });
+          }
+        }
         run("UPDATE ordens SET status=?,updatedat=datetime('now','localtime') WHERE id=?", [status, req.params.id]);
         if (status !== current.status) {
           let obsLog = null;
@@ -593,6 +661,45 @@ router.put("/:id", auth(), authAnyPermission(["ordens.editar", "ordens.alterar_s
     if (novoPrazo !== null) {
       const erroPrazo = validarPrazo(novoPrazo);
       if (erroPrazo) return res.status(400).json({ error: erroPrazo });
+    }
+
+    const resumoAtualOS = getResumoFinanceiroOS(req.params.id);
+    const entradaAtualRow = getEntradaOS(req.params.id);
+    const entradaAtualNum = entradaAtualRow ? toNumber(entradaAtualRow.valor) : 0;
+    const recebidoSemEntradaCalc = Math.max(0, toNumber(resumoAtualOS?.recebido) - entradaAtualNum);
+    const recebidoProjetadoCalc = recebidoSemEntradaCalc + (entrada > 0 ? entrada : 0);
+
+    let resolucaoExcedenteFull = null;
+    if (status === 'Cancelado' && old.status !== 'Cancelado') {
+      const valorParaCancelar = Math.round(recebidoProjetadoCalc * 100) / 100;
+      if (valorParaCancelar > 0.01) {
+        if (!req.body.destino_excedente) {
+          return res.status(409).json({
+            code: "EXCEDENTE_PAGAMENTO",
+            error: "Esta OS possui pagamentos registrados. Defina o destino do valor antes de cancelar.",
+            excedente: valorParaCancelar,
+          });
+        }
+        resolucaoExcedenteFull = {
+          tipo: req.body.destino_excedente,
+          valor: valorParaCancelar,
+          pagamentoDevolucao: req.body.pagamento_devolucao || "Dinheiro",
+        };
+      }
+    } else if (recebidoProjetadoCalc - total > 0.01) {
+      const valorExcedente = Math.round((recebidoProjetadoCalc - total) * 100) / 100;
+      if (!req.body.destino_excedente) {
+        return res.status(409).json({
+          code: "EXCEDENTE_PAGAMENTO",
+          error: "O valor recebido é superior ao novo total da OS.",
+          excedente: valorExcedente,
+        });
+      }
+      resolucaoExcedenteFull = {
+        tipo: req.body.destino_excedente,
+        valor: valorExcedente,
+        pagamentoDevolucao: req.body.pagamento_devolucao || "Dinheiro",
+      };
     }
 
     const ns = status || old.status;
@@ -650,6 +757,30 @@ router.put("/:id", auth(), authAnyPermission(["ordens.editar", "ordens.alterar_s
     const { telefone: telFinal, cpf: cpfFinal } = resolveClienteData(novoCid, novoCliente, telInput, cpfInput);
 
     transaction(() => {
+      if (resolucaoExcedenteFull) {
+        const credService = createClienteCreditoService({ db: getDB() });
+        if (resolucaoExcedenteFull.tipo === "credito") {
+          if (!novoCid) throw new Error("Para gerar Crédito Loja, a OS deve estar vinculada a um cliente cadastrado.");
+          credService.gerarCreditoPorExcedente({
+            ordemId: req.params.id,
+            clienteId: novoCid,
+            valor: resolucaoExcedenteFull.valor,
+            criadopor: req.user.id,
+          });
+        } else if (resolucaoExcedenteFull.tipo === "devolver") {
+          if (!hasPermission(req.user, "clientes.credito.devolver")) {
+            throw new Error("Sem permissão para devolver valores em dinheiro.");
+          }
+          credService.devolverExcedente({
+            ordemId: req.params.id,
+            clienteId: novoCid,
+            valor: resolucaoExcedenteFull.valor,
+            pagamento: resolucaoExcedenteFull.pagamentoDevolucao,
+            criadopor: req.user.id,
+          });
+        }
+      }
+
       run(
         `UPDATE ordens SET clienteid=?,clientenome=?,clientetelefone=?,clientecpf=?,servico=?,descricao=?,
         valortotal=?,descontoinput=?,descontovalor=?,valorentrada=?,prazoentrega=?,prioridade=?,pagamento=?,
@@ -706,6 +837,30 @@ router.patch("/:id/status", auth(), authAnyPermission(["ordens.alterar_status", 
       return res.status(403).json({ error: "Sem permissao para cancelar OS." });
     }
 
+    let resolucaoCancelPatch = null;
+    if (status === 'Cancelado') {
+      const currentOrdem = getOne("SELECT * FROM ordens WHERE id=?", [req.params.id]);
+      if (currentOrdem && currentOrdem.status !== 'Cancelado') {
+        const resumoCancel = getResumoFinanceiroOS(req.params.id);
+        const recebidoCancel = Math.round(toNumber(resumoCancel?.recebido, 0) * 100) / 100;
+        if (recebidoCancel > 0.01) {
+          if (!req.body.destino_excedente) {
+            return res.status(409).json({
+              code: "EXCEDENTE_PAGAMENTO",
+              error: "Esta OS possui pagamentos registrados. Defina o destino do valor antes de cancelar.",
+              excedente: recebidoCancel,
+            });
+          }
+          resolucaoCancelPatch = {
+            tipo: req.body.destino_excedente,
+            valor: recebidoCancel,
+            clienteId: currentOrdem.clienteid,
+            pagamentoDevolucao: req.body.pagamento_devolucao || "Dinheiro",
+          };
+        }
+      }
+    }
+
     let checagemPatch = null;
     let saldoPatch = 0;
     if (status === 'Entregue') {
@@ -728,6 +883,32 @@ router.patch("/:id/status", auth(), authAnyPermission(["ordens.alterar_status", 
     transaction(() => {
       const current = getOne("SELECT status FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);
       if (!current) throw new Error("OS nao encontrada");
+
+      if (resolucaoCancelPatch) {
+        const credService = createClienteCreditoService({ db: getDB() });
+        if (resolucaoCancelPatch.tipo === "credito") {
+          if (!resolucaoCancelPatch.clienteId) {
+            throw new Error("Para gerar Crédito Loja, a OS deve estar vinculada a um cliente cadastrado.");
+          }
+          credService.gerarCreditoPorExcedente({
+            ordemId: req.params.id,
+            clienteId: resolucaoCancelPatch.clienteId,
+            valor: resolucaoCancelPatch.valor,
+            criadopor: req.user.id,
+          });
+        } else if (resolucaoCancelPatch.tipo === "devolver") {
+          if (!hasPermission(req.user, "clientes.credito.devolver")) {
+            throw new Error("Sem permissão para devolver valores em dinheiro.");
+          }
+          credService.devolverExcedente({
+            ordemId: req.params.id,
+            clienteId: resolucaoCancelPatch.clienteId,
+            valor: resolucaoCancelPatch.valor,
+            pagamento: resolucaoCancelPatch.pagamentoDevolucao,
+            criadopor: req.user.id,
+          });
+        }
+      }
       const erroStatus = validarStatus(status, current.status, { isAdmin: req.user?.role === 'admin' });
       if (erroStatus) throw new Error(erroStatus);
       statusAnterior = current.status;
@@ -844,6 +1025,11 @@ router.delete("/:id", auth(), authPermission("ordens.excluir"), (req, res, next)
     const { reason } = req.body ?? {};
     const old = getOne("SELECT id FROM ordens WHERE id=? AND deletedat IS NULL", [req.params.id]);
     if (!old) return res.status(404).json({ error: "Nao encontrado" });
+
+    const checkDel = validarExclusaoOrdem(req.params.id);
+    if (!checkDel.ok) {
+      return res.status(400).json({ error: checkDel.error });
+    }
     run(
       "UPDATE ordens SET deletedat=datetime('now','localtime'),deletedpor=?,deletedreason=? WHERE id=?",
       [req.user.id, reason||null, req.params.id]
@@ -867,6 +1053,11 @@ router.delete("/:id/permanente", auth(), authPermission("ordens.excluir_permanen
   try {
     const old = getOne("SELECT id FROM ordens WHERE id=?", [req.params.id]);
     if (!old) return res.status(404).json({ error: "Nao encontrado" });
+
+    const checkDel = validarExclusaoOrdem(req.params.id);
+    if (!checkDel.ok) {
+      return res.status(400).json({ error: checkDel.error });
+    }
     transaction(() => {
       run("DELETE FROM statuslog   WHERE ordemid=?", [req.params.id]);
       run("DELETE FROM ordem_itens WHERE ordemid=?", [req.params.id]);
