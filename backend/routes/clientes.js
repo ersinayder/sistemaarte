@@ -4,6 +4,9 @@ const { auth, authPermission } = require("../middlewares/auth");
 const { hasPermission } = require("../domain/permissionRules");
 const { toNumber } = require("../utils/numbers");
 const { createClienteCreditoService } = require("../services/clienteCreditoService");
+const { createClienteAcertoService } = require("../services/clienteAcertoService");
+const { renderExtratoContaHtml, renderReciboAcertoHtml } = require("../utils/print/clienteExtrato");
+const { sendPrintHtml } = require("../utils/print/base");
 const { normalizarPaginacao, montarMetaPaginacao } = require("../domain/paginationRules");
 const { consultarCnpj } = require("../services/cnpjLookupService");
 const { hoje } = require("../utils/dates");
@@ -269,6 +272,97 @@ router.post("/:id/credito/estornar/:movimentoId", auth(), authPermission("client
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
+});
+
+// GET /api/clientes/:id/conta-aberto
+router.get("/:id/conta-aberto", auth(), authPermission("clientes.ver"), (req, res, next) => {
+  try {
+    const service = createClienteAcertoService({ db: getDB() });
+    res.json(service.getContaEmAberto(req.params.id));
+  } catch (e) { next(e); }
+});
+
+// POST /api/clientes/:id/acerto
+router.post("/:id/acerto", auth(), authPermission("clientes.acerto.receber"), (req, res, next) => {
+  try {
+    const { pagamento, ordem_ids, valor_total_esperado } = req.body ?? {};
+    const service = createClienteAcertoService({ db: getDB() });
+    const result = service.receberAcerto({
+      clienteId: req.params.id,
+      pagamento,
+      ordem_ids,
+      valor_total_esperado,
+      usuarioId: req.user.id,
+    });
+    res.json(result);
+  } catch (e) {
+    if (e.message && e.message.includes("Valores divergentes")) {
+      return res.status(409).json({ code: "ACERTO_DESATUALIZADO", error: e.message });
+    }
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// POST /api/clientes/acertos/:acertoId/estornar
+router.post("/acertos/:acertoId/estornar", auth(), authPermission("clientes.fiado.gerenciar"), (req, res, next) => {
+  try {
+    const service = createClienteAcertoService({ db: getDB() });
+    const result = service.estornarAcerto({
+      acertoId: req.params.acertoId,
+      usuarioId: req.user.id,
+    });
+    res.json(result);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// GET /api/clientes/:id/cobranca/whatsapp
+router.get("/:id/cobranca/whatsapp", auth(), authPermission("clientes.ver"), (req, res, next) => {
+  try {
+    const service = createClienteAcertoService({ db: getDB() });
+    res.json(service.gerarMensagemCobranca({ clienteId: req.params.id }));
+  } catch (e) { next(e); }
+});
+
+// GET /api/clientes/:id/conta-aberto/extrato
+router.get("/:id/conta-aberto/extrato", auth(), authPermission("clientes.ver"), (req, res, next) => {
+  try {
+    const service = createClienteAcertoService({ db: getDB() });
+    const conta = service.getContaEmAberto(req.params.id);
+    const empresa = getOne("SELECT chave_pix FROM empresa_config WHERE id=1");
+    const html = renderExtratoContaHtml({
+      cliente: conta.cliente,
+      ordens: conta.ordens,
+      totalEmAberto: conta.totalEmAberto,
+      chavePix: empresa?.chave_pix,
+      usuario: req.user,
+    });
+    sendPrintHtml(res, `extrato-conta-${req.params.id}.html`, html);
+  } catch (e) { next(e); }
+});
+
+// GET /api/clientes/acertos/:acertoId/recibo
+router.get("/acertos/:acertoId/recibo", auth(), authPermission("clientes.ver"), (req, res, next) => {
+  try {
+    const acerto = getOne("SELECT * FROM cliente_acertos WHERE id=?", [req.params.acertoId]);
+    if (!acerto) return res.status(404).json({ error: "Acerto não encontrado." });
+    const cliente = getOne("SELECT * FROM clientes WHERE id=?", [acerto.clienteid]);
+    const ordensQuitadas = getAll(
+      `SELECT o.id, o.numero, o.servico, l.valor
+       FROM lancamentos l
+       JOIN ordens o ON o.id = l.ordemid
+       WHERE l.acerto_id = ? AND l.deletedat IS NULL`,
+      [req.params.acertoId]
+    );
+    const html = renderReciboAcertoHtml({
+      cliente,
+      acerto,
+      ordensQuitadas,
+      usuario: req.user,
+    });
+    sendPrintHtml(res, `recibo-acerto-${req.params.acertoId}.html`, html);
+  } catch (e) { next(e); }
 });
 
 module.exports = router;

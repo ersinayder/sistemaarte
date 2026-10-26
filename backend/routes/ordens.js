@@ -741,7 +741,11 @@ router.put("/:id", auth(), authAnyPermission(["ordens.editar", "ordens.alterar_s
         confirmarAcimaLimite: req.body?.confirmar_acima_limite,
       });
       if (!checagemFiadoFull.ok) {
-        return res.status(400).json({ error: checagemFiadoFull.error, code: checagemFiadoFull.code, ...checagemFiadoFull });
+        return res.status(400).json({
+          error: checagemFiadoFull.error || `Saldo aberto: R$ ${saldoProjetadoFull.toFixed(2)}. Quite antes de entregar.`,
+          code: checagemFiadoFull.code,
+          ...checagemFiadoFull,
+        });
       }
     }
 
