@@ -41,7 +41,7 @@ const globalLimiter = rateLimit({
   max: 60,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => req.path.startsWith('/kpis/stream') || req.path.startsWith('/impressao/agente/stream'),
+  skip: (req) => req.path.startsWith('/kpis/stream') || req.path.startsWith('/impressao/agente'),
   message: { error: "Muitas requisições. Tente novamente em instantes." },
 });
 app.use("/api", globalLimiter);
