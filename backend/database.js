@@ -697,7 +697,6 @@ CREATE TABLE IF NOT EXISTS cliente_acertos (
   FOREIGN KEY(clienteid) REFERENCES clientes(id)
 );
 CREATE INDEX IF NOT EXISTS idx_cliente_acertos_cliente ON cliente_acertos(clienteid);
-CREATE INDEX IF NOT EXISTS idx_lancamentos_acerto_id ON lancamentos(acerto_id);
 CREATE TABLE IF NOT EXISTS print_queue (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   tipo TEXT NOT NULL,
