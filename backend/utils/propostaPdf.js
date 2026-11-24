@@ -90,7 +90,7 @@ function renderEmpresaHeaderDetails(empresa = {}) {
   return lines.length ? lines.join('') : '';
 }
 
-function renderPropostaHtml({ proposta, itens = [], empresa = {} }) {
+function renderPropostaHtml({ proposta, itens = [], empresa = {}, autoPrint = true }) {
   const numero = numeroPropostaPrint(proposta.numero);
   const rows = itens.map((item, idx) => ({
     ...item,
@@ -146,7 +146,7 @@ function renderPropostaHtml({ proposta, itens = [], empresa = {} }) {
     brandDetails: renderEmpresaHeaderDetails(empresa),
     documentClass: 'proposta-print',
     extraStyles: PROPOSTA_PRINT_STYLES,
-    autoPrint: true,
+    autoPrint,
   });
 }
 

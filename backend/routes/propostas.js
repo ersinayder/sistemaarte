@@ -9,6 +9,7 @@ const {
   validarDadosProposta,
 } = require("../domain/propostasRules");
 const { renderPropostaHtml } = require("../utils/propostaPdf");
+const { renderDanfePdf } = require("../utils/pdf/danfePdf");
 const { sendPrintHtml } = require("../utils/print/base");
 const { hoje } = require("../utils/dates");
 const { isAgenteOnline } = require("../domain/printQueueRules");
@@ -111,12 +112,40 @@ router.get("/:id", auth(), authPermission("propostas.ver"), (req, res, next) => 
   } catch (e) { next(e); }
 });
 
-router.get("/:id/pdf", auth(), authPermission("propostas.imprimir"), (req, res, next) => {
+router.get("/:id/pdf", auth(), authPermission("propostas.imprimir"), async (req, res, next) => {
   try {
     const proposta = getOne(`${SEL_PROPOSTA} WHERE p.id=?`, [req.params.id]);
     if (!proposta) return res.status(404).json({ error: "Proposta nao encontrada" });
-    const html = renderPropostaHtml({ proposta, itens: itensProposta(req.params.id), empresa: empresaPrint() });
-    sendPrintHtml(res, `proposta-${proposta.numero || proposta.id}.html`, html);
+
+    const itens = itensProposta(req.params.id);
+    const empresa = empresaPrint();
+
+    if (req.query?.formato === "pdf") {
+      const html = renderPropostaHtml({ proposta, itens, empresa, autoPrint: false });
+      try {
+        const pdf = await renderDanfePdf(html);
+        const nomeBase = String(proposta.numero || proposta.id).replace(/[^a-zA-Z0-9._-]/g, "_");
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename="proposta-${nomeBase}.pdf"`);
+        return res.send(pdf);
+      } catch (err) {
+        if (err?.statusCode) {
+          return res.status(err.statusCode).json({
+            error: err.message,
+            code: err.code || "ERRO_PDF_PROPOSTA",
+          });
+        }
+        throw err;
+      }
+    }
+
+    const html = renderPropostaHtml({
+      proposta,
+      itens,
+      empresa,
+      autoPrint: req.query?.embedded !== "1",
+    });
+    return sendPrintHtml(res, `proposta-${proposta.numero || proposta.id}.html`, html);
   } catch (e) { next(e); }
 });
 

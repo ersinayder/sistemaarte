@@ -11,6 +11,8 @@ const db = {
   transaction: vi.fn((fn) => fn()),
 };
 
+const renderDanfePdfMock = vi.fn();
+
 const require = createRequire(import.meta.url);
 
 require.cache[require.resolve('../database.js')] = {
@@ -18,6 +20,13 @@ require.cache[require.resolve('../database.js')] = {
   filename: require.resolve('../database.js'),
   loaded: true,
   exports: db,
+};
+
+require.cache[require.resolve('../utils/pdf/danfePdf.js')] = {
+  id: require.resolve('../utils/pdf/danfePdf.js'),
+  filename: require.resolve('../utils/pdf/danfePdf.js'),
+  loaded: true,
+  exports: { renderDanfePdf: renderDanfePdfMock },
 };
 
 const propostasModule = await import('../routes/propostas.js');
@@ -41,6 +50,7 @@ function businessHandler(method, path) {
 describe('propostas routes', () => {
   beforeEach(() => {
     for (const fn of Object.values(db)) fn.mockReset();
+    renderDanfePdfMock.mockReset();
     db.getAll.mockReturnValue([]);
     db.getOne.mockReturnValue(null);
     db.run.mockReturnValue({ changes: 1 });
@@ -221,5 +231,73 @@ describe('propostas routes', () => {
     expect(html).toContain('Rua das Molduras, 123 - Centro');
     expect(html).toContain('class="brand-line brand-contact"');
     expect(html).not.toContain('loja@arteemolduras.com.br');
+  });
+
+  it('downloads proposal as binary PDF when formato=pdf is requested', async () => {
+    db.getOne
+      .mockReturnValueOnce({
+        id: 12,
+        numero: 'PROP-0012',
+        clientenome: 'Cliente PDF',
+        valortotal: 150,
+        createdat: '2026-06-03 09:00:00',
+      })
+      .mockReturnValueOnce({ razaosocial: 'Arte e Molduras Ltda' });
+    db.getAll.mockReturnValueOnce([
+      { nome: 'Moldura', quantidade: 1, preco_unitario: 150, avulso: 1 },
+    ]);
+    const fakePdf = Buffer.from('%PDF-1.4 proposal');
+    renderDanfePdfMock.mockResolvedValueOnce(fakePdf);
+
+    const handler = businessHandler('get', '/:id/pdf');
+    const res = makeRes();
+    const next = vi.fn();
+
+    await handler({
+      params: { id: '12' },
+      query: { formato: 'pdf' },
+      user: { id: 7, role: 'caixa' },
+    }, res, next);
+
+    if (next.mock.calls.length) throw next.mock.calls[0][0];
+    expect(renderDanfePdfMock).toHaveBeenCalledTimes(1);
+    const renderedHtml = renderDanfePdfMock.mock.calls[0][0];
+    expect(renderedHtml).not.toContain('window.print();');
+    expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'application/pdf');
+    expect(res.setHeader).toHaveBeenCalledWith('Content-Disposition', 'attachment; filename="proposta-PROP-0012.pdf"');
+    expect(res.send).toHaveBeenCalledWith(fakePdf);
+  });
+
+  it('returns structured error JSON when PDF renderer is unavailable', async () => {
+    db.getOne
+      .mockReturnValueOnce({
+        id: 12,
+        numero: 'PROP-0012',
+        clientenome: 'Cliente PDF',
+        valortotal: 150,
+      })
+      .mockReturnValueOnce(null);
+    db.getAll.mockReturnValueOnce([]);
+    const err = new Error('Chrome/Edge nao encontrado para gerar DANFE PDF.');
+    err.statusCode = 500;
+    err.code = 'CHROME_NAO_ENCONTRADO';
+    renderDanfePdfMock.mockRejectedValueOnce(err);
+
+    const handler = businessHandler('get', '/:id/pdf');
+    const res = makeRes();
+    const next = vi.fn();
+
+    await handler({
+      params: { id: '12' },
+      query: { formato: 'pdf' },
+      user: { id: 7, role: 'caixa' },
+    }, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({
+      error: 'Chrome/Edge nao encontrado para gerar DANFE PDF.',
+      code: 'CHROME_NAO_ENCONTRADO',
+    });
   });
 });

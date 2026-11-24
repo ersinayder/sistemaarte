@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
-import { Calculator, CalendarDays, ClipboardList, FileText, PackagePlus, Printer, Save, Search, Send, Trash2, UserRound } from 'lucide-react'
+import { Calculator, CalendarDays, ClipboardList, Download, FileText, PackagePlus, Save, Search, Send, Trash2, UserRound } from 'lucide-react'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import { hojeMaisDiasBrt } from '../utils/dates'
+import { baixarPropostaPdf } from '../utils/propostaPdf'
 
 const moeda = value => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const numero = value => Number(String(value ?? '').replace(',', '.')) || 0
@@ -412,19 +413,11 @@ export default function NovaProposta({ onSaved, onCancel, embedded = false }) {
         produtos: itensPayload,
       })
 
-      if (mode === 'print') {
-        try {
-          const res = await api.post(`/propostas/${data.id}/print`, {}, { skipGlobalErrorToast: true });
-          if (res.data?.mode === 'queue') {
-            toast.success(res.data.message || 'Proposta enviada para a impressora.');
-          } else {
-            window.open(`/api/propostas/${data.id}/pdf`, '_blank', 'noopener,noreferrer');
-          }
-        } catch {
-          window.open(`/api/propostas/${data.id}/pdf`, '_blank', 'noopener,noreferrer');
-        }
+      if (mode === 'pdf') {
+        toast.success('Proposta salva. Baixando PDF...')
+        await baixarPropostaPdf(api, data)
       } else {
-        toast.success('Proposta salva.');
+        toast.success('Proposta salva.')
       }
       if (onSaved) {
         onSaved(data)
@@ -533,9 +526,9 @@ export default function NovaProposta({ onSaved, onCancel, embedded = false }) {
             {saving && saveMode === 'draft' ? 'Salvando...' : 'Salvar'}
           </button>
           {canPrintProposal && (
-            <button className="btn btn-secondary" onClick={() => salvar('print')} disabled={saving}>
-              <Printer size={15} />
-              {saving && saveMode === 'print' ? 'Salvando...' : 'Salvar e imprimir'}
+            <button className="btn btn-secondary" onClick={() => salvar('pdf')} disabled={saving}>
+              <Download size={15} />
+              {saving && saveMode === 'pdf' ? 'Salvando...' : 'Salvar e baixar PDF'}
             </button>
           )}
           <button className="btn btn-primary" onClick={() => salvar('send')} disabled={saving}>
